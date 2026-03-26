@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { Plus, Trash2, FileJson, AlertCircle, TrendingUp, CheckCircle } from 'lucide-react';
+import { Plus, Trash2, FileJson, AlertCircle, TrendingUp, CheckCircle, X, AlertTriangle } from 'lucide-react';
 
 const Editor = ({ session, profile }) => {
+  const navigate = useNavigate();
   const [sections, setSections] = useState([]);
   const [myQuizzes, setMyQuizzes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('create'); // 'create' or 'manage'
+  const [deleteId, setDeleteId] = useState(null); // quiz to delete
+  const [deleteSectionId, setDeleteSectionId] = useState(null); // section to delete
   
   const [title, setTitle] = useState('');
   const [sectionId, setSectionId] = useState('');
@@ -26,10 +30,9 @@ const Editor = ({ session, profile }) => {
     if (profile?.role === 'editor') {
       query = query.eq('author_id', session.user.id);
     }
-    const { data: q, error: qErr } = await query.order('created_at', { ascending: false });
+    const { data: q } = await query.order('created_at', { ascending: false });
     
     if (q) {
-      // Fetch stats for each quiz
       const quizzesWithStats = await Promise.all(q.map(async (quiz) => {
         const { data: res } = await supabase
           .from('quiz_results')
@@ -56,16 +59,15 @@ const Editor = ({ session, profile }) => {
         throw new Error('Некорректный формат JSON: отсутствует массив questions');
       }
 
-      const { data, error } = await supabase.from('quizzes').insert({
+      const { error } = await supabase.from('quizzes').insert({
         title: title || parsedJson.title || 'Новый тест',
         section_id: sectionId,
         author_id: session.user.id,
         content: parsedJson,
         is_verified: profile?.role === 'admin' || profile?.role === 'creator'
-      }).select();
+      });
 
       if (error) throw error;
-      alert('Тест успешно создан!');
       fetchData();
       setTitle('');
       setJsonInput('');
@@ -88,12 +90,28 @@ const Editor = ({ session, profile }) => {
     }
   };
 
-  const handleDeleteQuiz = async (quiz) => {
-    if (confirm(`Вы действительно хотите удалить тест "${quiz.title}"? Все результаты пользователей будут потеряны.`)) {
-      const { error } = await supabase.from('quizzes').delete().eq('id', quiz.id);
-      if (error) alert(error.message);
-      else fetchData();
+  const confirmDeleteQuiz = async () => {
+    if (!deleteId) return;
+    const { error } = await supabase.from('quizzes').delete().eq('id', deleteId);
+    if (error) alert(error.message);
+    else fetchData();
+    setDeleteId(null);
+  };
+
+  const confirmDeleteSection = async () => {
+    if (!deleteSectionId) return;
+    
+    const count = myQuizzes.filter(q => q.section_id === deleteSectionId).length;
+    if (count > 0) {
+      alert('Нельзя удалить секцию, в которой содержатся тесты. Сначала удалите или переместите тесты.');
+      setDeleteSectionId(null);
+      return;
     }
+
+    const { error } = await supabase.from('quiz_sections').delete().eq('id', deleteSectionId);
+    if (error) alert(error.message);
+    else fetchData();
+    setDeleteSectionId(null);
   };
 
   if (loading) return <div className="flex-center" style={{height: '60vh'}}>Загрузка панели редактора...</div>;
@@ -149,7 +167,7 @@ const Editor = ({ session, profile }) => {
                     placeholder="Вставьте JSON формат вашего теста здесь..." 
                     value={jsonInput}
                     onChange={(e) => setJsonInput(e.target.value)}
-                    style={{ width: '100%', height: '300px', borderRadius: '20px', padding: '20px', fontFamily: 'monospace', fontSize: '0.9rem', resize: 'vertical' }}
+                    style={{ width: '100%', height: '300px' }}
                     required
                   />
                   <FileJson size={24} style={{ position: 'absolute', right: '20px', top: '20px', opacity: 0.2 }} />
@@ -167,7 +185,7 @@ const Editor = ({ session, profile }) => {
                 <h3 style={{ margin: 0 }}>Промпт для ИИ</h3>
               </div>
               <p style={{ fontSize: '0.9rem', lineHeight: '1.6', marginBottom: '25px' }}>
-                Скопируйте следующий текст и отправьте его любому ИИ (ChatGPT, Gemini, Claude), чтобы получить готовый файл для загрузки:
+                Скопируйте следующий текст и отправьте его любому ИИ, чтобы получить готовый файл для загрузки:
               </p>
               <div style={{ background: 'var(--card-bg)', padding: '20px', borderRadius: '15px', fontSize: '0.8rem', position: 'relative' }}>
                 <code style={{ whiteSpace: 'pre-wrap' }}>
@@ -188,6 +206,23 @@ const Editor = ({ session, profile }) => {
               {(profile?.role === 'admin' || profile?.role === 'creator') && (
                 <div style={{ marginTop: '40px' }}>
                   <h4 style={{ marginBottom: '15px' }}>Управление секциями</h4>
+                  
+                  <div style={{ marginBottom: '20px', maxHeight: '150px', overflowY: 'auto' }}>
+                    {sections.map(s => (
+                      <div key={s.id} className="flex-center" style={{ justifyContent: 'space-between', padding: '10px', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
+                        <span style={{ fontSize: '0.9rem' }}>{s.name}</span>
+                        {profile?.role === 'creator' && (
+                          <button 
+                            onClick={() => setDeleteSectionId(s.id)}
+                            style={{ padding: '5px', background: 'transparent', color: 'red', boxShadow: 'none' }}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
                   <div className="flex-center" style={{ gap: '10px' }}>
                     <input 
                       type="text" 
@@ -195,7 +230,9 @@ const Editor = ({ session, profile }) => {
                       value={newSectionName} 
                       onChange={(e) => setNewSectionName(e.target.value)} 
                     />
-                    <button onClick={handleCreateSection} style={{ padding: '10px 20px' }}><Plus size={20} /></button>
+                    <button onClick={handleCreateSection} style={{ padding: '10px 20px' }}>
+                      <Plus size={20} />
+                    </button>
                   </div>
                 </div>
               )}
@@ -223,10 +260,6 @@ const Editor = ({ session, profile }) => {
                       <p style={{ fontSize: '1.2rem', fontWeight: '800' }}>{quiz.avgScore}%</p>
                       <p style={{ fontSize: '0.7rem', opacity: 0.5 }}>Средний балл</p>
                     </div>
-                    <div style={{ textAlign: 'center', padding: '15px', background: 'rgba(0,0,0,0.03)', borderRadius: '15px' }}>
-                      <TrendingUp size={20} style={{ opacity: 0.2 }} />
-                      <p style={{ fontSize: '0.7rem', opacity: 0.5 }}>Результат</p>
-                    </div>
                   </div>
 
                   <div className="flex-center" style={{ justifyContent: 'flex-end', gap: '10px' }}>
@@ -237,7 +270,7 @@ const Editor = ({ session, profile }) => {
                       Аналитика
                     </button>
                     <button 
-                      onClick={() => handleDeleteQuiz(quiz)} 
+                      onClick={() => setDeleteId(quiz.id)} 
                       style={{ background: 'rgba(255,0,0,0.1)', color: 'red', boxShadow: 'none' }}
                     >
                       <Trash2 size={18} />
@@ -255,6 +288,59 @@ const Editor = ({ session, profile }) => {
           </div>
         )}
       </div>
+
+      {/* Quiz Delete Modal */}
+      {deleteId && (
+        <div className="modal-overlay" onClick={() => setDeleteId(null)}>
+          <div className="modal-content animate modal-content-danger" onClick={e => e.stopPropagation()}>
+            <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(248, 113, 113, 0.1)', color: '#f87171', margin: '0 auto 25px' }}>
+              <AlertTriangle size={32} />
+            </div>
+            <h2 style={{ marginBottom: '15px' }}>Удалить тест?</h2>
+            <p style={{ opacity: 0.7, marginBottom: '30px', lineHeight: '1.6' }}>
+              Это действие необратимо. <br/> Все результаты учеников по этому тесту будут навсегда удалены из базы.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+              <button 
+                onClick={() => setDeleteId(null)}
+                style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}
+              >
+                Отмена
+              </button>
+              <button onClick={confirmDeleteQuiz} style={{ background: '#f87171', color: 'white' }}>
+                Да, удалить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Section Delete Modal */}
+      {deleteSectionId && (
+        <div className="modal-overlay" onClick={() => setDeleteSectionId(null)}>
+          <div className="modal-content animate modal-content-danger" onClick={e => e.stopPropagation()}>
+            <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(248, 113, 113, 0.1)', color: '#f87171', margin: '0 auto 25px' }}>
+              <AlertTriangle size={32} />
+            </div>
+            <h2 style={{ marginBottom: '15px' }}>Удалить секцию?</h2>
+            <p style={{ opacity: 0.7, marginBottom: '30px', lineHeight: '1.6' }}>
+              Вы уверены? Это удалит категорию из списка. <br/> Если в секции есть тесты, удаление будет заблокировано.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+              <button 
+                onClick={() => setDeleteSectionId(null)}
+                style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}
+              >
+                Отмена
+              </button>
+              <button onClick={confirmDeleteSection} style={{ background: '#f87171', color: 'white' }}>
+                Удалить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

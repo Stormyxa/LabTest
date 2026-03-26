@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { ChevronLeft, User, BarChart, Calendar, CheckCircle, XCircle } from 'lucide-react';
+import { ChevronLeft, User, BarChart, Calendar, CheckCircle, XCircle, Mail } from 'lucide-react';
 
 const Analytics = () => {
   const [searchParams] = useSearchParams();
@@ -26,7 +26,7 @@ const Analytics = () => {
     // Fetch quiz results with user profiles
     const { data: r } = await supabase
       .from('quiz_results')
-      .select('*, profiles(first_name, last_name, is_anonymous)')
+      .select('*, profiles(first_name, last_name, email, is_anonymous)')
       .eq('quiz_id', quizId)
       .order('completed_at', { ascending: false });
     
@@ -43,7 +43,7 @@ const Analytics = () => {
 
   return (
     <div className="container animate" style={{ padding: '40px 20px' }}>
-      <button onClick={() => navigate(-1)} className="flex-center" style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', marginBottom: '30px' }}>
+      <button onClick={() => navigate(-1)} className="flex-center" style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', marginBottom: '30px', boxShadow: 'none', padding: '10px 20px' }}>
         <ChevronLeft size={20} /> Назад
       </button>
 
@@ -71,33 +71,46 @@ const Analytics = () => {
             </tr>
           </thead>
           <tbody>
-            {results.map((res, i) => (
-              <tr key={i} style={{ borderBottom: '1px solid rgba(0,0,0,0.01)' }}>
-                <td style={{ padding: '20px' }}>
-                  {res.profiles?.is_anonymous ? 'Анонимный профиль' : `${res.profiles?.last_name || 'Неизвестно'} ${res.profiles?.first_name || ''}`}
-                </td>
-                <td style={{ padding: '20px' }}>
-                  <div style={{ width: '100px', height: '6px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', overflow: 'hidden' }}>
-                    <div style={{ width: `${(res.score / res.total_questions) * 100}%`, height: '100%', background: res.is_passed ? '#4ade80' : '#f87171' }} />
-                  </div>
-                </td>
-                <td style={{ padding: '20px', fontWeight: 'bold' }}>
-                  {res.score} / {res.total_questions}
-                </td>
-                <td style={{ padding: '20px', opacity: 0.5, fontSize: '0.9rem' }}>
-                  <div className="flex-center" style={{ gap: '5px', justifyContent: 'flex-start' }}>
-                    <Calendar size={14} /> {new Date(res.completed_at).toLocaleString()}
-                  </div>
-                </td>
-                <td style={{ padding: '20px' }}>
-                  {res.is_passed ? (
-                    <span style={{ color: '#4ade80', fontSize: '0.85rem' }} className="flex-center"><CheckCircle size={16} style={{marginRight: '5px'}}/> Зачет</span>
-                  ) : (
-                    <span style={{ color: '#f87171', fontSize: '0.85rem' }} className="flex-center"><XCircle size={16} style={{marginRight: '5px'}}/> Не зачет</span>
-                  )}
-                </td>
-              </tr>
-            ))}
+            {results.map((res, i) => {
+              const profile = res.profiles;
+              const hasName = profile?.first_name || profile?.last_name;
+              const displayName = profile?.is_anonymous 
+                ? 'Анонимный профиль' 
+                : (hasName ? `${profile.last_name || ''} ${profile.first_name || ''}` : (profile?.email || 'Неизвестный ученик'));
+
+              return (
+                <tr key={i} style={{ borderBottom: '1px solid rgba(0,0,0,0.01)' }}>
+                  <td style={{ padding: '20px' }}>
+                    <div style={{ fontWeight: '600' }}>{displayName}</div>
+                    {profile?.email && !profile.is_anonymous && (
+                      <div style={{ fontSize: '0.8rem', opacity: 0.5, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <Mail size={12} /> {profile.email}
+                      </div>
+                    )}
+                  </td>
+                  <td style={{ padding: '20px' }}>
+                    <div style={{ width: '100px', height: '6px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', overflow: 'hidden' }}>
+                      <div style={{ width: `${(res.score / res.total_questions) * 100}%`, height: '100%', background: res.is_passed ? '#4ade80' : '#f87171' }} />
+                    </div>
+                  </td>
+                  <td style={{ padding: '20px', fontWeight: 'bold' }}>
+                    {res.score} / {res.total_questions}
+                  </td>
+                  <td style={{ padding: '20px', opacity: 0.5, fontSize: '0.9rem' }}>
+                    <div className="flex-center" style={{ gap: '5px', justifyContent: 'flex-start' }}>
+                      <Calendar size={14} /> {new Date(res.completed_at).toLocaleString()}
+                    </div>
+                  </td>
+                  <td style={{ padding: '20px' }}>
+                    {res.is_passed ? (
+                      <span style={{ color: '#4ade80', fontSize: '0.85rem' }} className="flex-center"><CheckCircle size={16} style={{marginRight: '5px'}}/> Зачет</span>
+                    ) : (
+                      <span style={{ color: '#f87171', fontSize: '0.85rem' }} className="flex-center"><XCircle size={16} style={{marginRight: '5px'}}/> Не зачет</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
             {results.length === 0 && (
               <tr>
                 <td colSpan="5" style={{ padding: '60px', textAlign: 'center', opacity: 0.5 }}>Прохождений пока нет.</td>

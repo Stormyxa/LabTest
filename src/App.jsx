@@ -38,14 +38,22 @@ function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  const fetchProfile = async (id) => {
+  const fetchProfile = async (id, currentSession = null) => {
     const { data } = await supabase
       .from('profiles')
       .select('*, classes(name)')
       .eq('id', id)
       .single();
     
-    if (data) setProfile(data);
+    if (data) {
+      // Sync email if missing in profile but present in session
+      const userEmail = currentSession?.user?.email || session?.user?.email;
+      if (userEmail && !data.email) {
+        await supabase.from('profiles').update({ email: userEmail }).eq('id', id);
+        data.email = userEmail;
+      }
+      setProfile(data);
+    }
     setLoading(false);
   };
 
@@ -103,6 +111,7 @@ function App() {
           <Route path="/dashboard" element={isAdmin ? <Dashboard session={session} profile={profile} /> : <Navigate to="/" />} />
           <Route path="/logs" element={isAdmin ? <Logs profile={profile} /> : <Navigate to="/" />} />
           <Route path="/statistics" element={<Statistics session={session} profile={profile} />} />
+          <Route path="/analytics" element={isEditor ? <Analytics /> : <Navigate to="/" />} />
           
           <Route path="/profile" element={session ? <Profile session={session} profile={profile} refreshProfile={() => fetchProfile(session.user.id)} /> : <Navigate to="/auth" />} />
         </Routes>

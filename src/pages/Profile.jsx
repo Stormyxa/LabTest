@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { User, Mail, Calendar, GraduationCap, CheckCircle } from 'lucide-react';
+import { User, Mail, Calendar, GraduationCap, CheckCircle, Award, FileText, TrendingUp, Star } from 'lucide-react';
 
 const Profile = ({ session, profile, refreshProfile }) => {
   const location = useLocation();
@@ -17,9 +17,17 @@ const Profile = ({ session, profile, refreshProfile }) => {
   const [showPhone, setShowPhone] = useState(profile?.show_phone_number || false);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState(location.state?.msg || '');
+  
+  const [stats, setStats] = useState({
+    passed: 0,
+    perfect: 0,
+    totalPoints: 0,
+    created: 0
+  });
 
   useEffect(() => {
     fetchClasses();
+    fetchStats();
     if (location.state?.from === '/catalog' && !profile?.is_profile_setup_completed) {
       onboardingRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
@@ -28,6 +36,29 @@ const Profile = ({ session, profile, refreshProfile }) => {
   const fetchClasses = async () => {
     const { data } = await supabase.from('classes').select('*').order('name', { ascending: false });
     if (data) setClasses(data);
+  };
+
+  const fetchStats = async () => {
+    // Passed and Perfect
+    const { data: results } = await supabase
+      .from('quiz_results')
+      .select('score, total_questions, is_passed')
+      .eq('user_id', session.user.id);
+    
+    // Created Quizzes
+    const { count: createdCount } = await supabase
+      .from('quizzes')
+      .select('*', { count: 'exact', head: true })
+      .eq('author_id', session.user.id);
+
+    if (results) {
+      setStats({
+        passed: results.filter(r => r.is_passed).length,
+        perfect: results.filter(r => r.score === r.total_questions && r.total_questions > 0).length,
+        totalPoints: results.reduce((acc, curr) => acc + curr.score, 0),
+        created: createdCount || 0
+      });
+    }
   };
 
   const handleUpdateProfile = async (e) => {
@@ -58,18 +89,14 @@ const Profile = ({ session, profile, refreshProfile }) => {
   };
 
   const handlePhoneChange = (e) => {
-    let val = e.target.value.replace(/\D/g, ''); // Only digits
+    let val = e.target.value.replace(/\D/g, ''); 
     if (val.length > 11) val = val.substring(0, 11);
-    
-    // Mask logic for +7 (XXX) XXX-XX-XX
     let masked = '+7 ';
     if (val.startsWith('7') || val.startsWith('8')) val = val.substring(1);
-    
     if (val.length > 0) masked += '(' + val.substring(0, 3);
     if (val.length >= 3) masked += ') ' + val.substring(3, 6);
     if (val.length >= 6) masked += '-' + val.substring(6, 8);
     if (val.length >= 8) masked += '-' + val.substring(8, 10);
-    
     setPhoneNumber(masked);
   };
 
@@ -84,7 +111,6 @@ const Profile = ({ session, profile, refreshProfile }) => {
       )}
 
       <div className="grid-2">
-        {/* Basic Info Card */}
         <div className="card flex-center" style={{ flexDirection: 'column', textAlign: 'center' }}>
           <img src={avatarUrl} alt="Avatar" style={{ width: '120px', height: '120px', borderRadius: '50%', marginBottom: '20px', border: '4px solid var(--accent-color)' }} />
           <h2>{profile?.first_name ? `${profile.last_name} ${profile.first_name}` : 'Новый пользователь'}</h2>
@@ -118,10 +144,10 @@ const Profile = ({ session, profile, refreshProfile }) => {
         <div className="card">
           <h3 style={{ marginBottom: '20px' }}>Личная статистика</h3>
           <div className="grid-2" style={{ gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-            <StatBox label="Пройдено тестов" value="0" />
-            <StatBox label="Без ошибок" value="0" />
-            <StatBox label="Всего баллов" value="0" />
-            <StatBox label="Создано тестов" value="0" />
+            <StatBox label="Пройдено тестов" value={stats.passed} icon={<CheckCircle size={20} />} />
+            <StatBox label="Без ошибок" value={stats.perfect} icon={<Star size={20} />} />
+            <StatBox label="Всего баллов" value={stats.totalPoints} icon={<TrendingUp size={20} />} />
+            <StatBox label="Создано тестов" value={stats.created} icon={<FileText size={20} />} />
           </div>
           
           <div style={{ marginTop: '30px', padding: '15px', background: 'rgba(0,0,0,0.05)', borderRadius: '15px' }}>
@@ -141,7 +167,6 @@ const Profile = ({ session, profile, refreshProfile }) => {
         </div>
       </div>
 
-      {/* Onboarding / Edit Section */}
       <div ref={onboardingRef} className="card animate" style={{ marginTop: '40px' }}>
         <h3 style={{ marginBottom: '25px' }}>
           {profile?.is_profile_setup_completed ? 'Основные данные (только чтение)' : 'Подтверждение данных'}
@@ -234,11 +259,6 @@ const Profile = ({ session, profile, refreshProfile }) => {
               <button type="submit" disabled={loading} style={{ width: '100%', padding: '15px' }}>
                 {loading ? 'Сохранение...' : (profile?.is_profile_setup_completed ? 'Обновить данные' : 'Подтвердить и сохранить')}
               </button>
-              {!profile?.is_profile_setup_completed && (
-                <p style={{ marginTop: '10px', fontSize: '0.8rem', opacity: 0.6, textAlign: 'center' }}>
-                  После сохранения изменить фамилию и имя сможет только администратор.
-                </p>
-              )}
             </div>
           )}
         </form>
@@ -247,8 +267,9 @@ const Profile = ({ session, profile, refreshProfile }) => {
   );
 };
 
-const StatBox = ({ label, value }) => (
+const StatBox = ({ label, value, icon }) => (
   <div style={{ padding: '20px', background: 'var(--card-bg)', border: '1px solid rgba(0,0,0,0.05)', borderRadius: '20px', textAlign: 'center' }}>
+    <div style={{ color: 'var(--primary-color)', marginBottom: '10px', opacity: 0.5 }} className="flex-center">{icon}</div>
     <h4 style={{ fontSize: '1.5rem', marginBottom: '5px' }}>{value}</h4>
     <p style={{ fontSize: '0.8rem', opacity: 0.7 }}>{label}</p>
   </div>
