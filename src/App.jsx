@@ -1,0 +1,132 @@
+import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, Link } from 'react-router-dom';
+import { supabase } from './lib/supabase';
+import Home from './pages/Home';
+import Auth from './pages/Auth';
+import Profile from './pages/Profile';
+import QuizCatalog from './pages/QuizCatalog';
+import QuizView from './pages/QuizView';
+import Editor from './pages/Editor';
+import Dashboard from './pages/Dashboard';
+import Statistics from './pages/Statistics';
+import Logs from './pages/Logs';
+import Analytics from './pages/Analytics';
+import './index.css';
+
+function App() {
+  const [session, setSession] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session) fetchProfile(session.user.id);
+      else setLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session) fetchProfile(session.user.id);
+      else {
+        setProfile(null);
+        setLoading(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const fetchProfile = async (id) => {
+    const { data } = await supabase
+      .from('profiles')
+      .select('*, classes(name)')
+      .eq('id', id)
+      .single();
+    
+    if (data) setProfile(data);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
+
+  if (loading) return <div className="flex-center" style={{height: '100vh', flexDirection: 'column', gap: '20px'}}>
+    <div className="animate" style={{fontSize: '2rem', fontWeight: '800'}}>LabTest</div>
+    <div style={{opacity: 0.5}}>Загрузка лаборатории...</div>
+  </div>;
+
+  const isAdmin = profile?.role === 'admin' || profile?.role === 'creator';
+  const isEditor = profile?.role === 'editor' || isAdmin;
+
+  return (
+    <Router>
+      <div className="app-shell">
+        <nav className="navbar" style={{ position: 'sticky', top: 0, zIndex: 100, background: 'var(--card-bg)', backdropFilter: 'var(--glass)', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+          <div className="container flex-center" style={{justifyContent: 'space-between', padding: '15px 20px'}}>
+            <Link to="/" style={{textDecoration: 'none', color: 'inherit'}}>
+              <h2 style={{fontWeight: '800', letterSpacing: '-1px'}}>LabTest</h2>
+            </Link>
+            <div className="nav-links flex-center" style={{gap: '10px'}}>
+              <ThemeToggle theme={theme} onToggle={toggleTheme} />
+              <Link to="/catalog"><NavButton label="Тесты" /></Link>
+              <Link to="/statistics"><NavButton label="Статистика" /></Link>
+              {isEditor && <Link to="/editor"><NavButton label="Создать" variant="accent" /></Link>}
+              {isAdmin && <Link to="/dashboard"><NavButton label="Панель" variant="accent" /></Link>}
+              {session ? (
+                <Link to="/profile"><NavButton label="Профиль" variant="primary" /></Link>
+              ) : (
+                <Link to="/auth"><NavButton label="Войти" variant="primary" /></Link>
+              )}
+            </div>
+          </div>
+        </nav>
+        
+        <Routes>
+          <Route path="/" element={<Home session={session} profile={profile} />} />
+          <Route path="/auth" element={!session ? <Auth /> : <Navigate to="/" />} />
+          
+          <Route path="/catalog" element={
+            !session ? <Navigate to="/auth" /> : 
+            !profile?.is_profile_setup_completed ? <Navigate to="/profile" state={{ from: '/catalog', msg: 'Подтвердите данные профиля.' }} /> :
+            <QuizCatalog profile={profile} />
+          } />
+          
+          <Route path="/quiz/:id" element={session ? <QuizView session={session} /> : <Navigate to="/auth" />} />
+          
+          <Route path="/editor" element={isEditor ? <Editor session={session} profile={profile} /> : <Navigate to="/" />} />
+          <Route path="/dashboard" element={isAdmin ? <Dashboard session={session} profile={profile} /> : <Navigate to="/" />} />
+          <Route path="/logs" element={isAdmin ? <Logs profile={profile} /> : <Navigate to="/" />} />
+          <Route path="/statistics" element={<Statistics session={session} profile={profile} />} />
+          
+          <Route path="/profile" element={session ? <Profile session={session} profile={profile} refreshProfile={() => fetchProfile(session.user.id)} /> : <Navigate to="/auth" />} />
+        </Routes>
+      </div>
+    </Router>
+  );
+}
+
+const NavButton = ({ label, variant = 'ghost' }) => (
+  <button style={{
+    background: variant === 'ghost' ? 'transparent' : (variant === 'accent' ? 'var(--accent-color)' : 'var(--primary-color)'),
+    color: variant === 'ghost' ? 'var(--text-color)' : 'white',
+    padding: '8px 16px',
+    boxShadow: variant === 'ghost' ? 'none' : 'var(--soft-shadow)',
+    fontSize: '0.9rem'
+  }}>
+    {label}
+  </button>
+);
+
+const ThemeToggle = ({ theme, onToggle }) => (
+  <button onClick={onToggle} style={{background: 'rgba(128,128,128,0.1)', color: 'var(--text-color)', padding: '8px 12px', border: '1px solid rgba(0,0,0,0.05)', borderRadius: '12px'}}>
+    {theme === 'light' ? '🌙' : '☀️'}
+  </button>
+);
+
+export default App;

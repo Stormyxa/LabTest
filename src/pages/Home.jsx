@@ -1,0 +1,148 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { supabase } from '../lib/supabase';
+import { Info, Users, LayoutGrid, Settings, MessageCircle, Github, ExternalLink } from 'lucide-react';
+
+const Home = ({ session, profile }) => {
+  const navigate = useNavigate();
+  const [showInfo, setShowInfo] = useState(false);
+  const [showTeam, setShowTeam] = useState(false);
+  const [team, setTeam] = useState([]);
+
+  useEffect(() => {
+    if (showTeam) fetchTeam();
+  }, [showTeam]);
+
+  const fetchTeam = async () => {
+    const { data } = await supabase
+      .from('profiles')
+      .select('first_name, last_name, role, phone_number')
+      .eq('show_phone_number', true)
+      .in('role', ['admin', 'creator']);
+    if (data) setTeam(data);
+  };
+
+  return (
+    <div className="container animate" style={{ textAlign: 'center', padding: '100px 20px' }}>
+      <div className="card" style={{ maxWidth: '800px', margin: '0 auto', background: 'var(--card-bg)', border: '1px solid rgba(0,0,0,0.05)', position: 'relative' }}>
+        
+        {/* Top Left Icons */}
+        <div style={{ position: 'absolute', top: '20px', left: '20px', display: 'flex', gap: '10px' }}>
+          <button 
+            className="flex-center" 
+            onClick={() => setShowInfo(true)} 
+            style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', width: '40px', height: '40px', borderRadius: '12px', padding: '0' }}
+            title="О проекте"
+          >
+            <Info size={20} />
+          </button>
+          <button 
+            className="flex-center" 
+            onClick={() => setShowTeam(true)} 
+            style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', width: '40px', height: '40px', borderRadius: '12px', padding: '0' }}
+            title="Стать частью команды"
+          >
+            <Users size={20} />
+          </button>
+        </div>
+
+        <h1 style={{ fontSize: '3.5rem', marginBottom: '20px', fontWeight: '800', color: 'var(--primary-color)' }}>LabTest</h1>
+        <p style={{ fontSize: '1.2rem', opacity: 0.8, marginBottom: '40px' }}>
+          Добро пожаловать в учебную лабораторию тестов. 
+          Проходите испытания, зарабатывайте баллы и повышайте свой уровень знаний.
+        </p>
+
+        <div className="flex-center" style={{ gap: '20px', flexWrap: 'wrap', justifyContent: 'center' }}>
+          {!session ? (
+            <button onClick={() => navigate('/auth')} style={{ fontSize: '1.1rem', padding: '15px 40px' }}>
+              Начать обучение
+            </button>
+          ) : (
+            <>
+              <button 
+                onClick={() => navigate('/catalog')} 
+                style={{ fontSize: '1.1rem', padding: '15px 40px', background: 'var(--secondary-color)' }}
+              >
+                <LayoutGrid size={20} style={{ marginRight: '10px' }} />
+                Каталог тестов
+              </button>
+              
+              {(profile?.role === 'admin' || profile?.role === 'creator') && (
+                <button 
+                  onClick={() => navigate('/dashboard')} 
+                  style={{ fontSize: '1.1rem', padding: '15px 40px', background: 'var(--accent-color)' }}
+                >
+                  <Settings size={20} style={{ marginRight: '10px' }} />
+                  Панель управления
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Info Modal */}
+      {showInfo && (
+        <div className="modal-overlay" onClick={() => setShowInfo(false)}>
+          <div className="modal-content animate" onClick={e => e.stopPropagation()}>
+            <h2 style={{ marginBottom: '20px' }}>О проекте</h2>
+            <p style={{ marginBottom: '30px', lineHeight: '1.6', textAlign: 'left' }}>
+              Сайт создан учеником СШ№43 Афанасиади Анастасом в рамках проекта по информатике. 2026г.
+            </p>
+            <div style={{ display: 'flex', gap: '15px', marginBottom: '30px', justifyContent: 'center' }}>
+              <Github size={24} style={{ cursor: 'pointer' }} />
+              <ExternalLink size={24} style={{ cursor: 'pointer' }} />
+            </div>
+            <button onClick={() => setShowInfo(false)} style={{ width: '100%', background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)' }}>Закрыть</button>
+          </div>
+        </div>
+      )}
+
+      {/* Team Modal */}
+      {showTeam && (
+        <div className="modal-overlay" onClick={() => setShowTeam(false)}>
+          <div className="modal-content animate" style={{ maxWidth: '600px' }} onClick={e => e.stopPropagation()}>
+            <h2 style={{ marginBottom: '15px' }}>Стань частью команды</h2>
+            <p style={{ opacity: 0.7, marginBottom: '30px', textAlign: 'left' }}>
+              Хотите создавать свои тесты или помогать в управлении платформой? Свяжитесь с нашими администраторами!
+            </p>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', maxHeight: '40vh', overflowY: 'auto', marginBottom: '30px', paddingRight: '10px' }}>
+              {team.length > 0 ? team.map((member, i) => (
+                <div key={i} className="flex-center" style={{ justifyContent: 'space-between', padding: '15px', background: 'rgba(0,0,0,0.03)', borderRadius: '15px' }}>
+                  <div style={{ textAlign: 'left' }}>
+                    <h4 style={{ margin: 0 }}>{member.last_name} {member.first_name}</h4>
+                    <p style={{ fontSize: '0.8rem', opacity: 0.5 }}>{member.role === 'creator' ? 'Основатель' : 'Администратор'}</p>
+                  </div>
+                  <a 
+                    href={`https://wa.me/${member.phone_number?.replace(/\D/g, '')}`} 
+                    target="_blank" 
+                    rel="noreferrer"
+                    style={{ background: '#25D366', color: 'white', padding: '8px 16px', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none', fontSize: '0.85rem' }}
+                  >
+                    <MessageCircle size={18} /> WhatsApp
+                  </a>
+                </div>
+              )) : (
+                <p style={{ opacity: 0.5, textAlign: 'center' }}>Список контактов пуст. Подождите, пока администраторы укажут свои номера в профиле.</p>
+              )}
+            </div>
+
+            <div style={{ padding: '15px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '15px', marginBottom: '30px', fontSize: '0.9rem', textAlign: 'left' }}>
+              <strong>Ранги платформы:</strong>
+              <ul style={{ paddingLeft: '20px', marginTop: '10px' }}>
+                <li><strong>Редактор:</strong> Создание тестов через JSON.</li>
+                <li><strong>Админ:</strong> Верификация тестов и управление игроками.</li>
+                <li><strong>Создатель:</strong> Полный технический доступ.</li>
+              </ul>
+            </div>
+
+            <button onClick={() => setShowTeam(false)} style={{ width: '100%', background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)' }}>Закрыть</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default Home;
