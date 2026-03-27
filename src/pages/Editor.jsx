@@ -5,17 +5,25 @@ import { Plus, Trash2, FileJson, AlertCircle, TrendingUp, CheckCircle, Check, Co
 
 const Editor = ({ session, profile }) => {
   const navigate = useNavigate();
+  const [classes, setClasses] = useState([]);
   const [sections, setSections] = useState([]);
   const [myQuizzes, setMyQuizzes] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('create'); // 'create' or 'manage'
-  const [deleteId, setDeleteId] = useState(null); // quiz to delete
-  const [deleteSectionId, setDeleteSectionId] = useState(null); // section to delete
+  const [activeTab, setActiveTab] = useState('create');
+
+  const [deleteId, setDeleteId] = useState(null);
+  const [deleteSectionId, setDeleteSectionId] = useState(null);
+  const [deleteClassId, setDeleteClassId] = useState(null);
 
   const [titles, setTitles] = useState('');
+  const [selectedClassId, setSelectedClassId] = useState('');
   const [sectionId, setSectionId] = useState('');
   const [jsonInput, setJsonInput] = useState('');
+
+  const [newClassName, setNewClassName] = useState('');
   const [newSectionName, setNewSectionName] = useState('');
+  const [newSectionClassId, setNewSectionClassId] = useState('');
+
   const [copyFeedbackJson, setCopyFeedbackJson] = useState(false);
   const [copyFeedbackBulk, setCopyFeedbackBulk] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -26,10 +34,13 @@ const Editor = ({ session, profile }) => {
 
   const fetchData = async () => {
     setLoading(true);
+    const { data: c } = await supabase.from('quiz_classes').select('*').order('sort_order', { ascending: true });
     const { data: s } = await supabase.from('quiz_sections').select('*').order('sort_order', { ascending: true });
+
+    if (c) setClasses(c);
     if (s) setSections(s);
 
-    let query = supabase.from('quizzes').select('*, quiz_sections(name)');
+    let query = supabase.from('quizzes').select('*, quiz_sections(name, class_id)');
     if (profile?.role === 'editor') {
       query = query.eq('author_id', session.user.id);
     }
@@ -37,16 +48,11 @@ const Editor = ({ session, profile }) => {
 
     if (q) {
       const quizzesWithStats = await Promise.all(q.map(async (quiz) => {
-        const { data: res } = await supabase
-          .from('quiz_results')
-          .select('score, total_questions')
-          .eq('quiz_id', quiz.id);
-
+        const { data: res } = await supabase.from('quiz_results').select('score, total_questions').eq('quiz_id', quiz.id);
         const participants = res?.length || 0;
         const avgScore = participants > 0
           ? Math.round((res.reduce((acc, curr) => acc + curr.score, 0) / res.reduce((acc, curr) => acc + curr.total_questions, 0)) * 100)
           : 0;
-
         return { ...quiz, participants, avgScore };
       }));
       setMyQuizzes(quizzesWithStats);
@@ -83,7 +89,6 @@ const Editor = ({ session, profile }) => {
         const { error } = await supabase.from('quizzes').insert(newQuizzesInsertion);
         if (error) throw error;
       } else {
-        // Bulk creation from titles (Empty quizzes)
         let titleList = titles.split('\n').map(t => t.trim()).filter(t => t.length > 0);
         if (titleList.length === 0) throw new Error('Введите хотя бы одно название');
 
@@ -108,37 +113,47 @@ const Editor = ({ session, profile }) => {
       setTitles('');
       setJsonInput('');
       setSectionId('');
+      setSelectedClassId('');
     } catch (err) {
       alert(`Ошибка: ${err.message}`);
     }
   };
 
   const copyJsonPrompt = () => {
-    // ВЫ МОЖЕТЕ ИЗМЕНИТЬ ЭТОТ ТЕКСТ НИЖЕ
-    const prompt = `Создай тест на тему с приложенных изображений из [КОЛИЧЕСТВО] вопросов. Выведи результат СТРОГО в формате JSON:
-{
-  "title": "§. Название",
-  "questions": [
-    {
-      "question": "Текст вопроса?",
-      "options": ["Ответ 1", "Ответ 2", "Ответ 3", "Ответ 4"],
-      "correctIndex": 0
-    }
-  ]
-}`;
-
+    const prompt = `Создай тест на тему с приложенных изображений из [КОЛИЧЕСТВО] вопросов. Выведи результат СТРОГО в формате JSON:\n{\n  "title": "§. Название",\n  "questions": [\n    {\n      "question": "Текст вопроса?",\n      "options": ["Ответ 1", "Ответ 2", "Ответ 3", "Ответ 4"],\n      "correctIndex": 0\n    }\n  ]\n}`;
     navigator.clipboard.writeText(prompt);
     setCopyFeedbackJson(true);
     setTimeout(() => setCopyFeedbackJson(false), 2000);
   };
 
-  const swapSections = (index, direction) => {
-    const newSec = [...sections];
-    if (index + direction < 0 || index + direction >= newSec.length) return;
-    const temp = newSec[index];
-    newSec[index] = newSec[index + direction];
-    newSec[index + direction] = temp;
-    setSections(newSec.map((s, i) => ({ ...s, sort_order: i })));
+  // --- Sorting Logic ---
+  const swapClasses = (index, direction) => {
+    const newClasses = [...classes];
+    if (index + direction < 0 || index + direction >= newClasses.length) return;
+    const temp = newClasses[index];
+    newClasses[index] = newClasses[index + direction];
+    newClasses[index + direction] = temp;
+    setClasses(newClasses.map((c, i) => ({ ...c, sort_order: i })));
+    setHasUnsavedChanges(true);
+  };
+
+  const swapSections = (classId, index, direction) => {
+    const classSections = sections.filter(s => s.class_id === classId).sort((a, b) => a.sort_order - b.sort_order);
+    if (index + direction < 0 || index + direction >= classSections.length) return;
+
+    const temp = classSections[index];
+    classSections[index] = classSections[index + direction];
+    classSections[index + direction] = temp;
+
+    let orderCounter = 0;
+    const updatedSections = [...sections].map(s => {
+      if (s.class_id === classId) {
+        const matching = classSections.shift();
+        return { ...matching, sort_order: orderCounter++ };
+      }
+      return s;
+    });
+    setSections(updatedSections);
     setHasUnsavedChanges(true);
   };
 
@@ -147,12 +162,10 @@ const Editor = ({ session, profile }) => {
     const sectionQuizzes = qList.filter(q => q.section_id === sectionId);
     if (index + direction < 0 || index + direction >= sectionQuizzes.length) return;
 
-    // Swap in section subgroup
     const temp = sectionQuizzes[index];
     sectionQuizzes[index] = sectionQuizzes[index + direction];
     sectionQuizzes[index + direction] = temp;
 
-    // Rebuild global logic
     let order = 0;
     const final = qList.map(q => {
       if (q.section_id === sectionId) {
@@ -166,24 +179,52 @@ const Editor = ({ session, profile }) => {
     setHasUnsavedChanges(true);
   };
 
-  const copyBulkPrompt = () => {
-    const prompt = "Составь список из 20 названий тестов по теме [Вставьте тему] для школьной программы. Выведи только названия по одному в строке, без нумерации и лишнего текста.";
-    navigator.clipboard.writeText(prompt);
-    setCopyFeedbackBulk(true);
-    setTimeout(() => setCopyFeedbackBulk(false), 2000);
+  // --- Creation Logic ---
+  const handleCreateClass = async () => {
+    if (!newClassName) return;
+    const { error } = await supabase.from('quiz_classes').insert({ name: newClassName });
+    if (error) alert(error.message);
+    else { setNewClassName(''); fetchData(); }
   };
 
   const handleCreateSection = async () => {
-    if (!newSectionName) return;
+    if (!newSectionName || !newSectionClassId) return alert('Укажите класс и название предмета');
     const { error } = await supabase.from('quiz_sections').insert({
       name: newSectionName,
+      class_id: newSectionClassId,
       created_by: session.user.id
     });
     if (error) alert(error.message);
-    else {
-      setNewSectionName('');
-      fetchData();
+    else { setNewSectionName(''); fetchData(); }
+  };
+
+  // --- Deletion Logic ---
+  const confirmDeleteClass = async () => {
+    if (!deleteClassId) return;
+    const count = sections.filter(s => s.class_id === deleteClassId).length;
+    if (count > 0) {
+      alert('Сначала удалите или переместите предметы (секции) из этого класса.');
+      setDeleteClassId(null);
+      return;
     }
+    const { error } = await supabase.from('quiz_classes').delete().eq('id', deleteClassId);
+    if (error) alert(error.message);
+    else fetchData();
+    setDeleteClassId(null);
+  };
+
+  const confirmDeleteSection = async () => {
+    if (!deleteSectionId) return;
+    const count = myQuizzes.filter(q => q.section_id === deleteSectionId).length;
+    if (count > 0) {
+      alert('Сначала удалите или переместите тесты из этого предмета.');
+      setDeleteSectionId(null);
+      return;
+    }
+    const { error } = await supabase.from('quiz_sections').delete().eq('id', deleteSectionId);
+    if (error) alert(error.message);
+    else fetchData();
+    setDeleteSectionId(null);
   };
 
   const confirmDeleteQuiz = async () => {
@@ -194,22 +235,6 @@ const Editor = ({ session, profile }) => {
     setDeleteId(null);
   };
 
-  const confirmDeleteSection = async () => {
-    if (!deleteSectionId) return;
-
-    const count = myQuizzes.filter(q => q.section_id === deleteSectionId).length;
-    if (count > 0) {
-      alert('Нельзя удалить секцию, в которой содержатся тесты. Сначала удалите или переместите тесты.');
-      setDeleteSectionId(null);
-      return;
-    }
-
-    const { error } = await supabase.from('quiz_sections').delete().eq('id', deleteSectionId);
-    if (error) alert(error.message);
-    else fetchData();
-    setDeleteSectionId(null);
-  };
-
   if (loading) return <div className="flex-center" style={{ height: '60vh' }}>Загрузка панели редактора...</div>;
 
   return (
@@ -217,26 +242,8 @@ const Editor = ({ session, profile }) => {
       <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '40px' }}>
         <h2 style={{ fontSize: '2rem' }}>Управление тестами</h2>
         <div style={{ background: 'rgba(0,0,0,0.05)', padding: '5px', borderRadius: '15px', display: 'flex' }}>
-          <button
-            onClick={() => setActiveTab('create')}
-            style={{
-              background: activeTab === 'create' ? 'var(--primary-color)' : 'transparent',
-              color: activeTab === 'create' ? 'white' : 'inherit',
-              boxShadow: 'none'
-            }}
-          >
-            Создать тест
-          </button>
-          <button
-            onClick={() => setActiveTab('manage')}
-            style={{
-              background: activeTab === 'manage' ? 'var(--primary-color)' : 'transparent',
-              color: activeTab === 'manage' ? 'white' : 'inherit',
-              boxShadow: 'none'
-            }}
-          >
-            Мои тесты
-          </button>
+          <button onClick={() => setActiveTab('create')} style={{ background: activeTab === 'create' ? 'var(--primary-color)' : 'transparent', color: activeTab === 'create' ? 'white' : 'inherit', boxShadow: 'none' }}>Создать тест</button>
+          <button onClick={() => setActiveTab('manage')} style={{ background: activeTab === 'manage' ? 'var(--primary-color)' : 'transparent', color: activeTab === 'manage' ? 'white' : 'inherit', boxShadow: 'none' }}>Дерево тестов</button>
         </div>
       </div>
 
@@ -251,39 +258,26 @@ const Editor = ({ session, profile }) => {
                     {(profile?.role === 'admin' || profile?.role === 'creator') ? 'Название (необязательно если указано в JSON в качестве title)' : 'Название теста'}
                   </label>
                   {(profile?.role === 'admin' || profile?.role === 'creator') ? (
-                    <textarea
-                      placeholder="Например:&#10;§17. Антропогенез и этногенез"
-                      value={titles}
-                      onChange={(e) => setTitles(e.target.value)}
-                      style={{ height: '80px', resize: 'vertical' }}
-                      required={!jsonInput.trim()}
-                    />
+                    <textarea placeholder="Например:&#10;§17. Антропогенез и этногенез" value={titles} onChange={(e) => setTitles(e.target.value)} style={{ height: '80px', resize: 'vertical' }} required={!jsonInput.trim()} />
                   ) : (
-                    <input
-                      type="text"
-                      placeholder="Напр: История Древнего мира"
-                      value={titles}
-                      onChange={(e) => setTitles(e.target.value)}
-                      required={!jsonInput.trim()}
-                    />
+                    <input type="text" placeholder="Напр: История Древнего мира" value={titles} onChange={(e) => setTitles(e.target.value)} required={!jsonInput.trim()} />
                   )}
                 </div>
 
-                <select value={sectionId} onChange={(e) => setSectionId(e.target.value)} required>
-                  <option value="">Выберите секцию для вложения...</option>
-                  {sections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <select value={selectedClassId} onChange={(e) => { setSelectedClassId(e.target.value); setSectionId(''); }} required style={{ flex: 1 }}>
+                    <option value="">Выберите класс...</option>
+                    {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                  <select value={sectionId} onChange={(e) => setSectionId(e.target.value)} required disabled={!selectedClassId} style={{ flex: 1 }}>
+                    <option value="">Выберите предмет...</option>
+                    {sections.filter(s => s.class_id === selectedClassId).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </div>
 
                 <div style={{ position: 'relative' }}>
-                  <label style={{ fontSize: '0.85rem', opacity: 0.5, marginBottom: '8px', display: 'block' }}>
-                    JSON содержание (если есть)
-                  </label>
-                  <textarea
-                    placeholder="Вставьте JSON формат вашего теста здесь (необязательно при массовом создании)..."
-                    value={jsonInput}
-                    onChange={(e) => setJsonInput(e.target.value)}
-                    style={{ width: '100%', height: '150px' }}
-                  />
+                  <label style={{ fontSize: '0.85rem', opacity: 0.5, marginBottom: '8px', display: 'block' }}>JSON содержание (если есть)</label>
+                  <textarea placeholder="Вставьте JSON формат вашего теста здесь..." value={jsonInput} onChange={(e) => setJsonInput(e.target.value)} style={{ width: '100%', height: '150px' }} />
                   <FileJson size={24} style={{ position: 'absolute', right: '20px', top: '40px', opacity: 0.2 }} />
                 </div>
 
@@ -298,66 +292,44 @@ const Editor = ({ session, profile }) => {
             <div className="card" style={{ background: 'rgba(99, 102, 241, 0.05)', border: '1px dashed var(--primary-color)' }}>
               <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px', marginBottom: '20px', color: 'var(--primary-color)' }}>
                 <AlertCircle size={24} />
-                <h3 style={{ margin: 0 }}>Промпт для ИИ помощника</h3>
+                <h3 style={{ margin: 0 }}>Управление структурой и ИИ</h3>
               </div>
-              <p style={{ fontSize: '0.9rem', lineHeight: '1.6', marginBottom: '20px' }}>
-                Обязательный шаблон для генерации материалов через нейросети:
-              </p>
 
-              <div style={{ display: 'grid', gap: '15px' }}>
-                <div style={{ background: 'var(--card-bg)', padding: '15px', borderRadius: '15px' }}>
-                  <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '10px' }}>
-                    <p style={{ margin: 0, fontSize: '0.85rem', fontWeight: 'bold' }}>Промпт для ИИ (Приложите изображения страниц с учебника)</p>
-                    <button type="button" onClick={copyJsonPrompt} style={{ padding: '5px 10px', background: 'transparent', color: 'var(--primary-color)', boxShadow: 'none' }}>
-                      {copyFeedbackJson ? <Check size={16} /> : <Copy size={16} />}
-                    </button>
-                  </div>
-                  <code style={{ fontSize: '0.75rem', opacity: 0.7, whiteSpace: 'pre-wrap' }}>
-                    {`Создай тест на тему с приложенных изображений из [КОЛИЧЕСТВО] вопросов. Выведи результат СТРОГО в формате JSON:
-{
-  "title": "§. Название",
-  "questions": [
-    {
-      "question": "Текст вопроса?",
-      "options": ["Ответ 1", "Ответ 2", "Ответ 3", "Ответ 4"],
-      "correctIndex": 0
-    }
-  ]
-}`}
-                  </code>
+              <div style={{ background: 'var(--card-bg)', padding: '15px', borderRadius: '15px', marginBottom: '30px' }}>
+                <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '10px' }}>
+                  <p style={{ margin: 0, fontSize: '0.85rem', fontWeight: 'bold' }}>Промпт для ИИ (Формат JSON)</p>
+                  <button type="button" onClick={copyJsonPrompt} style={{ padding: '5px 10px', background: 'transparent', color: 'var(--primary-color)', boxShadow: 'none' }}>
+                    {copyFeedbackJson ? <Check size={16} /> : <Copy size={16} />}
+                  </button>
                 </div>
+                <code style={{ fontSize: '0.75rem', opacity: 0.7, whiteSpace: 'pre-wrap' }}>
+                  Нажмите кнопку копирования, измените значения в квадратных скобках и вставьте в качестве промпта любой ИИ модели
+                  (например, <a href="https://gemini.google.com" target="_blank" rel="noopener noreferrer" style={{ color: '#4285f4', textDecoration: 'underline' }}>Gemini</a>)
+                </code>
               </div>
+
+              {profile?.role === 'creator' && (
+                <div style={{ marginBottom: '30px' }}>
+                  <h4 style={{ marginBottom: '15px' }}>Папки / Классы</h4>
+                  <div className="flex-center" style={{ gap: '10px' }}>
+                    <input type="text" placeholder="Название класса" value={newClassName} onChange={(e) => setNewClassName(e.target.value)} />
+                    <button onClick={handleCreateClass} style={{ padding: '10px 20px' }}><Plus size={20} /></button>
+                  </div>
+                </div>
+              )}
 
               {(profile?.role === 'admin' || profile?.role === 'creator') && (
-                <div style={{ marginTop: '40px' }}>
-                  <h4 style={{ marginBottom: '15px' }}>Управление секциями</h4>
-
-                  <div style={{ marginBottom: '20px', maxHeight: '150px', overflowY: 'auto' }}>
-                    {sections.map(s => (
-                      <div key={s.id} className="flex-center" style={{ justifyContent: 'space-between', padding: '10px', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
-                        <span style={{ fontSize: '0.9rem' }}>{s.name}</span>
-                        {profile?.role === 'creator' && (
-                          <button
-                            onClick={() => setDeleteSectionId(s.id)}
-                            style={{ padding: '5px', background: 'transparent', color: 'red', boxShadow: 'none' }}
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="flex-center" style={{ gap: '10px' }}>
-                    <input
-                      type="text"
-                      placeholder="Название новой секции"
-                      value={newSectionName}
-                      onChange={(e) => setNewSectionName(e.target.value)}
-                    />
-                    <button onClick={handleCreateSection} style={{ padding: '10px 20px' }}>
-                      <Plus size={20} />
-                    </button>
+                <div>
+                  <h4 style={{ marginBottom: '15px' }}>Секции / Предметы</h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <select value={newSectionClassId} onChange={(e) => setNewSectionClassId(e.target.value)}>
+                      <option value="">Укажите класс...</option>
+                      {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                    <div className="flex-center" style={{ gap: '10px' }}>
+                      <input type="text" placeholder="Название предмета" value={newSectionName} onChange={(e) => setNewSectionName(e.target.value)} />
+                      <button onClick={handleCreateSection} style={{ padding: '10px 20px' }} disabled={!newSectionClassId}><Plus size={20} /></button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -365,72 +337,104 @@ const Editor = ({ session, profile }) => {
           </>
         ) : (
           <div style={{ gridColumn: '1 / -1' }}>
-            {sections.map((section, sIndex) => {
-              const qs = myQuizzes.filter(q => q.section_id === section.id);
-              if (qs.length === 0 && profile?.role === 'editor') return null; // hide empty sections for regular editors
+            {classes.map((cls, cIndex) => {
+              const clsSections = sections.filter(s => s.class_id === cls.id);
+
+              if (profile?.role === 'editor' && myQuizzes.filter(q => clsSections.some(s => s.id === q.section_id)).length === 0) {
+                return null;
+              }
+
               return (
-                <div key={section.id} style={{ marginBottom: '40px' }}>
+                <div key={cls.id} className="card" style={{ padding: '0', overflow: 'hidden', border: '2px solid rgba(0,0,0,0.05)', marginBottom: '30px' }}>
 
-                  <div className="flex-center" style={{ gap: '15px', marginBottom: '20px' }}>
-                    {(profile?.role === 'admin' || profile?.role === 'creator') && (
-                      <div className="flex-center" style={{ gap: '5px' }}>
-                        <button onClick={() => swapSections(sIndex, -1)} disabled={sIndex === 0} style={{ padding: '5px', background: 'rgba(0,0,0,0.05)', boxShadow: 'none' }} title="Вверх"><ChevronUp size={16} /></button>
-                        <button onClick={() => swapSections(sIndex, 1)} disabled={sIndex === sections.length - 1} style={{ padding: '5px', background: 'rgba(0,0,0,0.05)', boxShadow: 'none' }} title="Вниз"><ChevronDown size={16} /></button>
-                      </div>
-                    )}
-                    <h3 style={{ fontSize: '1.5rem', margin: 0 }}>{section.name}</h3>
-                  </div>
-
-                  <div className="grid-2">
-                    {qs.map((quiz, qIndex) => (
-                      <div key={quiz.id} className="card">
-                        <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '20px' }}>
-                          <div className="flex-center" style={{ gap: '15px' }}>
-                            <div className="flex-center" style={{ flexDirection: 'column', gap: '5px' }}>
-                              <button onClick={() => swapQuizzes(section.id, qIndex, -1)} disabled={qIndex === 0} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronUp size={20} /></button>
-                              <button onClick={() => swapQuizzes(section.id, qIndex, 1)} disabled={qIndex === qs.length - 1} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronDown size={20} /></button>
-                            </div>
-                            <div>
-                              <h4 style={{ fontSize: '1.3rem', margin: 0 }}>{quiz.title}</h4>
-                              <p style={{ fontSize: '0.8rem', opacity: 0.5 }}>{new Date(quiz.created_at).toLocaleDateString()}</p>
-                            </div>
-                          </div>
-                          {quiz.is_verified && <CheckCircle size={24} color="#4ade80" title="Верифицирован" />}
+                  {/* CLASS HEADER */}
+                  <div style={{ padding: '25px', background: 'rgba(99, 102, 241, 0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div className="flex-center" style={{ gap: '15px' }}>
+                      {profile?.role === 'creator' && (
+                        <div className="flex-center" style={{ flexDirection: 'column', gap: '5px' }}>
+                          <button onClick={() => swapClasses(cIndex, -1)} disabled={cIndex === 0} style={{ padding: '2px', background: 'transparent', color: 'var(--primary-color)', boxShadow: 'none' }}><ChevronUp size={20} /></button>
+                          <button onClick={() => swapClasses(cIndex, 1)} disabled={cIndex === classes.length - 1} style={{ padding: '2px', background: 'transparent', color: 'var(--primary-color)', boxShadow: 'none' }}><ChevronDown size={20} /></button>
                         </div>
-
-                        <div className="grid-2" style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '30px' }}>
-                          <div style={{ textAlign: 'center', padding: '15px', background: 'rgba(0,0,0,0.03)', borderRadius: '15px' }}>
-                            <p style={{ fontSize: '1.2rem', fontWeight: '800' }}>{quiz.participants}</p>
-                            <p style={{ fontSize: '0.7rem', opacity: 0.5 }}>Участников</p>
-                          </div>
-                          <div style={{ textAlign: 'center', padding: '15px', background: 'rgba(0,0,0,0.03)', borderRadius: '15px' }}>
-                            <p style={{ fontSize: '1.2rem', fontWeight: '800' }}>{quiz.avgScore}%</p>
-                            <p style={{ fontSize: '0.7rem', opacity: 0.5 }}>Средний</p>
-                          </div>
-                        </div>
-
-                        <div className="flex-center" style={{ justifyContent: 'flex-end', gap: '10px' }}>
-                          <button onClick={() => navigate(`/analytics?id=${quiz.id}`)} style={{ background: 'rgba(0,0,0,0.03)', color: 'var(--text-color)', boxShadow: 'none' }}>Аналитика</button>
-                          <button onClick={() => setDeleteId(quiz.id)} style={{ background: 'rgba(255,0,0,0.1)', color: 'red', boxShadow: 'none' }}><Trash2 size={18} /></button>
-                        </div>
-                      </div>
-                    ))}
-                    {qs.length === 0 && (
-                      <div className="card" style={{ opacity: 0.5, gridColumn: '1/-1', textAlign: 'center', padding: '30px' }}>Пустая секция</div>
+                      )}
+                      <h2 style={{ fontSize: '1.6rem', margin: 0, color: 'var(--primary-color)' }}>{cls.name}</h2>
+                    </div>
+                    {profile?.role === 'creator' && (
+                      <button onClick={() => setDeleteClassId(cls.id)} style={{ background: 'transparent', color: 'red', boxShadow: 'none' }} title="Удалить класс">
+                        <Trash2 size={24} />
+                      </button>
                     )}
                   </div>
+
+                  {/* SECTIONS */}
+                  {clsSections.map((section, sIndex) => {
+                    const qs = myQuizzes.filter(q => q.section_id === section.id);
+                    if (qs.length === 0 && profile?.role === 'editor') return null;
+
+                    return (
+                      <div key={section.id} style={{ padding: '25px', borderTop: '1px solid rgba(0,0,0,0.05)' }}>
+                        <div className="flex-center" style={{ gap: '15px', marginBottom: '25px', justifyContent: 'space-between' }}>
+                          <div className="flex-center" style={{ gap: '10px' }}>
+                            {(profile?.role === 'admin' || profile?.role === 'creator') && (
+                              <div className="flex-center" style={{ gap: '5px' }}>
+                                <button onClick={() => swapSections(cls.id, sIndex, -1)} disabled={sIndex === 0} style={{ padding: '5px', background: 'rgba(0,0,0,0.05)', boxShadow: 'none' }}><ChevronUp size={16} /></button>
+                                <button onClick={() => swapSections(cls.id, sIndex, 1)} disabled={sIndex === clsSections.length - 1} style={{ padding: '5px', background: 'rgba(0,0,0,0.05)', boxShadow: 'none' }}><ChevronDown size={16} /></button>
+                              </div>
+                            )}
+                            <h3 style={{ fontSize: '1.3rem', margin: 0, opacity: 0.9 }}>{section.name}</h3>
+                          </div>
+                          {(profile?.role === 'admin' || profile?.role === 'creator') && (
+                            <button onClick={() => setDeleteSectionId(section.id)} style={{ background: 'transparent', color: 'red', boxShadow: 'none', padding: '5px' }}>
+                              <Trash2 size={18} />
+                            </button>
+                          )}
+                        </div>
+
+                        {/* QUIZZES */}
+                        <div className="grid-2">
+                          {qs.map((quiz, qIndex) => (
+                            <div key={quiz.id} className="card" style={{ background: 'rgba(0,0,0,0.02)' }}>
+                              <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '20px' }}>
+                                <div className="flex-center" style={{ gap: '15px' }}>
+                                  {(profile?.role === 'admin' || profile?.role === 'creator') && (
+                                    <div className="flex-center" style={{ flexDirection: 'column', gap: '5px' }}>
+                                      <button onClick={() => swapQuizzes(section.id, qIndex, -1)} disabled={qIndex === 0} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronUp size={20} /></button>
+                                      <button onClick={() => swapQuizzes(section.id, qIndex, 1)} disabled={qIndex === qs.length - 1} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronDown size={20} /></button>
+                                    </div>
+                                  )}
+                                  <div>
+                                    <h4 style={{ fontSize: '1.2rem', margin: 0 }}>{quiz.title}</h4>
+                                    <p style={{ fontSize: '0.8rem', opacity: 0.5 }}>{new Date(quiz.created_at).toLocaleDateString()}</p>
+                                  </div>
+                                </div>
+                                {quiz.is_verified && <CheckCircle size={24} color="#4ade80" title="Верифицирован" />}
+                              </div>
+
+                              <div className="flex-center" style={{ justifyContent: 'flex-end', gap: '10px', marginTop: '15px' }}>
+                                <button onClick={() => navigate(`/analytics?id=${quiz.id}`)} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>Аналитика</button>
+                                {(profile?.role === 'admin' || profile?.role === 'creator' || profile?.id === quiz.author_id) && (
+                                  <button onClick={() => setDeleteId(quiz.id)} style={{ background: 'rgba(255,0,0,0.1)', color: 'red', boxShadow: 'none' }}><Trash2 size={18} /></button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                          {qs.length === 0 && (
+                            <div style={{ opacity: 0.5, gridColumn: '1/-1', padding: '20px' }}>В предмете пока нет тестов.</div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })}
 
-            {myQuizzes.length === 0 && (
+            {classes.length === 0 && (
               <div className="card" style={{ textAlign: 'center', padding: '60px' }}>
-                <p style={{ opacity: 0.5 }}>У вас пока нет тестов.</p>
-                <button onClick={() => setActiveTab('create')} style={{ marginTop: '20px' }}>Создать тест</button>
+                <p style={{ opacity: 0.5 }}>У вас пока нет классов/папок. Создайте их в панели справа.</p>
+                <button onClick={() => setActiveTab('create')} style={{ marginTop: '20px' }}>Перейти</button>
               </div>
             )}
 
-            {/* Floating Save Panel for D&D */}
             {hasUnsavedChanges && (
               <div className="animate" style={{ position: 'fixed', bottom: '20px', left: '50%', transform: 'translateX(-50%)', background: 'var(--card-bg)', padding: '15px 25px', borderRadius: '50px', boxShadow: '0 10px 40px rgba(0,0,0,0.1)', border: '1px solid rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', gap: '20px', zIndex: 1000 }}>
                 <span style={{ fontWeight: '500' }}>Порядок изменён</span>
@@ -438,6 +442,9 @@ const Editor = ({ session, profile }) => {
                   <button onClick={() => { setHasUnsavedChanges(false); fetchData(); }} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', padding: '8px 15px', borderRadius: '30px', boxShadow: 'none', fontSize: '0.9rem' }}>Отмена</button>
                   <button onClick={async () => {
                     setLoading(true);
+                    for (const c of classes) {
+                      await supabase.from('quiz_classes').update({ sort_order: c.sort_order }).eq('id', c.id);
+                    }
                     for (const s of sections) {
                       await supabase.from('quiz_sections').update({ sort_order: s.sort_order }).eq('id', s.id);
                     }
@@ -454,56 +461,43 @@ const Editor = ({ session, profile }) => {
             )}
           </div>
         )}
-
       </div>
 
-      {/* Quiz Delete Modal */}
+      {/* Delete Modals */}
       {deleteId && (
         <div className="modal-overlay" onClick={() => setDeleteId(null)}>
           <div className="modal-content animate modal-content-danger" onClick={e => e.stopPropagation()}>
-            <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(248, 113, 113, 0.1)', color: '#f87171', margin: '0 auto 25px' }}>
-              <AlertTriangle size={32} />
-            </div>
+            <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(248, 113, 113, 0.1)', color: '#f87171', margin: '0 auto 25px' }}><AlertTriangle size={32} /></div>
             <h2 style={{ marginBottom: '15px' }}>Удалить тест?</h2>
-            <p style={{ opacity: 0.7, marginBottom: '30px', lineHeight: '1.6' }}>
-              Это действие необратимо. <br /> Все результаты учеников по этому тесту будут навсегда удалены из базы.
-            </p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-              <button
-                onClick={() => setDeleteId(null)}
-                style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}
-              >
-                Отмена
-              </button>
-              <button onClick={confirmDeleteQuiz} style={{ background: '#f87171', color: 'white' }}>
-                Да, удалить
-              </button>
+            <div className="grid-2" style={{ gap: '15px', marginTop: '30px' }}>
+              <button onClick={() => setDeleteId(null)} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>Отмена</button>
+              <button onClick={confirmDeleteQuiz} style={{ background: '#f87171', color: 'white' }}>Да, удалить</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Section Delete Modal */}
       {deleteSectionId && (
         <div className="modal-overlay" onClick={() => setDeleteSectionId(null)}>
           <div className="modal-content animate modal-content-danger" onClick={e => e.stopPropagation()}>
-            <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(248, 113, 113, 0.1)', color: '#f87171', margin: '0 auto 25px' }}>
-              <AlertTriangle size={32} />
+            <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(248, 113, 113, 0.1)', color: '#f87171', margin: '0 auto 25px' }}><AlertTriangle size={32} /></div>
+            <h2 style={{ marginBottom: '15px' }}>Удалить предмет?</h2>
+            <div className="grid-2" style={{ gap: '15px', marginTop: '30px' }}>
+              <button onClick={() => setDeleteSectionId(null)} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>Отмена</button>
+              <button onClick={confirmDeleteSection} style={{ background: '#f87171', color: 'white' }}>Да, удалить</button>
             </div>
-            <h2 style={{ marginBottom: '15px' }}>Удалить секцию?</h2>
-            <p style={{ opacity: 0.7, marginBottom: '30px', lineHeight: '1.6' }}>
-              Вы уверены? Это удалит категорию из списка. <br /> Если в секции есть тесты, удаление будет заблокировано.
-            </p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-              <button
-                onClick={() => setDeleteSectionId(null)}
-                style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}
-              >
-                Отмена
-              </button>
-              <button onClick={confirmDeleteSection} style={{ background: '#f87171', color: 'white' }}>
-                Удалить
-              </button>
+          </div>
+        </div>
+      )}
+
+      {deleteClassId && (
+        <div className="modal-overlay" onClick={() => setDeleteClassId(null)}>
+          <div className="modal-content animate modal-content-danger" onClick={e => e.stopPropagation()}>
+            <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(248, 113, 113, 0.1)', color: '#f87171', margin: '0 auto 25px' }}><AlertTriangle size={32} /></div>
+            <h2 style={{ marginBottom: '15px' }}>Удалить Класс/Папку?</h2>
+            <div className="grid-2" style={{ gap: '15px', marginTop: '30px' }}>
+              <button onClick={() => setDeleteClassId(null)} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>Отмена</button>
+              <button onClick={confirmDeleteClass} style={{ background: '#f87171', color: 'white' }}>Да, удалить</button>
             </div>
           </div>
         </div>

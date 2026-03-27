@@ -12,10 +12,21 @@ const Analytics = () => {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState(null);
+  const [deletingQuizMode, setDeletingQuizMode] = useState(false);
+  const [profile, setProfile] = useState(null);
 
   useEffect(() => {
+    fetchProfile();
     if (quizId) fetchQuizData();
   }, [quizId]);
+
+  const fetchProfile = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: p } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+      setProfile(p);
+    }
+  };
 
   const fetchQuizData = async () => {
     setLoading(true);
@@ -24,14 +35,28 @@ const Analytics = () => {
     const { data: q } = await supabase.from('quizzes').select('*, author_id').eq('id', quizId).single();
     if (q) setQuiz(q);
 
-    // Fetch quiz results with user profiles
-    const { data: r } = await supabase
+    // Fetch quiz results independently to avoid Supabase join relation errors
+    const { data: r, error } = await supabase
       .from('quiz_results')
-      .select('*, profiles(first_name, last_name, email, is_anonymous)')
+      .select('*')
       .eq('quiz_id', quizId)
       .order('completed_at', { ascending: false });
+      
+    if (error) console.error("Ошибка при загрузке результатов:", error);
     
-    if (r) setResults(r);
+    if (r && r.length > 0) {
+      const userIds = r.map(user => user.user_id);
+      const { data: p } = await supabase.from('profiles').select('*').in('id', userIds);
+      
+      const combined = r.map(res => ({
+        ...res,
+        profiles: p?.find(profile => profile.id === res.user_id) || null
+      }));
+      setResults(combined);
+    } else {
+      setResults([]);
+    }
+    
     setLoading(false);
   };
 
@@ -43,18 +68,32 @@ const Analytics = () => {
     }
   };
 
+  const handleDeleteQuiz = async () => {
+    const { error } = await supabase.from('quizzes').delete().eq('id', quizId);
+    if (!error) navigate('/catalog');
+  };
+
   if (loading) return <div className="flex-center" style={{height: '60vh'}}>Загрузка аналитики...</div>;
   if (!quiz) return <div className="container">Тест не найден.</div>;
 
-  const avgScore = results.length > 0 
-    ? Math.round((results.reduce((acc, curr) => acc + curr.score, 0) / results.reduce((acc, curr) => acc + curr.total_questions, 0)) * 100) 
+  const totalPotentialScore = results.reduce((acc, curr) => acc + curr.total_questions, 0);
+  const totalEarnedScore = results.reduce((acc, curr) => acc + curr.score, 0);
+  const avgScore = totalPotentialScore > 0 
+    ? Math.round((totalEarnedScore / totalPotentialScore) * 100) 
     : 0;
 
   return (
     <div className="container animate" style={{ padding: '40px 20px' }}>
-      <button onClick={() => navigate(-1)} className="flex-center" style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', marginBottom: '30px', boxShadow: 'none', padding: '10px 20px' }}>
-        <ChevronLeft size={20} /> Назад
-      </button>
+      <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '30px' }}>
+        <button onClick={() => navigate(-1)} className="flex-center" style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', boxShadow: 'none', padding: '10px 20px' }}>
+          <ChevronLeft size={20} /> Назад
+        </button>
+        {(quiz?.author_id === profile?.id || profile?.role === 'admin' || profile?.role === 'creator') && (
+          <button onClick={() => setDeletingQuizMode(true)} className="flex-center" style={{ background: 'rgba(255,0,0,0.05)', color: 'red', boxShadow: 'none', padding: '10px 20px' }}>
+            <Trash2 size={18} style={{marginRight: '8px'}}/> Удалить тест
+          </button>
+        )}
+      </div>
 
       <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '40px', flexWrap: 'wrap', gap: '20px' }}>
         <div>
@@ -64,7 +103,7 @@ const Analytics = () => {
         
         <div className="flex-center" style={{ gap: '20px' }}>
           <StatMini label="Участников" value={results.length} icon={<User size={18} />} />
-          <StatMini label="Ср. результат" value={`${avgScore}%`} icon={<BarChart size={18} />} />
+          <StatMini label="Ср. результат" value={`${avgScore}% (${totalEarnedScore}/${totalPotentialScore})`} icon={<BarChart size={18} />} />
         </div>
       </div>
 
@@ -86,7 +125,7 @@ const Analytics = () => {
                       {idx + 1}. {q.question}
                     </span>
                     <span style={{ fontWeight: '700', color: percent > 70 ? '#4ade80' : (percent > 40 ? '#facc15' : '#f87171') }}>
-                      {percent}%
+                      {percent}% ({correctAnswers}/{results.length})
                     </span>
                   </div>
                   <div style={{ width: '100%', height: '8px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', overflow: 'hidden' }}>
@@ -134,12 +173,18 @@ const Analytics = () => {
                   </td>
                   <td style={{ padding: '20px' }}>
                     <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px' }}>
-                      <div style={{ width: '60px', height: '6px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', overflow: 'hidden' }}>
+                      <div style={{ position: 'relative', width: '60px', height: '14px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', overflow: 'hidden' }}>
                         <div style={{ width: `${(res.score / res.total_questions) * 100}%`, height: '100%', background: res.is_passed ? '#4ade80' : '#f87171' }} />
+                        <span style={{ position: 'absolute', width: '100%', left: 0, top: 0, fontSize: '0.6rem', textAlign: 'center', fontWeight: 'bold', color: 'var(--text-color)', lineHeight: '14px' }}>
+                          {res.score}/{res.total_questions}
+                        </span>
                       </div>
                       <span style={{ fontSize: '0.8rem', opacity: 0.5 }}>/</span>
-                      <div style={{ width: '40px', height: '4px', background: 'rgba(0,0,0,0.03)', borderRadius: '10px', overflow: 'hidden' }}>
+                      <div style={{ position: 'relative', width: '40px', height: '10px', background: 'rgba(0,0,0,0.03)', borderRadius: '10px', overflow: 'hidden' }}>
                         <div style={{ width: `${(res.first_score / res.total_questions) * 100}%`, height: '100%', background: 'var(--primary-color)', opacity: 0.5 }} />
+                        <span style={{ position: 'absolute', width: '100%', left: 0, top: 0, fontSize: '0.5rem', textAlign: 'center', fontWeight: 'bold', color: 'black', lineHeight: '10px' }}>
+                          {res.first_score}/{res.total_questions}
+                        </span>
                       </div>
                     </div>
                   </td>
@@ -174,7 +219,7 @@ const Analytics = () => {
         </table>
       </div>
 
-      {/* Delete Confirmation Modal */}
+      {/* Delete Confirmation Modal for User Result */}
       {deletingId && (
         <div className="modal-overlay" onClick={() => setDeletingId(null)}>
           <div className="modal-content animate" style={{ width: '400px' }} onClick={e => e.stopPropagation()}>
@@ -186,6 +231,23 @@ const Analytics = () => {
             <div className="grid-2" style={{ gap: '10px' }}>
               <button onClick={() => setDeletingId(null)} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit' }}>Отмена</button>
               <button onClick={() => handleDeleteResult(deletingId)} style={{ background: 'red', color: 'white' }}>Удалить</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Validation Modal for Entire Quiz */}
+      {deletingQuizMode && (
+        <div className="modal-overlay" onClick={() => setDeletingQuizMode(false)}>
+          <div className="modal-content animate" style={{ width: '400px' }} onClick={e => e.stopPropagation()}>
+            <div className="flex-center" style={{ justifyContent: 'center', width: '50px', height: '50px', background: 'rgba(255,0,0,0.1)', color: 'red', borderRadius: '15px', margin: '0 auto 20px' }}>
+              <AlertTriangle size={24} />
+            </div>
+            <h3 style={{ marginBottom: '10px', textAlign: 'center' }}>Удалить весь тест?</h3>
+            <p style={{ opacity: 0.6, fontSize: '0.9rem', marginBottom: '25px', textAlign: 'center' }}>Это действие уничтожит тест и всю его статистику. Восстановить будет невозможно.</p>
+            <div className="grid-2" style={{ gap: '10px' }}>
+              <button onClick={() => setDeletingQuizMode(false)} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit' }}>Отмена</button>
+              <button onClick={handleDeleteQuiz} style={{ background: 'red', color: 'white' }}>Удалить безвозвратно</button>
             </div>
           </div>
         </div>

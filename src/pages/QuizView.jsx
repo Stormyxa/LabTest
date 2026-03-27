@@ -54,27 +54,28 @@ const QuizView = ({ session }) => {
     // Проверяем, есть ли уже результат для сохранения first_score
     const { data: existing } = await supabase
       .from('quiz_results')
-      .select('first_score, first_completed_at')
+      .select('id, first_score, first_completed_at')
       .eq('quiz_id', id)
       .eq('user_id', session.user.id)
       .single();
 
     const resultData = {
-      quiz_id: id,
-      user_id: session.user.id,
       score: correctCount,
       total_questions: questions.length,
       is_passed: isPassed,
-      completed_at: now,
-      answers_map: answersArray
+      completed_at: now
     };
 
-    if (!existing) {
+    if (existing) {
+      await supabase.from('quiz_results').update(resultData).eq('quiz_id', id).eq('user_id', session.user.id);
+    } else {
+      resultData.quiz_id = id;
+      resultData.user_id = session.user.id;
       resultData.first_score = correctCount;
       resultData.first_completed_at = now;
+      resultData.answers_map = answersArray; // Инфографика основана только на первой попытке
+      await supabase.from('quiz_results').insert(resultData);
     }
-
-    await supabase.from('quiz_results').upsert(resultData);
   };
 
   if (loading) return <div className="flex-center" style={{height: '60vh'}}>Загрузка теста...</div>;
