@@ -28,6 +28,13 @@
   transition: background-color 0.3s ease, color 0.3s ease, transform 0.2s ease;
 }
 
+/* ЗАЩИТА ОТ ГОРИЗОНТАЛЬНОГО СКРОЛЛА */
+html,
+body {
+  overflow-x: hidden;
+  width: 100%;
+}
+
 body {
   font-family: var(--font-main);
   background-color: var(--bg-color);
@@ -41,6 +48,8 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  overflow-x: hidden;
+  /* Дополнительная защита */
 }
 
 .container {
@@ -76,7 +85,9 @@ button:hover {
   filter: brightness(1.1);
 }
 
-input, select, textarea {
+input,
+select,
+textarea {
   padding: 12px 20px;
   border-radius: 20px;
   border: 1px solid rgba(0, 0, 0, 0.05);
@@ -86,7 +97,8 @@ input, select, textarea {
   width: 100%;
 }
 
-input, select {
+input,
+select {
   border-radius: 100px;
 }
 
@@ -98,7 +110,9 @@ input, select {
 
 .grid-2 {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  /* ИСПРАВЛЕНИЕ СЕТКИ ДЛЯ МАЛЕНЬКИХ ТЕЛЕФОНОВ: 
+     min(100%, 300px) означает "300px, но если экран меньше, то сжимайся" */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
   gap: 24px;
 }
 
@@ -109,7 +123,7 @@ input, select {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0,0,0,0.7);
+  background: rgba(0, 0, 0, 0.7);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   display: flex;
@@ -125,11 +139,41 @@ input, select {
   border-radius: 30px;
   max-width: 500px;
   width: 100%;
-  box-shadow: 0 20px 40px rgba(0,0,0,0.3);
-  border: 1px solid rgba(255,255,255,0.1);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   text-align: center;
 }
 
 .modal-content-danger {
   border-top: 5px solid #f87171;
+}
+
+/* --- АДАПТАЦИЯ ДЛЯ МОБИЛЬНЫХ ТЕЛЕФОНОВ --- */
+@media (max-width: 768px) {
+
+  /* Перестраиваем шапку: логотип по центру, меню под ним */
+  .navbar .container {
+    flex-direction: column !important;
+    padding: 15px !important;
+    gap: 15px;
+  }
+
+  /* Разрешаем кнопкам переноситься на новые строчки */
+  .nav-links {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: center !important;
+    gap: 8px !important;
+  }
+
+  /* Чуть уменьшаем отступы кнопок, чтобы они лучше влезали в экран */
+  .nav-links button {
+    padding: 8px 14px !important;
+    font-size: 0.85rem !important;
+  }
+
+  /* Уменьшаем отступы внутри карточек для мобилок */
+  .card {
+    padding: 1.5rem;
+  }
 }
