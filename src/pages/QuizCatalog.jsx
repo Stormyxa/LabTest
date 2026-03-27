@@ -31,8 +31,8 @@ const QuizCatalog = ({ profile }) => {
     }
 
     // Fetch sections and nested quizzes
-    const { data: sectionsData } = await supabase.from('quiz_sections').select('*').order('created_at', { ascending: false });
-    const { data: quizzesData } = await supabase.from('quizzes').select('*, profiles(first_name, last_name, patronymic)').eq('is_archived', false);
+    const { data: sectionsData } = await supabase.from('quiz_sections').select('*').order('sort_order', { ascending: true });
+    const { data: quizzesData } = await supabase.from('quizzes').select('*, profiles(first_name, last_name, patronymic)').eq('is_archived', false).order('sort_order', { ascending: true });
     
     if (sectionsData) {
       const formatted = sectionsData.map(section => ({

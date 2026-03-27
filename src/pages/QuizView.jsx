@@ -46,15 +46,35 @@ const QuizView = ({ session }) => {
     setShowResult(true);
     const correctCount = questions.filter((q, idx) => answers[idx] === q.correctIndex).length;
     const isPassed = (correctCount / questions.length) >= 0.5;
+    const now = new Date().toISOString();
+    
+    // Формируем карту ответов для инфографики (true - верно, false - нет)
+    const answersArray = questions.map((q, idx) => answers[idx] === q.correctIndex);
 
-    await supabase.from('quiz_results').insert({
+    // Проверяем, есть ли уже результат для сохранения first_score
+    const { data: existing } = await supabase
+      .from('quiz_results')
+      .select('first_score, first_completed_at')
+      .eq('quiz_id', id)
+      .eq('user_id', session.user.id)
+      .single();
+
+    const resultData = {
       quiz_id: id,
       user_id: session.user.id,
       score: correctCount,
       total_questions: questions.length,
       is_passed: isPassed,
-      completed_at: new Date().toISOString()
-    });
+      completed_at: now,
+      answers_map: answersArray
+    };
+
+    if (!existing) {
+      resultData.first_score = correctCount;
+      resultData.first_completed_at = now;
+    }
+
+    await supabase.from('quiz_results').upsert(resultData);
   };
 
   if (loading) return <div className="flex-center" style={{height: '60vh'}}>Загрузка теста...</div>;
