@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { Plus, Trash2, FileJson, AlertCircle, TrendingUp, CheckCircle, Check, Copy, X, AlertTriangle, ChevronUp, ChevronDown, Save } from 'lucide-react';
+import {
+  Plus, Trash2, FileJson, AlertCircle, TrendingUp,
+  CheckCircle, Check, Copy, X, AlertTriangle,
+  ChevronUp, ChevronDown, Save, Book, Link as LinkIcon
+} from 'lucide-react';
 
 const Editor = ({ session, profile }) => {
   const navigate = useNavigate();
@@ -14,6 +18,7 @@ const Editor = ({ session, profile }) => {
   const [deleteId, setDeleteId] = useState(null);
   const [deleteSectionId, setDeleteSectionId] = useState(null);
   const [deleteClassId, setDeleteClassId] = useState(null);
+  const [editSectionLink, setEditSectionLink] = useState(null); // Стейт для редактирования ссылки
 
   const [titles, setTitles] = useState('');
   const [selectedClassId, setSelectedClassId] = useState('');
@@ -23,6 +28,7 @@ const Editor = ({ session, profile }) => {
   const [newClassName, setNewClassName] = useState('');
   const [newSectionName, setNewSectionName] = useState('');
   const [newSectionClassId, setNewSectionClassId] = useState('');
+  const [newSectionBookUrl, setNewSectionBookUrl] = useState(''); // Стейт новой ссылки
 
   const [copyFeedbackJson, setCopyFeedbackJson] = useState(false);
   const [copyFeedbackBulk, setCopyFeedbackBulk] = useState(false);
@@ -40,7 +46,7 @@ const Editor = ({ session, profile }) => {
     if (c) setClasses(c);
     if (s) setSections(s);
 
-    let query = supabase.from('quizzes').select('*, quiz_sections(name, class_id)');
+    let query = supabase.from('quizzes').select('*, quiz_sections(name, class_id, book_url)');
     if (profile?.role === 'editor') {
       query = query.eq('author_id', session.user.id);
     }
@@ -192,10 +198,31 @@ const Editor = ({ session, profile }) => {
     const { error } = await supabase.from('quiz_sections').insert({
       name: newSectionName,
       class_id: newSectionClassId,
-      created_by: session.user.id
+      created_by: session.user.id,
+      book_url: newSectionBookUrl || null // Добавляем ссылку в базу
     });
     if (error) alert(error.message);
-    else { setNewSectionName(''); fetchData(); }
+    else {
+      setNewSectionName('');
+      setNewSectionBookUrl('');
+      fetchData();
+    }
+  };
+
+  const saveSectionUrl = async () => {
+    if (!editSectionLink) return;
+    const urlValue = editSectionLink.url.trim() === '' ? null : editSectionLink.url;
+
+    const { error } = await supabase
+      .from('quiz_sections')
+      .update({ book_url: urlValue })
+      .eq('id', editSectionLink.id);
+
+    if (error) alert(error.message);
+    else {
+      setEditSectionLink(null);
+      fetchData();
+    }
   };
 
   // --- Deletion Logic ---
@@ -327,10 +354,21 @@ const Editor = ({ session, profile }) => {
                       <option value="">Укажите класс...</option>
                       {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
-                    <div className="flex-center" style={{ gap: '10px' }}>
-                      <input type="text" placeholder="Название предмета" value={newSectionName} onChange={(e) => setNewSectionName(e.target.value)} />
-                      <button onClick={handleCreateSection} style={{ padding: '10px 20px' }} disabled={!newSectionClassId}><Plus size={20} /></button>
+
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <input type="text" style={{ flex: 1 }} placeholder="Название предмета" value={newSectionName} onChange={(e) => setNewSectionName(e.target.value)} />
                     </div>
+
+                    {/* Поле для ссылки только для Создателя */}
+                    {profile?.role === 'creator' && (
+                      <div style={{ display: 'flex', gap: '10px' }}>
+                        <input type="url" style={{ flex: 1 }} placeholder="Ссылка на учебник (опционально)" value={newSectionBookUrl} onChange={(e) => setNewSectionBookUrl(e.target.value)} />
+                      </div>
+                    )}
+
+                    <button onClick={handleCreateSection} style={{ padding: '10px 20px', width: '100%' }} disabled={!newSectionClassId}>
+                      Создать предмет
+                    </button>
                   </div>
                 </div>
               )}
@@ -374,6 +412,7 @@ const Editor = ({ session, profile }) => {
                     return (
                       <div key={section.id} style={{ padding: '25px', borderTop: '1px solid rgba(0,0,0,0.05)' }}>
                         <div className="flex-center" style={{ gap: '15px', marginBottom: '25px', justifyContent: 'space-between' }}>
+
                           <div className="flex-center" style={{ gap: '10px' }}>
                             {(profile?.role === 'admin' || profile?.role === 'creator') && (
                               <div className="flex-center" style={{ gap: '5px' }}>
@@ -381,13 +420,52 @@ const Editor = ({ session, profile }) => {
                                 <button onClick={() => swapSections(cls.id, sIndex, 1)} disabled={sIndex === clsSections.length - 1} style={{ padding: '5px', background: 'rgba(0,0,0,0.05)', boxShadow: 'none' }}><ChevronDown size={16} /></button>
                               </div>
                             )}
+
+                            {/* Вывод кнопки с книгой, если есть ссылка. StopPropagation обязателен, чтобы клик не уходил выше */}
+                            {section.book_url && (
+                              <a
+                                href={section.book_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                style={{
+                                  padding: '6px',
+                                  background: 'var(--primary-color)',
+                                  color: 'white',
+                                  borderRadius: '8px',
+                                  display: 'flex',
+                                  alignItems: 'center'
+                                }}
+                                title="Учебник"
+                              >
+                                <Book size={18} />
+                              </a>
+                            )}
+
                             <h3 style={{ fontSize: '1.3rem', margin: 0, opacity: 0.9 }}>{section.name}</h3>
                           </div>
-                          {(profile?.role === 'admin' || profile?.role === 'creator') && (
-                            <button onClick={() => setDeleteSectionId(section.id)} style={{ background: 'transparent', color: 'red', boxShadow: 'none', padding: '5px' }}>
-                              <Trash2 size={18} />
-                            </button>
-                          )}
+
+                          <div className="flex-center" style={{ gap: '10px' }}>
+                            {/* Кнопка изменения ссылки только для Создателя */}
+                            {profile?.role === 'creator' && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditSectionLink({ id: section.id, url: section.book_url || '' });
+                                }}
+                                style={{ background: 'transparent', color: 'var(--primary-color)', boxShadow: 'none', padding: '5px' }}
+                                title="Прикрепить/Изменить ссылку на учебник"
+                              >
+                                <LinkIcon size={18} />
+                              </button>
+                            )}
+
+                            {(profile?.role === 'admin' || profile?.role === 'creator') && (
+                              <button onClick={() => setDeleteSectionId(section.id)} style={{ background: 'transparent', color: 'red', boxShadow: 'none', padding: '5px' }}>
+                                <Trash2 size={18} />
+                              </button>
+                            )}
+                          </div>
                         </div>
 
                         {/* QUIZZES */}
@@ -464,7 +542,33 @@ const Editor = ({ session, profile }) => {
         )}
       </div>
 
-      {/* Delete Modals */}
+      {/* Модалка редактирования URL секции */}
+      {editSectionLink && (
+        <div className="modal-overlay" onClick={() => setEditSectionLink(null)}>
+          <div className="modal-content animate" onClick={e => e.stopPropagation()}>
+            <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', margin: '0 auto 25px' }}>
+              <Book size={32} />
+            </div>
+            <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>Ссылка на учебник</h2>
+            <p style={{ opacity: 0.7, marginBottom: '20px', textAlign: 'center', fontSize: '0.9rem' }}>
+              Укажите URL адрес материала, либо оставьте пустым для удаления
+            </p>
+            <input
+              type="url"
+              placeholder="https://..."
+              value={editSectionLink.url}
+              onChange={(e) => setEditSectionLink({ ...editSectionLink, url: e.target.value })}
+              style={{ width: '100%', marginBottom: '25px', padding: '15px', borderRadius: '12px' }}
+            />
+            <div className="grid-2" style={{ gap: '15px' }}>
+              <button onClick={() => setEditSectionLink(null)} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>Отмена</button>
+              <button onClick={saveSectionUrl} style={{ background: 'var(--primary-color)', color: 'white' }}>Сохранить</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модалки удаления */}
       {deleteId && (
         <div className="modal-overlay" onClick={() => setDeleteId(null)}>
           <div className="modal-content animate modal-content-danger" onClick={e => e.stopPropagation()}>
@@ -503,7 +607,6 @@ const Editor = ({ session, profile }) => {
           </div>
         </div>
       )}
-
     </div>
   );
 };

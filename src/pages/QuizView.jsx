@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { CheckCircle, XCircle, ChevronRight, ChevronLeft, RotateCcw, X, AlertTriangle } from 'lucide-react';
+import { CheckCircle, XCircle, ChevronRight, ChevronLeft, RotateCcw, X, AlertTriangle, Book } from 'lucide-react';
 
 const QuizView = ({ session }) => {
   const { id } = useParams();
@@ -21,7 +21,12 @@ const QuizView = ({ session }) => {
   }, [id]);
 
   const fetchQuiz = async () => {
-    const { data } = await supabase.from('quizzes').select('*').eq('id', id).single();
+    const { data } = await supabase
+      .from('quizzes')
+      .select('*, quiz_sections(name, book_url)')
+      .eq('id', id)
+      .single();
+
     if (data) {
       setQuiz(data);
       setQuestions(data.content.questions || []);
@@ -32,35 +37,26 @@ const QuizView = ({ session }) => {
   const handleSelect = (optionIdx) => {
     if (answers[currentIdx] !== undefined) return;
 
-    // 1. Формируем новый объект ответов синхронно
     const updatedAnswers = { ...answers, [currentIdx]: optionIdx };
-    // 2. Обновляем стейт для UI
     setAnswers(updatedAnswers);
 
     setTimeout(() => {
       if (currentIdx < questions.length - 1) {
         setCurrentIdx(prev => prev + 1);
       } else {
-        // 3. Передаем свежие ответы напрямую, обходя проблему замыканий
         finishQuiz(updatedAnswers);
       }
     }, 1000);
   };
 
-  // Добавляем параметр finalAnswers, по умолчанию равный стейту answers 
-  // (на случай если пользователь нажмет кнопку "Завершить" вручную)
   const finishQuiz = async (finalAnswers = answers) => {
     setShowResult(true);
 
-    // Используем finalAnswers для расчетов вместо answers из стейта
     const correctCount = questions.filter((q, idx) => finalAnswers[idx] === q.correctIndex).length;
     const isPassed = (correctCount / questions.length) >= 0.5;
     const now = new Date().toISOString();
-
-    // Формируем карту ответов для инфографики (true - верно, false - нет)
     const answersArray = questions.map((q, idx) => finalAnswers[idx] === q.correctIndex);
 
-    // Проверяем, есть ли уже результат для сохранения first_score
     const { data: existing } = await supabase
       .from('quiz_results')
       .select('id, first_score, first_completed_at')
@@ -82,7 +78,7 @@ const QuizView = ({ session }) => {
       resultData.user_id = session.user.id;
       resultData.first_score = correctCount;
       resultData.first_completed_at = now;
-      resultData.answers_map = answersArray; // Инфографика основана только на первой попытке
+      resultData.answers_map = answersArray;
       await supabase.from('quiz_results').insert(resultData);
     }
   };
@@ -91,8 +87,6 @@ const QuizView = ({ session }) => {
   if (!quiz) return <div className="container" style={{ textAlign: 'center', padding: '100px' }}>Тест не найден.</div>;
 
   if (showResult) {
-    // Здесь 'answers' использовать безопасно, так как при showResult = true 
-    // компонент уже перерендерился с новыми данными стейта
     const correctCount = questions.filter((q, idx) => answers[idx] === q.correctIndex).length;
     const percent = Math.round((correctCount / questions.length) * 100);
     const timeSpent = Math.round((Date.now() - startTime) / 1000);
@@ -109,15 +103,8 @@ const QuizView = ({ session }) => {
           </p>
 
           <div className="flex-center" style={{ gap: '15px' }}>
-            <button
-              onClick={() => navigate('/catalog')}
-              style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}
-            >
-              В каталог
-            </button>
-            <button onClick={() => window.location.reload()}>
-              <RotateCcw size={18} style={{ marginRight: '8px' }} /> Перепройти
-            </button>
+            <button onClick={() => navigate('/catalog')} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>В каталог</button>
+            <button onClick={() => window.location.reload()}><RotateCcw size={18} style={{ marginRight: '8px' }} /> Перепройти</button>
           </div>
         </div>
       </div>
@@ -130,29 +117,54 @@ const QuizView = ({ session }) => {
   return (
     <div className="container animate" style={{ maxWidth: '800px', padding: '60px 20px', position: 'relative' }}>
 
-      {/* Exit Button */}
       <button
         onClick={() => setShowExitModal(true)}
         className="flex-center"
-        style={{ position: 'absolute', top: '20px', right: '20px', width: '40px', height: '40px', borderRadius: '12px', background: 'rgba(255,0,0,0.05)', color: 'red', padding: 0, boxShadow: 'none' }}
+        style={{ position: 'absolute', top: '20px', right: '20px', width: '40px', height: '40px', borderRadius: '12px', background: 'rgba(255,0,0,0.05)', color: 'red', padding: 0, boxShadow: 'none', zIndex: 10 }}
         title="Выйти из теста"
       >
         <X size={20} />
       </button>
 
-      <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '20px', opacity: 0.6, paddingRight: '40px' }}>
-        <span>Вопрос {currentIdx + 1} из {questions.length}</span>
-        <h3 style={{ fontSize: '1.2rem', fontWeight: '600', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{quiz.title}</h3>
+      {/* ШАПКА ТЕСТА */}
+      <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '20px', opacity: 0.6, paddingRight: '50px' }}>
+        <span style={{ whiteSpace: 'nowrap', fontSize: '0.9rem', fontWeight: '500' }}>Вопрос {currentIdx + 1} из {questions.length}</span>
+
+        <div className="flex-center" style={{ gap: '10px', flex: 1, justifyContent: 'flex-end', marginLeft: '20px', minWidth: 0 }}>
+          {quiz.quiz_sections?.book_url && (
+            <a
+              href={quiz.quiz_sections.book_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: 'var(--primary-color)', flexShrink: 0, display: 'flex' }}
+              title="Открыть учебник"
+            >
+              <Book size={20} />
+            </a>
+          )}
+          <h3 style={{
+            fontSize: '0.95rem',
+            fontWeight: '600',
+            margin: 0,
+            textAlign: 'right',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap'
+          }}>
+            {quiz.title}
+          </h3>
+        </div>
       </div>
 
       <div style={{ width: '100%', height: '8px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', marginBottom: '40px', overflow: 'hidden' }}>
         <div style={{ width: `${((currentIdx + 1) / questions.length) * 100}%`, height: '100%', background: 'var(--primary-color)', transition: 'width 0.3s' }} />
       </div>
 
-      <div className="card animate" key={currentIdx} style={{ padding: '40px' }}>
-        <h2 style={{ marginBottom: '40px', fontSize: '1.8rem', lineHeight: '1.4' }}>{currentQ.question}</h2>
+      {/* КАРТОЧКА ВОПРОСА С МИНИМАЛЬНОЙ ВЫСОТОЙ */}
+      <div className="card animate" key={currentIdx} style={{ padding: '40px', minHeight: '450px', display: 'flex', flexDirection: 'column' }}>
+        <h2 style={{ marginBottom: '40px', fontSize: '1.7rem', lineHeight: '1.4' }}>{currentQ.question}</h2>
 
-        <div style={{ display: 'grid', gap: '15px' }}>
+        <div style={{ display: 'grid', gap: '12px', marginTop: 'auto' }}>
           {currentQ.options.map((opt, idx) => {
             const isCorrect = idx === currentQ.correctIndex;
             const isSelected = chosen === idx;
@@ -170,14 +182,16 @@ const QuizView = ({ session }) => {
                 onClick={() => handleSelect(idx)}
                 style={{
                   textAlign: 'left', background: bgColor, color: 'var(--text-color)',
-                  border: `2px solid ${borderColor}`, padding: '20px 25px', borderRadius: '20px',
-                  fontSize: '1.1rem', position: 'relative', boxShadow: 'none'
+                  border: `2px solid ${borderColor}`, padding: '18px 25px', borderRadius: '18px',
+                  fontSize: '1.05rem', position: 'relative', boxShadow: 'none', transition: 'all 0.2s'
                 }}
               >
-                <div className="flex-center" style={{ justifyContent: 'space-between' }}>
-                  {opt}
-                  {chosen !== undefined && isCorrect && <CheckCircle size={24} color="#4ade80" />}
-                  {chosen !== undefined && isSelected && !isCorrect && <XCircle size={24} color="#f87171" />}
+                <div className="flex-center" style={{ justifyContent: 'space-between', gap: '10px' }}>
+                  <span>{opt}</span>
+                  <div style={{ flexShrink: 0 }}>
+                    {chosen !== undefined && isCorrect && <CheckCircle size={22} color="#4ade80" />}
+                    {chosen !== undefined && isSelected && !isCorrect && <XCircle size={22} color="#f87171" />}
+                  </div>
                 </div>
               </button>
             );
@@ -185,23 +199,43 @@ const QuizView = ({ session }) => {
         </div>
       </div>
 
-      <div className="flex-center" style={{ justifyContent: 'space-between', marginTop: '30px' }}>
+      {/* КНОПКИ НАВИГАЦИИ С ИСПРАВЛЕННЫМ ВЫРАВНИВАНИЕМ */}
+      <div className="flex-center" style={{ justifyContent: 'space-between', marginTop: '30px', gap: '15px' }}>
         <button
           onClick={() => setCurrentIdx(prev => prev - 1)}
           disabled={currentIdx === 0}
-          style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', opacity: currentIdx === 0 ? 0.3 : 1 }}
+          className="flex-center"
+          style={{
+            background: 'rgba(0,0,0,0.05)',
+            color: 'var(--text-color)',
+            opacity: currentIdx === 0 ? 0.3 : 1,
+            padding: '12px 25px',
+            fontSize: '1.1rem',
+            fontWeight: '600',
+            gap: '8px',
+            flex: 1,
+            maxWidth: '200px'
+          }}
         >
-          <ChevronLeft size={24} /> Назад
+          <ChevronLeft size={24} /> <span>Назад</span>
         </button>
+
         <button
           onClick={currentIdx < questions.length - 1 ? () => setCurrentIdx(prev => prev + 1) : () => finishQuiz()}
-          style={{ padding: '12px 40px' }}
+          className="flex-center"
+          style={{
+            padding: '12px 25px',
+            fontSize: '1.1rem',
+            fontWeight: '600',
+            gap: '8px',
+            flex: 1,
+            maxWidth: '250px'
+          }}
         >
-          {currentIdx === questions.length - 1 ? 'Завершить' : 'Далее'} <ChevronRight size={24} />
+          <span>{currentIdx === questions.length - 1 ? 'Завершить' : 'Далее'}</span> <ChevronRight size={24} />
         </button>
       </div>
 
-      {/* Exit Confirmation Modal */}
       {showExitModal && (
         <div className="modal-overlay" onClick={() => setShowExitModal(false)}>
           <div className="modal-content animate" onClick={e => e.stopPropagation()}>
@@ -214,18 +248,8 @@ const QuizView = ({ session }) => {
             </p>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-              <button
-                onClick={() => setShowExitModal(false)}
-                style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}
-              >
-                Вернуться
-              </button>
-              <button
-                onClick={() => navigate('/catalog')}
-                style={{ background: '#f87171', color: 'white', padding: '15px' }}
-              >
-                Да, выйти
-              </button>
+              <button onClick={() => setShowExitModal(false)} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>Вернуться</button>
+              <button onClick={() => navigate('/catalog')} style={{ background: '#f87171', color: 'white', padding: '15px' }}>Да, выйти</button>
             </div>
           </div>
         </div>
