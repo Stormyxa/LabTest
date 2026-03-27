@@ -26,7 +26,7 @@ const Dashboard = ({ session, profile }) => {
       .from('profiles')
       .select('*, classes(name)')
       .order('created_at', { ascending: false });
-    
+
     if (profiles) setUsers(profiles);
     setLoading(false);
   };
@@ -61,11 +61,11 @@ const Dashboard = ({ session, profile }) => {
     });
   };
 
-  const filteredUsers = users.filter(u => 
+  const filteredUsers = users.filter(u =>
     `${u.first_name} ${u.last_name} ${u.patronymic} ${u.email} ${u.id}`.toLowerCase().includes(search.toLowerCase())
   );
 
-  if (loading) return <div className="flex-center" style={{height: '60vh'}}>Загрузка панели управления...</div>;
+  if (loading) return <div className="flex-center" style={{ height: '60vh' }}>Загрузка панели управления...</div>;
 
   return (
     <div className="container animate" style={{ padding: '40px 20px' }}>
@@ -76,9 +76,9 @@ const Dashboard = ({ session, profile }) => {
         </div>
         <div style={{ position: 'relative', width: '350px' }}>
           <Search size={20} style={{ position: 'absolute', left: '15px', top: '12px', opacity: 0.5 }} />
-          <input 
-            type="text" 
-            placeholder="Поиск по ФИО, Email или ID..." 
+          <input
+            type="text"
+            placeholder="Поиск по ФИО, Email или ID..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ paddingLeft: '45px' }}
@@ -104,15 +104,15 @@ const Dashboard = ({ session, profile }) => {
                 <td style={{ padding: '15px 20px' }}>
                   <div style={{ fontSize: '0.8rem', opacity: 0.5 }}>{user.id.slice(0, 8)}...</div>
                   <div style={{ fontSize: '0.9rem', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                    <Mail size={14} style={{opacity: 0.3}} /> {user.email || 'Неизвестно'}
+                    <Mail size={14} style={{ opacity: 0.3 }} /> {user.email || 'Неизвестно'}
                   </div>
                 </td>
                 <td style={{ padding: '15px 20px' }}>
-                  {user.last_name} {user.first_name} <br/>
+                  {user.last_name} {user.first_name} <br />
                   <span style={{ fontSize: '0.85rem', opacity: 0.5 }}>{user.patronymic || '—'}</span>
                 </td>
                 <td style={{ padding: '15px 20px' }}>
-                  <span style={{ 
+                  <span style={{
                     padding: '5px 12px', borderRadius: '100px', fontSize: '0.8rem', fontWeight: '600',
                     background: user.role === 'creator' ? 'var(--primary-color)' : (user.role === 'admin' ? 'var(--accent-color)' : 'rgba(0,0,0,0.08)'),
                     color: user.role === 'creator' || user.role === 'admin' ? 'white' : 'inherit'
@@ -128,7 +128,7 @@ const Dashboard = ({ session, profile }) => {
                 </td>
                 <td style={{ padding: '15px 20px' }}>
                   <div className="flex-center" style={{ gap: '10px', justifyContent: 'flex-start' }}>
-                    <button 
+                    <button
                       onClick={() => setEditingUser(user)}
                       className="flex-center"
                       style={{ padding: '8px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', borderRadius: '10px', boxShadow: 'none' }}
@@ -137,7 +137,7 @@ const Dashboard = ({ session, profile }) => {
                       <Edit3 size={18} />
                     </button>
                     {(profile?.role === 'creator') && user.id !== session.user.id && (
-                      <button 
+                      <button
                         onClick={() => setDeletingUser(user)}
                         className="flex-center"
                         style={{ padding: '8px', background: 'rgba(255, 0, 0, 0.1)', color: 'red', borderRadius: '10px', boxShadow: 'none' }}
@@ -164,14 +164,14 @@ const Dashboard = ({ session, profile }) => {
                 <X size={24} />
               </button>
             </div>
-            
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
               <div>
                 <label style={{ fontSize: '0.85rem', opacity: 0.5, marginBottom: '5px', display: 'block' }}>Email пользователя</label>
-                <input 
-                  type="email" 
-                  value={editingUser.email || ''} 
-                  onChange={(e) => setEditingUser({...editingUser, email: e.target.value})}
+                <input
+                  type="email"
+                  value={editingUser.email || ''}
+                  onChange={(e) => setEditingUser({ ...editingUser, email: e.target.value })}
                   placeholder="name@example.com"
                 />
               </div>
@@ -179,40 +179,40 @@ const Dashboard = ({ session, profile }) => {
               <div className="grid-2" style={{ gap: '15px' }}>
                 <div>
                   <label style={{ fontSize: '0.85rem', opacity: 0.5, marginBottom: '5px', display: 'block' }}>Фамилия</label>
-                  <input 
-                    type="text" 
-                    value={editingUser.last_name || ''} 
-                    onChange={(e) => setEditingUser({...editingUser, last_name: e.target.value})} 
+                  <input
+                    type="text"
+                    value={editingUser.last_name || ''}
+                    onChange={(e) => setEditingUser({ ...editingUser, last_name: e.target.value })}
                   />
                 </div>
                 <div>
                   <label style={{ fontSize: '0.85rem', opacity: 0.5, marginBottom: '5px', display: 'block' }}>Имя</label>
-                  <input 
-                    type="text" 
-                    value={editingUser.first_name || ''} 
-                    onChange={(e) => setEditingUser({...editingUser, first_name: e.target.value})} 
+                  <input
+                    type="text"
+                    value={editingUser.first_name || ''}
+                    onChange={(e) => setEditingUser({ ...editingUser, first_name: e.target.value })}
                   />
                 </div>
               </div>
 
               <div>
                 <label style={{ fontSize: '0.85rem', opacity: 0.5, marginBottom: '5px', display: 'block' }}>Отчество</label>
-                <input 
-                  type="text" 
-                  value={editingUser.patronymic || ''} 
-                  onChange={(e) => setEditingUser({...editingUser, patronymic: e.target.value})} 
+                <input
+                  type="text"
+                  value={editingUser.patronymic || ''}
+                  onChange={(e) => setEditingUser({ ...editingUser, patronymic: e.target.value })}
                 />
               </div>
 
               <div>
                 <label style={{ fontSize: '0.85rem', opacity: 0.5, marginBottom: '5px', display: 'block' }}>Роль доступа</label>
-                <select 
-                  value={editingUser.role} 
-                  onChange={(e) => setEditingUser({...editingUser, role: e.target.value})}
+                <select
+                  value={editingUser.role}
+                  onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}
                   disabled={profile?.role !== 'creator' && (editingUser.role === 'creator' || editingUser.role === 'admin')}
                 >
                   <option value="player">Игрок (ученик)</option>
-                  <option value="editor">Редактор (учитель)</option>
+                  <option value="editor">Редактор</option>
                   <option value="admin">Админ</option>
                   {profile?.role === 'creator' && <option value="creator">Создатель</option>}
                 </select>
@@ -220,9 +220,9 @@ const Dashboard = ({ session, profile }) => {
 
               <div>
                 <label style={{ fontSize: '0.85rem', opacity: 0.5, marginBottom: '5px', display: 'block' }}>Школьный Класс</label>
-                <select 
-                  value={editingUser.class_id || ''} 
-                  onChange={(e) => setEditingUser({...editingUser, class_id: e.target.value})}
+                <select
+                  value={editingUser.class_id || ''}
+                  onChange={(e) => setEditingUser({ ...editingUser, class_id: e.target.value })}
                 >
                   <option value="">Без класса</option>
                   {classesList.map(c => (
@@ -232,16 +232,16 @@ const Dashboard = ({ session, profile }) => {
               </div>
 
               <div className="flex-center" style={{ gap: '15px', marginTop: '20px' }}>
-                <button 
-                  onClick={() => setEditingUser(null)} 
+                <button
+                  onClick={() => setEditingUser(null)}
                   style={{ width: '100%', background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}
                 >
                   Отмена
                 </button>
-                <button 
-                  onClick={() => handleUpdateUser(editingUser.id, { 
-                    role: editingUser.role, 
-                    first_name: editingUser.first_name, 
+                <button
+                  onClick={() => handleUpdateUser(editingUser.id, {
+                    role: editingUser.role,
+                    first_name: editingUser.first_name,
                     last_name: editingUser.last_name,
                     patronymic: editingUser.patronymic,
                     email: editingUser.email,
@@ -266,11 +266,11 @@ const Dashboard = ({ session, profile }) => {
             </div>
             <h2 style={{ marginBottom: '15px' }}>Удалить пользователя?</h2>
             <p style={{ opacity: 0.7, marginBottom: '30px', lineHeight: '1.6' }}>
-              Вы уверены, что хотите удалить <strong>{deletingUser.last_name} {deletingUser.first_name}</strong>?<br/>
+              Вы уверены, что хотите удалить <strong>{deletingUser.last_name} {deletingUser.first_name}</strong>?<br />
               Это действие удалит весь его профиль и все результаты тестов.
             </p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-              <button 
+              <button
                 onClick={() => setDeletingUser(null)}
                 style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}
               >
