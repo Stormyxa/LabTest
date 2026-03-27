@@ -8,10 +8,17 @@ const Dashboard = ({ session, profile }) => {
   const [search, setSearch] = useState('');
   const [editingUser, setEditingUser] = useState(null);
   const [deletingUser, setDeletingUser] = useState(null);
+  const [classesList, setClassesList] = useState([]);
 
   useEffect(() => {
     fetchUsers();
+    fetchClasses();
   }, []);
+
+  const fetchClasses = async () => {
+    const { data } = await supabase.from('classes').select('*').order('name', { ascending: true });
+    if (data) setClassesList(data);
+  };
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -211,6 +218,19 @@ const Dashboard = ({ session, profile }) => {
                 </select>
               </div>
 
+              <div>
+                <label style={{ fontSize: '0.85rem', opacity: 0.5, marginBottom: '5px', display: 'block' }}>Школьный Класс</label>
+                <select 
+                  value={editingUser.class_id || ''} 
+                  onChange={(e) => setEditingUser({...editingUser, class_id: e.target.value})}
+                >
+                  <option value="">Без класса</option>
+                  {classesList.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+
               <div className="flex-center" style={{ gap: '15px', marginTop: '20px' }}>
                 <button 
                   onClick={() => setEditingUser(null)} 
@@ -224,7 +244,8 @@ const Dashboard = ({ session, profile }) => {
                     first_name: editingUser.first_name, 
                     last_name: editingUser.last_name,
                     patronymic: editingUser.patronymic,
-                    email: editingUser.email
+                    email: editingUser.email,
+                    class_id: editingUser.class_id
                   })}
                   style={{ width: '100%' }}
                 >

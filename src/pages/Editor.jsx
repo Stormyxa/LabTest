@@ -304,7 +304,8 @@ const Editor = ({ session, profile }) => {
                 </div>
                 <code style={{ fontSize: '0.75rem', opacity: 0.7, whiteSpace: 'pre-wrap' }}>
                   Нажмите кнопку копирования, измените значения в квадратных скобках и вставьте в качестве промпта любой ИИ модели
-                  (например, <a href="https://gemini.google.com" target="_blank" rel="noopener noreferrer" style={{ color: '#4285f4', textDecoration: 'underline' }}>Gemini</a>)
+                  (например, <a href="https://gemini.google.com" target="_blank" rel="noopener noreferrer" style={{ color: '#4285f4', textDecoration: 'underline' }}>Gemini</a>).
+                  <br />Для более точных результатов к запросу желательно приложить изображения страниц учебника по указанной теме.
                 </code>
               </div>
 
