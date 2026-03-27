@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { Info, Users, LayoutGrid, Settings, MessageCircle, Github, ExternalLink } from 'lucide-react';
+import { Info, Users, LayoutGrid, Settings, MessageCircle, Github, ExternalLink, Youtube } from 'lucide-react';
 
 const Home = ({ session, profile }) => {
   const navigate = useNavigate();
@@ -25,20 +25,20 @@ const Home = ({ session, profile }) => {
   return (
     <div className="container animate" style={{ textAlign: 'center', padding: '100px 20px' }}>
       <div className="card" style={{ maxWidth: '800px', margin: '0 auto', background: 'var(--card-bg)', border: '1px solid rgba(0,0,0,0.05)', position: 'relative' }}>
-        
+
         {/* Top Left Icons */}
         <div style={{ position: 'absolute', top: '20px', left: '20px', display: 'flex', gap: '10px' }}>
-          <button 
-            className="flex-center" 
-            onClick={() => setShowInfo(true)} 
+          <button
+            className="flex-center"
+            onClick={() => setShowInfo(true)}
             style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', width: '40px', height: '40px', borderRadius: '12px', padding: '0' }}
             title="О проекте"
           >
             <Info size={20} />
           </button>
-          <button 
-            className="flex-center" 
-            onClick={() => setShowTeam(true)} 
+          <button
+            className="flex-center"
+            onClick={() => setShowTeam(true)}
             style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', width: '40px', height: '40px', borderRadius: '12px', padding: '0' }}
             title="Стать частью команды"
           >
@@ -48,7 +48,7 @@ const Home = ({ session, profile }) => {
 
         <h1 style={{ fontSize: '3.5rem', marginBottom: '20px', fontWeight: '800', color: 'var(--primary-color)' }}>LabTest</h1>
         <p style={{ fontSize: '1.2rem', opacity: 0.8, marginBottom: '40px' }}>
-          Добро пожаловать в учебную лабораторию тестов. 
+          Добро пожаловать в учебную лабораторию тестов.
           Проходите испытания, зарабатывайте баллы и повышайте свой уровень знаний.
         </p>
 
@@ -59,17 +59,17 @@ const Home = ({ session, profile }) => {
             </button>
           ) : (
             <>
-              <button 
-                onClick={() => navigate('/catalog')} 
+              <button
+                onClick={() => navigate('/catalog')}
                 style={{ fontSize: '1.1rem', padding: '15px 40px', background: 'var(--secondary-color)' }}
               >
                 <LayoutGrid size={20} style={{ marginRight: '10px' }} />
                 Каталог тестов
               </button>
-              
+
               {(profile?.role === 'admin' || profile?.role === 'creator') && (
-                <button 
-                  onClick={() => navigate('/dashboard')} 
+                <button
+                  onClick={() => navigate('/dashboard')}
                   style={{ fontSize: '1.1rem', padding: '15px 40px', background: 'var(--accent-color)' }}
                 >
                   <Settings size={20} style={{ marginRight: '10px' }} />
@@ -89,11 +89,22 @@ const Home = ({ session, profile }) => {
             <p style={{ marginBottom: '30px', lineHeight: '1.6', textAlign: 'left' }}>
               Сайт создан учеником СШ№43 Афанасиади Анастасом в рамках проекта по информатике. 2026г.
             </p>
+
             <div style={{ display: 'flex', gap: '15px', marginBottom: '30px', justifyContent: 'center' }}>
-              <Github size={24} style={{ cursor: 'pointer' }} />
-              <ExternalLink size={24} style={{ cursor: 'pointer' }} />
+              {/* Ссылка на GitHub */}
+              <a href="https://github.com/Stormyxa/LabTest" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', display: 'flex' }} title="Исходный код на GitHub">
+                <Github size={28} style={{ cursor: 'pointer', transition: '0.2s' }} />
+              </a>
+
+              {/* Ссылка на YouTube */}
+              <a href="https://www.youtube.com/@sl-kitten" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', display: 'flex' }} title="YouTube канал">
+                <Youtube size={28} style={{ cursor: 'pointer', color: '#ff0000', transition: '0.2s' }} />
+              </a>
             </div>
-            <button onClick={() => setShowInfo(false)} style={{ width: '100%', background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)' }}>Закрыть</button>
+
+            <button type="button" onClick={() => setShowInfo(false)} style={{ width: '100%', background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>
+              Закрыть
+            </button>
           </div>
         </div>
       )}
@@ -106,7 +117,7 @@ const Home = ({ session, profile }) => {
             <p style={{ opacity: 0.7, marginBottom: '30px', textAlign: 'left' }}>
               Хотите создавать свои тесты или помогать в управлении платформой? Свяжитесь с нашими администраторами!
             </p>
-            
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', maxHeight: '40vh', overflowY: 'auto', marginBottom: '30px', paddingRight: '10px' }}>
               {team.length > 0 ? team.map((member, i) => (
                 <div key={i} className="flex-center" style={{ justifyContent: 'space-between', padding: '15px', background: 'rgba(0,0,0,0.03)', borderRadius: '15px' }}>
@@ -114,9 +125,9 @@ const Home = ({ session, profile }) => {
                     <h4 style={{ margin: 0 }}>{member.last_name} {member.first_name}</h4>
                     <p style={{ fontSize: '0.8rem', opacity: 0.5 }}>{member.role === 'creator' ? 'Основатель' : 'Администратор'}</p>
                   </div>
-                  <a 
-                    href={`https://wa.me/${member.phone_number?.replace(/\D/g, '')}`} 
-                    target="_blank" 
+                  <a
+                    href={`https://wa.me/${member.phone_number?.replace(/\D/g, '')}`}
+                    target="_blank"
                     rel="noreferrer"
                     style={{ background: '#25D366', color: 'white', padding: '8px 16px', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none', fontSize: '0.85rem' }}
                   >
