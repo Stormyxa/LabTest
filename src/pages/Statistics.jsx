@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { jsPDF } from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 import { Trophy, Download, Users, School, Filter } from 'lucide-react';
 
 const Statistics = ({ session, profile }) => {
@@ -25,7 +25,7 @@ const Statistics = ({ session, profile }) => {
     const { data: pData } = await supabase
       .from('profiles')
       .select('*, classes(name), quiz_results(score, total_questions, is_passed)');
-    
+
     if (pData) {
       const processed = pData.map(u => {
         const results = u.quiz_results || [];
@@ -33,7 +33,9 @@ const Statistics = ({ session, profile }) => {
           ...u,
           passedQuizzes: results.filter(r => r.is_passed).length,
           totalPoints: results.reduce((acc, curr) => acc + curr.score, 0),
-          avgScore: results.length > 0 ? Math.round((results.reduce((acc, curr) => acc + curr.score, 0) / results.reduce((acc, curr) => acc + curr.total_questions, 0)) * 100) : 0
+          avgScore: results.length > 0
+            ? Math.round((results.reduce((acc, curr) => acc + curr.score, 0) / results.reduce((acc, curr) => acc + curr.total_questions, 0)) * 100)
+            : 0
         };
       });
       setStats(processed);
@@ -45,28 +47,74 @@ const Statistics = ({ session, profile }) => {
     .filter(u => filterClass === 'all' || u.class_id === filterClass)
     .sort((a, b) => sortBy === 'points' ? b.totalPoints - a.totalPoints : b.passedQuizzes - a.passedQuizzes);
 
-  const generatePDF = () => {
-    const doc = new jsPDF();
-    doc.text(`Отчет по успеваемости: ${filterClass === 'all' ? 'Все классы' : classes.find(c => c.id === filterClass)?.name}`, 20, 20);
-    
-    const tableData = filteredStats.map(u => [
-      `${u.last_name} ${u.first_name}`,
-      u.classes?.name || '—',
-      u.passedQuizzes,
-      u.totalPoints,
-      `${u.avgScore}%`
-    ]);
+  // Единая функция для определения, показывать имя или нет
+  const getDisplayName = (u) => {
+    const isMe = u.id === session.user.id;
+    const isAdminOrCreator = profile?.role === 'admin' || profile?.role === 'creator';
 
-    doc.autoTable({
-      head: [['ФИО', 'Класс', 'Пройдено тестов', 'Суммарно баллов', 'Ср. успеваемость']],
-      body: tableData,
-      startY: 30
-    });
+    // Показываем имя если: профиль не скрыт ИЛИ это админ/создатель ИЛИ это сам пользователь
+    if (!u.is_anonymous || isAdminOrCreator || isMe) {
+      return `${u.last_name || ''} ${u.first_name || ''}`.trim();
+    }
 
-    doc.save(`LabTest_Report_${new Date().toLocaleDateString()}.pdf`);
+    // Для игроков и редакторов скрываем чужие анонимные профили
+    return 'Анонимный пользователь';
   };
 
-  if (loading) return <div className="flex-center" style={{height: '60vh'}}>Загрузка статистики...</div>;
+  const generatePDF = async () => {
+    try {
+      const doc = new jsPDF();
+
+      // 1. Загружаем шрифт Roboto с поддержкой кириллицы
+      const fontUrl = 'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.66/fonts/Roboto/Roboto-Regular.ttf';
+      const response = await fetch(fontUrl);
+      const buffer = await response.arrayBuffer();
+
+      // Конвертируем шрифт для jsPDF
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      const base64Font = window.btoa(binary);
+
+      // 2. Добавляем шрифт в документ и делаем его активным
+      doc.addFileToVFS('Roboto-Regular.ttf', base64Font);
+      doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
+      doc.setFont('Roboto'); // Устанавливаем шрифт по умолчанию
+
+      const className = filterClass === 'all'
+        ? 'Все классы'
+        : classes.find(c => c.id === filterClass)?.name || '';
+
+      // Теперь смело пишем по-русски!
+      doc.text(`Отчет по успеваемости: ${className}`, 20, 20);
+
+      const tableData = filteredStats.map(u => [
+        getDisplayName(u),
+        u.classes?.name || '—',
+        u.passedQuizzes,
+        u.totalPoints,
+        `${u.avgScore}%`
+      ]);
+
+      // ВАЖНО: Указываем autoTable использовать наш новый шрифт и отключаем жирность в шапке
+      autoTable(doc, {
+        head: [['ФИО', 'Класс', 'Пройдено тестов', 'Всего баллов', 'Ср. %']],
+        body: tableData,
+        startY: 30,
+        styles: { font: 'Roboto' },
+        headStyles: { fontStyle: 'normal' } // <-- Вот эта строчка спасет шапку!
+      });
+
+      doc.save(`Статистика_${new Date().toLocaleDateString()}.pdf`);
+    } catch (error) {
+      console.error("Ошибка при генерации PDF:", error);
+      alert("Не удалось создать PDF. Проверьте консоль для деталей.");
+    }
+  };
+
+  if (loading) return <div className="flex-center" style={{ height: '60vh' }}>Загрузка статистики...</div>;
 
   return (
     <div className="container animate" style={{ padding: '40px 20px' }}>
@@ -75,11 +123,11 @@ const Statistics = ({ session, profile }) => {
         <div className="flex-center" style={{ gap: '15px' }}>
           {(profile?.role === 'admin' || profile?.role === 'creator' || profile?.role === 'editor') && (
             <button onClick={generatePDF} style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none' }}>
-              <Download size={18} style={{marginRight: '8px'}} /> Скачать PDF
+              <Download size={18} style={{ marginRight: '8px' }} /> Скачать PDF
             </button>
           )}
-          <select 
-            value={filterClass} 
+          <select
+            value={filterClass}
             onChange={(e) => setFilterClass(e.target.value)}
             style={{ width: 'auto' }}
           >
@@ -92,7 +140,7 @@ const Statistics = ({ session, profile }) => {
       <div className="grid-2" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', marginBottom: '40px' }}>
         <StatSummaryCard icon={<Users size={24} />} label="Всего учеников" value={stats.length} />
         <StatSummaryCard icon={<School size={24} />} label="Классов" value={classes.length} />
-        <StatSummaryCard icon={<Trophy size={24} />} label="Лидер" value={filteredStats[0]?.last_name || '—'} />
+        <StatSummaryCard icon={<Trophy size={24} />} label="Лидер" value={getDisplayName(filteredStats[0]) || '—'} />
       </div>
 
       <div className="card" style={{ padding: '0' }}>
@@ -120,8 +168,6 @@ const Statistics = ({ session, profile }) => {
             <tbody>
               {filteredStats.map((u, idx) => {
                 const isMe = u.id === session.user.id;
-                const isAdmin = profile?.role === 'admin' || profile?.role === 'creator';
-                const showName = !u.is_anonymous || isAdmin || isMe;
 
                 return (
                   <tr key={u.id} style={{ borderBottom: '1px solid rgba(0,0,0,0.01)', background: isMe ? 'rgba(99, 102, 241, 0.05)' : 'none' }}>
@@ -131,7 +177,8 @@ const Statistics = ({ session, profile }) => {
                       </div>
                     </td>
                     <td style={{ padding: '20px', fontWeight: isMe ? '700' : '400' }}>
-                      {showName ? `${u.last_name} ${u.first_name}` : 'Анонимный пользователь'}
+                      {/* Используем нашу единую функцию */}
+                      {getDisplayName(u)}
                     </td>
                     <td style={{ padding: '20px', opacity: 0.6 }}>{u.classes?.name || '—'}</td>
                     <td style={{ padding: '20px' }}>{u.passedQuizzes}</td>
