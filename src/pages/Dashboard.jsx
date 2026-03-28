@@ -288,7 +288,7 @@ const Dashboard = ({ session, profile }) => {
                 <label style={{ fontSize: '0.85rem', opacity: 0.5, marginBottom: '5px', display: 'block' }}>Роль доступа</label>
                 <select value={editingUser.role} onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })} disabled={profile?.role !== 'creator' && (editingUser.role === 'creator' || editingUser.role === 'admin')}>
                   <option value="player">Ученик (Игрок)</option>
-                  <option value="editor">Редактор (Учитель)</option>
+                  <option value="editor">Редактор</option>
                   <option value="teacher">Учитель</option>
                   {profile?.role === 'creator' && <option value="admin">Администратор</option>}
                   {profile?.role === 'creator' && <option value="creator">Создатель</option>}

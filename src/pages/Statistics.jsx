@@ -140,7 +140,7 @@ const Statistics = ({ session, profile }) => {
           value={filterCity}
           onChange={e => { setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all'); }}
           style={{ width: 'auto', flex: 1, minWidth: '150px' }}
-          disabled={profile?.role === 'teacher'} // Блокируем для учителя
+          disabled={profile?.role === 'teacher'}
         >
           <option value="all">Все города</option>
           {cities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -150,7 +150,7 @@ const Statistics = ({ session, profile }) => {
           value={filterSchool}
           onChange={e => { setFilterSchool(e.target.value); setFilterClass('all'); }}
           style={{ width: 'auto', flex: 1, minWidth: '150px' }}
-          disabled={profile?.role === 'teacher'} // Блокируем для учителя
+          disabled={profile?.role === 'teacher'}
         >
           <option value="all">Все школы</option>
           {availableSchools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -184,8 +184,10 @@ const Statistics = ({ session, profile }) => {
               <tr>
                 <th style={{ padding: '20px' }}>Место</th>
                 <th style={{ padding: '20px' }}>Ученик</th>
-                <th style={{ padding: '20px' }}>Город / Школа / Класс</th>
+                <th style={{ padding: '20px' }}>Учебное заведение</th>
+                <th style={{ padding: '20px' }}>Пройдено</th>
                 <th style={{ padding: '20px' }}>Баллы</th>
+                <th style={{ padding: '20px' }}>Ср. %</th>
               </tr>
             </thead>
             <tbody>
@@ -202,7 +204,16 @@ const Statistics = ({ session, profile }) => {
                       <div>{schools.find(s => s.id === u.school_id)?.name || '—'}</div>
                       <div style={{ fontWeight: 'bold' }}>{classes.find(c => c.id === u.class_id)?.name || '—'}</div>
                     </td>
+                    <td style={{ padding: '20px', fontWeight: '500' }}>{u.passedQuizzes}</td>
                     <td style={{ padding: '20px', fontWeight: '700', color: 'var(--primary-color)' }}>{u.totalPoints}</td>
+                    <td style={{ padding: '20px' }}>
+                      <div className="flex-center" style={{ gap: '10px', justifyContent: 'flex-start' }}>
+                        <div style={{ width: '60px', height: '6px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', overflow: 'hidden' }}>
+                          <div style={{ width: `${u.avgScore}%`, height: '100%', background: u.avgScore >= 50 ? '#4ade80' : '#f87171' }} />
+                        </div>
+                        <span style={{ fontSize: '0.8rem', opacity: 0.6 }}>{u.avgScore}%</span>
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
