@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { ChevronLeft, User, BarChart, Calendar, CheckCircle, XCircle, Mail, Trash2, AlertTriangle, Filter, Download } from 'lucide-react';
+import { ChevronLeft, User, BarChart, Calendar, CheckCircle, XCircle, Mail, Trash2, AlertTriangle, Filter, Download, Pencil, Shield, EyeOff } from 'lucide-react';
 
 const Analytics = () => {
   const [searchParams] = useSearchParams();
@@ -15,8 +15,15 @@ const Analytics = () => {
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState(null);
   const [deletingQuizMode, setDeletingQuizMode] = useState(false);
+  const [showEditBlockedModal, setShowEditBlockedModal] = useState(false);
   const [profile, setProfile] = useState(null);
   const [quizAuthorRole, setQuizAuthorRole] = useState(null);
+
+  useEffect(() => {
+    if (searchParams.get('blocked')) {
+      setShowEditBlockedModal(true);
+    }
+  }, [searchParams]);
 
   // Структура для фильтров
   const [cities, setCities] = useState([]);
@@ -106,6 +113,9 @@ const Analytics = () => {
     const p = res.profiles;
     if (!p) return false;
 
+    // 0. Всегда показывать свой собственный результат
+    if (res.user_id === profile?.id) return true;
+
     // Ограничение видимости для учителя
     if (isTeacher && quiz?.author_id !== profile?.id) {
       if (p.school_id !== profile?.school_id) return false;
@@ -177,11 +187,24 @@ const Analytics = () => {
         <button onClick={() => navigate(-1)} className="flex-center" style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', boxShadow: 'none', padding: '10px 20px' }}>
           <ChevronLeft size={20} /> Назад
         </button>
-        {canDelete && (
-          <button onClick={() => setDeletingQuizMode(true)} className="flex-center" style={{ background: 'rgba(255,0,0,0.05)', color: 'red', boxShadow: 'none', padding: '10px 20px' }}>
-            <Trash2 size={18} style={{ marginRight: '8px' }} /> Удалить тест
-          </button>
-        )}
+        <div className="flex-center" style={{ gap: '10px' }}>
+          {canDelete && (
+            <button
+              onClick={() => {
+                if (results.length > 0) setShowEditBlockedModal(true);
+                else navigate(`/redactor?id=${quizId}`);
+              }}
+              className="flex-center"
+              style={{ background: 'rgba(99, 102, 241, 0.05)', color: 'var(--primary-color)', boxShadow: 'none', padding: '10px 20px' }}>
+              <Pencil size={18} style={{ marginRight: '8px' }} /> Редактировать
+            </button>
+          )}
+          {canDelete && (
+            <button onClick={() => setDeletingQuizMode(true)} className="flex-center" style={{ background: 'rgba(255,0,0,0.05)', color: 'red', boxShadow: 'none', padding: '10px 20px' }}>
+              <Trash2 size={18} style={{ marginRight: '8px' }} /> Удалить тест
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '40px', flexWrap: 'wrap', gap: '20px' }}>
@@ -270,7 +293,11 @@ const Analytics = () => {
               return (
                 <tr key={res.id} style={{ borderBottom: '1px solid rgba(0,0,0,0.01)' }}>
                   <td style={{ padding: '20px' }}>
-                    <div style={{ fontWeight: '600' }}>{displayName}</div>
+                    <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '8px' }}>
+                      <div style={{ fontWeight: '600' }}>{displayName}</div>
+                      {p?.is_observer && <span style={{ padding: '2px 8px', background: 'rgba(250, 204, 21, 0.1)', color: '#ca8a04', borderRadius: '50px', fontSize: '0.65rem', fontWeight: 'bold' }}>НАБЛЮДАТЕЛЬ</span>}
+                      {p?.is_hidden && <span style={{ background: 'rgba(0,0,0,0.05)', color: 'rgba(0,0,0,0.5)', padding: '2px 8px', borderRadius: '50px', fontSize: '0.65rem' }} title="Скрытый пользователь"><EyeOff size={10} /></span>}
+                    </div>
                     {p?.email && !p.is_anonymous && (
                       <div style={{ fontSize: '0.8rem', opacity: 0.5, display: 'flex', alignItems: 'center', gap: '4px' }}><Mail size={12} /> {p.email}</div>
                     )}
@@ -336,6 +363,24 @@ const Analytics = () => {
             <div className="grid-2" style={{ gap: '10px' }}>
               <button onClick={() => setDeletingQuizMode(false)} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit' }}>Отмена</button>
               <button onClick={handleDeleteQuiz} style={{ background: 'red', color: 'white' }}>Удалить</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модальное окно: блокировка редактирования */}
+      {showEditBlockedModal && (
+        <div className="modal-overlay" onClick={() => setShowEditBlockedModal(false)}>
+          <div className="modal-content animate" style={{ width: '450px' }} onClick={e => e.stopPropagation()}>
+            <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(255, 204, 21, 0.1)', color: '#ca8a04', margin: '0 auto 25px' }}><AlertTriangle size={32} /></div>
+            <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>Редактирование заблокировано</h2>
+            <p style={{ opacity: 0.7, marginBottom: '25px', lineHeight: '1.6', textAlign: 'center' }}>
+              Нельзя редактировать тест, если он был пройден хотя бы одним учеником.<br />
+              В тесте обнаружено <strong>{results.length}</strong> результатов.<br /><br />
+              <span style={{ fontSize: '0.9rem' }}>Чтобы внести правки, удалите все результаты из таблицы ниже.</span>
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <button onClick={() => setShowEditBlockedModal(false)} style={{ background: 'var(--primary-color)', color: 'white', padding: '12px 30px' }}>Понятно</button>
             </div>
           </div>
         </div>

@@ -11,6 +11,7 @@ import Dashboard from './pages/Dashboard';
 import Statistics from './pages/Statistics';
 import Logs from './pages/Logs';
 import Analytics from './pages/Analytics';
+import QuizRedactor from './pages/QuizRedactor';
 import './index.css';
 
 function App() {
@@ -70,7 +71,7 @@ function App() {
   </div>;
 
   const isAdmin = profile?.role === 'admin' || profile?.role === 'creator';
-  const isEditor = profile?.role === 'editor' || isAdmin;
+  const isEditor = profile?.role === 'editor' || profile?.role === 'teacher' || isAdmin;
 
   return (
     <Router>
@@ -111,7 +112,8 @@ function App() {
           <Route path="/dashboard" element={isAdmin ? <Dashboard session={session} profile={profile} /> : <Navigate to="/" />} />
           <Route path="/logs" element={isAdmin ? <Logs profile={profile} /> : <Navigate to="/" />} />
           <Route path="/statistics" element={<Statistics session={session} profile={profile} />} />
-          <Route path="/analytics" element={isEditor ? <Analytics /> : <Navigate to="/" />} />
+          <Route path="/analytics" element={isEditor ? <Analytics profile={profile} /> : <Navigate to="/" />} />
+          <Route path="/redactor" element={isEditor ? <QuizRedactor /> : <Navigate to="/" />} />
           
           <Route path="/profile" element={session ? <Profile session={session} profile={profile} refreshProfile={() => fetchProfile(session.user.id)} /> : <Navigate to="/auth" />} />
         </Routes>

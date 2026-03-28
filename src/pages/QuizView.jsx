@@ -32,7 +32,36 @@ const QuizView = ({ session }) => {
 
     if (data) {
       setQuiz(data);
-      setQuestions(data.content.questions || []);
+      const rawQuestions = data.content.questions || [];
+      
+      // 1. Перемешиваем вопросы (Fisher-Yates)
+      const shuffledQuestions = [...rawQuestions];
+      for (let i = shuffledQuestions.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffledQuestions[i], shuffledQuestions[j]] = [shuffledQuestions[j], shuffledQuestions[i]];
+      }
+
+      // 2. Перемешиваем варианты ответа внутри каждого вопроса
+      const fullyShuffled = shuffledQuestions.map(q => {
+        const optionsWithIndices = q.options.map((opt, idx) => ({ opt, originalIndex: idx }));
+        
+        // Перемешиваем варианты
+        for (let i = optionsWithIndices.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [optionsWithIndices[i], optionsWithIndices[j]] = [optionsWithIndices[j], optionsWithIndices[i]];
+        }
+
+        // Находим новый индекс правильного ответа
+        const newCorrectIndex = optionsWithIndices.findIndex(o => o.originalIndex === q.correctIndex);
+
+        return {
+          ...q,
+          options: optionsWithIndices.map(o => o.opt),
+          correctIndex: newCorrectIndex
+        };
+      });
+
+      setQuestions(fullyShuffled);
     }
     setLoading(false);
   };
@@ -60,29 +89,40 @@ const QuizView = ({ session }) => {
     const now = new Date().toISOString();
     const answersArray = questions.map((q, idx) => finalAnswers[idx] === q.correctIndex);
 
-    const { data: existing } = await supabase
-      .from('quiz_results')
-      .select('id, first_score, first_completed_at')
-      .eq('quiz_id', id)
-      .eq('user_id', session.user.id)
-      .single();
+    try {
+      const { data: existing, error: checkError } = await supabase
+        .from('quiz_results')
+        .select('id, first_score, first_completed_at')
+        .eq('quiz_id', id)
+        .eq('user_id', session.user.id)
+        .maybeSingle();
 
-    const resultData = {
-      score: correctCount,
-      total_questions: questions.length,
-      is_passed: isPassed,
-      completed_at: now
-    };
+      if (checkError) throw checkError;
 
-    if (existing) {
-      await supabase.from('quiz_results').update(resultData).eq('quiz_id', id).eq('user_id', session.user.id);
-    } else {
-      resultData.quiz_id = id;
-      resultData.user_id = session.user.id;
-      resultData.first_score = correctCount;
-      resultData.first_completed_at = now;
-      resultData.answers_map = answersArray;
-      await supabase.from('quiz_results').insert(resultData);
+      const timeSpentRel = Math.round((Date.now() - startTime) / 1000);
+      const resultData = {
+        score: correctCount,
+        total_questions: questions.length,
+        is_passed: isPassed,
+        completed_at: now,
+        time_spent: timeSpentRel
+      };
+
+      if (existing) {
+        const { error: updateError } = await supabase.from('quiz_results').update(resultData).eq('quiz_id', id).eq('user_id', session.user.id);
+        if (updateError) throw updateError;
+      } else {
+        resultData.quiz_id = id;
+        resultData.user_id = session.user.id;
+        resultData.first_score = correctCount;
+        resultData.first_completed_at = now;
+        resultData.answers_map = answersArray;
+        const { error: insertError } = await supabase.from('quiz_results').insert(resultData);
+        if (insertError) throw insertError;
+      }
+    } catch (err) {
+      console.error("Ошибка сохранения результата:", err);
+      alert("Не удалось сохранить результат в базу данных. Пожалуйста, сообщите администратору. Ошибка: " + err.message);
     }
   };
 
@@ -225,7 +265,12 @@ const QuizView = ({ session }) => {
       <div className="card animate" key={currentIdx} style={{ padding: '40px', minHeight: '450px', display: 'flex', flexDirection: 'column' }}>
         <h2 style={{ marginBottom: '40px', fontSize: '1.7rem', lineHeight: '1.4' }}>{currentQ.question}</h2>
 
-        <div style={{ display: 'grid', gap: '12px', marginTop: 'auto' }}>
+        <div style={{
+          display: 'grid',
+          gap: '12px',
+          marginTop: 'auto',
+          gridTemplateColumns: currentQ.options.some(opt => opt.length > 40) ? '1fr' : 'repeat(auto-fit, minmax(320px, 1fr))'
+        }}>
           {currentQ.options.map((opt, idx) => {
             const isCorrect = idx === currentQ.correctIndex;
             const isSelected = chosen === idx;

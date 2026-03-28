@@ -59,10 +59,13 @@ const Statistics = ({ session, profile }) => {
 
   const filteredStats = stats
     .filter(u => {
-      // 1. ЖЕСТКОЕ ОГРАНИЧЕНИЕ ДЛЯ УЧИТЕЛЯ (видит только учеников своей школы)
+      // 1. Исключаем наблюдателей и скрытых пользователей из рейтинга
+      if (u.is_observer || u.is_hidden) return false;
+
+      // 2. ЖЕСТКОЕ ОГРАНИЧЕНИЕ ДЛЯ УЧИТЕЛЯ (видит только учеников своей школы)
       if (profile?.role === 'teacher' && u.school_id !== profile?.school_id) return false;
 
-      // 2. Стандартные фильтры
+      // 3. Стандартные фильтры
       if (filterCity !== 'all' && u.city_id !== filterCity) return false;
       if (filterSchool !== 'all' && u.school_id !== filterSchool) return false;
       if (filterClass !== 'all' && u.class_id !== filterClass) return false;

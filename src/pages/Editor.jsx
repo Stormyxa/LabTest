@@ -4,7 +4,8 @@ import { supabase } from '../lib/supabase';
 import {
   Plus, Trash2, FileJson, AlertCircle, TrendingUp,
   CheckCircle, Check, Copy, X, AlertTriangle,
-  ChevronUp, ChevronDown, Save, Book, Link as LinkIcon
+  ChevronUp, ChevronDown, Save, Book, Link as LinkIcon,
+  Pencil, Eye, EyeOff
 } from 'lucide-react';
 
 const Editor = ({ session, profile }) => {
@@ -33,10 +34,11 @@ const Editor = ({ session, profile }) => {
   const [copyFeedbackJson, setCopyFeedbackJson] = useState(false);
   const [copyFeedbackBulk, setCopyFeedbackBulk] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [showHidden, setShowHidden] = useState(false);
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [showHidden]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -52,6 +54,8 @@ const Editor = ({ session, profile }) => {
     // Редактор и Учитель видят только свои тесты в редакторе
     if (profile?.role === 'editor' || profile?.role === 'teacher') {
       query = query.eq('author_id', session.user.id);
+    } else if (!showHidden) {
+      query = query.eq('is_hidden', false);
     }
 
     const { data: q } = await query.order('sort_order', { ascending: true }).order('created_at', { ascending: false });
@@ -130,7 +134,7 @@ const Editor = ({ session, profile }) => {
   };
 
   const copyJsonPrompt = () => {
-    const prompt = `Создай тест на тему с приложенных изображений из [КОЛИЧЕСТВО] вопросов. Выведи результат СТРОГО в формате JSON:\n{\n  "title": "§. Название",\n  "questions": [\n    {\n      "question": "Текст вопроса?",\n      "options": ["Ответ 1", "Ответ 2", "Ответ 3", "Ответ 4"],\n      "correctIndex": 0\n    }\n  ]\n}`;
+    const prompt = `Создай тест на тему с приложенных изображений из [КОЛИЧЕСТВО] вопросов. Выведи результат СТРОГО в формате JSON:\n{\n  "title": "§. Название",\n  "questions": [\n    {\n      "question": "Текст вопроса?",\n      "options": ["Вариант 1", "Вариант 2", "Вариант 3", "Вариант 4", "...до 6 вариантов"],\n      "correctIndex": 0\n    }\n  ]\n}\nВАЖНО: Количество вариантов ответа может быть разным для каждого вопроса (от 2 до 6).`;
     navigator.clipboard.writeText(prompt);
     setCopyFeedbackJson(true);
     setTimeout(() => setCopyFeedbackJson(false), 2000);
@@ -167,7 +171,11 @@ const Editor = ({ session, profile }) => {
     setHasUnsavedChanges(true);
   };
 
-  const swapQuizzes = (sectionId, index, direction) => {
+  const swapQuizzes = (sectionId, index, direction, quiz) => {
+    // admin/creator can move any quiz; teacher/editor only their own
+    const isAdminOrCreator = profile?.role === 'admin' || profile?.role === 'creator';
+    if (!isAdminOrCreator && quiz?.author_id !== profile?.id) return;
+
     const qList = [...myQuizzes];
     const sectionQuizzes = qList.filter(q => q.section_id === sectionId);
     if (index + direction < 0 || index + direction >= sectionQuizzes.length) return;
@@ -266,6 +274,12 @@ const Editor = ({ session, profile }) => {
     setDeleteId(null);
   };
 
+  const toggleHideQuiz = async (quiz) => {
+    const { error } = await supabase.from('quizzes').update({ is_hidden: !quiz.is_hidden }).eq('id', quiz.id);
+    if (error) alert(error.message);
+    else fetchData();
+  };
+
   if (loading) return <div className="flex-center" style={{ height: '60vh' }}>Загрузка панели редактора...</div>;
 
   return (
@@ -277,6 +291,15 @@ const Editor = ({ session, profile }) => {
           <button onClick={() => setActiveTab('manage')} style={{ background: activeTab === 'manage' ? 'var(--primary-color)' : 'transparent', color: activeTab === 'manage' ? 'white' : 'inherit', boxShadow: 'none' }}>Дерево тестов</button>
         </div>
       </div>
+
+      {activeTab === 'manage' && (profile?.role === 'admin' || profile?.role === 'creator') && (
+        <div className="flex-center" style={{ justifyContent: 'flex-end', marginBottom: '20px', gap: '10px' }}>
+          <label style={{ fontSize: '0.9rem', opacity: 0.7, cursor: 'pointer' }} className="flex-center">
+            <input type="checkbox" checked={showHidden} onChange={(e) => { setShowHidden(e.target.checked); setTimeout(() => fetchData(), 50); }} style={{ marginRight: '8px' }} />
+            Показывать скрытые тесты
+          </label>
+        </div>
+      )}
 
       <div className="grid-2" style={{ alignItems: 'start', gap: '30px' }}>
         {activeTab === 'create' ? (
@@ -479,29 +502,44 @@ const Editor = ({ session, profile }) => {
                             const isAdminAndNotCreatorQuiz = profile?.role === 'admin' && quiz.profiles?.role !== 'creator';
                             const isAuthor = profile?.id === quiz.author_id;
                             const canDeleteQuiz = isCreator || isAdminAndNotCreatorQuiz || isAuthor;
+                            const canEdit = isCreator || (profile?.role === 'admin' && quiz.profiles?.role !== 'creator') || isAuthor;
+                            const canMove = isCreator || (profile?.role === 'admin') || isAuthor;
 
                             return (
-                              <div key={quiz.id} className="card" style={{ background: 'rgba(0,0,0,0.02)' }}>
-                                <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '20px' }}>
+                              <div key={quiz.id} className="card" style={{ background: quiz.is_hidden ? 'rgba(255, 200, 0, 0.05)' : 'rgba(0,0,0,0.02)', border: quiz.is_hidden ? '1px dashed #ca8a04' : 'none' }}>
+                                {quiz.is_hidden && (
+                                  <div style={{ fontSize: '0.7rem', color: '#ca8a04', marginBottom: '8px', fontWeight: 'bold' }}>👁 СКРЫТЫЙ ТЕСТ</div>
+                                )}
+                                <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '10px' }}>
                                   <div className="flex-center" style={{ gap: '15px' }}>
-                                    {(profile?.role === 'admin' || profile?.role === 'creator') && (
+                                    {canMove && (
                                       <div className="flex-center" style={{ flexDirection: 'column', gap: '5px' }}>
-                                        <button onClick={() => swapQuizzes(section.id, qIndex, -1)} disabled={qIndex === 0} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronUp size={20} /></button>
-                                        <button onClick={() => swapQuizzes(section.id, qIndex, 1)} disabled={qIndex === qs.length - 1} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronDown size={20} /></button>
+                                        <button onClick={() => swapQuizzes(section.id, qIndex, -1, quiz)} disabled={qIndex === 0} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronUp size={20} /></button>
+                                        <button onClick={() => swapQuizzes(section.id, qIndex, 1, quiz)} disabled={qIndex === qs.length - 1} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronDown size={20} /></button>
                                       </div>
                                     )}
                                     <div>
-                                      <h4 style={{ fontSize: '1.2rem', margin: 0 }}>{quiz.title}</h4>
+                                      <h4 style={{ fontSize: '1.2rem', margin: 0, opacity: quiz.is_hidden ? 0.7 : 1 }}>{quiz.title}</h4>
                                       <p style={{ fontSize: '0.8rem', opacity: 0.5 }}>{new Date(quiz.created_at).toLocaleDateString()}</p>
                                     </div>
                                   </div>
-                                  {quiz.is_verified && <CheckCircle size={24} color="#4ade80" title="Верифицирован" />}
+                                  <div className="flex-center" style={{ gap: '10px' }}>
+                                    {quiz.is_hidden ? <EyeOff size={18} color="#ca8a04" /> : (quiz.is_verified && <CheckCircle size={22} color="#4ade80" title="Верифицирован" />)}
+                                  </div>
                                 </div>
 
-                                <div className="flex-center" style={{ justifyContent: 'flex-end', gap: '10px', marginTop: '15px' }}>
-                                  <button onClick={() => navigate(`/analytics?id=${quiz.id}`)} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>Аналитика</button>
+                                <div className="flex-center" style={{ justifyContent: 'flex-end', gap: '8px', marginTop: '15px' }}>
+                                  {canEdit && (
+                                    <button onClick={() => navigate(`/redactor?id=${quiz.id}`)} style={{ background: 'rgba(99,102,241,0.05)', color: 'var(--primary-color)', boxShadow: 'none', padding: '10px' }} title="Редактировать"><Pencil size={18} /></button>
+                                  )}
+                                  {canEdit && (
+                                    <button onClick={() => toggleHideQuiz(quiz)} style={{ background: 'rgba(250,204,21,0.05)', color: '#ca8a04', boxShadow: 'none', padding: '10px' }} title={quiz.is_hidden ? 'Сделать видимым' : 'Скрыть тест'}>
+                                      {quiz.is_hidden ? <Eye size={18} /> : <EyeOff size={18} />}
+                                    </button>
+                                  )}
+                                  <button onClick={() => navigate(`/analytics?id=${quiz.id}`)} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none', padding: '10px' }} title="Аналитика"><TrendingUp size={18} /></button>
                                   {canDeleteQuiz && (
-                                    <button onClick={() => setDeleteId(quiz.id)} style={{ background: 'rgba(255,0,0,0.1)', color: 'red', boxShadow: 'none' }}><Trash2 size={18} /></button>
+                                    <button onClick={() => setDeleteId(quiz.id)} style={{ background: 'rgba(255,0,0,0.05)', color: 'red', boxShadow: 'none', padding: '10px' }} title="Удалить"><Trash2 size={18} /></button>
                                   )}
                                 </div>
                               </div>

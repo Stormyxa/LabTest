@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { Search, Play, CheckCircle, ChevronDown, ChevronUp, Award, Save, BarChart2, Book } from 'lucide-react';
+import { Search, Play, CheckCircle, ChevronDown, ChevronUp, Award, Save, BarChart2, Book, Pencil, Eye, AlertTriangle } from 'lucide-react';
 
 const QuizCatalog = ({ profile }) => {
   const navigate = useNavigate();
@@ -15,6 +15,7 @@ const QuizCatalog = ({ profile }) => {
 
   const [selectedQuiz, setSelectedQuiz] = useState(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [hideModal, setHideModal] = useState(null); // quiz object
 
   useEffect(() => {
     fetchData();
@@ -33,7 +34,7 @@ const QuizCatalog = ({ profile }) => {
     const { data: c } = await supabase.from('quiz_classes').select('*').order('sort_order', { ascending: true });
     // Поскольку мы делаем select('*'), book_url подтянется автоматически из таблицы quiz_sections
     const { data: s } = await supabase.from('quiz_sections').select('*').order('sort_order', { ascending: true });
-    const { data: q } = await supabase.from('quizzes').select('*, profiles(first_name, last_name, patronymic)').eq('is_archived', false).order('sort_order', { ascending: true });
+    const { data: q } = await supabase.from('quizzes').select('*, profiles(first_name, last_name, patronymic, role)').eq('is_archived', false).eq('is_hidden', false).order('sort_order', { ascending: true });
 
     if (c && s && q) {
       const formatted = c.map(cls => ({
@@ -80,8 +81,10 @@ const QuizCatalog = ({ profile }) => {
     setHasUnsavedChanges(true);
   };
 
-  const swapQuizzes = (classId, sectionId, index, direction, e) => {
+  const swapQuizzes = (classId, sectionId, index, direction, e, quiz) => {
     e.stopPropagation();
+    const isAdminOrCreator = profile?.role === 'admin' || profile?.role === 'creator';
+    if (!isAdminOrCreator && quiz?.author_id !== profile?.id) return;
     const newClasses = [...classes];
     const cIndex = newClasses.findIndex(c => c.id === classId);
     if (cIndex === -1) return;
@@ -96,6 +99,26 @@ const QuizCatalog = ({ profile }) => {
     newClasses[cIndex].sections[sIndex].quizzes = qsArr.map((q, i) => ({ ...q, sort_order: i }));
     setClasses(newClasses);
     setHasUnsavedChanges(true);
+  };
+
+  const handleHideQuiz = async () => {
+    if (!hideModal) return;
+    const { error } = await supabase.from('quizzes').update({ is_hidden: true }).eq('id', hideModal.id);
+    if (error) alert('Ошибка: ' + error.message);
+    else { setHideModal(null); fetchData(); }
+  };
+
+  const canEditQuiz = (quiz) => {
+    if (!profile) return false;
+    if (profile.role === 'creator') return true;
+    if (profile.role === 'admin' && quiz.profiles?.role !== 'creator') return true;
+    if ((profile.role === 'teacher' || profile.role === 'editor') && quiz.author_id === profile.id) return true;
+    return false;
+  };
+  const canMoveQuiz = (quiz) => {
+    if (!profile) return false;
+    if (profile.role === 'admin' || profile.role === 'creator') return true;
+    return (profile.role === 'teacher' || profile.role === 'editor') && quiz.author_id === profile.id;
   };
 
   const filteredData = classes.map(cls => {
@@ -208,14 +231,16 @@ const QuizCatalog = ({ profile }) => {
                               <div className="grid-2" style={{ gap: '15px' }}>
                                 {section.quizzes.map((quiz, qIndex) => {
                                   const passState = passedQuizzes[quiz.id];
+                                  const canEdit = canEditQuiz(quiz);
+                                  const canMove = canMoveQuiz(quiz);
                                   return (
                                     <div key={quiz.id} className="card" style={{ padding: '20px', background: 'var(--card-bg)', boxShadow: 'none' }}>
                                       <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '15px' }}>
                                         <div className="flex-center" style={{ gap: '10px' }}>
-                                          {(profile?.role === 'admin' || profile?.role === 'creator') && !searchQuery && (
+                                          {canMove && !searchQuery && (
                                             <div className="flex-center" style={{ flexDirection: 'column', gap: '5px' }}>
-                                              <button onClick={(e) => swapQuizzes(cls.id, section.id, qIndex, -1, e)} disabled={qIndex === 0} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronUp size={18} /></button>
-                                              <button onClick={(e) => swapQuizzes(cls.id, section.id, qIndex, 1, e)} disabled={qIndex === section.quizzes.length - 1} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronDown size={18} /></button>
+                                              <button onClick={(e) => swapQuizzes(cls.id, section.id, qIndex, -1, e, quiz)} disabled={qIndex === 0} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronUp size={18} /></button>
+                                              <button onClick={(e) => swapQuizzes(cls.id, section.id, qIndex, 1, e, quiz)} disabled={qIndex === section.quizzes.length - 1} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronDown size={18} /></button>
                                             </div>
                                           )}
                                           <h4 style={{ fontSize: '1.1rem', margin: 0 }}>
@@ -231,11 +256,17 @@ const QuizCatalog = ({ profile }) => {
                                         Автор: {quiz.profiles?.last_name} {quiz.profiles?.first_name}
                                       </p>
 
-                                      <div className="flex-center" style={{ justifyContent: 'flex-end', gap: '10px' }}>
-                                        {(profile?.role === 'admin' || profile?.role === 'creator' || profile?.id === quiz.author_id) && (
-                                          <button onClick={() => navigate(`/analytics?id=${quiz.id}`)} style={{ padding: '8px 15px', background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }} title="Аналитика"><BarChart2 size={16} /></button>
+                                      <div className="flex-center" style={{ justifyContent: 'flex-end', gap: '8px', flexWrap: 'wrap' }}>
+                                        {canEdit && (
+                                          <button onClick={() => navigate(`/redactor?id=${quiz.id}`)} style={{ padding: '8px', background: 'rgba(99,102,241,0.08)', color: 'var(--primary-color)', boxShadow: 'none', borderRadius: '10px' }} title="Редактировать"><Pencil size={15} /></button>
                                         )}
-                                        <button onClick={() => setSelectedQuiz(quiz)} style={{ padding: '8px 25px', display: 'flex', alignItems: 'center', gap: '8px' }}><Play size={16} fill="currentColor" /> Начать</button>
+                                        {canEdit && (
+                                          <button onClick={() => setHideModal(quiz)} style={{ padding: '8px', background: 'rgba(250,204,21,0.08)', color: '#ca8a04', boxShadow: 'none', borderRadius: '10px' }} title="Скрыть тест"><Eye size={15} /></button>
+                                        )}
+                                        {(profile?.role === 'admin' || profile?.role === 'creator' || profile?.id === quiz.author_id) && (
+                                          <button onClick={() => navigate(`/analytics?id=${quiz.id}`)} style={{ padding: '8px', background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none', borderRadius: '10px' }} title="Аналитика"><BarChart2 size={15} /></button>
+                                        )}
+                                        <button onClick={() => setSelectedQuiz(quiz)} style={{ padding: '8px 20px', display: 'flex', alignItems: 'center', gap: '8px', borderRadius: '10px' }}><Play size={15} fill="currentColor" /> Начать</button>
                                       </div>
                                     </div>
                                   );
@@ -299,8 +330,31 @@ const QuizCatalog = ({ profile }) => {
           </div>
         </div>
       )}
+      <HideModal />
     </div>
   );
+
+  // ─── Hide quiz modal ──────────────────────────────────────────────
+  function HideModal() {
+    if (!hideModal) return null;
+    return (
+      <div className="modal-overlay" onClick={() => setHideModal(null)}>
+        <div className="modal-content animate" style={{ width: '430px' }} onClick={e => e.stopPropagation()}>
+          <div className="flex-center" style={{ justifyContent: 'center', width: '55px', height: '55px', background: 'rgba(250,204,21,0.1)', color: '#ca8a04', borderRadius: '15px', margin: '0 auto 20px' }}><AlertTriangle size={26} /></div>
+          <h3 style={{ marginBottom: '10px', textAlign: 'center' }}>Скрыть тест?</h3>
+          <p style={{ opacity: 0.6, fontSize: '0.9rem', marginBottom: '20px', textAlign: 'center', lineHeight: '1.6' }}>
+            <strong>«{hideModal.title}»</strong> исчезнет из каталога для всех пользователей.<br />
+            Найти его можно будет в разделе <strong>«Управление тестами»</strong> → Дерево тестов.
+          </p>
+          <div className="grid-2" style={{ gap: '10px' }}>
+            <button onClick={() => setHideModal(null)} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit' }}>Отмена</button>
+            <button onClick={handleHideQuiz} style={{ background: '#ca8a04', color: 'white' }}>Скрыть</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
 };
 
 export default QuizCatalog;

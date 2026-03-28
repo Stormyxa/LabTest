@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { User, Mail, Calendar, GraduationCap, CheckCircle, Award, FileText, TrendingUp, Star, MapPin, Building } from 'lucide-react';
+import { User, Mail, Calendar, GraduationCap, CheckCircle, Award, FileText, TrendingUp, Star, MapPin, Building, Shield, ShieldOff, Zap } from 'lucide-react';
 
 const Profile = ({ session, profile, refreshProfile }) => {
   const location = useLocation();
@@ -24,7 +24,7 @@ const Profile = ({ session, profile, refreshProfile }) => {
   const [showPhone, setShowPhone] = useState(profile?.show_phone_number || false);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState(location.state?.msg || '');
-
+  const [showObserverModal, setShowObserverModal] = useState(false);
   const [stats, setStats] = useState({ passed: 0, perfect: 0, totalPoints: 0, created: 0 });
 
   useEffect(() => {
@@ -103,7 +103,16 @@ const Profile = ({ session, profile, refreshProfile }) => {
         <div className="card flex-center" style={{ flexDirection: 'column', textAlign: 'center' }}>
           <img src={avatarUrl} alt="Avatar" style={{ width: '120px', height: '120px', borderRadius: '50%', marginBottom: '20px', border: '4px solid var(--accent-color)' }} />
           <h2>{profile?.first_name ? `${profile.last_name} ${profile.first_name}` : 'Новый пользователь'}</h2>
-          <p style={{ opacity: 0.7, marginBottom: '20px' }}>{profile?.role.toUpperCase()}</p>
+          <div className="flex-center" style={{ gap: '10px', marginBottom: '20px' }}>
+            <span style={{ padding: '4px 12px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', borderRadius: '100px', fontSize: '0.75rem', fontWeight: 'bold' }}>
+              {profile?.role.toUpperCase()}
+            </span>
+            {profile?.is_observer && (
+              <span style={{ padding: '4px 12px', background: 'rgba(250, 204, 21, 0.1)', color: '#ca8a04', borderRadius: '100px', fontSize: '0.75rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <Shield size={12} /> НАБЛЮДАТЕЛЬ
+              </span>
+            )}
+          </div>
 
           <div style={{ width: '100%', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '15px' }}>
             <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px' }}>
@@ -140,17 +149,58 @@ const Profile = ({ session, profile, refreshProfile }) => {
             <StatBox label="Всего баллов" value={stats.totalPoints} icon={<TrendingUp size={20} />} />
             <StatBox label="Создано тестов" value={stats.created} icon={<FileText size={20} />} />
           </div>
-          <div style={{ marginTop: '30px', padding: '15px', background: 'rgba(0,0,0,0.05)', borderRadius: '15px' }}>
-            <label className="flex-center" style={{ justifyContent: 'space-between', cursor: 'pointer' }}>
-              <span>Скрывать профиль (анонимно)</span>
-              <input type="checkbox" checked={profile?.is_anonymous} onChange={async (e) => {
-                await supabase.from('profiles').update({ is_anonymous: e.target.checked }).eq('id', session.user.id);
-                refreshProfile();
-              }} style={{ width: '20px', height: '20px' }} />
-            </label>
+          <div style={{ marginTop: '20px', padding: '20px', background: profile?.is_observer ? 'rgba(250, 204, 21, 0.05)' : 'rgba(99, 102, 241, 0.03)', borderRadius: '20px', border: profile?.is_observer ? '1px dashed #ca8a04' : '1px solid rgba(0,0,0,0.03)' }}>
+            <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '10px' }}>
+              <div className="flex-center" style={{ gap: '10px' }}>
+                {profile?.is_observer ? <Shield color="#ca8a04" size={20} /> : <Zap color="var(--primary-color)" size={20} />}
+                <h4 style={{ margin: 0 }}>Режим наблюдателя</h4>
+              </div>
+              <button
+                onClick={() => setShowObserverModal(true)}
+                style={{ padding: '6px 15px', background: profile?.is_observer ? 'rgba(0,0,0,0.05)' : 'var(--primary-color)', color: profile?.is_observer ? 'inherit' : 'white', fontSize: '0.8rem', boxShadow: 'none' }}
+              >
+                {profile?.is_observer ? 'Выключить' : 'Включить'}
+              </button>
+            </div>
+            <p style={{ fontSize: '0.75rem', opacity: 0.6, margin: 0, lineHeight: '1.4' }}>
+              {profile?.is_observer
+                ? 'Вы скрыты из общего рейтинга и статистики региона. Ваши результаты не влияют на показатели школы.'
+                : 'Ваши результаты учитываются в глобальном рейтинге учеников и статистике вашего учебного заведения.'}
+            </p>
           </div>
         </div>
       </div>
+
+      {showObserverModal && (
+        <div className="modal-overlay" onClick={() => setShowObserverModal(false)}>
+          <div className="modal-content animate" style={{ width: '450px' }} onClick={e => e.stopPropagation()}>
+            <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: profile?.is_observer ? 'rgba(99, 102, 241, 0.1)' : 'rgba(250, 204, 21, 0.1)', color: profile?.is_observer ? 'var(--primary-color)' : '#ca8a04', margin: '0 auto 25px' }}>
+              {profile?.is_observer ? <Zap size={32} /> : <Shield size={32} />}
+            </div>
+            <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>{profile?.is_observer ? 'Вернуться в рейтинг?' : 'Стать наблюдателем?'}</h2>
+            <p style={{ opacity: 0.7, marginBottom: '30px', textAlign: 'center', lineHeight: '1.6' }}>
+              {profile?.is_observer
+                ? 'Ваши будущие результаты снова начнут отображаться в таблицах лидеров и влиять на статистику вашей школы.'
+                : 'Вы перестанете отображаться в списках «Лучшие ученики» и «Статистика региона». Это позволит вам проходить тесты для ознакомления, не искажая реальные показатели успеваемости.'}
+            </p>
+            <div className="grid-2" style={{ gap: '15px' }}>
+              <button onClick={() => setShowObserverModal(false)} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit' }}>Отмена</button>
+              <button
+                onClick={async () => {
+                  const { error } = await supabase.from('profiles').update({ is_observer: !profile.is_observer }).eq('id', session.user.id);
+                  if (!error) {
+                    await refreshProfile();
+                    setShowObserverModal(false);
+                  }
+                }}
+                style={{ background: profile?.is_observer ? 'var(--primary-color)' : '#ca8a04', color: 'white' }}
+              >
+                {profile?.is_observer ? 'Да, вернуться' : 'Да, я наблюдатель'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div ref={onboardingRef} className="card animate" style={{ marginTop: '40px' }}>
         <h3 style={{ marginBottom: '25px' }}>{profile?.is_profile_setup_completed ? 'Основные данные (только чтение)' : 'Подтверждение данных'}</h3>
