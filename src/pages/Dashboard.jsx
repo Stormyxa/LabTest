@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { User, Shield, Search, Edit3, Trash2, ExternalLink, Mail, X, AlertTriangle, MapPin, Building, GraduationCap, Plus, History } from 'lucide-react';
+import { User, Shield, Search, Edit3, Trash2, Mail, X, AlertTriangle, MapPin, Building, GraduationCap, Plus, History, Ban, ShieldAlert } from 'lucide-react';
 
 const Dashboard = ({ session, profile }) => {
   const navigate = useNavigate();
@@ -13,24 +13,32 @@ const Dashboard = ({ session, profile }) => {
 
   const [editingUser, setEditingUser] = useState(null);
   const [deletingUser, setDeletingUser] = useState(null);
+  const [blockingUser, setBlockingUser] = useState(null); // Состояние для блокировки пользователя
 
-  // Новое состояние для красивого удаления городов, школ и классов
-  const [deletingStructure, setDeletingStructure] = useState(null); // { table, id, name, typeLabel }
+  const [deletingStructure, setDeletingStructure] = useState(null);
 
   const [cities, setCities] = useState([]);
   const [schools, setSchools] = useState([]);
   const [classesList, setClassesList] = useState([]);
 
+  // Структура
   const [newCity, setNewCity] = useState('');
   const [newSchool, setNewSchool] = useState('');
   const [newSchoolCityId, setNewSchoolCityId] = useState('');
   const [newClass, setNewClass] = useState('');
   const [newClassSchoolId, setNewClassSchoolId] = useState('');
 
+  // Черный список
+  const [blacklist, setBlacklist] = useState([]);
+  const [newBlacklistEmail, setNewBlacklistEmail] = useState('');
+
   useEffect(() => {
     fetchStructure();
     fetchUsers();
-  }, []);
+    if (profile?.role === 'creator') {
+      fetchBlacklist();
+    }
+  }, [profile]);
 
   const fetchStructure = async () => {
     const { data: c } = await supabase.from('cities').select('*').order('name');
@@ -46,6 +54,11 @@ const Dashboard = ({ session, profile }) => {
     setLoading(false);
   };
 
+  const fetchBlacklist = async () => {
+    const { data } = await supabase.from('blacklisted_emails').select('*').order('created_at', { ascending: false });
+    if (data) setBlacklist(data);
+  };
+
   const handleUpdateUser = async (uId, updates) => {
     const { error } = await supabase.from('profiles').update(updates).eq('id', uId);
     if (error) alert(error.message);
@@ -56,14 +69,70 @@ const Dashboard = ({ session, profile }) => {
     }
   };
 
+  // ПОЛНОЕ удаление пользователя (через RPC функцию)
   const handleDeleteUser = async () => {
     if (!deletingUser) return;
-    const { error } = await supabase.from('profiles').delete().eq('id', deletingUser.id);
+
+    // Вызываем защищенную функцию БД для полного стирания аккаунта
+    const { error } = await supabase.rpc('delete_user_full', { target_user_id: deletingUser.id });
+
     if (error) alert(error.message);
     else {
-      await logAction(`Удаление пользователя`, deletingUser.id, `Удален профиль ${deletingUser.email}`);
+      await logAction(`Полное удаление пользователя`, deletingUser.id, `Удален аккаунт ${deletingUser.email}`);
       fetchUsers();
       setDeletingUser(null);
+    }
+  };
+
+  // Блокировка пользователя (Добавление в БД + Полное удаление)
+  const handleBlockUser = async () => {
+    if (!blockingUser || !blockingUser.email) return;
+
+    // 1. Добавляем почту в черный список
+    const { error: blockError } = await supabase.from('blacklisted_emails').insert({
+      email: blockingUser.email,
+      added_by: session.user.id
+    });
+
+    if (blockError && blockError.code !== '23505') { // Игнорируем ошибку, если почта уже там
+      alert('Ошибка при добавлении в ЧС: ' + blockError.message);
+      return;
+    }
+
+    // 2. Полностью удаляем аккаунт из системы
+    await supabase.rpc('delete_user_full', { target_user_id: blockingUser.id });
+
+    await logAction(`Блокировка аккаунта`, blockingUser.id, `Пользователь ${blockingUser.email} заблокирован и удален.`);
+
+    fetchBlacklist();
+    fetchUsers();
+    setBlockingUser(null);
+  };
+
+  // Ручное управление черным списком
+  const handleAddBlacklist = async (e) => {
+    e.preventDefault();
+    if (!newBlacklistEmail.trim()) return;
+
+    const { error } = await supabase.from('blacklisted_emails').insert({
+      email: newBlacklistEmail.trim(),
+      added_by: session.user.id
+    });
+
+    if (error) alert('Ошибка: ' + error.message);
+    else {
+      setNewBlacklistEmail('');
+      fetchBlacklist();
+      await logAction(`Пополнение ЧС`, null, `Почта ${newBlacklistEmail} добавлена в черный список.`);
+    }
+  };
+
+  const handleRemoveBlacklist = async (id, email) => {
+    if (!window.confirm(`Разблокировать почту ${email}?`)) return;
+    const { error } = await supabase.from('blacklisted_emails').delete().eq('id', id);
+    if (!error) {
+      fetchBlacklist();
+      await logAction(`Удаление из ЧС`, null, `Почта ${email} разблокирована.`);
     }
   };
 
@@ -71,30 +140,15 @@ const Dashboard = ({ session, profile }) => {
     await supabase.from('audit_logs').insert({ admin_id: session.user.id, action, target_id: targetId, reason });
   };
 
-  // Создание структуры
-  const handleCreateCity = async () => {
-    if (!newCity) return;
-    await supabase.from('cities').insert({ name: newCity });
-    setNewCity(''); fetchStructure();
-  };
-  const handleCreateSchool = async () => {
-    if (!newSchool || !newSchoolCityId) return;
-    await supabase.from('schools').insert({ name: newSchool, city_id: newSchoolCityId });
-    setNewSchool(''); fetchStructure();
-  };
-  const handleCreateClass = async () => {
-    if (!newClass || !newClassSchoolId) return;
-    await supabase.from('classes').insert({ name: newClass, school_id: newClassSchoolId });
-    setNewClass(''); fetchStructure();
-  };
+  // Структура
+  const handleCreateCity = async () => { if (!newCity) return; await supabase.from('cities').insert({ name: newCity }); setNewCity(''); fetchStructure(); };
+  const handleCreateSchool = async () => { if (!newSchool || !newSchoolCityId) return; await supabase.from('schools').insert({ name: newSchool, city_id: newSchoolCityId }); setNewSchool(''); fetchStructure(); };
+  const handleCreateClass = async () => { if (!newClass || !newClassSchoolId) return; await supabase.from('classes').insert({ name: newClass, school_id: newClassSchoolId }); setNewClass(''); fetchStructure(); };
 
-  // Подтверждение и удаление структуры (без window.confirm)
   const confirmDeleteStructure = async () => {
     if (!deletingStructure) return;
     await supabase.from(deletingStructure.table).delete().eq('id', deletingStructure.id);
-    fetchStructure();
-    fetchUsers(); // Обновляем юзеров
-    setDeletingStructure(null);
+    fetchStructure(); fetchUsers(); setDeletingStructure(null);
   };
 
   const filteredUsers = users.filter(u => `${u.first_name} ${u.last_name} ${u.patronymic} ${u.email} ${u.id}`.toLowerCase().includes(search.toLowerCase()));
@@ -119,6 +173,7 @@ const Dashboard = ({ session, profile }) => {
             <div style={{ background: 'rgba(0,0,0,0.05)', padding: '5px', borderRadius: '15px', display: 'flex' }}>
               <button onClick={() => setActiveTab('users')} style={{ background: activeTab === 'users' ? 'var(--primary-color)' : 'transparent', color: activeTab === 'users' ? 'white' : 'inherit', boxShadow: 'none' }}>Ученики</button>
               <button onClick={() => setActiveTab('structure')} style={{ background: activeTab === 'structure' ? 'var(--primary-color)' : 'transparent', color: activeTab === 'structure' ? 'white' : 'inherit', boxShadow: 'none' }}>Структура</button>
+              <button onClick={() => setActiveTab('blacklist')} style={{ background: activeTab === 'blacklist' ? 'red' : 'transparent', color: activeTab === 'blacklist' ? 'white' : 'red', boxShadow: 'none', fontWeight: 'bold' }}>Черный список</button>
             </div>
           )}
 
@@ -154,7 +209,9 @@ const Dashboard = ({ session, profile }) => {
                   <tr key={user.id} style={{ borderBottom: '1px solid rgba(0,0,0,0.02)' }}>
                     <td style={{ padding: '15px 20px' }}>
                       <div style={{ fontSize: '0.8rem', opacity: 0.5 }}>{user.id.slice(0, 8)}...</div>
-                      <div style={{ fontSize: '0.9rem', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '5px' }}><Mail size={14} style={{ opacity: 0.3 }} /> {user.email || 'Неизвестно'}</div>
+                      <div style={{ fontSize: '0.9rem', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                        <Mail size={14} style={{ opacity: 0.3 }} /> {user.email || 'Неизвестно'}
+                      </div>
                     </td>
                     <td style={{ padding: '15px 20px' }}>
                       <div style={{ fontWeight: '500' }}>{user.last_name} {user.first_name}</div>
@@ -173,8 +230,12 @@ const Dashboard = ({ session, profile }) => {
                     <td style={{ padding: '15px 20px' }}>
                       <div className="flex-center" style={{ gap: '10px', justifyContent: 'flex-start' }}>
                         <button onClick={() => setEditingUser(user)} className="flex-center" style={{ padding: '8px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', borderRadius: '10px', boxShadow: 'none' }} title="Редактировать"><Edit3 size={18} /></button>
+
                         {(profile?.role === 'creator') && user.id !== session.user.id && (
-                          <button onClick={() => setDeletingUser(user)} className="flex-center" style={{ padding: '8px', background: 'rgba(255, 0, 0, 0.1)', color: 'red', borderRadius: '10px', boxShadow: 'none' }} title="Удалить"><Trash2 size={18} /></button>
+                          <>
+                            <button onClick={() => setDeletingUser(user)} className="flex-center" style={{ padding: '8px', background: 'rgba(255, 0, 0, 0.1)', color: 'red', borderRadius: '10px', boxShadow: 'none' }} title="Удалить аккаунт"><Trash2 size={18} /></button>
+                            <button onClick={() => setBlockingUser(user)} className="flex-center" style={{ padding: '8px', background: '#f87171', color: 'white', borderRadius: '10px', boxShadow: 'none' }} title="Удалить и заблокировать почту"><Ban size={18} /></button>
+                          </>
                         )}
                       </div>
                     </td>
@@ -186,10 +247,51 @@ const Dashboard = ({ session, profile }) => {
         </div>
       )}
 
+      {/* ВКЛАДКА ЧЕРНЫЙ СПИСОК */}
+      {activeTab === 'blacklist' && profile?.role === 'creator' && (
+        <div className="card">
+          <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '15px', color: 'red', marginBottom: '25px' }}>
+            <ShieldAlert size={28} />
+            <h3 style={{ margin: 0 }}>Заблокированные адреса</h3>
+          </div>
+
+          <form onSubmit={handleAddBlacklist} className="flex-center" style={{ gap: '15px', marginBottom: '30px', padding: '20px', background: 'rgba(255,0,0,0.02)', borderRadius: '15px', border: '1px dashed red' }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ fontSize: '0.85rem', opacity: 0.6, marginBottom: '5px', display: 'block' }}>Заблокировать новую почту вручную</label>
+              <input type="email" placeholder="example@mail.ru" value={newBlacklistEmail} onChange={(e) => setNewBlacklistEmail(e.target.value)} required style={{ width: '100%' }} />
+            </div>
+            <button type="submit" style={{ background: 'red', marginTop: '22px' }}>Заблокировать</button>
+          </form>
+
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+            <thead style={{ background: 'rgba(0,0,0,0.03)' }}>
+              <tr>
+                <th style={{ padding: '15px' }}>Заблокированная Почта</th>
+                <th style={{ padding: '15px' }}>Дата блокировки</th>
+                <th style={{ padding: '15px' }}>Действия</th>
+              </tr>
+            </thead>
+            <tbody>
+              {blacklist.map(item => (
+                <tr key={item.id} style={{ borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
+                  <td style={{ padding: '15px', fontWeight: 'bold' }}>{item.email}</td>
+                  <td style={{ padding: '15px', opacity: 0.6 }}>{new Date(item.created_at).toLocaleString()}</td>
+                  <td style={{ padding: '15px' }}>
+                    <button onClick={() => handleRemoveBlacklist(item.id, item.email)} style={{ padding: '6px 15px', background: 'rgba(74, 222, 128, 0.1)', color: '#4ade80', boxShadow: 'none' }}>
+                      Разблокировать
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {blacklist.length === 0 && <tr><td colSpan="3" style={{ padding: '30px', textAlign: 'center', opacity: 0.5 }}>Черный список пуст.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {/* ВКЛАДКА СТРУКТУРА */}
       {activeTab === 'structure' && profile?.role === 'creator' && (
         <div className="grid-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
-
           <div className="card">
             <h3 className="flex-center" style={{ gap: '10px', marginBottom: '20px', justifyContent: 'flex-start' }}><MapPin size={20} color="var(--primary-color)" /> Города</h3>
             <div className="flex-center" style={{ gap: '10px', marginBottom: '20px' }}>
@@ -258,7 +360,7 @@ const Dashboard = ({ session, profile }) => {
         </div>
       )}
 
-      {/* МОДАЛКИ (Редактирование пользователя, Удаление пользователя, Удаление структуры) */}
+      {/* МОДАЛКИ */}
 
       {editingUser && (
         <div className="modal-overlay" onClick={() => setEditingUser(null)}>
@@ -267,25 +369,15 @@ const Dashboard = ({ session, profile }) => {
               <h3 style={{ margin: 0 }}>Редактирование {editingUser.first_name}</h3>
               <button onClick={() => setEditingUser(null)} style={{ background: 'transparent', color: 'inherit', padding: 0 }}><X size={24} /></button>
             </div>
-
             <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-              <div>
-                <label style={{ fontSize: '0.85rem', opacity: 0.5, marginBottom: '5px', display: 'block' }}>Email пользователя</label>
-                <input type="email" value={editingUser.email || ''} onChange={(e) => setEditingUser({ ...editingUser, email: e.target.value })} />
-              </div>
+              <div><label style={{ fontSize: '0.85rem', opacity: 0.5, display: 'block' }}>Email</label><input type="email" value={editingUser.email || ''} disabled /></div>
               <div className="grid-2" style={{ gap: '15px' }}>
-                <div>
-                  <label style={{ fontSize: '0.85rem', opacity: 0.5, marginBottom: '5px', display: 'block' }}>Фамилия</label>
-                  <input type="text" value={editingUser.last_name || ''} onChange={(e) => setEditingUser({ ...editingUser, last_name: e.target.value })} />
-                </div>
-                <div>
-                  <label style={{ fontSize: '0.85rem', opacity: 0.5, marginBottom: '5px', display: 'block' }}>Имя</label>
-                  <input type="text" value={editingUser.first_name || ''} onChange={(e) => setEditingUser({ ...editingUser, first_name: e.target.value })} />
-                </div>
+                <div><label style={{ fontSize: '0.85rem', opacity: 0.5, display: 'block' }}>Фамилия</label><input type="text" value={editingUser.last_name || ''} onChange={(e) => setEditingUser({ ...editingUser, last_name: e.target.value })} /></div>
+                <div><label style={{ fontSize: '0.85rem', opacity: 0.5, display: 'block' }}>Имя</label><input type="text" value={editingUser.first_name || ''} onChange={(e) => setEditingUser({ ...editingUser, first_name: e.target.value })} /></div>
               </div>
-
+              <div><label style={{ fontSize: '0.85rem', opacity: 0.5, display: 'block' }}>Отчество</label><input type="text" value={editingUser.patronymic || ''} onChange={(e) => setEditingUser({ ...editingUser, patronymic: e.target.value })} /></div>
               <div>
-                <label style={{ fontSize: '0.85rem', opacity: 0.5, marginBottom: '5px', display: 'block' }}>Роль доступа</label>
+                <label style={{ fontSize: '0.85rem', opacity: 0.5, display: 'block' }}>Роль доступа</label>
                 <select value={editingUser.role} onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })} disabled={profile?.role !== 'creator' && (editingUser.role === 'creator' || editingUser.role === 'admin')}>
                   <option value="player">Ученик (Игрок)</option>
                   <option value="editor">Редактор</option>
@@ -294,25 +386,14 @@ const Dashboard = ({ session, profile }) => {
                   {profile?.role === 'creator' && <option value="creator">Создатель</option>}
                 </select>
               </div>
-
               <div style={{ padding: '15px', background: 'rgba(0,0,0,0.02)', borderRadius: '15px', border: '1px solid rgba(0,0,0,0.05)' }}>
                 <h4 style={{ marginBottom: '15px', fontSize: '0.95rem' }}>Заведение</h4>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <select value={editingUser.city_id || ''} onChange={(e) => setEditingUser({ ...editingUser, city_id: e.target.value || null, school_id: null, class_id: null })}>
-                    <option value="">Без города</option>
-                    {cities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                  <select value={editingUser.school_id || ''} onChange={(e) => setEditingUser({ ...editingUser, school_id: e.target.value || null, class_id: null })} disabled={!editingUser.city_id}>
-                    <option value="">Без школы</option>
-                    {schools.filter(s => s.city_id === editingUser.city_id).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                  </select>
-                  <select value={editingUser.class_id || ''} onChange={(e) => setEditingUser({ ...editingUser, class_id: e.target.value || null })} disabled={!editingUser.school_id}>
-                    <option value="">Без класса</option>
-                    {classesList.filter(c => c.school_id === editingUser.school_id).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
+                  <select value={editingUser.city_id || ''} onChange={(e) => setEditingUser({ ...editingUser, city_id: e.target.value || null, school_id: null, class_id: null })}><option value="">Без города</option>{cities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+                  <select value={editingUser.school_id || ''} onChange={(e) => setEditingUser({ ...editingUser, school_id: e.target.value || null, class_id: null })} disabled={!editingUser.city_id}><option value="">Без школы</option>{schools.filter(s => s.city_id === editingUser.city_id).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
+                  <select value={editingUser.class_id || ''} onChange={(e) => setEditingUser({ ...editingUser, class_id: e.target.value || null })} disabled={!editingUser.school_id}><option value="">Без класса</option>{classesList.filter(c => c.school_id === editingUser.school_id).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
                 </div>
               </div>
-
               <div className="flex-center" style={{ gap: '15px', marginTop: '10px' }}>
                 <button onClick={() => setEditingUser(null)} style={{ width: '100%', background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>Отмена</button>
                 <button onClick={() => handleUpdateUser(editingUser.id, editingUser)} style={{ width: '100%' }}>Сохранить</button>
@@ -325,15 +406,32 @@ const Dashboard = ({ session, profile }) => {
       {deletingUser && (
         <div className="modal-overlay" onClick={() => setDeletingUser(null)}>
           <div className="modal-content animate modal-content-danger" style={{ width: '450px' }} onClick={e => e.stopPropagation()}>
-            <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '50%', background: 'rgba(248, 113, 113, 0.1)', color: '#f87171', margin: '0 auto 25px' }}><AlertTriangle size={32} /></div>
+            <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '50%', background: 'rgba(248, 113, 113, 0.1)', color: '#f87171', margin: '0 auto 25px' }}><Trash2 size={32} /></div>
             <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>Удалить пользователя?</h2>
             <p style={{ opacity: 0.7, marginBottom: '30px', lineHeight: '1.6', textAlign: 'center' }}>
-              Вы уверены, что хотите удалить <strong>{deletingUser.last_name} {deletingUser.first_name}</strong>?<br />
-              Это действие удалит весь его профиль и все результаты тестов.
+              Вы уверены, что хотите ПОЛНОСТЬЮ удалить <strong>{deletingUser.email}</strong>?<br />
+              Пользователь сможет зарегистрироваться заново.
             </p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
               <button onClick={() => setDeletingUser(null)} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>Отмена</button>
               <button onClick={handleDeleteUser} style={{ background: '#f87171', color: 'white' }}>Да, удалить</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {blockingUser && (
+        <div className="modal-overlay" onClick={() => setBlockingUser(null)}>
+          <div className="modal-content animate modal-content-danger" style={{ width: '450px' }} onClick={e => e.stopPropagation()}>
+            <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '50%', background: 'rgba(255, 0, 0, 0.1)', color: 'red', margin: '0 auto 25px' }}><Ban size={32} /></div>
+            <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>Заблокировать пользователя?</h2>
+            <p style={{ opacity: 0.7, marginBottom: '30px', lineHeight: '1.6', textAlign: 'center' }}>
+              Почта <strong>{blockingUser.email}</strong> будет добавлена в Черный список, а сам аккаунт будет полностью удален.<br />
+              Пользователь больше не сможет создать аккаунт.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+              <button onClick={() => setBlockingUser(null)} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>Отмена</button>
+              <button onClick={handleBlockUser} style={{ background: 'red', color: 'white' }}>Заблокировать</button>
             </div>
           </div>
         </div>

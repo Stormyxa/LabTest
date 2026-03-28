@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { ChevronLeft, User, BarChart, Calendar, CheckCircle, XCircle, Mail, Trash2, AlertTriangle, Filter } from 'lucide-react';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { ChevronLeft, User, BarChart, Calendar, CheckCircle, XCircle, Mail, Trash2, AlertTriangle, Filter, Download } from 'lucide-react';
 
 const Analytics = ({ session }) => {
   const [searchParams] = useSearchParams();
@@ -117,6 +119,59 @@ const Analytics = ({ session }) => {
   const canDelete = profile?.role === 'creator' || (profile?.role === 'admin' && quizAuthorRole !== 'creator') || profile?.id === quiz?.author_id;
   const isTeacher = profile?.role === 'teacher';
 
+  // ФУНКЦИЯ ГЕНЕРАЦИИ PDF ОТЧЕТА
+  const generatePDF = async () => {
+    try {
+      const doc = new jsPDF();
+      const fontUrl = 'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.66/fonts/Roboto/Roboto-Regular.ttf';
+      const response = await fetch(fontUrl);
+      const buffer = await response.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      for (let i = 0; i < bytes.byteLength; i++) { binary += String.fromCharCode(bytes[i]); }
+      const base64Font = window.btoa(binary);
+
+      doc.addFileToVFS('Roboto-Regular.ttf', base64Font);
+      doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
+      doc.setFont('Roboto');
+
+      doc.text(`Аналитика теста: ${quiz?.title}`, 20, 20);
+
+      const tableData = filteredResults.map(res => {
+        const p = res.profiles;
+        const hasName = p?.first_name || p?.last_name;
+        const displayName = p?.is_anonymous ? 'Анонимный профиль' : (hasName ? `${p.last_name || ''} ${p.first_name || ''}`.trim() : (p?.email || 'Неизвестный ученик'));
+
+        const cityName = cities.find(c => c.id === p?.city_id)?.name || '';
+        const schoolName = schools.find(s => s.id === p?.school_id)?.name || '';
+        const className = classes.find(c => c.id === p?.class_id)?.name || '';
+        const institution = [cityName, schoolName, className].filter(Boolean).join(' / ') || '—';
+
+        return [
+          displayName,
+          institution,
+          `${res.score} / ${res.total_questions}`,
+          `${res.first_score} / ${res.total_questions}`,
+          new Date(res.completed_at).toLocaleDateString()
+        ];
+      });
+
+      autoTable(doc, {
+        head: [['Ученик', 'Заведение', 'Текущий рез.', '1-я попытка', 'Дата']],
+        body: tableData,
+        startY: 30,
+        styles: { font: 'Roboto' },
+        headStyles: { fontStyle: 'normal' }
+      });
+
+      // Очищаем название файла от недопустимых символов
+      const safeTitle = quiz?.title.replace(/[/\\?%*:|"<>]/g, '-');
+      doc.save(`Аналитика_${safeTitle}_${new Date().toLocaleDateString()}.pdf`);
+    } catch (error) {
+      alert("Не удалось создать PDF.");
+    }
+  };
+
   if (loading) return <div className="flex-center" style={{ height: '60vh' }}>Загрузка аналитики...</div>;
   if (!quiz) return <div className="container">Тест не найден.</div>;
 
@@ -142,7 +197,12 @@ const Analytics = ({ session }) => {
           <h2 style={{ fontSize: '2rem', marginBottom: '10px' }}>{quiz.title}</h2>
           <p style={{ opacity: 0.6 }}>Подробная статистика прохождений {isTeacher && quiz.author_id !== profile?.id ? '(Только ваша школа)' : ''}</p>
         </div>
-        <div className="flex-center" style={{ gap: '20px' }}>
+        <div className="flex-center" style={{ gap: '15px' }}>
+          {/* КНОПКА СКАЧИВАНИЯ PDF */}
+          <button onClick={generatePDF} className="flex-center card" style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none', padding: '15px 20px', marginBottom: 0, cursor: 'pointer', border: 'none', fontWeight: 'bold' }}>
+            <Download size={20} style={{ marginRight: '8px' }} /> Отчет PDF
+          </button>
+
           <StatMini label="Участников" value={filteredResults.length} icon={<User size={18} />} />
           <StatMini label="Ср. результат" value={`${avgScore}% (${totalEarnedScore}/${totalPotentialScore})`} icon={<BarChart size={18} />} />
         </div>
