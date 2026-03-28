@@ -5,7 +5,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { ChevronLeft, User, BarChart, Calendar, CheckCircle, XCircle, Mail, Trash2, AlertTriangle, Filter, Download } from 'lucide-react';
 
-const Analytics = ({ session }) => {
+const Analytics = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const quizId = searchParams.get('id');
@@ -18,6 +18,7 @@ const Analytics = ({ session }) => {
   const [profile, setProfile] = useState(null);
   const [quizAuthorRole, setQuizAuthorRole] = useState(null);
 
+  // Структура для фильтров
   const [cities, setCities] = useState([]);
   const [schools, setSchools] = useState([]);
   const [classes, setClasses] = useState([]);
@@ -26,41 +27,46 @@ const Analytics = ({ session }) => {
   const [filterClass, setFilterClass] = useState('all');
 
   useEffect(() => {
-    fetchProfileAndData();
+    fetchProfile();
+    fetchStructure();
+    if (quizId) fetchQuizData();
   }, [quizId]);
 
-  const fetchProfileAndData = async () => {
-    setLoading(true);
-
-    // Получаем профиль текущего юзера
-    let currentUserProfile = null;
-    if (session?.user) {
-      const { data: p } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
+  const fetchProfile = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: p } = await supabase.from('profiles').select('*').eq('id', user.id).single();
       setProfile(p);
-      currentUserProfile = p;
     }
+  };
 
+  const fetchStructure = async () => {
     const { data: c } = await supabase.from('cities').select('*').order('name');
     const { data: s } = await supabase.from('schools').select('*').order('name');
     const { data: cl } = await supabase.from('classes').select('*').order('name');
     if (c) setCities(c); if (s) setSchools(s); if (cl) setClasses(cl);
+  };
 
-    // Получаем тест
+  const fetchQuizData = async () => {
+    setLoading(true);
+    // Получаем тест и роль его автора
     const { data: q } = await supabase.from('quizzes').select('*, profiles!quizzes_author_id_fkey(role)').eq('id', quizId).single();
     if (q) {
       setQuiz(q);
       setQuizAuthorRole(q.profiles?.role);
     }
 
-    // Получаем результаты
-    const { data: r } = await supabase.from('quiz_results').select('*').eq('quiz_id', quizId).order('completed_at', { ascending: false });
+    const { data: r, error } = await supabase.from('quiz_results').select('*').eq('quiz_id', quizId).order('completed_at', { ascending: false });
+
+    if (error) console.error("Ошибка при загрузке результатов:", error);
+
     if (r && r.length > 0) {
       const userIds = r.map(user => user.user_id);
-      const { data: pData } = await supabase.from('profiles').select('*').in('id', userIds);
+      const { data: p } = await supabase.from('profiles').select('*').in('id', userIds);
 
       const combined = r.map(res => ({
         ...res,
-        profiles: pData?.find(pr => pr.id === res.user_id) || null
+        profiles: p?.find(pr => pr.id === res.user_id) || null
       }));
       setResults(combined);
     } else {
@@ -69,20 +75,13 @@ const Analytics = ({ session }) => {
     setLoading(false);
   };
 
-  // ФУНКЦИЯ ЛОГИРОВАНИЯ
-  const logAction = async (action, reason) => {
-    await supabase.from('audit_logs').insert({ admin_id: session.user.id, action, target_id: quizId, reason });
-  };
-
-  const handleDeleteResult = async (resObj) => {
-    const { error } = await supabase.from('quiz_results').delete().eq('id', resObj.id);
+  const handleDeleteResult = async (id) => {
+    const { error } = await supabase.from('quiz_results').delete().eq('id', id);
     if (!error) {
-      const studentName = resObj.profiles ? `${resObj.profiles.last_name || ''} ${resObj.profiles.first_name || ''}`.trim() : 'Неизвестный ученик';
-      await logAction('Удаление результата ученика', `Удален результат ученика "${studentName}" из теста "${quiz?.title}"`);
-      setResults(prev => prev.filter(res => res.id !== resObj.id));
+      setResults(prev => prev.filter(res => res.id !== id));
       setDeletingId(null);
     } else {
-      alert("Недостаточно прав для удаления этого результата.");
+      alert("Недостаточно прав для удаления этого результата: " + error.message);
       setDeletingId(null);
     }
   };
@@ -90,14 +89,16 @@ const Analytics = ({ session }) => {
   const handleDeleteQuiz = async () => {
     const { error } = await supabase.from('quizzes').delete().eq('id', quizId);
     if (!error) {
-      await logAction('Удаление теста', `Удален полностью тест "${quiz?.title}" и вся его статистика`);
       navigate('/catalog');
     } else {
-      alert("Недостаточно прав для удаления этого теста.");
+      alert("Недостаточно прав для удаления этого теста: " + error.message);
       setDeletingQuizMode(false);
     }
   };
 
+  const isTeacher = profile?.role === 'teacher';
+
+  // Логика фильтрации
   const availableSchools = schools.filter(s => filterCity === 'all' || s.city_id === filterCity);
   const availableClasses = classes.filter(c => filterSchool === 'all' || c.school_id === filterSchool);
 
@@ -105,8 +106,8 @@ const Analytics = ({ session }) => {
     const p = res.profiles;
     if (!p) return false;
 
-    // ОГРАНИЧЕНИЕ УЧИТЕЛЯ: видит только свою школу, если это не его личный тест
-    if (profile?.role === 'teacher' && quiz?.author_id !== profile?.id) {
+    // Ограничение видимости для учителя
+    if (isTeacher && quiz?.author_id !== profile?.id) {
       if (p.school_id !== profile?.school_id) return false;
     }
 
@@ -116,10 +117,13 @@ const Analytics = ({ session }) => {
     return true;
   });
 
-  const canDelete = profile?.role === 'creator' || (profile?.role === 'admin' && quizAuthorRole !== 'creator') || profile?.id === quiz?.author_id;
-  const isTeacher = profile?.role === 'teacher';
+  // Логика прав на удаление (Создатель, Сам автор, либо Админ для тестов рангов ниже)
+  const canDelete =
+    profile?.role === 'creator' ||
+    profile?.id === quiz?.author_id ||
+    (profile?.role === 'admin' && quizAuthorRole !== 'creator' && quizAuthorRole !== 'admin');
 
-  // ФУНКЦИЯ ГЕНЕРАЦИИ PDF ОТЧЕТА
+  // Генерация PDF
   const generatePDF = async () => {
     try {
       const doc = new jsPDF();
@@ -134,26 +138,15 @@ const Analytics = ({ session }) => {
       doc.addFileToVFS('Roboto-Regular.ttf', base64Font);
       doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
       doc.setFont('Roboto');
-
       doc.text(`Аналитика теста: ${quiz?.title}`, 20, 20);
 
       const tableData = filteredResults.map(res => {
         const p = res.profiles;
         const hasName = p?.first_name || p?.last_name;
         const displayName = p?.is_anonymous ? 'Анонимный профиль' : (hasName ? `${p.last_name || ''} ${p.first_name || ''}`.trim() : (p?.email || 'Неизвестный ученик'));
+        const institution = [cities.find(c => c.id === p?.city_id)?.name, schools.find(s => s.id === p?.school_id)?.name, classes.find(c => c.id === p?.class_id)?.name].filter(Boolean).join(' / ') || '—';
 
-        const cityName = cities.find(c => c.id === p?.city_id)?.name || '';
-        const schoolName = schools.find(s => s.id === p?.school_id)?.name || '';
-        const className = classes.find(c => c.id === p?.class_id)?.name || '';
-        const institution = [cityName, schoolName, className].filter(Boolean).join(' / ') || '—';
-
-        return [
-          displayName,
-          institution,
-          `${res.score} / ${res.total_questions}`,
-          `${res.first_score} / ${res.total_questions}`,
-          new Date(res.completed_at).toLocaleDateString()
-        ];
+        return [displayName, institution, `${res.score} / ${res.total_questions}`, `${res.first_score} / ${res.total_questions}`, new Date(res.completed_at).toLocaleDateString()];
       });
 
       autoTable(doc, {
@@ -164,7 +157,6 @@ const Analytics = ({ session }) => {
         headStyles: { fontStyle: 'normal' }
       });
 
-      // Очищаем название файла от недопустимых символов
       const safeTitle = quiz?.title.replace(/[/\\?%*:|"<>]/g, '-');
       doc.save(`Аналитика_${safeTitle}_${new Date().toLocaleDateString()}.pdf`);
     } catch (error) {
@@ -197,12 +189,11 @@ const Analytics = ({ session }) => {
           <h2 style={{ fontSize: '2rem', marginBottom: '10px' }}>{quiz.title}</h2>
           <p style={{ opacity: 0.6 }}>Подробная статистика прохождений {isTeacher && quiz.author_id !== profile?.id ? '(Только ваша школа)' : ''}</p>
         </div>
+
         <div className="flex-center" style={{ gap: '15px' }}>
-          {/* КНОПКА СКАЧИВАНИЯ PDF */}
           <button onClick={generatePDF} className="flex-center card" style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none', padding: '15px 20px', marginBottom: 0, cursor: 'pointer', border: 'none', fontWeight: 'bold' }}>
             <Download size={20} style={{ marginRight: '8px' }} /> Отчет PDF
           </button>
-
           <StatMini label="Участников" value={filteredResults.length} icon={<User size={18} />} />
           <StatMini label="Ср. результат" value={`${avgScore}% (${totalEarnedScore}/${totalPotentialScore})`} icon={<BarChart size={18} />} />
         </div>
@@ -225,7 +216,7 @@ const Analytics = ({ session }) => {
         </select>
       </div>
 
-      {/* Успеваемость по вопросам */}
+      {/* Успеваемость по вопросам (Инфографика) */}
       {filteredResults.length > 0 && quiz.content?.questions && (
         <div className="card" style={{ marginBottom: '40px' }}>
           <h3 style={{ marginBottom: '25px', display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -238,8 +229,12 @@ const Analytics = ({ session }) => {
               return (
                 <div key={idx}>
                   <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.9rem' }}>
-                    <span style={{ opacity: 0.8, maxWidth: '80%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{idx + 1}. {q.question}</span>
-                    <span style={{ fontWeight: '700', color: percent > 70 ? '#4ade80' : (percent > 40 ? '#facc15' : '#f87171') }}>{percent}% ({correctAnswers}/{filteredResults.length})</span>
+                    <span style={{ opacity: 0.8, maxWidth: '80%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {idx + 1}. {q.question}
+                    </span>
+                    <span style={{ fontWeight: '700', color: percent > 70 ? '#4ade80' : (percent > 40 ? '#facc15' : '#f87171') }}>
+                      {percent}% ({correctAnswers}/{filteredResults.length})
+                    </span>
                   </div>
                   <div style={{ width: '100%', height: '8px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', overflow: 'hidden' }}>
                     <div style={{ width: `${percent}%`, height: '100%', background: percent > 70 ? '#4ade80' : (percent > 40 ? '#facc15' : '#f87171'), transition: 'width 0.5s ease' }} />
@@ -251,7 +246,7 @@ const Analytics = ({ session }) => {
         </div>
       )}
 
-      {/* Таблица */}
+      {/* Таблица результатов */}
       <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
           <thead style={{ background: 'rgba(0,0,0,0.02)', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
@@ -298,10 +293,12 @@ const Analytics = ({ session }) => {
                       </div>
                     </div>
                   </td>
-                  <td style={{ padding: '20px', fontWeight: 'bold' }}>{res.score} / {res.total_questions}</td>
+                  <td style={{ padding: '20px', fontWeight: 'bold' }}>
+                    {res.score} / {res.total_questions}
+                  </td>
                   <td style={{ padding: '20px' }}>
                     {canDelete && (
-                      <button onClick={() => setDeletingId(res)} style={{ background: 'rgba(255,0,0,0.05)', color: 'red', padding: '8px', borderRadius: '10px', boxShadow: 'none' }}>
+                      <button onClick={() => setDeletingId(res.id)} style={{ background: 'rgba(255,0,0,0.05)', color: 'red', padding: '8px', borderRadius: '10px', boxShadow: 'none' }}>
                         <Trash2 size={18} />
                       </button>
                     )}
@@ -309,16 +306,19 @@ const Analytics = ({ session }) => {
                 </tr>
               );
             })}
+            {filteredResults.length === 0 && <tr><td colSpan="5" style={{ padding: '60px', textAlign: 'center', opacity: 0.5 }}>Прохождений пока нет.</td></tr>}
           </tbody>
         </table>
       </div>
 
+      {/* Модальное окно: удаление результата */}
       {deletingId && (
         <div className="modal-overlay" onClick={() => setDeletingId(null)}>
           <div className="modal-content animate" style={{ width: '400px' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '50px', height: '50px', background: 'rgba(255,0,0,0.1)', color: 'red', borderRadius: '15px', margin: '0 auto 20px' }}><AlertTriangle size={24} /></div>
             <h3 style={{ marginBottom: '10px', textAlign: 'center' }}>Удалить результат?</h3>
-            <div className="grid-2" style={{ gap: '10px', marginTop: '20px' }}>
+            <p style={{ opacity: 0.6, fontSize: '0.9rem', marginBottom: '25px', textAlign: 'center' }}>Это действие необратимо.</p>
+            <div className="grid-2" style={{ gap: '10px' }}>
               <button onClick={() => setDeletingId(null)} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit' }}>Отмена</button>
               <button onClick={() => handleDeleteResult(deletingId)} style={{ background: 'red', color: 'white' }}>Удалить</button>
             </div>
@@ -326,6 +326,7 @@ const Analytics = ({ session }) => {
         </div>
       )}
 
+      {/* Модальное окно: удаление теста */}
       {deletingQuizMode && (
         <div className="modal-overlay" onClick={() => setDeletingQuizMode(false)}>
           <div className="modal-content animate" style={{ width: '400px' }} onClick={e => e.stopPropagation()}>

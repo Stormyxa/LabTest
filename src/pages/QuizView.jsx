@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { CheckCircle, XCircle, ChevronRight, ChevronLeft, RotateCcw, X, AlertTriangle, Book } from 'lucide-react';
+import { CheckCircle, XCircle, ChevronRight, ChevronLeft, RotateCcw, X, AlertTriangle, Book, FileText, ChevronDown, ChevronUp } from 'lucide-react';
 
 const QuizView = ({ session }) => {
   const { id } = useParams();
@@ -15,6 +15,9 @@ const QuizView = ({ session }) => {
   const [loading, setLoading] = useState(true);
   const [showExitModal, setShowExitModal] = useState(false);
   const [startTime] = useState(Date.now());
+
+  // Состояние для отображения списка правильных ответов в конце
+  const [showAnswersList, setShowAnswersList] = useState(false);
 
   useEffect(() => {
     fetchQuiz();
@@ -86,27 +89,87 @@ const QuizView = ({ session }) => {
   if (loading) return <div className="flex-center" style={{ height: '60vh' }}>Загрузка теста...</div>;
   if (!quiz) return <div className="container" style={{ textAlign: 'center', padding: '100px' }}>Тест не найден.</div>;
 
+  // ЭКРАН РЕЗУЛЬТАТОВ
   if (showResult) {
     const correctCount = questions.filter((q, idx) => answers[idx] === q.correctIndex).length;
     const percent = Math.round((correctCount / questions.length) * 100);
     const timeSpent = Math.round((Date.now() - startTime) / 1000);
 
     return (
-      <div className="container flex-center animate" style={{ padding: '60px 20px' }}>
+      <div className="container flex-center animate" style={{ padding: '60px 20px', flexDirection: 'column' }}>
         <div className="card" style={{ maxWidth: '600px', width: '100%', textAlign: 'center' }}>
           <h2 style={{ marginBottom: '20px' }}>Результаты</h2>
           <div style={{ fontSize: '4rem', fontWeight: '800', color: percent >= 50 ? 'var(--primary-color)' : 'red', marginBottom: '10px' }}>
             {percent}%
           </div>
           <p style={{ fontSize: '1.2rem', opacity: 0.8, marginBottom: '30px' }}>
-            Вы ответили правильно на {correctCount} из {questions.length} вопросов за {Math.floor(timeSpent / 60)}м {timeSpent % 60}с.
+            Правильных ответов: {correctCount} из {questions.length} <br />
+            Время: {Math.floor(timeSpent / 60)}м {timeSpent % 60}с.
           </p>
 
-          <div className="flex-center" style={{ gap: '15px' }}>
+          <div className="flex-center" style={{ gap: '15px', flexWrap: 'wrap' }}>
             <button onClick={() => navigate('/catalog')} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>В каталог</button>
             <button onClick={() => window.location.reload()}><RotateCcw size={18} style={{ marginRight: '8px' }} /> Перепройти</button>
+            <button
+              onClick={() => setShowAnswersList(!showAnswersList)}
+              style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none' }}
+            >
+              {showAnswersList ? <ChevronUp size={18} style={{ marginRight: '8px' }} /> : <FileText size={18} style={{ marginRight: '8px' }} />}
+              {showAnswersList ? 'Скрыть разбор' : 'Посмотреть разбор'}
+            </button>
           </div>
         </div>
+
+        {/* БЛОК РАЗБОРА ОТВЕТОВ */}
+        {showAnswersList && (
+          <div className="animate" style={{ maxWidth: '600px', width: '100%', marginTop: '30px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
+            <h3 style={{ textAlign: 'left', marginBottom: '10px', opacity: 0.7 }}>Подробный разбор:</h3>
+            {questions.map((q, idx) => {
+              const userChoice = answers[idx];
+              const isCorrect = userChoice === q.correctIndex;
+
+              return (
+                <div key={idx} className="card" style={{ textAlign: 'left', padding: '25px', background: 'var(--card-bg)', border: `1px solid ${isCorrect ? 'rgba(74, 222, 128, 0.2)' : 'rgba(248, 113, 113, 0.2)'}` }}>
+                  <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
+                    <div style={{
+                      width: '30px', height: '30px', borderRadius: '50%', flexShrink: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      background: isCorrect ? 'rgba(74, 222, 128, 0.1)' : 'rgba(248, 113, 113, 0.1)',
+                      color: isCorrect ? '#4ade80' : '#f87171',
+                      fontWeight: 'bold', fontSize: '0.9rem'
+                    }}>
+                      {idx + 1}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <h4 style={{ margin: '0 0 15px 0', lineHeight: '1.4' }}>{q.question}</h4>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {/* Твой ответ */}
+                        <div style={{ fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ opacity: 0.6 }}>Ваш ответ:</span>
+                          <span style={{ color: isCorrect ? '#4ade80' : '#f87171', fontWeight: '600' }}>
+                            {q.options[userChoice] || 'Пропущено'}
+                          </span>
+                          {isCorrect ? <CheckCircle size={16} color="#4ade80" /> : <XCircle size={16} color="#f87171" />}
+                        </div>
+
+                        {/* Правильный ответ (если ошибся) */}
+                        {!isCorrect && (
+                          <div style={{ fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: 'rgba(74, 222, 128, 0.05)', borderRadius: '10px' }}>
+                            <span style={{ opacity: 0.6 }}>Правильный:</span>
+                            <span style={{ color: '#4ade80', fontWeight: '600' }}>
+                              {q.options[q.correctIndex]}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     );
   }
@@ -126,7 +189,6 @@ const QuizView = ({ session }) => {
         <X size={20} />
       </button>
 
-      {/* ШАПКА ТЕСТА */}
       <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '20px', opacity: 0.6, paddingRight: '50px' }}>
         <span style={{ whiteSpace: 'nowrap', fontSize: '0.9rem', fontWeight: '500' }}>Вопрос {currentIdx + 1} из {questions.length}</span>
 
@@ -160,7 +222,6 @@ const QuizView = ({ session }) => {
         <div style={{ width: `${((currentIdx + 1) / questions.length) * 100}%`, height: '100%', background: 'var(--primary-color)', transition: 'width 0.3s' }} />
       </div>
 
-      {/* КАРТОЧКА ВОПРОСА С МИНИМАЛЬНОЙ ВЫСОТОЙ */}
       <div className="card animate" key={currentIdx} style={{ padding: '40px', minHeight: '450px', display: 'flex', flexDirection: 'column' }}>
         <h2 style={{ marginBottom: '40px', fontSize: '1.7rem', lineHeight: '1.4' }}>{currentQ.question}</h2>
 
@@ -199,7 +260,6 @@ const QuizView = ({ session }) => {
         </div>
       </div>
 
-      {/* КНОПКИ НАВИГАЦИИ С ИСПРАВЛЕННЫМ ВЫРАВНИВАНИЕМ */}
       <div className="flex-center" style={{ justifyContent: 'space-between', marginTop: '30px', gap: '15px' }}>
         <button
           onClick={() => setCurrentIdx(prev => prev - 1)}

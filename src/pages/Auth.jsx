@@ -1,77 +1,100 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Mail, AlertTriangle, Eye, EyeOff } from 'lucide-react';
+import { Mail, AlertTriangle, Eye, EyeOff, Lock } from 'lucide-react';
 
 const Auth = () => {
+  // Режимы: 'login', 'register', 'forgot', 'update'
+  const [authMode, setAuthMode] = useState('login');
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState(''); // Стейт для повторного пароля
+  const [confirmPassword, setConfirmPassword] = useState('');
 
   const [loading, setLoading] = useState(false);
-  const [isRegistering, setIsRegistering] = useState(false);
-
-  // Стейты для видимости паролей (глазки)
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // Стейт для модального окна
   const [modal, setModal] = useState({ isOpen: false, type: 'success', title: '', message: '' });
 
-  // Функция для перевода частых ошибок Supabase на русский
+  // Отлавливаем возвращение пользователя по ссылке из письма для сброса пароля
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setAuthMode('update');
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
   const translateError = (msg) => {
     if (msg.includes('Invalid login credentials')) return 'Неверный email или пароль.';
     if (msg.includes('User already registered')) return 'Пользователь с таким email уже зарегистрирован.';
     if (msg.includes('Password should be at least')) return 'Пароль должен содержать минимум 6 символов.';
     if (msg.includes('Email rate limit exceeded')) return 'Слишком много попыток. Подождите немного и попробуйте снова.';
-    if (msg.includes('заблокирована') || msg.toLowerCase().includes('blacklist')) {
-      return 'Эта почта заблокирована администрацией. Регистрация невозможна.';
-    }
+    if (msg.includes('User not found')) return 'Пользователь с таким email не найден.';
+    if (msg.includes('заблокирована') || msg.toLowerCase().includes('blacklist')) return 'Эта почта заблокирована администрацией. Регистрация невозможна.';
     return msg;
   };
 
   const handleAuth = async (e) => {
     e.preventDefault();
 
-    // Проверка совпадения паролей ПЕРЕД отправкой запроса (только при регистрации)
-    if (isRegistering && password !== confirmPassword) {
-      setModal({
-        isOpen: true,
-        type: 'error',
-        title: 'Ошибка',
-        message: 'Пароли не совпадают. Пожалуйста, проверьте правильность ввода.'
-      });
+    // Проверка совпадения паролей для регистрации и обновления
+    if ((authMode === 'register' || authMode === 'update') && password !== confirmPassword) {
+      setModal({ isOpen: true, type: 'error', title: 'Ошибка', message: 'Пароли не совпадают. Пожалуйста, проверьте правильность ввода.' });
       return;
     }
 
     setLoading(true);
+    let authError = null;
+    let authData = null;
 
-    const { data, error } = isRegistering
-      ? await supabase.auth.signUp({ email, password })
-      : await supabase.auth.signInWithPassword({ email, password });
+    try {
+      if (authMode === 'register') {
+        const { data, error } = await supabase.auth.signUp({ email, password });
+        authData = data; authError = error;
+      }
+      else if (authMode === 'login') {
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        authData = data; authError = error;
+      }
+      else if (authMode === 'forgot') {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: window.location.origin, // Вернет пользователя обратно на сайт
+        });
+        authError = error;
+      }
+      else if (authMode === 'update') {
+        // Обновление пароля после перехода по ссылке из почты
+        const { error } = await supabase.auth.updateUser({ password });
+        authError = error;
+      }
 
-    if (error) {
-      // Показываем ошибку
-      setModal({
-        isOpen: true,
-        type: 'error',
-        title: isRegistering ? 'Ошибка регистрации' : 'Ошибка входа',
-        message: translateError(error.message)
-      });
-    } else if (isRegistering && !data.session) {
-      // Если регистрация успешна, но сессии еще нет (нужно подтвердить почту)
-      setModal({
-        isOpen: true,
-        type: 'success',
-        title: 'Письмо отправлено!',
-        message: `Мы отправили ссылку для подтверждения на адрес ${email}. Пожалуйста, проверьте папку "Входящие" (и "Спам"), чтобы завершить регистрацию.`
-      });
+      if (authError) {
+        setModal({ isOpen: true, type: 'error', title: 'Ошибка', message: translateError(authError.message) });
+      } else {
+        if (authMode === 'register' && !authData?.session) {
+          setModal({ isOpen: true, type: 'success', title: 'Письмо отправлено!', message: `Мы отправили ссылку для подтверждения на адрес ${email}. Пожалуйста, проверьте папку "Входящие" (и "Спам").` });
+          switchMode('login');
+        }
+        else if (authMode === 'forgot') {
+          setModal({ isOpen: true, type: 'success', title: 'Инструкция отправлена!', message: `Если аккаунт с почтой ${email} существует, мы отправили на него ссылку для сброса пароля. Проверьте почту (включая папку "Спам").` });
+          switchMode('login');
+        }
+        else if (authMode === 'update') {
+          setModal({ isOpen: true, type: 'success', title: 'Успешно!', message: 'Ваш пароль был успешно изменен! Сейчас вы будете перенаправлены.' });
+          // Пользователь уже авторизован, основной App.jsx сам сменит экран
+        }
+      }
+    } catch (err) {
+      setModal({ isOpen: true, type: 'error', title: 'Системная ошибка', message: 'Произошла непредвиденная ошибка. Попробуйте позже.' });
     }
 
     setLoading(false);
   };
 
-  const toggleMode = () => {
-    setIsRegistering(!isRegistering);
+  const switchMode = (mode) => {
+    setAuthMode(mode);
     setPassword('');
     setConfirmPassword('');
     setShowPassword(false);
@@ -81,43 +104,57 @@ const Auth = () => {
   return (
     <div className="container flex-center animate" style={{ minHeight: '80vh', position: 'relative' }}>
       <div className="card" style={{ width: '400px' }}>
-        <h2 style={{ marginBottom: '20px', textAlign: 'center' }}>{isRegistering ? 'Регистрация' : 'Вход в платформу'}</h2>
+
+        <h2 style={{ marginBottom: '20px', textAlign: 'center' }}>
+          {authMode === 'register' && 'Регистрация'}
+          {authMode === 'login' && 'Вход в платформу'}
+          {authMode === 'forgot' && 'Восстановление пароля'}
+          {authMode === 'update' && 'Создание нового пароля'}
+        </h2>
+
+        {authMode === 'forgot' && (
+          <p style={{ opacity: 0.7, fontSize: '0.9rem', textAlign: 'center', marginBottom: '20px' }}>
+            Введите вашу электронную почту, и мы отправим вам ссылку для сброса пароля.
+          </p>
+        )}
 
         <form onSubmit={handleAuth} className="flex-center" style={{ flexDirection: 'column', gap: '15px' }}>
-          <input
-            type="email"
-            placeholder="Электронная почта"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            style={{ width: '100%' }}
-          />
 
-          {/* Поле: Основной пароль */}
-          <div style={{ position: 'relative', width: '100%' }}>
+          {/* EMAIL: Показывать везде, кроме режима обновления пароля */}
+          {authMode !== 'update' && (
             <input
-              type={showPassword ? "text" : "password"}
-              placeholder="Пароль"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              type="email"
+              placeholder="Электронная почта"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               required
-              style={{ width: '100%', paddingRight: '45px' }} // Отступ для иконки
+              style={{ width: '100%' }}
             />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              style={{
-                position: 'absolute', right: '5px', top: '50%', transform: 'translateY(-50%)',
-                background: 'transparent', boxShadow: 'none', color: 'inherit', padding: '8px'
-              }}
-              title={showPassword ? "Скрыть пароль" : "Показать пароль"}
-            >
-              {showPassword ? <EyeOff size={18} opacity={0.5} /> : <Eye size={18} opacity={0.5} />}
-            </button>
-          </div>
+          )}
 
-          {/* Поле: Подтверждение пароля (Только при регистрации) */}
-          {isRegistering && (
+          {/* ПАРОЛЬ: Показывать везде, кроме режима "забыл пароль" */}
+          {authMode !== 'forgot' && (
+            <div style={{ position: 'relative', width: '100%' }}>
+              <input
+                type={showPassword ? "text" : "password"}
+                placeholder={authMode === 'update' ? "Новый пароль" : "Пароль"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                style={{ width: '100%', paddingRight: '45px' }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={{ position: 'absolute', right: '5px', top: '50%', transform: 'translateY(-50%)', background: 'transparent', boxShadow: 'none', color: 'inherit', padding: '8px' }}
+              >
+                {showPassword ? <EyeOff size={18} opacity={0.5} /> : <Eye size={18} opacity={0.5} />}
+              </button>
+            </div>
+          )}
+
+          {/* ПОВТОР ПАРОЛЯ: Только при регистрации или обновлении пароля */}
+          {(authMode === 'register' || authMode === 'update') && (
             <div className="animate" style={{ position: 'relative', width: '100%' }}>
               <input
                 type={showConfirmPassword ? "text" : "password"}
@@ -130,34 +167,45 @@ const Auth = () => {
               <button
                 type="button"
                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                style={{
-                  position: 'absolute', right: '5px', top: '50%', transform: 'translateY(-50%)',
-                  background: 'transparent', boxShadow: 'none', color: 'inherit', padding: '8px'
-                }}
-                title={showConfirmPassword ? "Скрыть пароль" : "Показать пароль"}
+                style={{ position: 'absolute', right: '5px', top: '50%', transform: 'translateY(-50%)', background: 'transparent', boxShadow: 'none', color: 'inherit', padding: '8px' }}
               >
                 {showConfirmPassword ? <EyeOff size={18} opacity={0.5} /> : <Eye size={18} opacity={0.5} />}
               </button>
             </div>
           )}
 
+          {/* ССЫЛКА ЗАБЫЛ ПАРОЛЬ */}
+          {authMode === 'login' && (
+            <div style={{ width: '100%', textAlign: 'right', marginTop: '-5px' }}>
+              <span onClick={() => switchMode('forgot')} style={{ fontSize: '0.85rem', color: 'var(--primary-color)', cursor: 'pointer', fontWeight: '500' }}>
+                Забыли пароль?
+              </span>
+            </div>
+          )}
+
+          {/* КНОПКА ОТПРАВКИ */}
           <button type="submit" disabled={loading} style={{ width: '100%', padding: '15px', marginTop: '10px' }}>
-            {loading ? 'Обработка...' : (isRegistering ? 'Создать аккаунт' : 'Войти')}
+            {loading ? 'Обработка...' : (
+              authMode === 'register' ? 'Создать аккаунт' :
+                authMode === 'login' ? 'Войти' :
+                  authMode === 'forgot' ? 'Отправить ссылку' : 'Сохранить новый пароль'
+            )}
           </button>
         </form>
 
-        <p style={{ marginTop: '25px', fontSize: '0.9rem', textAlign: 'center', opacity: 0.7 }}>
-          {isRegistering ? 'Уже есть аккаунт?' : 'Нет аккаунта?'}
-          <span
-            onClick={toggleMode}
-            style={{ color: 'var(--primary-color)', cursor: 'pointer', marginLeft: '5px', fontWeight: '600' }}
-          >
-            {isRegistering ? 'Войти здесь' : 'Регистрация здесь'}
-          </span>
-        </p>
+        {/* НИЖНЯЯ ПАНЕЛЬ С ПЕРЕКЛЮЧЕНИЕМ РЕЖИМОВ */}
+        {authMode !== 'update' && (
+          <div style={{ marginTop: '25px', fontSize: '0.9rem', textAlign: 'center', opacity: 0.7 }}>
+            {authMode === 'login' ? (
+              <>Нет аккаунта? <span onClick={() => switchMode('register')} style={{ color: 'var(--primary-color)', cursor: 'pointer', fontWeight: '600' }}>Регистрация здесь</span></>
+            ) : (
+              <>Вспомнили пароль? <span onClick={() => switchMode('login')} style={{ color: 'var(--primary-color)', cursor: 'pointer', fontWeight: '600' }}>Вернуться ко входу</span></>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Красивое модальное окно для оповещений */}
+      {/* МОДАЛЬНОЕ ОКНО */}
       {modal.isOpen && (
         <div className="modal-overlay" onClick={() => setModal({ ...modal, isOpen: false })}>
           <div className="modal-content animate" style={{ width: '400px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
@@ -166,7 +214,7 @@ const Auth = () => {
               background: modal.type === 'success' ? 'rgba(74, 222, 128, 0.1)' : 'rgba(248, 113, 113, 0.1)',
               color: modal.type === 'success' ? '#4ade80' : '#f87171'
             }}>
-              {modal.type === 'success' ? <Mail size={36} /> : <AlertTriangle size={36} />}
+              {modal.type === 'success' && authMode === 'update' ? <Lock size={36} /> : modal.type === 'success' ? <Mail size={36} /> : <AlertTriangle size={36} />}
             </div>
 
             <h2 style={{ marginBottom: '15px' }}>{modal.title}</h2>
@@ -183,7 +231,7 @@ const Auth = () => {
                 boxShadow: 'none'
               }}
             >
-              {modal.type === 'success' ? 'Понятно, иду проверять' : 'Закрыть'}
+              {modal.type === 'success' ? 'Понятно' : 'Закрыть'}
             </button>
           </div>
         </div>
