@@ -1,55 +1,53 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { User, Mail, Calendar, GraduationCap, CheckCircle, Award, FileText, TrendingUp, Star } from 'lucide-react';
+import { User, Mail, Calendar, GraduationCap, CheckCircle, Award, FileText, TrendingUp, Star, MapPin, Building } from 'lucide-react';
 
 const Profile = ({ session, profile, refreshProfile }) => {
   const location = useLocation();
   const onboardingRef = useRef(null);
-  
+
+  const [cities, setCities] = useState([]);
+  const [schools, setSchools] = useState([]);
   const [classes, setClasses] = useState([]);
+
   const [firstName, setFirstName] = useState(profile?.first_name || '');
   const [lastName, setLastName] = useState(profile?.last_name || '');
   const [patronymic, setPatronymic] = useState(profile?.patronymic || '');
   const [birthDate, setBirthDate] = useState(profile?.birth_date || '');
+
+  const [cityId, setCityId] = useState(profile?.city_id || '');
+  const [schoolId, setSchoolId] = useState(profile?.school_id || '');
   const [classId, setClassId] = useState(profile?.class_id || '');
+
   const [phoneNumber, setPhoneNumber] = useState(profile?.phone_number || '');
   const [showPhone, setShowPhone] = useState(profile?.show_phone_number || false);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState(location.state?.msg || '');
-  
-  const [stats, setStats] = useState({
-    passed: 0,
-    perfect: 0,
-    totalPoints: 0,
-    created: 0
-  });
+
+  const [stats, setStats] = useState({ passed: 0, perfect: 0, totalPoints: 0, created: 0 });
 
   useEffect(() => {
-    fetchClasses();
+    fetchStructure();
     fetchStats();
     if (location.state?.from === '/catalog' && !profile?.is_profile_setup_completed) {
       onboardingRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, []);
 
-  const fetchClasses = async () => {
-    const { data } = await supabase.from('classes').select('*').order('name', { ascending: false });
-    if (data) setClasses(data);
+  const fetchStructure = async () => {
+    const { data: c } = await supabase.from('cities').select('*').order('name');
+    const { data: s } = await supabase.from('schools').select('*').order('name');
+    const { data: cl } = await supabase.from('classes').select('*').order('name');
+
+    if (c) setCities(c);
+    if (s) setSchools(s);
+    if (cl) setClasses(cl);
   };
 
   const fetchStats = async () => {
-    // Passed and Perfect
-    const { data: results } = await supabase
-      .from('quiz_results')
-      .select('score, total_questions, is_passed')
-      .eq('user_id', session.user.id);
-    
-    // Created Quizzes
-    const { count: createdCount } = await supabase
-      .from('quizzes')
-      .select('*', { count: 'exact', head: true })
-      .eq('author_id', session.user.id);
+    const { data: results } = await supabase.from('quiz_results').select('score, total_questions, is_passed').eq('user_id', session.user.id);
+    const { count: createdCount } = await supabase.from('quizzes').select('*', { count: 'exact', head: true }).eq('author_id', session.user.id);
 
     if (results) {
       setStats({
@@ -64,20 +62,12 @@ const Profile = ({ session, profile, refreshProfile }) => {
   const handleUpdateProfile = async (e) => {
     e.preventDefault();
     setLoading(true);
-    
-    const { error } = await supabase
-      .from('profiles')
-      .update({
-        first_name: firstName,
-        last_name: lastName,
-        patronymic: patronymic,
-        birth_date: birthDate,
-        class_id: classId,
-        phone_number: phoneNumber,
-        show_phone_number: showPhone,
-        is_profile_setup_completed: true
-      })
-      .eq('id', session.user.id);
+
+    const { error } = await supabase.from('profiles').update({
+      first_name: firstName, last_name: lastName, patronymic: patronymic, birth_date: birthDate,
+      city_id: cityId || null, school_id: schoolId || null, class_id: classId || null,
+      phone_number: phoneNumber, show_phone_number: showPhone, is_profile_setup_completed: true
+    }).eq('id', session.user.id);
 
     if (error) setMsg(`Ошибка: ${error.message}`);
     else {
@@ -89,7 +79,7 @@ const Profile = ({ session, profile, refreshProfile }) => {
   };
 
   const handlePhoneChange = (e) => {
-    let val = e.target.value.replace(/\D/g, ''); 
+    let val = e.target.value.replace(/\D/g, '');
     if (val.length > 11) val = val.substring(0, 11);
     let masked = '+7 ';
     if (val.startsWith('7') || val.startsWith('8')) val = val.substring(1);
@@ -100,22 +90,21 @@ const Profile = ({ session, profile, refreshProfile }) => {
     setPhoneNumber(masked);
   };
 
+  // Фильтруем школы и классы на основе выбора
+  const availableSchools = schools.filter(s => s.city_id === cityId);
+  const availableClasses = classes.filter(c => c.school_id === schoolId);
   const avatarUrl = `https://api.dicebear.com/7.x/avataaars/svg?seed=${session.user.id}`;
 
   return (
     <div className="container animate" style={{ padding: '40px 20px' }}>
-      {msg && (
-        <div className="card" style={{ marginBottom: '20px', background: 'var(--primary-color)', color: 'white', padding: '15px' }}>
-          {msg}
-        </div>
-      )}
+      {msg && <div className="card" style={{ marginBottom: '20px', background: 'var(--primary-color)', color: 'white', padding: '15px' }}>{msg}</div>}
 
       <div className="grid-2">
         <div className="card flex-center" style={{ flexDirection: 'column', textAlign: 'center' }}>
           <img src={avatarUrl} alt="Avatar" style={{ width: '120px', height: '120px', borderRadius: '50%', marginBottom: '20px', border: '4px solid var(--accent-color)' }} />
           <h2>{profile?.first_name ? `${profile.last_name} ${profile.first_name}` : 'Новый пользователь'}</h2>
           <p style={{ opacity: 0.7, marginBottom: '20px' }}>{profile?.role.toUpperCase()}</p>
-          
+
           <div style={{ width: '100%', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '15px' }}>
             <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px' }}>
               <Mail size={18} /> <span>{session.user.email}</span>
@@ -126,21 +115,23 @@ const Profile = ({ session, profile, refreshProfile }) => {
                   <Calendar size={18} /> <span>{profile.birth_date}</span>
                 </div>
                 <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px' }}>
-                  <GraduationCap size={18} /> <span>{profile.classes?.name || 'Класс не указан'}</span>
+                  <MapPin size={18} /> <span>{cities.find(c => c.id === profile.city_id)?.name || 'Город не указан'}</span>
+                </div>
+                <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px' }}>
+                  <Building size={18} /> <span>{schools.find(s => s.id === profile.school_id)?.name || 'Школа не указана'}</span>
+                </div>
+                <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px' }}>
+                  <GraduationCap size={18} /> <span>{classes.find(c => c.id === profile.class_id)?.name || 'Класс не указан'}</span>
                 </div>
               </>
             )}
           </div>
-          
-          <button 
-            onClick={() => supabase.auth.signOut()} 
-            style={{ marginTop: '30px', width: '100%', background: 'rgba(255,0,0,0.1)', color: 'red' }}
-          >
+
+          <button onClick={() => supabase.auth.signOut()} style={{ marginTop: '30px', width: '100%', background: 'rgba(255,0,0,0.1)', color: 'red' }}>
             Выйти из аккаунта
           </button>
         </div>
 
-        {/* Stats Card */}
         <div className="card">
           <h3 style={{ marginBottom: '20px' }}>Личная статистика</h3>
           <div className="grid-2" style={{ gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
@@ -149,111 +140,76 @@ const Profile = ({ session, profile, refreshProfile }) => {
             <StatBox label="Всего баллов" value={stats.totalPoints} icon={<TrendingUp size={20} />} />
             <StatBox label="Создано тестов" value={stats.created} icon={<FileText size={20} />} />
           </div>
-          
           <div style={{ marginTop: '30px', padding: '15px', background: 'rgba(0,0,0,0.05)', borderRadius: '15px' }}>
             <label className="flex-center" style={{ justifyContent: 'space-between', cursor: 'pointer' }}>
               <span>Скрывать профиль (анонимно)</span>
-              <input 
-                type="checkbox" 
-                checked={profile?.is_anonymous} 
-                onChange={async (e) => {
-                  await supabase.from('profiles').update({ is_anonymous: e.target.checked }).eq('id', session.user.id);
-                  refreshProfile();
-                }}
-                style={{ width: '20px', height: '20px' }}
-              />
+              <input type="checkbox" checked={profile?.is_anonymous} onChange={async (e) => {
+                await supabase.from('profiles').update({ is_anonymous: e.target.checked }).eq('id', session.user.id);
+                refreshProfile();
+              }} style={{ width: '20px', height: '20px' }} />
             </label>
           </div>
         </div>
       </div>
 
       <div ref={onboardingRef} className="card animate" style={{ marginTop: '40px' }}>
-        <h3 style={{ marginBottom: '25px' }}>
-          {profile?.is_profile_setup_completed ? 'Основные данные (только чтение)' : 'Подтверждение данных'}
-        </h3>
-        
+        <h3 style={{ marginBottom: '25px' }}>{profile?.is_profile_setup_completed ? 'Основные данные (только чтение)' : 'Подтверждение данных'}</h3>
+
         <form onSubmit={handleUpdateProfile} style={{ display: 'grid', gap: '20px', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))' }}>
+
+          {/* Личные данные */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <label>Фамилия</label>
-            <input 
-              type="text" 
-              value={lastName} 
-              onChange={(e) => setLastName(e.target.value)} 
-              disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} 
-              placeholder="Иванов" 
-              required 
-            />
+            <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} placeholder="Иванов" required />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <label>Имя</label>
-            <input 
-              type="text" 
-              value={firstName} 
-              onChange={(e) => setFirstName(e.target.value)} 
-              disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} 
-              placeholder="Иван" 
-              required 
-            />
+            <input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} placeholder="Иван" required />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <label>Отчество (необязательно)</label>
-            <input 
-              type="text" 
-              value={patronymic} 
-              onChange={(e) => setPatronymic(e.target.value)} 
-              disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} 
-              placeholder="Иванович" 
-            />
+            <input type="text" value={patronymic} onChange={(e) => setPatronymic(e.target.value)} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} placeholder="Иванович" />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <label>Дата рождения</label>
-            <input 
-              type="date" 
-              value={birthDate} 
-              onChange={(e) => setBirthDate(e.target.value)} 
-              disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} 
-              required 
-            />
+            <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} required />
+          </div>
+
+          {/* Структура: Город, Школа, Класс */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <label>Ваш город</label>
+            <select value={cityId} onChange={(e) => { setCityId(e.target.value); setSchoolId(''); setClassId(''); }} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} required>
+              <option value="">Выберите город...</option>
+              {cities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <label>Ваша школа</label>
+            <select value={schoolId} onChange={(e) => { setSchoolId(e.target.value); setClassId(''); }} disabled={(profile?.is_profile_setup_completed && profile?.role !== 'creator') || !cityId} required>
+              <option value="">Выберите школу...</option>
+              {availableSchools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <label>Ваш класс</label>
-            <select 
-              value={classId} 
-              onChange={(e) => setClassId(e.target.value)} 
-              disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} 
-              required
-            >
+            <select value={classId} onChange={(e) => setClassId(e.target.value)} disabled={(profile?.is_profile_setup_completed && profile?.role !== 'creator') || !schoolId} required>
               <option value="">Выберите класс...</option>
-              {classes.map(c => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
+              {availableClasses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
 
+          {/* Телефон перенесен сюда */}
           {(profile?.role === 'admin' || profile?.role === 'creator') && (
-            <>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <label>Мой номер WhatsApp</label>
-                <input 
-                  type="text" 
-                  value={phoneNumber} 
-                  onChange={handlePhoneChange} 
-                  placeholder="+7 (___) ___-__-__" 
-                />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label>Мой номер WhatsApp</label>
+              <input type="text" value={phoneNumber} onChange={handlePhoneChange} placeholder="+7 (___) ___-__-__" />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px' }}>
+                <input type="checkbox" id="showPhone" checked={showPhone} onChange={(e) => setShowPhone(e.target.checked)} style={{ width: '20px', height: '20px' }} />
+                <label htmlFor="showPhone" style={{ fontSize: '0.85rem' }}>Показывать в разделе "Команда"</label>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', gridColumn: '1 / -1' }}>
-                <input 
-                  type="checkbox" 
-                  id="showPhone" 
-                  checked={showPhone} 
-                  onChange={(e) => setShowPhone(e.target.checked)}
-                  style={{ width: '20px', height: '20px' }}
-                />
-                <label htmlFor="showPhone">Показывать мой номер в разделе "Команда" на главной</label>
-              </div>
-            </>
+            </div>
           )}
-          
+
           {(!profile?.is_profile_setup_completed || profile?.role === 'admin' || profile?.role === 'creator') && (
             <div style={{ gridColumn: '1 / -1', marginTop: '10px' }}>
               <button type="submit" disabled={loading} style={{ width: '100%', padding: '15px' }}>

@@ -142,7 +142,9 @@ const Home = ({ session, profile }) => {
             <div style={{ padding: '15px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '15px', marginBottom: '30px', fontSize: '0.9rem', textAlign: 'left' }}>
               <strong>Ранги платформы:</strong>
               <ul style={{ paddingLeft: '20px', marginTop: '10px' }}>
+                <li><strong>Ученик:</strong> Участие в тестированиях.</li>
                 <li><strong>Редактор:</strong> Создание тестов через JSON.</li>
+                <li><strong>Учитель:</strong> Права редактора и управление учениками своей школы.</li>
                 <li><strong>Админ:</strong> Верификация тестов и управление игроками.</li>
                 <li><strong>Создатель:</strong> Полный технический доступ.</li>
               </ul>

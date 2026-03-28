@@ -2,29 +2,42 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Trophy, Download, Users, School, Filter } from 'lucide-react';
+import { Trophy, Download, Users, School, Filter, MapPin, Building } from 'lucide-react';
 
 const Statistics = ({ session, profile }) => {
   const [stats, setStats] = useState([]);
+
+  const [cities, setCities] = useState([]);
+  const [schools, setSchools] = useState([]);
   const [classes, setClasses] = useState([]);
+
   const [loading, setLoading] = useState(true);
+
+  const [filterCity, setFilterCity] = useState('all');
+  const [filterSchool, setFilterSchool] = useState('all');
   const [filterClass, setFilterClass] = useState('all');
-  const [sortBy, setSortBy] = useState('points'); // 'quizzes' or 'points'
+  const [sortBy, setSortBy] = useState('points');
 
   useEffect(() => {
     fetchData();
-  }, []);
+    // Если зашел учитель, сразу жестко ставим его школу и город в фильтры
+    if (profile?.role === 'teacher') {
+      if (profile.city_id) setFilterCity(profile.city_id);
+      if (profile.school_id) setFilterSchool(profile.school_id);
+    }
+  }, [profile]);
 
   const fetchData = async () => {
     setLoading(true);
-    // Fetch all classes for filter
-    const { data: cData } = await supabase.from('classes').select('*');
-    if (cData) setClasses(cData);
 
-    // Fetch all profiles and their quiz results
+    const { data: c } = await supabase.from('cities').select('*').order('name');
+    const { data: s } = await supabase.from('schools').select('*').order('name');
+    const { data: cl } = await supabase.from('classes').select('*').order('name');
+    if (c) setCities(c); if (s) setSchools(s); if (cl) setClasses(cl);
+
     const { data: pData } = await supabase
       .from('profiles')
-      .select('*, classes(name), quiz_results(score, total_questions, is_passed)');
+      .select('*, quiz_results(score, total_questions, is_passed)');
 
     if (pData) {
       const processed = pData.map(u => {
@@ -33,9 +46,7 @@ const Statistics = ({ session, profile }) => {
           ...u,
           passedQuizzes: results.filter(r => r.is_passed).length,
           totalPoints: results.reduce((acc, curr) => acc + curr.score, 0),
-          avgScore: results.length > 0
-            ? Math.round((results.reduce((acc, curr) => acc + curr.score, 0) / results.reduce((acc, curr) => acc + curr.total_questions, 0)) * 100)
-            : 0
+          avgScore: results.length > 0 ? Math.round((results.reduce((acc, curr) => acc + curr.score, 0) / results.reduce((acc, curr) => acc + curr.total_questions, 0)) * 100) : 0
         };
       });
       setStats(processed);
@@ -43,74 +54,70 @@ const Statistics = ({ session, profile }) => {
     setLoading(false);
   };
 
+  const availableSchools = schools.filter(s => filterCity === 'all' || s.city_id === filterCity);
+  const availableClasses = classes.filter(c => filterSchool === 'all' || c.school_id === filterSchool);
+
   const filteredStats = stats
-    .filter(u => filterClass === 'all' || u.class_id === filterClass)
+    .filter(u => {
+      // 1. ЖЕСТКОЕ ОГРАНИЧЕНИЕ ДЛЯ УЧИТЕЛЯ (видит только учеников своей школы)
+      if (profile?.role === 'teacher' && u.school_id !== profile?.school_id) return false;
+
+      // 2. Стандартные фильтры
+      if (filterCity !== 'all' && u.city_id !== filterCity) return false;
+      if (filterSchool !== 'all' && u.school_id !== filterSchool) return false;
+      if (filterClass !== 'all' && u.class_id !== filterClass) return false;
+      return true;
+    })
     .sort((a, b) => sortBy === 'points' ? b.totalPoints - a.totalPoints : b.passedQuizzes - a.passedQuizzes);
 
-  // Единая функция для определения, показывать имя или нет
   const getDisplayName = (u) => {
     const isMe = u.id === session.user.id;
     const isAdminOrCreator = profile?.role === 'admin' || profile?.role === 'creator';
+    // Учитель также может видеть имена учеников СВОЕЙ школы (это уже отфильтровано выше)
+    const isTeacher = profile?.role === 'teacher';
 
-    // Показываем имя если: профиль не скрыт ИЛИ это админ/создатель ИЛИ это сам пользователь
-    if (!u.is_anonymous || isAdminOrCreator || isMe) {
-      return `${u.last_name || ''} ${u.first_name || ''}`.trim();
-    }
-
-    // Для игроков и редакторов скрываем чужие анонимные профили
+    if (!u.is_anonymous || isAdminOrCreator || isTeacher || isMe) return `${u.last_name || ''} ${u.first_name || ''}`.trim() || 'Без имени';
     return 'Анонимный пользователь';
   };
 
   const generatePDF = async () => {
     try {
       const doc = new jsPDF();
-
-      // 1. Загружаем шрифт Roboto с поддержкой кириллицы
       const fontUrl = 'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.66/fonts/Roboto/Roboto-Regular.ttf';
       const response = await fetch(fontUrl);
       const buffer = await response.arrayBuffer();
-
-      // Конвертируем шрифт для jsPDF
       const bytes = new Uint8Array(buffer);
       let binary = '';
-      for (let i = 0; i < bytes.byteLength; i++) {
-        binary += String.fromCharCode(bytes[i]);
-      }
+      for (let i = 0; i < bytes.byteLength; i++) { binary += String.fromCharCode(bytes[i]); }
       const base64Font = window.btoa(binary);
 
-      // 2. Добавляем шрифт в документ и делаем его активным
       doc.addFileToVFS('Roboto-Regular.ttf', base64Font);
       doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
-      doc.setFont('Roboto'); // Устанавливаем шрифт по умолчанию
+      doc.setFont('Roboto');
 
-      const className = filterClass === 'all'
-        ? 'Все классы'
-        : classes.find(c => c.id === filterClass)?.name || '';
-
-      // Теперь смело пишем по-русски!
-      doc.text(`Отчет по успеваемости: ${className}`, 20, 20);
+      doc.text(`Отчет по успеваемости`, 20, 20);
 
       const tableData = filteredStats.map(u => [
         getDisplayName(u),
-        u.classes?.name || '—',
+        cities.find(c => c.id === u.city_id)?.name || '—',
+        schools.find(s => s.id === u.school_id)?.name || '—',
+        classes.find(c => c.id === u.class_id)?.name || '—',
         u.passedQuizzes,
         u.totalPoints,
         `${u.avgScore}%`
       ]);
 
-      // ВАЖНО: Указываем autoTable использовать наш новый шрифт и отключаем жирность в шапке
       autoTable(doc, {
-        head: [['ФИО', 'Класс', 'Пройдено тестов', 'Всего баллов', 'Ср. %']],
+        head: [['ФИО', 'Город', 'Школа', 'Класс', 'Пройдено', 'Баллы', 'Ср. %']],
         body: tableData,
         startY: 30,
         styles: { font: 'Roboto' },
-        headStyles: { fontStyle: 'normal' } // <-- Вот эта строчка спасет шапку!
+        headStyles: { fontStyle: 'normal' }
       });
 
       doc.save(`Статистика_${new Date().toLocaleDateString()}.pdf`);
     } catch (error) {
-      console.error("Ошибка при генерации PDF:", error);
-      alert("Не удалось создать PDF. Проверьте консоль для деталей.");
+      alert("Не удалось создать PDF.");
     }
   };
 
@@ -120,37 +127,55 @@ const Statistics = ({ session, profile }) => {
     <div className="container animate" style={{ padding: '40px 20px' }}>
       <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '40px', flexWrap: 'wrap', gap: '20px' }}>
         <h2 style={{ fontSize: '2rem' }}>Статистика и Рейтинг</h2>
-        <div className="flex-center" style={{ gap: '15px' }}>
-          {(profile?.role === 'admin' || profile?.role === 'creator' || profile?.role === 'editor') && (
-            <button onClick={generatePDF} style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none' }}>
-              <Download size={18} style={{ marginRight: '8px' }} /> Скачать PDF
-            </button>
-          )}
-          <select
-            value={filterClass}
-            onChange={(e) => setFilterClass(e.target.value)}
-            style={{ width: 'auto' }}
-          >
-            <option value="all">Все классы</option>
-            {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </div>
+        {(profile?.role === 'admin' || profile?.role === 'creator' || profile?.role === 'editor' || profile?.role === 'teacher') && (
+          <button onClick={generatePDF} style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none' }}>
+            <Download size={18} style={{ marginRight: '8px' }} /> Скачать PDF
+          </button>
+        )}
+      </div>
+
+      <div className="card" style={{ marginBottom: '30px', display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <Filter size={20} style={{ opacity: 0.5 }} />
+        <select
+          value={filterCity}
+          onChange={e => { setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all'); }}
+          style={{ width: 'auto', flex: 1, minWidth: '150px' }}
+          disabled={profile?.role === 'teacher'} // Блокируем для учителя
+        >
+          <option value="all">Все города</option>
+          {cities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+
+        <select
+          value={filterSchool}
+          onChange={e => { setFilterSchool(e.target.value); setFilterClass('all'); }}
+          style={{ width: 'auto', flex: 1, minWidth: '150px' }}
+          disabled={profile?.role === 'teacher'} // Блокируем для учителя
+        >
+          <option value="all">Все школы</option>
+          {availableSchools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+
+        <select
+          value={filterClass}
+          onChange={e => setFilterClass(e.target.value)}
+          style={{ width: 'auto', flex: 1, minWidth: '150px' }}
+        >
+          <option value="all">Все классы</option>
+          {availableClasses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
       </div>
 
       <div className="grid-2" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', marginBottom: '40px' }}>
-        <StatSummaryCard icon={<Users size={24} />} label="Всего учеников" value={stats.length} />
-        <StatSummaryCard icon={<School size={24} />} label="Классов" value={classes.length} />
-        <StatSummaryCard icon={<Trophy size={24} />} label="Лидер" value={getDisplayName(filteredStats[0]) || '—'} />
+        <StatSummaryCard icon={<Users size={24} />} label="Всего учеников" value={filteredStats.length} />
+        <StatSummaryCard icon={<School size={24} />} label={profile?.role === 'teacher' ? 'Моя школа' : 'Классов'} value={profile?.role === 'teacher' ? schools.find(s => s.id === profile.school_id)?.name || '—' : availableClasses.length} />
+        <StatSummaryCard icon={<Trophy size={24} />} label="Лидер" value={filteredStats.length > 0 ? getDisplayName(filteredStats[0]) : '—'} />
       </div>
 
       <div className="card" style={{ padding: '0' }}>
         <div style={{ padding: '20px', borderBottom: '1px solid rgba(0,0,0,0.05)', display: 'flex', gap: '20px' }}>
-          <button onClick={() => setSortBy('points')} style={{ padding: '8px 20px', background: sortBy === 'points' ? 'var(--primary-color)' : 'transparent', color: sortBy === 'points' ? 'white' : 'inherit', boxShadow: 'none' }}>
-            По баллам
-          </button>
-          <button onClick={() => setSortBy('quizzes')} style={{ padding: '8px 20px', background: sortBy === 'quizzes' ? 'var(--primary-color)' : 'transparent', color: sortBy === 'quizzes' ? 'white' : 'inherit', boxShadow: 'none' }}>
-            По кол-ву тестов
-          </button>
+          <button onClick={() => setSortBy('points')} style={{ padding: '8px 20px', background: sortBy === 'points' ? 'var(--primary-color)' : 'transparent', color: sortBy === 'points' ? 'white' : 'inherit', boxShadow: 'none' }}>По баллам</button>
+          <button onClick={() => setSortBy('quizzes')} style={{ padding: '8px 20px', background: sortBy === 'quizzes' ? 'var(--primary-color)' : 'transparent', color: sortBy === 'quizzes' ? 'white' : 'inherit', boxShadow: 'none' }}>По кол-ву тестов</button>
         </div>
 
         <div style={{ overflowX: 'auto' }}>
@@ -159,35 +184,25 @@ const Statistics = ({ session, profile }) => {
               <tr>
                 <th style={{ padding: '20px' }}>Место</th>
                 <th style={{ padding: '20px' }}>Ученик</th>
-                <th style={{ padding: '20px' }}>Класс</th>
-                <th style={{ padding: '20px' }}>Пройдено</th>
-                <th style={{ padding: '20px' }}>Всего баллов</th>
-                <th style={{ padding: '20px' }}>Средний %</th>
+                <th style={{ padding: '20px' }}>Город / Школа / Класс</th>
+                <th style={{ padding: '20px' }}>Баллы</th>
               </tr>
             </thead>
             <tbody>
               {filteredStats.map((u, idx) => {
                 const isMe = u.id === session.user.id;
-
                 return (
                   <tr key={u.id} style={{ borderBottom: '1px solid rgba(0,0,0,0.01)', background: isMe ? 'rgba(99, 102, 241, 0.05)' : 'none' }}>
                     <td style={{ padding: '20px' }}>
-                      <div className="flex-center" style={{ width: '30px', height: '30px', borderRadius: '50%', background: idx < 3 ? 'var(--accent-color)' : 'rgba(0,0,0,0.05)', color: idx < 3 ? 'white' : 'inherit', fontSize: '0.8rem', fontWeight: '800' }}>
-                        {idx + 1}
-                      </div>
+                      <div className="flex-center" style={{ width: '30px', height: '30px', borderRadius: '50%', background: idx < 3 ? 'var(--accent-color)' : 'rgba(0,0,0,0.05)', color: idx < 3 ? 'white' : 'inherit', fontSize: '0.8rem', fontWeight: '800' }}>{idx + 1}</div>
                     </td>
-                    <td style={{ padding: '20px', fontWeight: isMe ? '700' : '400' }}>
-                      {/* Используем нашу единую функцию */}
-                      {getDisplayName(u)}
+                    <td style={{ padding: '20px', fontWeight: isMe ? '700' : '400' }}>{getDisplayName(u)}</td>
+                    <td style={{ padding: '20px', fontSize: '0.85rem', opacity: 0.7 }}>
+                      <div>{cities.find(c => c.id === u.city_id)?.name || '—'}</div>
+                      <div>{schools.find(s => s.id === u.school_id)?.name || '—'}</div>
+                      <div style={{ fontWeight: 'bold' }}>{classes.find(c => c.id === u.class_id)?.name || '—'}</div>
                     </td>
-                    <td style={{ padding: '20px', opacity: 0.6 }}>{u.classes?.name || '—'}</td>
-                    <td style={{ padding: '20px' }}>{u.passedQuizzes}</td>
                     <td style={{ padding: '20px', fontWeight: '700', color: 'var(--primary-color)' }}>{u.totalPoints}</td>
-                    <td style={{ padding: '20px' }}>
-                      <div style={{ width: '100px', height: '6px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', overflow: 'hidden' }}>
-                        <div style={{ width: `${u.avgScore}%`, height: '100%', background: u.avgScore >= 50 ? '#4ade80' : '#f87171' }} />
-                      </div>
-                    </td>
                   </tr>
                 );
               })}
@@ -202,10 +217,7 @@ const Statistics = ({ session, profile }) => {
 const StatSummaryCard = ({ icon, label, value }) => (
   <div className="card flex-center" style={{ gap: '20px', justifyContent: 'flex-start' }}>
     <div style={{ padding: '15px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', borderRadius: '15px' }}>{icon}</div>
-    <div>
-      <p style={{ fontSize: '0.8rem', opacity: 0.5 }}>{label}</p>
-      <h3 style={{ fontSize: '1.5rem', margin: 0 }}>{value}</h3>
-    </div>
+    <div><p style={{ fontSize: '0.8rem', opacity: 0.5 }}>{label}</p><h3 style={{ fontSize: '1.5rem', margin: 0 }}>{value}</h3></div>
   </div>
 );
 

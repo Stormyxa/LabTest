@@ -18,7 +18,7 @@ const Editor = ({ session, profile }) => {
   const [deleteId, setDeleteId] = useState(null);
   const [deleteSectionId, setDeleteSectionId] = useState(null);
   const [deleteClassId, setDeleteClassId] = useState(null);
-  const [editSectionLink, setEditSectionLink] = useState(null); // Стейт для редактирования ссылки
+  const [editSectionLink, setEditSectionLink] = useState(null);
 
   const [titles, setTitles] = useState('');
   const [selectedClassId, setSelectedClassId] = useState('');
@@ -28,7 +28,7 @@ const Editor = ({ session, profile }) => {
   const [newClassName, setNewClassName] = useState('');
   const [newSectionName, setNewSectionName] = useState('');
   const [newSectionClassId, setNewSectionClassId] = useState('');
-  const [newSectionBookUrl, setNewSectionBookUrl] = useState(''); // Стейт новой ссылки
+  const [newSectionBookUrl, setNewSectionBookUrl] = useState('');
 
   const [copyFeedbackJson, setCopyFeedbackJson] = useState(false);
   const [copyFeedbackBulk, setCopyFeedbackBulk] = useState(false);
@@ -46,10 +46,14 @@ const Editor = ({ session, profile }) => {
     if (c) setClasses(c);
     if (s) setSections(s);
 
-    let query = supabase.from('quizzes').select('*, quiz_sections(name, class_id, book_url)');
-    if (profile?.role === 'editor') {
+    // Добавляем получение роли автора profiles(role) чтобы Админы знали, можно ли удалять
+    let query = supabase.from('quizzes').select('*, quiz_sections(name, class_id, book_url), profiles(role)');
+
+    // Редактор и Учитель видят только свои тесты в редакторе
+    if (profile?.role === 'editor' || profile?.role === 'teacher') {
       query = query.eq('author_id', session.user.id);
     }
+
     const { data: q } = await query.order('sort_order', { ascending: true }).order('created_at', { ascending: false });
 
     if (q) {
@@ -199,7 +203,7 @@ const Editor = ({ session, profile }) => {
       name: newSectionName,
       class_id: newSectionClassId,
       created_by: session.user.id,
-      book_url: newSectionBookUrl || null // Добавляем ссылку в базу
+      book_url: newSectionBookUrl || null
     });
     if (error) alert(error.message);
     else {
@@ -330,9 +334,7 @@ const Editor = ({ session, profile }) => {
                   </button>
                 </div>
                 <code style={{ fontSize: '0.75rem', opacity: 0.7, whiteSpace: 'pre-wrap' }}>
-                  Нажмите кнопку копирования, измените значения в квадратных скобках и вставьте в качестве промпта любой ИИ модели
-                  (например, <a href="https://gemini.google.com" target="_blank" rel="noopener noreferrer" style={{ color: '#4285f4', textDecoration: 'underline' }}>Gemini</a>).
-                  <br />Для более точных результатов к запросу желательно приложить изображения страниц учебника по указанной теме.
+                  Нажмите кнопку копирования, измените значения в квадратных скобках и вставьте в качестве промпта любой ИИ модели.
                 </code>
               </div>
 
@@ -346,7 +348,8 @@ const Editor = ({ session, profile }) => {
                 </div>
               )}
 
-              {(profile?.role === 'admin' || profile?.role === 'creator') && (
+              {/* ТОЛЬКО СОЗДАТЕЛЬ МОЖЕТ СОЗДАВАТЬ СЕКЦИИ */}
+              {profile?.role === 'creator' && (
                 <div>
                   <h4 style={{ marginBottom: '15px' }}>Секции / Предметы</h4>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -359,12 +362,9 @@ const Editor = ({ session, profile }) => {
                       <input type="text" style={{ flex: 1 }} placeholder="Название предмета" value={newSectionName} onChange={(e) => setNewSectionName(e.target.value)} />
                     </div>
 
-                    {/* Поле для ссылки только для Создателя */}
-                    {profile?.role === 'creator' && (
-                      <div style={{ display: 'flex', gap: '10px' }}>
-                        <input type="url" style={{ flex: 1 }} placeholder="Ссылка на учебник (опционально)" value={newSectionBookUrl} onChange={(e) => setNewSectionBookUrl(e.target.value)} />
-                      </div>
-                    )}
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <input type="url" style={{ flex: 1 }} placeholder="Ссылка на учебник (опционально)" value={newSectionBookUrl} onChange={(e) => setNewSectionBookUrl(e.target.value)} />
+                    </div>
 
                     <button onClick={handleCreateSection} style={{ padding: '10px 20px', width: '100%' }} disabled={!newSectionClassId}>
                       Создать предмет
@@ -379,7 +379,7 @@ const Editor = ({ session, profile }) => {
             {classes.map((cls, cIndex) => {
               const clsSections = sections.filter(s => s.class_id === cls.id);
 
-              if (profile?.role === 'editor' && myQuizzes.filter(q => clsSections.some(s => s.id === q.section_id)).length === 0) {
+              if ((profile?.role === 'editor' || profile?.role === 'teacher') && myQuizzes.filter(q => clsSections.some(s => s.id === q.section_id)).length === 0) {
                 return null;
               }
 
@@ -407,21 +407,21 @@ const Editor = ({ session, profile }) => {
                   {/* SECTIONS */}
                   {clsSections.map((section, sIndex) => {
                     const qs = myQuizzes.filter(q => q.section_id === section.id);
-                    if (qs.length === 0 && profile?.role === 'editor') return null;
+                    if (qs.length === 0 && (profile?.role === 'editor' || profile?.role === 'teacher')) return null;
 
                     return (
                       <div key={section.id} style={{ padding: '25px', borderTop: '1px solid rgba(0,0,0,0.05)' }}>
                         <div className="flex-center" style={{ gap: '15px', marginBottom: '25px', justifyContent: 'space-between' }}>
 
                           <div className="flex-center" style={{ gap: '10px' }}>
-                            {(profile?.role === 'admin' || profile?.role === 'creator') && (
+                            {/* ТОЛЬКО СОЗДАТЕЛЬ сортирует предметы */}
+                            {profile?.role === 'creator' && (
                               <div className="flex-center" style={{ gap: '5px' }}>
                                 <button onClick={() => swapSections(cls.id, sIndex, -1)} disabled={sIndex === 0} style={{ padding: '5px', background: 'rgba(0,0,0,0.05)', boxShadow: 'none' }}><ChevronUp size={16} /></button>
                                 <button onClick={() => swapSections(cls.id, sIndex, 1)} disabled={sIndex === clsSections.length - 1} style={{ padding: '5px', background: 'rgba(0,0,0,0.05)', boxShadow: 'none' }}><ChevronDown size={16} /></button>
                               </div>
                             )}
 
-                            {/* Вывод кнопки с книгой, если есть ссылка. StopPropagation обязателен, чтобы клик не уходил выше */}
                             {section.book_url && (
                               <a
                                 href={section.book_url}
@@ -446,7 +446,6 @@ const Editor = ({ session, profile }) => {
                           </div>
 
                           <div className="flex-center" style={{ gap: '10px' }}>
-                            {/* Кнопка изменения ссылки только для Создателя */}
                             {profile?.role === 'creator' && (
                               <button
                                 onClick={(e) => {
@@ -460,7 +459,8 @@ const Editor = ({ session, profile }) => {
                               </button>
                             )}
 
-                            {(profile?.role === 'admin' || profile?.role === 'creator') && (
+                            {/* ТОЛЬКО СОЗДАТЕЛЬ удаляет предметы */}
+                            {profile?.role === 'creator' && (
                               <button onClick={() => setDeleteSectionId(section.id)} style={{ background: 'transparent', color: 'red', boxShadow: 'none', padding: '5px' }}>
                                 <Trash2 size={18} />
                               </button>
@@ -470,32 +470,43 @@ const Editor = ({ session, profile }) => {
 
                         {/* QUIZZES */}
                         <div className="grid-2">
-                          {qs.map((quiz, qIndex) => (
-                            <div key={quiz.id} className="card" style={{ background: 'rgba(0,0,0,0.02)' }}>
-                              <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '20px' }}>
-                                <div className="flex-center" style={{ gap: '15px' }}>
-                                  {(profile?.role === 'admin' || profile?.role === 'creator') && (
-                                    <div className="flex-center" style={{ flexDirection: 'column', gap: '5px' }}>
-                                      <button onClick={() => swapQuizzes(section.id, qIndex, -1)} disabled={qIndex === 0} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronUp size={20} /></button>
-                                      <button onClick={() => swapQuizzes(section.id, qIndex, 1)} disabled={qIndex === qs.length - 1} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronDown size={20} /></button>
-                                    </div>
-                                  )}
-                                  <div>
-                                    <h4 style={{ fontSize: '1.2rem', margin: 0 }}>{quiz.title}</h4>
-                                    <p style={{ fontSize: '0.8rem', opacity: 0.5 }}>{new Date(quiz.created_at).toLocaleDateString()}</p>
-                                  </div>
-                                </div>
-                                {quiz.is_verified && <CheckCircle size={24} color="#4ade80" title="Верифицирован" />}
-                              </div>
+                          {qs.map((quiz, qIndex) => {
+                            // Проверка прав на удаление теста:
+                            // 1. Создатель (может всё)
+                            // 2. Админ (может удалить, если автор НЕ Создатель)
+                            // 3. Автор этого теста
+                            const isCreator = profile?.role === 'creator';
+                            const isAdminAndNotCreatorQuiz = profile?.role === 'admin' && quiz.profiles?.role !== 'creator';
+                            const isAuthor = profile?.id === quiz.author_id;
+                            const canDeleteQuiz = isCreator || isAdminAndNotCreatorQuiz || isAuthor;
 
-                              <div className="flex-center" style={{ justifyContent: 'flex-end', gap: '10px', marginTop: '15px' }}>
-                                <button onClick={() => navigate(`/analytics?id=${quiz.id}`)} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>Аналитика</button>
-                                {(profile?.role === 'admin' || profile?.role === 'creator' || profile?.id === quiz.author_id) && (
-                                  <button onClick={() => setDeleteId(quiz.id)} style={{ background: 'rgba(255,0,0,0.1)', color: 'red', boxShadow: 'none' }}><Trash2 size={18} /></button>
-                                )}
+                            return (
+                              <div key={quiz.id} className="card" style={{ background: 'rgba(0,0,0,0.02)' }}>
+                                <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '20px' }}>
+                                  <div className="flex-center" style={{ gap: '15px' }}>
+                                    {(profile?.role === 'admin' || profile?.role === 'creator') && (
+                                      <div className="flex-center" style={{ flexDirection: 'column', gap: '5px' }}>
+                                        <button onClick={() => swapQuizzes(section.id, qIndex, -1)} disabled={qIndex === 0} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronUp size={20} /></button>
+                                        <button onClick={() => swapQuizzes(section.id, qIndex, 1)} disabled={qIndex === qs.length - 1} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronDown size={20} /></button>
+                                      </div>
+                                    )}
+                                    <div>
+                                      <h4 style={{ fontSize: '1.2rem', margin: 0 }}>{quiz.title}</h4>
+                                      <p style={{ fontSize: '0.8rem', opacity: 0.5 }}>{new Date(quiz.created_at).toLocaleDateString()}</p>
+                                    </div>
+                                  </div>
+                                  {quiz.is_verified && <CheckCircle size={24} color="#4ade80" title="Верифицирован" />}
+                                </div>
+
+                                <div className="flex-center" style={{ justifyContent: 'flex-end', gap: '10px', marginTop: '15px' }}>
+                                  <button onClick={() => navigate(`/analytics?id=${quiz.id}`)} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>Аналитика</button>
+                                  {canDeleteQuiz && (
+                                    <button onClick={() => setDeleteId(quiz.id)} style={{ background: 'rgba(255,0,0,0.1)', color: 'red', boxShadow: 'none' }}><Trash2 size={18} /></button>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                           {qs.length === 0 && (
                             <div style={{ opacity: 0.5, gridColumn: '1/-1', padding: '20px' }}>В предмете пока нет тестов.</div>
                           )}
@@ -542,7 +553,6 @@ const Editor = ({ session, profile }) => {
         )}
       </div>
 
-      {/* Модалка редактирования URL секции */}
       {editSectionLink && (
         <div className="modal-overlay" onClick={() => setEditSectionLink(null)}>
           <div className="modal-content animate" onClick={e => e.stopPropagation()}>
@@ -568,7 +578,6 @@ const Editor = ({ session, profile }) => {
         </div>
       )}
 
-      {/* Модалки удаления */}
       {deleteId && (
         <div className="modal-overlay" onClick={() => setDeleteId(null)}>
           <div className="modal-content animate modal-content-danger" onClick={e => e.stopPropagation()}>
