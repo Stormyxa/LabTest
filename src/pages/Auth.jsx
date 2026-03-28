@@ -1,12 +1,18 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Mail, AlertTriangle, CheckCircle, X } from 'lucide-react';
+import { Mail, AlertTriangle, Eye, EyeOff } from 'lucide-react';
 
 const Auth = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState(''); // Стейт для повторного пароля
+
   const [loading, setLoading] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
+
+  // Стейты для видимости паролей (глазки)
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // Стейт для модального окна
   const [modal, setModal] = useState({ isOpen: false, type: 'success', title: '', message: '' });
@@ -17,11 +23,26 @@ const Auth = () => {
     if (msg.includes('User already registered')) return 'Пользователь с таким email уже зарегистрирован.';
     if (msg.includes('Password should be at least')) return 'Пароль должен содержать минимум 6 символов.';
     if (msg.includes('Email rate limit exceeded')) return 'Слишком много попыток. Подождите немного и попробуйте снова.';
+    if (msg.includes('заблокирована') || msg.toLowerCase().includes('blacklist')) {
+      return 'Эта почта заблокирована администрацией. Регистрация невозможна.';
+    }
     return msg;
   };
 
   const handleAuth = async (e) => {
     e.preventDefault();
+
+    // Проверка совпадения паролей ПЕРЕД отправкой запроса (только при регистрации)
+    if (isRegistering && password !== confirmPassword) {
+      setModal({
+        isOpen: true,
+        type: 'error',
+        title: 'Ошибка',
+        message: 'Пароли не совпадают. Пожалуйста, проверьте правильность ввода.'
+      });
+      return;
+    }
+
     setLoading(true);
 
     const { data, error } = isRegistering
@@ -49,6 +70,14 @@ const Auth = () => {
     setLoading(false);
   };
 
+  const toggleMode = () => {
+    setIsRegistering(!isRegistering);
+    setPassword('');
+    setConfirmPassword('');
+    setShowPassword(false);
+    setShowConfirmPassword(false);
+  };
+
   return (
     <div className="container flex-center animate" style={{ minHeight: '80vh', position: 'relative' }}>
       <div className="card" style={{ width: '400px' }}>
@@ -63,14 +92,55 @@ const Auth = () => {
             required
             style={{ width: '100%' }}
           />
-          <input
-            type="password"
-            placeholder="Пароль"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            style={{ width: '100%' }}
-          />
+
+          {/* Поле: Основной пароль */}
+          <div style={{ position: 'relative', width: '100%' }}>
+            <input
+              type={showPassword ? "text" : "password"}
+              placeholder="Пароль"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              style={{ width: '100%', paddingRight: '45px' }} // Отступ для иконки
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              style={{
+                position: 'absolute', right: '5px', top: '50%', transform: 'translateY(-50%)',
+                background: 'transparent', boxShadow: 'none', color: 'inherit', padding: '8px'
+              }}
+              title={showPassword ? "Скрыть пароль" : "Показать пароль"}
+            >
+              {showPassword ? <EyeOff size={18} opacity={0.5} /> : <Eye size={18} opacity={0.5} />}
+            </button>
+          </div>
+
+          {/* Поле: Подтверждение пароля (Только при регистрации) */}
+          {isRegistering && (
+            <div className="animate" style={{ position: 'relative', width: '100%' }}>
+              <input
+                type={showConfirmPassword ? "text" : "password"}
+                placeholder="Повторите пароль"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                style={{ width: '100%', paddingRight: '45px', border: password && confirmPassword && password !== confirmPassword ? '2px solid #f87171' : '' }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                style={{
+                  position: 'absolute', right: '5px', top: '50%', transform: 'translateY(-50%)',
+                  background: 'transparent', boxShadow: 'none', color: 'inherit', padding: '8px'
+                }}
+                title={showConfirmPassword ? "Скрыть пароль" : "Показать пароль"}
+              >
+                {showConfirmPassword ? <EyeOff size={18} opacity={0.5} /> : <Eye size={18} opacity={0.5} />}
+              </button>
+            </div>
+          )}
+
           <button type="submit" disabled={loading} style={{ width: '100%', padding: '15px', marginTop: '10px' }}>
             {loading ? 'Обработка...' : (isRegistering ? 'Создать аккаунт' : 'Войти')}
           </button>
@@ -79,7 +149,7 @@ const Auth = () => {
         <p style={{ marginTop: '25px', fontSize: '0.9rem', textAlign: 'center', opacity: 0.7 }}>
           {isRegistering ? 'Уже есть аккаунт?' : 'Нет аккаунта?'}
           <span
-            onClick={() => setIsRegistering(!isRegistering)}
+            onClick={toggleMode}
             style={{ color: 'var(--primary-color)', cursor: 'pointer', marginLeft: '5px', fontWeight: '600' }}
           >
             {isRegistering ? 'Войти здесь' : 'Регистрация здесь'}
