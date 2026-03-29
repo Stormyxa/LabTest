@@ -267,21 +267,28 @@ const QuizCatalog = ({ profile }) => {
                                   const canMove = canMoveQuiz(quiz);
                                   return (
                                     <div key={quiz.id} className="card" style={{ padding: '20px', background: 'var(--card-bg)', boxShadow: 'none' }}>
-                                      <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '15px' }}>
-                                        <div className="flex-center" style={{ gap: '10px' }}>
+                                      <div className="flex-center" style={{ 
+                                        justifyContent: 'space-between', 
+                                        marginBottom: '15px', 
+                                        flexWrap: 'wrap', 
+                                        gap: '10px' 
+                                      }}>
+                                        <div className="flex-center" style={{ gap: '10px', minWidth: '200px', flex: 1 }}>
                                           {canMove && !searchQuery && (
                                             <div className="flex-center" style={{ flexDirection: 'column', gap: '5px' }}>
                                               <button onClick={(e) => swapQuizzes(cls.id, section.id, qIndex, -1, e, quiz)} disabled={qIndex === 0} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronUp size={18} /></button>
                                               <button onClick={(e) => swapQuizzes(cls.id, section.id, qIndex, 1, e, quiz)} disabled={qIndex === section.quizzes.length - 1} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronDown size={18} /></button>
                                             </div>
                                           )}
-                                          <h4 style={{ fontSize: '1.1rem', margin: 0 }}>
+                                          <h4 style={{ fontSize: '1.1rem', margin: 0, lineHeight: '1.4' }}>
                                             {quiz.title}
                                             {quiz.is_verified && <CheckCircle size={16} color="var(--primary-color)" style={{ marginLeft: '5px', display: 'inline' }} />}
                                           </h4>
                                         </div>
-                                        {passState === true && <span style={{ fontSize: '0.75rem', padding: '4px 10px', background: 'rgba(74, 222, 128, 0.1)', color: '#4ade80', borderRadius: '100px', fontWeight: 'bold' }}>Пройдено</span>}
-                                        {passState === false && <span style={{ fontSize: '0.75rem', padding: '4px 10px', background: 'rgba(248, 113, 113, 0.1)', color: '#f87171', borderRadius: '100px', fontWeight: 'bold' }}>Перепройти</span>}
+                                        <div style={{ flexShrink: 0 }}>
+                                          {passState === true && <span style={{ fontSize: '0.75rem', padding: '4px 10px', background: 'rgba(74, 222, 128, 0.1)', color: '#4ade80', borderRadius: '100px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>Пройдено</span>}
+                                          {passState === false && <span style={{ fontSize: '0.75rem', padding: '4px 10px', background: 'rgba(248, 113, 113, 0.1)', color: '#f87171', borderRadius: '100px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>Перепройти</span>}
+                                        </div>
                                       </div>
 
                                       <p style={{ fontSize: '0.8rem', opacity: 0.6, marginBottom: '20px' }}>

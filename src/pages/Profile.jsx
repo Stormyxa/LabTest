@@ -35,6 +35,17 @@ const Profile = ({ session, profile, refreshProfile }) => {
     }
   }, []);
 
+  // Бесшумное включение режима наблюдателя для учителей
+  useEffect(() => {
+    if (profile?.role === 'teacher' && !profile?.is_observer) {
+      const forceObserver = async () => {
+        const { error } = await supabase.from('profiles').update({ is_observer: true }).eq('id', session.user.id);
+        if (!error) refreshProfile();
+      };
+      forceObserver();
+    }
+  }, [profile]);
+
   const fetchStructure = async () => {
     const { data: c } = await supabase.from('cities').select('*').order('name');
     const { data: s } = await supabase.from('schools').select('*').order('name');

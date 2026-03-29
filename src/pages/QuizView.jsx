@@ -283,14 +283,15 @@ const QuizView = ({ session, profile }) => {
         <div style={{ width: `${((currentIdx + 1) / questions.length) * 100}%`, height: '100%', background: 'var(--primary-color)', transition: 'width 0.3s' }} />
       </div>
 
-      <div className="card animate" key={currentIdx} style={{ padding: '40px', minHeight: '450px', display: 'flex', flexDirection: 'column' }}>
+      <div className="card animate" key={currentIdx} style={{ minHeight: '450px', display: 'flex', flexDirection: 'column' }}>
         <h2 style={{ marginBottom: '40px', fontSize: '1.7rem', lineHeight: '1.4' }}>{currentQ.question}</h2>
 
         <div style={{
           display: 'grid',
           gap: '12px',
           marginTop: 'auto',
-          gridTemplateColumns: currentQ.options.some(opt => opt.length > 40) ? '1fr' : 'repeat(auto-fit, minmax(280px, 1fr))'
+          gridTemplateColumns: currentQ.options.some(opt => opt.length > 39) ? '1fr' : 'repeat(auto-fit, minmax(240px, 1fr))',
+          justifyContent: 'center'
         }}>
           {currentQ.options.map((opt, idx) => {
             const isCorrect = idx === currentQ.correctIndex;
@@ -299,8 +300,8 @@ const QuizView = ({ session, profile }) => {
             let borderColor = 'rgba(0,0,0,0.1)';
 
             if (chosen !== undefined) {
-              if (isCorrect) bgColor = 'rgba(74, 222, 128, 0.2)', borderColor = '#4ade80';
-              else if (isSelected) bgColor = 'rgba(248, 113, 113, 0.2)', borderColor = '#f87171';
+              if (isCorrect) (bgColor = 'rgba(74, 222, 128, 0.2)'), (borderColor = '#4ade80');
+              else if (isSelected) (bgColor = 'rgba(248, 113, 113, 0.2)'), (borderColor = '#f87171');
             }
 
             return (
@@ -316,8 +317,8 @@ const QuizView = ({ session, profile }) => {
                 <div className="flex-center" style={{ justifyContent: 'space-between', gap: '10px' }}>
                   <span>{opt}</span>
                   <div style={{ flexShrink: 0 }}>
-                    {chosen !== undefined && isCorrect && <CheckCircle size={22} color="#4ade80" />}
-                    {chosen !== undefined && isSelected && !isCorrect && <XCircle size={22} color="#f87171" />}
+                    {chosen !== undefined && isCorrect && <CheckCircle size={20} color="#4ade80" />}
+                    {chosen !== undefined && isSelected && !isCorrect && <XCircle size={20} color="#f87171" />}
                   </div>
                 </div>
               </button>
