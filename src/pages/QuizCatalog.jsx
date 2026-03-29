@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { Search, Play, CheckCircle, ChevronDown, ChevronUp, Award, Save, BarChart2, Book, Pencil, Eye, AlertTriangle } from 'lucide-react';
+import { Search, Play, CheckCircle, ChevronDown, ChevronUp, Award, Save, BarChart2, Book, Pencil, Eye, AlertTriangle, Plus, Shield, EyeOff, Trash2 } from 'lucide-react';
 
 const QuizCatalog = ({ profile }) => {
   const navigate = useNavigate();
@@ -110,8 +110,56 @@ const QuizCatalog = ({ profile }) => {
     else { setHideModal(null); fetchData(); }
   };
 
+  const handleCreateDivider = async (sId, text = '') => {
+    try {
+      const { data: q } = await supabase.from('quizzes').select('sort_order').eq('section_id', sId).order('sort_order', { ascending: false }).limit(1);
+      const maxOrder = q && q.length > 0 ? q[0].sort_order : -1;
+
+      const { error } = await supabase.from('quizzes').insert({
+        title: text || 'Разделитель',
+        section_id: sId,
+        author_id: profile.id,
+        content: { is_divider: true, divider_text: text },
+        is_verified: true,
+        sort_order: maxOrder + 1
+      });
+
+      if (error) throw error;
+      fetchData();
+    } catch (err) {
+      alert(`Ошибка: ${err.message}`);
+    }
+  };
+
   const handleRename = async () => {
     if (!renamingItem || !newName.trim()) return;
+
+    if (renamingItem.type === 'quiz') {
+      // Find the quiz to get current content
+      let targetQuiz = null;
+      for (const c of classes) {
+        for (const s of c.sections) {
+          const found = s.quizzes.find(q => q.id === renamingItem.id);
+          if (found) { targetQuiz = found; break; }
+        }
+        if (targetQuiz) break;
+      }
+
+      const updateData = { title: newName };
+      if (targetQuiz?.content?.is_divider) {
+        updateData.content = { ...targetQuiz.content, divider_text: newName };
+      }
+
+      const { error } = await supabase.from('quizzes').update(updateData).eq('id', renamingItem.id);
+      if (error) alert('Ошибка переименования: ' + error.message);
+      else {
+        setRenamingItem(null);
+        setNewName('');
+        fetchData();
+      }
+      return;
+    }
+
     const table = renamingItem.type === 'class' ? 'quiz_classes' : 'quiz_sections';
     const { error } = await supabase.from(table).update({ name: newName }).eq('id', renamingItem.id);
     if (error) alert('Ошибка переименования: ' + error.message);
@@ -229,15 +277,33 @@ const QuizCatalog = ({ profile }) => {
                             </a>
                           )}
 
-                            <h4 style={{ fontSize: '1.2rem', margin: 0 }}>{section.name} <span style={{ opacity: 0.5, fontSize: '0.9rem', marginLeft: '5px' }}>({section.quizzes.length})</span></h4>
+                            <h4 style={{ fontSize: '1.2rem', margin: 0 }}>{section.name} <span style={{ opacity: 0.5, fontSize: '0.9rem', marginLeft: '5px' }}>({section.quizzes.filter(q => !q.content?.is_divider).length})</span></h4>
                             {profile?.role === 'creator' && (
-                              <button 
-                                onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: section.id, name: section.name, type: 'section' }); setNewName(section.name); }} 
-                                style={{ background: 'transparent', color: 'var(--text-color)', opacity: 0.4, boxShadow: 'none', padding: '5px' }}
-                                title="Переименовать предмет"
-                              >
-                                <Pencil size={16} />
-                              </button>
+                              <div className="flex-center" style={{ gap: '10px' }}>
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); handleCreateDivider(section.id); }} 
+                                  className="flex-center" 
+                                  style={{ 
+                                    padding: '5px 12px', 
+                                    fontSize: '0.75rem', 
+                                    background: 'rgba(99, 102, 241, 0.1)', 
+                                    color: 'var(--primary-color)', 
+                                    borderRadius: '8px',
+                                    border: 'none',
+                                    boxShadow: 'none',
+                                    fontWeight: 'bold'
+                                  }}
+                                >
+                                  <Plus size={14} style={{ marginRight: '4px' }} /> Разделитель
+                                </button>
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: section.id, name: section.name, type: 'section' }); setNewName(section.name); }} 
+                                  style={{ background: 'transparent', color: 'var(--text-color)', opacity: 0.4, boxShadow: 'none', padding: '5px' }}
+                                  title="Переименовать предмет"
+                                >
+                                  <Pencil size={16} />
+                                </button>
+                              </div>
                             )}
                           </div>
                           {expandedSections[section.id] ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
@@ -250,12 +316,73 @@ const QuizCatalog = ({ profile }) => {
                               <p style={{ opacity: 0.5, textAlign: 'center', margin: 0 }}>Нет добавленных тестов.</p>
                             ) : (
                               <div className="grid-2" style={{ gap: '15px' }}>
-                                {section.quizzes.map((quiz, qIndex) => {
-                                  const passState = passedQuizzes[quiz.id];
-                                  const canEdit = canEditQuiz(quiz);
-                                  const canMove = canMoveQuiz(quiz);
-                                  return (
-                                    <div key={quiz.id} className="card" style={{ padding: '20px', background: 'var(--card-bg)', boxShadow: 'none', display: 'flex', flexDirection: 'column', height: '100%' }}>
+                                {(() => {
+                                  let currentDividerHidden = false;
+                                  return section.quizzes.map((quiz, qIndex) => {
+                                    if (quiz.content?.is_divider) {
+                                      currentDividerHidden = quiz.is_hidden;
+                                      return (
+                                        <div key={quiz.id} className="grid-full" style={{ 
+                                          gridColumn: '1 / -1', 
+                                          margin: '10px 0',
+                                          padding: '10px 0',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '15px'
+                                        }}>
+                                          <div className="flex-center" style={{ gap: '15px' }}>
+                                            {profile?.role === 'creator' && !searchQuery && (
+                                              <div className="flex-center" style={{ flexDirection: 'column', gap: '2px' }}>
+                                                <button onClick={(e) => swapQuizzes(cls.id, section.id, qIndex, -1, e, quiz)} disabled={qIndex === 0} style={{ padding: '0', background: 'transparent', color: 'var(--primary-color)', boxShadow: 'none' }}><ChevronUp size={14} /></button>
+                                                <button onClick={(e) => swapQuizzes(cls.id, section.id, qIndex, 1, e, quiz)} disabled={qIndex === section.quizzes.length - 1} style={{ padding: '0', background: 'transparent', color: 'var(--primary-color)', boxShadow: 'none' }}><ChevronDown size={14} /></button>
+                                              </div>
+                                            )}
+                                            <div style={{ height: '1px', background: 'rgba(99, 102, 241, 0.2)', width: '20px' }} />
+                                          </div>
+                                          <span style={{ fontWeight: 'bold', fontSize: '0.85rem', color: 'var(--primary-color)', opacity: quiz.is_hidden ? 0.5 : 1 }}>
+                                            {quiz.content.divider_text || ''}
+                                            {quiz.is_hidden && <Shield size={14} style={{ marginLeft: '8px', verticalAlign: 'middle' }} />}
+                                          </span>
+                                          <div style={{ height: '1px', background: 'rgba(99, 102, 241, 0.2)', flex: 1 }} />
+                                          {profile?.role === 'creator' && (
+                                            <div className="flex-center" style={{ gap: '5px' }}>
+                                              <button onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: quiz.id, name: quiz.title, type: 'quiz' }); setNewName(quiz.title); }} style={{ background: 'transparent', color: 'var(--primary-color)', opacity: 0.4, padding: '5px', boxShadow: 'none' }}><Pencil size={14} /></button>
+                                              <button onClick={async (e) => { 
+                                                e.stopPropagation(); 
+                                                await supabase.from('quizzes').update({ is_hidden: !quiz.is_hidden }).eq('id', quiz.id); 
+                                                fetchData(); 
+                                              }} style={{ background: 'transparent', color: quiz.is_hidden ? '#ca8a04' : 'inherit', opacity: 0.4, padding: '5px', boxShadow: 'none' }}>
+                                                {quiz.is_hidden ? <Shield size={14} /> : <EyeOff size={14} />}
+                                              </button>
+                                              <button onClick={async (e) => {
+                                                e.stopPropagation();
+                                                if (confirm('Удалить разделитель?')) {
+                                                  await supabase.from('quizzes').delete().eq('id', quiz.id);
+                                                  fetchData();
+                                                }
+                                              }} style={{ background: 'transparent', color: 'red', opacity: 0.4, padding: '5px', boxShadow: 'none' }}><Trash2 size={14} /></button>
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    }
+
+                                    if (currentDividerHidden && profile?.role !== 'creator' && profile?.role !== 'admin') return null;
+
+                                    const passState = passedQuizzes[quiz.id];
+                                    const canEdit = canEditQuiz(quiz);
+                                    const canMove = canMoveQuiz(quiz);
+                                    return (
+                                      <div key={quiz.id} className="card" style={{ 
+                                        padding: '20px', 
+                                        background: 'var(--card-bg)', 
+                                        boxShadow: 'var(--soft-shadow)', 
+                                        display: 'flex', 
+                                        flexDirection: 'column', 
+                                        height: '100%',
+                                        opacity: currentDividerHidden ? 0.5 : 1,
+                                        border: currentDividerHidden ? '1px dashed #ca8a04' : '1px solid rgba(99, 102, 241, 0.1)'
+                                      }}>
                                       <div className="flex-center" style={{ 
                                         justifyContent: 'space-between', 
                                         marginBottom: '15px', 
@@ -298,7 +425,8 @@ const QuizCatalog = ({ profile }) => {
                                       </div>
                                     </div>
                                   );
-                                })}
+                                  });
+                                })()}
                               </div>
                             )}
                           </div>

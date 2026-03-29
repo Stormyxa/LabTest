@@ -43,6 +43,7 @@ const QuizRedactor = () => {
   // Modals
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteQModal, setDeleteQModal] = useState(null);
   const [saving, setSaving] = useState(false);
   const [validErrors, setValidErrors] = useState([]);
@@ -127,22 +128,38 @@ const QuizRedactor = () => {
   const handleSave = async () => {
     if (!validate()) { setShowValidErrors(true); setShowSaveModal(false); return; }
     setSaving(true);
-    const trimmedTitle = title.trim();
-    const { error } = await supabase.from('quizzes').update({
-      title: trimmedTitle,
-      content: { questions }
-    }).eq('id', quizId);
+    try {
+      const trimmedTitle = title.trim();
+      const { error } = await supabase.from('quizzes').update({
+        title: trimmedTitle,
+        content: { questions }
+      }).eq('id', quizId);
+      if (error) throw error;
+      setSavedTitle(trimmedTitle);
+      setTitle(trimmedTitle);
+      setSavedQuestions(deepClone(questions));
+      historyRef.current = [];
+      setCanUndo(false);
+      setShowSaveModal(false);
+      setShowValidErrors(false);
+      setValidErrors([]);
+    } catch (err) {
+      alert(`Ошибка: ${err.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
 
-    if (error) { alert('Ошибка: ' + error.message); setSaving(false); setShowSaveModal(false); return; }
-    setSavedTitle(trimmedTitle);
-    setTitle(trimmedTitle);
-    setSavedQuestions(deepClone(questions));
-    historyRef.current = [];
-    setCanUndo(false);
-    setSaving(false);
-    setShowSaveModal(false);
-    setShowValidErrors(false);
-    setValidErrors([]);
+  const handleDeleteQuiz = async () => {
+    try {
+      setSaving(true);
+      const { error } = await supabase.from('quizzes').delete().eq('id', quizId);
+      if (error) throw error;
+      navigate('/catalog');
+    } catch (err) {
+      alert(`Ошибка удаления: ${err.message}`);
+      setSaving(false);
+    }
   };
 
   const handleCancelChanges = () => {
@@ -268,6 +285,20 @@ const QuizRedactor = () => {
           </button>
           <button onClick={() => navigate(`/analytics?id=${quizId}`)} className="flex-center" style={{ ...ghostBtnStyle, padding: '10px 18px' }}>
             <BarChart2 size={16} style={{ marginRight: '6px' }} /> Аналитика
+          </button>
+          <button 
+            onClick={() => setShowDeleteModal(true)} 
+            className="flex-center" 
+            style={{ 
+              background: 'rgba(239, 68, 68, 0.08)', 
+              color: '#ef4444', 
+              boxShadow: 'none', 
+              padding: '10px', 
+              borderRadius: '12px' 
+            }}
+            title="Удалить тест"
+          >
+            <Trash2 size={20} />
           </button>
         </div>
       </div>
@@ -500,6 +531,37 @@ const QuizRedactor = () => {
             <div className="grid-2" style={{ gap: '10px' }}>
               <button onClick={() => setShowCancelModal(false)} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit' }}>Продолжить правку</button>
               <button onClick={handleCancelChanges} style={{ background: '#facc15', color: '#000' }}>Да, отменить</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* DELETE MODAL */}
+      {showDeleteModal && (
+        <div className="modal-overlay" onClick={() => setShowDeleteModal(false)}>
+          <div className="modal-content animate" style={{ width: '450px' }} onClick={e => e.stopPropagation()}>
+            <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', margin: '0 auto 25px' }}>
+              <Trash2 size={32} />
+            </div>
+            <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>Удалить этот тест?</h2>
+            <p style={{ opacity: 0.6, textAlign: 'center', marginBottom: '30px', lineHeight: '1.6' }}>
+              Вы собираетесь безвозвратно удалить тест <br /><strong>«{title}»</strong>.<br /><br />
+              Это действие нельзя будет отменить.
+            </p>
+            <div className="grid-2" style={{ gap: '15px' }}>
+              <button 
+                onClick={() => setShowDeleteModal(false)}
+                disabled={saving}
+                style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}
+              >
+                Отмена
+              </button>
+              <button 
+                onClick={handleDeleteQuiz}
+                disabled={saving}
+                style={{ background: '#ef4444', color: 'white' }}
+              >
+                {saving ? 'Удаление...' : 'Да, удалить'}
+              </button>
             </div>
           </div>
         </div>

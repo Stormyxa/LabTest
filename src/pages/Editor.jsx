@@ -5,7 +5,7 @@ import {
   Plus, Trash2, FileJson, AlertCircle, TrendingUp,
   CheckCircle, Check, Copy, X, AlertTriangle,
   ChevronUp, ChevronDown, Save, Book, Link as LinkIcon,
-  Pencil, Eye, EyeOff
+  Pencil, Eye, EyeOff, Shield
 } from 'lucide-react';
 
 const Editor = ({ session, profile }) => {
@@ -93,13 +93,16 @@ const Editor = ({ session, profile }) => {
           throw new Error('Массовое создание недоступно.');
         }
 
-        const newQuizzesInsertion = quizzesList.map(q => ({
+        const sectionQuizzes = myQuizzes.filter(q => q.section_id === sectionId);
+        const maxOrder = sectionQuizzes.length > 0 ? Math.max(...sectionQuizzes.map(q => q.sort_order || 0)) : -1;
+
+        const newQuizzesInsertion = quizzesList.map((q, i) => ({
           title: q.title || titles.split('\n')[0] || 'Новый тест',
           section_id: sectionId,
           author_id: session.user.id,
           content: { questions: q.questions },
           is_verified: canBulk,
-          sort_order: 0
+          sort_order: maxOrder + 1 + i
         }));
 
         const { error } = await supabase.from('quizzes').insert(newQuizzesInsertion);
@@ -113,12 +116,16 @@ const Editor = ({ session, profile }) => {
           throw new Error('Массовое создание тестов доступно только Создателям и Админам.');
         }
 
-        const newQuizzes = titleList.map(t => ({
+        const sectionQuizzes = myQuizzes.filter(q => q.section_id === sectionId);
+        const maxOrder = sectionQuizzes.length > 0 ? Math.max(...sectionQuizzes.map(q => q.sort_order || 0)) : -1;
+
+        const newQuizzes = titleList.map((t, i) => ({
           title: t,
           section_id: sectionId,
           author_id: session.user.id,
           content: { questions: [] },
-          is_verified: canBulk
+          is_verified: canBulk,
+          sort_order: maxOrder + 1 + i
         }));
 
         const { error } = await supabase.from('quizzes').insert(newQuizzes);
@@ -135,8 +142,50 @@ const Editor = ({ session, profile }) => {
     }
   };
 
+  const handleCreateDivider = async (sId, text = '') => {
+    try {
+      const sectionQuizzes = myQuizzes.filter(q => q.section_id === sId);
+      const maxOrder = sectionQuizzes.length > 0 ? Math.max(...sectionQuizzes.map(q => q.sort_order || 0)) : -1;
+
+      const { error } = await supabase.from('quizzes').insert({
+        title: text || 'Разделитель',
+        section_id: sId,
+        author_id: session.user.id,
+        content: { is_divider: true, divider_text: text },
+        is_verified: true,
+        sort_order: maxOrder + 1
+      });
+
+      if (error) throw error;
+      fetchData();
+    } catch (err) {
+      alert(`Ошибка: ${err.message}`);
+    }
+  };
+
   const handleRename = async () => {
     if (!renamingItem || !newName.trim()) return;
+
+    if (renamingItem.type === 'quiz') {
+      const quizToRename = myQuizzes.find(q => q.id === renamingItem.id);
+      const isDivider = quizToRename?.content?.is_divider;
+      const updateData = { title: newName };
+      if (isDivider) {
+        updateData.content = { 
+          ...quizToRename.content, 
+          divider_text: newName 
+        };
+      }
+      const { error } = await supabase.from('quizzes').update(updateData).eq('id', renamingItem.id);
+      if (error) alert('Ошибка переименования: ' + error.message);
+      else {
+        setRenamingItem(null);
+        setNewName('');
+        fetchData();
+      }
+      return;
+    }
+
     const table = renamingItem.type === 'class' ? 'quiz_classes' : 'quiz_sections';
     const { error } = await supabase.from(table).update({ name: newName }).eq('id', renamingItem.id);
     if (error) alert('Ошибка переименования: ' + error.message);
@@ -516,9 +565,27 @@ const Editor = ({ session, profile }) => {
 
                             {/* ТОЛЬКО СОЗДАТЕЛЬ удаляет предметы */}
                             {profile?.role === 'creator' && (
-                              <button onClick={() => setDeleteSectionId(section.id)} style={{ background: 'transparent', color: 'red', boxShadow: 'none', padding: '5px' }}>
-                                <Trash2 size={18} />
-                              </button>
+                              <div className="flex-center" style={{ gap: '10px' }}>
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); handleCreateDivider(section.id); }} 
+                                  className="flex-center" 
+                                  style={{ 
+                                    padding: '5px 12px', 
+                                    fontSize: '0.75rem', 
+                                    background: 'rgba(99, 102, 241, 0.1)', 
+                                    color: 'var(--primary-color)', 
+                                    borderRadius: '8px',
+                                    border: 'none',
+                                    boxShadow: 'none',
+                                    fontWeight: 'bold'
+                                  }}
+                                >
+                                  <Plus size={14} style={{ marginRight: '4px' }} /> Разделитель
+                                </button>
+                                <button onClick={() => setDeleteSectionId(section.id)} style={{ background: 'transparent', color: 'red', boxShadow: 'none', padding: '5px' }}>
+                                  <Trash2 size={18} />
+                                </button>
+                              </div>
                             )}
                           </div>
                         </div>
@@ -536,6 +603,51 @@ const Editor = ({ session, profile }) => {
                             const canDeleteQuiz = isCreator || isAdminAndNotCreatorQuiz || isAuthor;
                             const canEdit = isCreator || (profile?.role === 'admin' && quiz.profiles?.role !== 'creator') || isAuthor;
                             const canMove = isCreator || (profile?.role === 'admin') || isAuthor;
+
+                            if (quiz.content?.is_divider) {
+                              return (
+                                <div key={quiz.id} className="grid-full" style={{ 
+                                  gridColumn: '1 / -1', 
+                                  margin: '10px 0',
+                                  padding: '15px 20px',
+                                  background: 'rgba(99, 102, 241, 0.05)',
+                                  border: '1px dashed rgba(99, 102, 241, 0.3)',
+                                  borderRadius: '15px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '15px'
+                                }}>
+                                  <div className="flex-center" style={{ flexDirection: 'column', gap: '5px' }}>
+                                    <button onClick={() => swapQuizzes(section.id, qIndex, -1, quiz)} disabled={qIndex === 0} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronUp size={16} /></button>
+                                    <button onClick={() => swapQuizzes(section.id, qIndex, 1, quiz)} disabled={qIndex === qs.length - 1} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronDown size={16} /></button>
+                                  </div>
+                                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <div style={{ height: '1px', background: 'rgba(99, 102, 241, 0.2)', flex: 1 }} />
+                                    <span style={{ fontWeight: 'bold', fontSize: '0.85rem', color: 'var(--primary-color)' }}>
+                                      {quiz.content.divider_text || 'Разделительная линия'}
+                                    </span>
+                                    <div style={{ height: '1px', background: 'rgba(99, 102, 241, 0.2)', flex: 1 }} />
+                                  </div>
+                                  <div className="flex-center" style={{ gap: '8px' }}>
+                                    <button 
+                                      onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: quiz.id, name: quiz.title, type: 'quiz' }); setNewName(quiz.title); }} 
+                                      style={{ background: 'transparent', color: 'var(--primary-color)', opacity: 0.6, boxShadow: 'none', padding: '5px' }}
+                                    >
+                                      <Pencil size={16} />
+                                    </button>
+                                    <button 
+                                      onClick={() => toggleHideQuiz(quiz)} 
+                                      style={{ background: 'transparent', color: quiz.is_hidden ? '#ca8a04' : 'inherit', opacity: 0.6, boxShadow: 'none', padding: '5px' }}
+                                    >
+                                      {quiz.is_hidden ? <Eye size={16} /> : <EyeOff size={16} />}
+                                    </button>
+                                    <button onClick={() => setDeleteId(quiz.id)} style={{ background: 'transparent', color: 'red', opacity: 0.6, boxShadow: 'none', padding: '5px' }}>
+                                      <Trash2 size={16} />
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            }
 
                             return (
                               <div key={quiz.id} className="card" style={{ 
