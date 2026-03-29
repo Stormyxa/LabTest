@@ -18,6 +18,9 @@ const Analytics = () => {
   const [showEditBlockedModal, setShowEditBlockedModal] = useState(false);
   const [profile, setProfile] = useState(null);
   const [quizAuthorRole, setQuizAuthorRole] = useState(null);
+  
+  const [showObservers, setShowObservers] = useState(false);
+  const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
 
   useEffect(() => {
     if (searchParams.get('blocked')) {
@@ -103,6 +106,18 @@ const Analytics = () => {
     }
   };
 
+  const handleDeleteAllResults = async () => {
+    setLoading(true);
+    const { error } = await supabase.from('quiz_results').delete().eq('quiz_id', quizId);
+    if (!error) {
+      fetchQuizData();
+      setShowDeleteAllModal(false);
+    } else {
+      alert("Ошибка при удалении: " + error.message);
+      setLoading(false);
+    }
+  };
+
   const isTeacher = profile?.role === 'teacher';
 
   // Логика фильтрации
@@ -112,6 +127,9 @@ const Analytics = () => {
   const filteredResults = results.filter(res => {
     const p = res.profiles;
     if (!p) return false;
+
+    // 0. Скрыть наблюдателей если не выбран фильтр
+    if (!showObservers && p.is_observer) return false;
 
     // 0. Всегда показывать свой собственный результат
     if (res.user_id === profile?.id) return true;
@@ -222,21 +240,52 @@ const Analytics = () => {
         </div>
       </div>
 
-      {/* Фильтры */}
-      <div className="card" style={{ marginBottom: '30px', display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'center' }}>
-        <Filter size={20} style={{ opacity: 0.5 }} />
-        <select value={filterCity} onChange={e => { setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all'); }} style={{ width: 'auto', flex: 1, minWidth: '150px' }} disabled={isTeacher}>
-          <option value="all">Все города</option>
-          {cities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
-        <select value={filterSchool} onChange={e => { setFilterSchool(e.target.value); setFilterClass('all'); }} style={{ width: 'auto', flex: 1, minWidth: '150px' }} disabled={isTeacher}>
-          <option value="all">Все школы</option>
-          {availableSchools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
-        <select value={filterClass} onChange={e => setFilterClass(e.target.value)} style={{ width: 'auto', flex: 1, minWidth: '150px' }}>
-          <option value="all">Все классы</option>
-          {availableClasses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
+      {/* Фильтры и инструменты */}
+      <div className="flex-center" style={{ gap: '15px', marginBottom: '30px', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+        <div className="card" style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'center', marginBottom: 0, flex: 1 }}>
+          <Filter size={20} style={{ opacity: 0.5 }} />
+          <select value={filterCity} onChange={e => { setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all'); }} style={{ width: 'auto', flex: 1, minWidth: '150px' }} disabled={isTeacher}>
+            <option value="all">Все города</option>
+            {cities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          <select value={filterSchool} onChange={e => { setFilterSchool(e.target.value); setFilterClass('all'); }} style={{ width: 'auto', flex: 1, minWidth: '150px' }} disabled={isTeacher}>
+            <option value="all">Все школы</option>
+            {availableSchools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+          <select value={filterClass} onChange={e => setFilterClass(e.target.value)} style={{ width: 'auto', flex: 1, minWidth: '150px' }}>
+            <option value="all">Все классы</option>
+            {availableClasses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+
+        <div className="flex-center" style={{ gap: '10px' }}>
+          <button 
+            onClick={() => setShowObservers(!showObservers)} 
+            className="flex-center" 
+            style={{ 
+              background: showObservers ? 'rgba(250, 204, 21, 0.15)' : 'rgba(0,0,0,0.05)', 
+              color: showObservers ? '#ca8a04' : 'inherit', 
+              boxShadow: 'none', 
+              padding: '10px 20px',
+              border: 'none',
+              fontWeight: 'bold'
+            }}
+          >
+            {showObservers ? <Shield size={18} style={{ marginRight: '8px' }} /> : <EyeOff size={18} style={{ marginRight: '8px' }} />}
+            {showObservers ? 'Скрыть наблюдателей' : 'Показать наблюдателей'}
+          </button>
+
+          {canDelete && (
+            <button 
+              onClick={() => setShowDeleteAllModal(true)} 
+              disabled={results.length === 0}
+              className="flex-center" 
+              style={{ background: 'rgba(255,0,0,0.05)', color: 'red', boxShadow: 'none', padding: '10px 20px', fontWeight: 'bold', border: 'none', opacity: results.length === 0 ? 0.4 : 1 }}
+            >
+              <Trash2 size={18} style={{ marginRight: '8px' }} /> Удалить все
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Успеваемость по вопросам (Инфографика) */}
@@ -368,6 +417,24 @@ const Analytics = () => {
         </div>
       )}
 
+      {/* Модальное окно: удаление всех результатов */}
+      {showDeleteAllModal && (
+        <div className="modal-overlay" onClick={() => setShowDeleteAllModal(false)}>
+          <div className="modal-content animate" style={{ width: '450px' }} onClick={e => e.stopPropagation()}>
+            <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(255, 0, 0, 0.1)', color: 'red', margin: '0 auto 25px' }}><AlertTriangle size={32} /></div>
+            <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>Удалить ВСЕ результаты?</h2>
+            <p style={{ opacity: 0.7, marginBottom: '25px', lineHeight: '1.6', textAlign: 'center' }}>
+              Это действие полностью очистит таблицу результатов и сбросит статистику теста.<br />
+              <strong>Внимание: восстановление данных невозможно.</strong>
+            </p>
+            <div className="grid-2" style={{ gap: '15px' }}>
+              <button onClick={() => setShowDeleteAllModal(false)} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit' }}>Отмена</button>
+              <button onClick={handleDeleteAllResults} style={{ background: 'red', color: 'white', fontWeight: 'bold' }}>Да, удалить всё</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Модальное окно: блокировка редактирования */}
       {showEditBlockedModal && (
         <div className="modal-overlay" onClick={() => setShowEditBlockedModal(false)}>
@@ -377,7 +444,7 @@ const Analytics = () => {
             <p style={{ opacity: 0.7, marginBottom: '25px', lineHeight: '1.6', textAlign: 'center' }}>
               Нельзя редактировать тест, если он был пройден хотя бы одним учеником.<br />
               В тесте обнаружено <strong>{results.length}</strong> результатов.<br /><br />
-              <span style={{ fontSize: '0.9rem' }}>Чтобы внести правки, удалите все результаты из таблицы ниже.</span>
+              <span style={{ fontSize: '0.9rem' }}>Чтобы внести правки, удалите все результаты с помощью кнопки <strong>«Удалить все»</strong> ниже.</span>
             </p>
             <div style={{ display: 'flex', justifyContent: 'center' }}>
               <button onClick={() => setShowEditBlockedModal(false)} style={{ background: 'var(--primary-color)', color: 'white', padding: '12px 30px' }}>Понятно</button>
