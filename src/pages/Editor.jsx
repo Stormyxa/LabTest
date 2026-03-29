@@ -38,6 +38,23 @@ const Editor = ({ session, profile }) => {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
 
+  const [expandedClasses, setExpandedClasses] = useState(() => {
+    const saved = localStorage.getItem('editor_expanded_classes');
+    return saved ? JSON.parse(saved) : {};
+  });
+  const [expandedSections, setExpandedSections] = useState(() => {
+    const saved = localStorage.getItem('editor_expanded_sections');
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  useEffect(() => {
+    localStorage.setItem('editor_expanded_classes', JSON.stringify(expandedClasses));
+  }, [expandedClasses]);
+
+  useEffect(() => {
+    localStorage.setItem('editor_expanded_sections', JSON.stringify(expandedSections));
+  }, [expandedSections]);
+
   useEffect(() => {
     fetchData();
   }, [showHidden]);
@@ -93,8 +110,9 @@ const Editor = ({ session, profile }) => {
           throw new Error('Массовое создание недоступно.');
         }
 
-        const sectionQuizzes = myQuizzes.filter(q => q.section_id === sectionId);
-        const maxOrder = sectionQuizzes.length > 0 ? Math.max(...sectionQuizzes.map(q => q.sort_order || 0)) : -1;
+        // --- Ordering Fix: Always fetch current absolute max from DB ---
+        const { data: dbQ } = await supabase.from('quizzes').select('sort_order').eq('section_id', sectionId).order('sort_order', { ascending: false }).limit(1);
+        const maxOrder = dbQ && dbQ.length > 0 ? dbQ[0].sort_order : -1;
 
         const newQuizzesInsertion = quizzesList.map((q, i) => ({
           title: q.title || titles.split('\n')[0] || 'Новый тест',
@@ -144,8 +162,9 @@ const Editor = ({ session, profile }) => {
 
   const handleCreateDivider = async (sId, text = '') => {
     try {
-      const sectionQuizzes = myQuizzes.filter(q => q.section_id === sId);
-      const maxOrder = sectionQuizzes.length > 0 ? Math.max(...sectionQuizzes.map(q => q.sort_order || 0)) : -1;
+      // --- Ordering Fix: Always fetch current absolute max from DB ---
+      const { data: dbQ } = await supabase.from('quizzes').select('sort_order').eq('section_id', sId).order('sort_order', { ascending: false }).limit(1);
+      const maxOrder = dbQ && dbQ.length > 0 ? dbQ[0].sort_order : -1;
 
       const { error } = await supabase.from('quizzes').insert({
         title: text || 'Разделитель',
@@ -473,7 +492,11 @@ const Editor = ({ session, profile }) => {
                 <div key={cls.id} className="card" style={{ padding: '0', overflow: 'hidden', border: '2px solid rgba(0,0,0,0.05)', marginBottom: '30px' }}>
 
                   {/* CLASS HEADER */}
-                  <div className="editor-class-head" style={{ padding: '25px', background: 'rgba(99, 102, 241, 0.08)', borderRadius: '24px 24px 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div 
+                    onClick={() => setExpandedClasses(prev => ({ ...prev, [cls.id]: !prev[cls.id] }))}
+                    className="editor-class-head" 
+                    style={{ padding: '25px', background: 'rgba(99, 102, 241, 0.08)', borderRadius: '24px 24px 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+                  >
                     <div className="flex-center" style={{ gap: '15px', overflow: 'hidden' }}>
                       {profile?.role === 'creator' && (
                         <div className="flex-center" style={{ flexDirection: 'column', gap: '5px', flexShrink: 0 }}>
@@ -497,16 +520,21 @@ const Editor = ({ session, profile }) => {
                         <Trash2 size={24} />
                       </button>
                     )}
+                    {expandedClasses[cls.id] ? <ChevronUp size={24} /> : <ChevronDown size={24} />}
                   </div>
 
                   {/* SECTIONS */}
-                  {clsSections.map((section, sIndex) => {
+                  {expandedClasses[cls.id] && clsSections.map((section, sIndex) => {
                     const qs = myQuizzes.filter(q => q.section_id === section.id);
                     if (qs.length === 0 && (profile?.role === 'editor' || profile?.role === 'teacher')) return null;
 
                     return (
                       <div key={section.id} className="editor-section-container" style={{ padding: '25px', borderTop: '1px solid rgba(0,0,0,0.05)' }}>
-                        <div className="flex-center" style={{ gap: '15px', marginBottom: '25px', justifyContent: 'space-between', overflow: 'hidden' }}>
+                        <div 
+                          onClick={() => setExpandedSections(prev => ({ ...prev, [section.id]: !prev[section.id] }))}
+                          className="flex-center" 
+                          style={{ gap: '15px', marginBottom: expandedSections[section.id] ? '25px' : '0', justifyContent: 'space-between', overflow: 'hidden', cursor: 'pointer' }}
+                        >
 
                           <div className="flex-center" style={{ gap: '10px', overflow: 'hidden' }}>
                             {/* ТОЛЬКО СОЗДАТЕЛЬ сортирует предметы */}
@@ -587,10 +615,12 @@ const Editor = ({ session, profile }) => {
                                 </button>
                               </div>
                             )}
+                            {expandedSections[section.id] ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                           </div>
                         </div>
 
                         {/* QUIZZES */}
+                        {expandedSections[section.id] && (
                         <div className="grid-2">
                           {qs.map((quiz, qIndex) => {
                             // Проверка прав на удаление теста:
@@ -707,6 +737,7 @@ const Editor = ({ session, profile }) => {
                             <div style={{ opacity: 0.5, gridColumn: '1/-1', padding: '20px' }}>В предмете пока нет тестов.</div>
                           )}
                         </div>
+                        )}
                       </div>
                     );
                   })}

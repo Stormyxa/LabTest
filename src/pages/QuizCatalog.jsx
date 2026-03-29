@@ -10,8 +10,22 @@ const QuizCatalog = ({ profile }) => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const [expandedClasses, setExpandedClasses] = useState({});
-  const [expandedSections, setExpandedSections] = useState({});
+  const [expandedClasses, setExpandedClasses] = useState(() => {
+    const saved = localStorage.getItem('catalog_expanded_classes');
+    return saved ? JSON.parse(saved) : {};
+  });
+  const [expandedSections, setExpandedSections] = useState(() => {
+    const saved = localStorage.getItem('catalog_expanded_sections');
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  useEffect(() => {
+    localStorage.setItem('catalog_expanded_classes', JSON.stringify(expandedClasses));
+  }, [expandedClasses]);
+
+  useEffect(() => {
+    localStorage.setItem('catalog_expanded_sections', JSON.stringify(expandedSections));
+  }, [expandedSections]);
 
   const [selectedQuiz, setSelectedQuiz] = useState(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -47,14 +61,6 @@ const QuizCatalog = ({ profile }) => {
         }))
       }));
       setClasses(formatted);
-
-      const initExpC = {}; const initExpS = {};
-      formatted.forEach(cls => {
-        initExpC[cls.id] = true;
-        cls.sections.forEach(sec => initExpS[sec.id] = true);
-      });
-      setExpandedClasses(initExpC);
-      setExpandedSections(initExpS);
     }
     setLoading(false);
   };
