@@ -198,7 +198,7 @@ const QuizCatalog = ({ profile }) => {
             </div>
 
             {expandedClasses[cls.id] && (
-              <div className="animate" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px', background: 'rgba(0,0,0,0.02)' }}>
+              <div className="animate catalog-class-content" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px', background: 'rgba(0,0,0,0.02)' }}>
                 {cls.sections.length === 0 ? (
                   <p style={{ opacity: 0.5, textAlign: 'center', padding: '20px' }}>В этом классе пока нет предметов.</p>
                 ) : (
@@ -207,7 +207,7 @@ const QuizCatalog = ({ profile }) => {
                       {/* SECTION HEAD */}
                     <div 
                       onClick={() => setExpandedSections(prev => ({ ...prev, [section.id]: !prev[section.id] }))}
-                      className="flex-center" 
+                      className="flex-center catalog-section-head" 
                       style={{ padding: '15px 25px', background: 'rgba(99, 102, 241, 0.04)', borderRadius: '20px 20px 0 0', justifyContent: 'space-between', cursor: 'pointer' }}
                     >
                         <div className="flex-center" style={{ gap: '15px' }}>
@@ -245,7 +245,7 @@ const QuizCatalog = ({ profile }) => {
 
                         {/* QUIZZES */}
                         {expandedSections[section.id] && (
-                          <div style={{ padding: '15px', background: 'rgba(0,0,0,0.02)' }}>
+                          <div className="catalog-section-content" style={{ padding: '15px', background: 'rgba(0,0,0,0.02)' }}>
                             {section.quizzes.length === 0 ? (
                               <p style={{ opacity: 0.5, textAlign: 'center', margin: 0 }}>Нет добавленных тестов.</p>
                             ) : (

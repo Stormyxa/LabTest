@@ -538,7 +538,13 @@ const Editor = ({ session, profile }) => {
                             const canMove = isCreator || (profile?.role === 'admin') || isAuthor;
 
                             return (
-                              <div key={quiz.id} className="card" style={{ background: quiz.is_hidden ? 'rgba(255, 200, 0, 0.05)' : 'rgba(0,0,0,0.02)', border: quiz.is_hidden ? '1px dashed #ca8a04' : 'none' }}>
+                              <div key={quiz.id} className="card" style={{ 
+                                background: quiz.is_hidden ? 'rgba(255, 200, 0, 0.05)' : 'rgba(0,0,0,0.02)', 
+                                border: quiz.is_hidden ? '1px dashed #ca8a04' : 'none',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                height: '100%'
+                              }}>
                                 {quiz.is_hidden && (
                                   <div style={{ fontSize: '0.7rem', color: '#ca8a04', marginBottom: '8px', fontWeight: 'bold' }}>👁 СКРЫТЫЙ ТЕСТ</div>
                                 )}
@@ -568,7 +574,7 @@ const Editor = ({ session, profile }) => {
                                   </div>
                                 </div>
 
-                                <div className="flex-center" style={{ justifyContent: 'flex-end', gap: '8px', marginTop: '15px' }}>
+                                <div className="flex-center" style={{ justifyContent: 'flex-end', gap: '8px', marginTop: 'auto', paddingTop: '15px' }}>
                                   {canEdit && (
                                     <button onClick={() => navigate(`/redactor?id=${quiz.id}`)} style={{ background: 'rgba(99,102,241,0.05)', color: 'var(--primary-color)', boxShadow: 'none', padding: '10px' }} title="Редактировать"><Pencil size={18} /></button>
                                   )}
