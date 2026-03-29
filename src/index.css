@@ -172,6 +172,11 @@ select {
     font-size: 0.85rem !important;
   }
 
+  /* Увеличиваем ширину плашек на мобилках за счет уменьшения отступов контейнера */
+  .container {
+    padding: 30px 12px !important;
+  }
+
   /* Уменьшаем отступы внутри карточек для мобилок */
   .card {
     padding: 1.25rem !important;

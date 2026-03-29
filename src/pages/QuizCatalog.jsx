@@ -169,12 +169,12 @@ const QuizCatalog = ({ profile }) => {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '40px' }}>
         {filteredData.map((cls, cIndex) => (
-          <div key={cls.id} className="card" style={{ padding: '0', overflow: 'hidden', border: '1px solid var(--primary-color)' }}>
+          <div key={cls.id} className="card" style={{ padding: '0', overflow: 'hidden', border: '1px solid var(--primary-color)', borderRadius: '24px' }}>
 
             {/* CLASS FOLDER HEAD */}
             <div
               onClick={() => setExpandedClasses(prev => ({ ...prev, [cls.id]: !prev[cls.id] }))}
-              style={{ padding: '20px 30px', background: 'rgba(99, 102, 241, 0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+              style={{ padding: '20px 30px', background: 'rgba(99, 102, 241, 0.08)', borderRadius: '24px 24px 0 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
             >
               <div className="flex-center" style={{ gap: '15px' }}>
                 {profile?.role === 'creator' && !searchQuery && (
@@ -198,47 +198,36 @@ const QuizCatalog = ({ profile }) => {
             </div>
 
             {expandedClasses[cls.id] && (
-              <div style={{ padding: '20px' }}>
+              <div className="animate" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px', background: 'rgba(0,0,0,0.02)' }}>
                 {cls.sections.length === 0 ? (
                   <p style={{ opacity: 0.5, textAlign: 'center', padding: '20px' }}>В этом классе пока нет предметов.</p>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                    {cls.sections.map((section, sIndex) => (
-                      <div key={section.id} style={{ border: '1px solid rgba(0,0,0,0.05)', borderRadius: '15px', overflow: 'hidden' }}>
-
-                        {/* SECTION HEAD */}
-                        <div
-                          onClick={() => setExpandedSections(prev => ({ ...prev, [section.id]: !prev[section.id] }))}
-                          style={{ padding: '15px 20px', background: 'var(--card-bg)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
-                        >
-                          <div className="flex-center" style={{ gap: '15px' }}>
-                            {(profile?.role === 'admin' || profile?.role === 'creator') && !searchQuery && (
-                              <div className="flex-center" style={{ gap: '5px' }}>
-                                <button onClick={(e) => swapSections(cls.id, sIndex, -1, e)} disabled={sIndex === 0} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronUp size={16} /></button>
-                                <button onClick={(e) => swapSections(cls.id, sIndex, 1, e)} disabled={sIndex === cls.sections.length - 1} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronDown size={16} /></button>
-                              </div>
-                            )}
-
-                            {/* Вывод кнопки с учебником, если ссылка добавлена (stopPropagation предотвращает сворачивание) */}
-                            {section.book_url && (
-                              <a
-                                href={section.book_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={(e) => e.stopPropagation()}
-                                style={{
-                                  padding: '5px',
-                                  background: 'var(--primary-color)',
-                                  color: 'white',
-                                  borderRadius: '8px',
-                                  display: 'flex',
-                                  alignItems: 'center'
-                                }}
-                                title="Открыть учебник"
-                              >
-                                <Book size={16} />
-                              </a>
-                            )}
+                  cls.sections.map((section, sIndex) => (
+                    <div key={section.id} className="card" style={{ padding: '0', overflow: 'hidden', border: '1px solid rgba(0,0,0,0.05)', borderRadius: '20px' }}>
+                      {/* SECTION HEAD */}
+                    <div 
+                      onClick={() => setExpandedSections(prev => ({ ...prev, [section.id]: !prev[section.id] }))}
+                      className="flex-center" 
+                      style={{ padding: '15px 25px', background: 'rgba(99, 102, 241, 0.04)', borderRadius: '20px 20px 0 0', justifyContent: 'space-between', cursor: 'pointer' }}
+                    >
+                        <div className="flex-center" style={{ gap: '15px' }}>
+                          {(profile?.role === 'admin' || profile?.role === 'creator') && !searchQuery && (
+                            <div className="flex-center" style={{ gap: '5px' }}>
+                              <button onClick={(e) => swapSections(cls.id, sIndex, -1, e)} disabled={sIndex === 0} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronUp size={16} /></button>
+                              <button onClick={(e) => swapSections(cls.id, sIndex, 1, e)} disabled={sIndex === cls.sections.length - 1} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronDown size={16} /></button>
+                            </div>
+                          )}
+                          {section.book_url && (
+                            <a
+                              href={section.book_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              style={{ padding: '5px', background: 'var(--primary-color)', color: 'white', borderRadius: '8px', display: 'flex', alignItems: 'center' }}
+                            >
+                              <Book size={16} />
+                            </a>
+                          )}
 
                             <h4 style={{ fontSize: '1.2rem', margin: 0 }}>{section.name} <span style={{ opacity: 0.5, fontSize: '0.9rem', marginLeft: '5px' }}>({section.quizzes.length})</span></h4>
                             {profile?.role === 'creator' && (
@@ -266,7 +255,7 @@ const QuizCatalog = ({ profile }) => {
                                   const canEdit = canEditQuiz(quiz);
                                   const canMove = canMoveQuiz(quiz);
                                   return (
-                                    <div key={quiz.id} className="card" style={{ padding: '20px', background: 'var(--card-bg)', boxShadow: 'none' }}>
+                                    <div key={quiz.id} className="card" style={{ padding: '20px', background: 'var(--card-bg)', boxShadow: 'none', display: 'flex', flexDirection: 'column', height: '100%' }}>
                                       <div className="flex-center" style={{ 
                                         justifyContent: 'space-between', 
                                         marginBottom: '15px', 
@@ -286,8 +275,8 @@ const QuizCatalog = ({ profile }) => {
                                           </h4>
                                         </div>
                                         <div style={{ flexShrink: 0 }}>
-                                          {passState === true && <span style={{ fontSize: '0.75rem', padding: '4px 10px', background: 'rgba(74, 222, 128, 0.1)', color: '#4ade80', borderRadius: '100px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>Пройдено</span>}
-                                          {passState === false && <span style={{ fontSize: '0.75rem', padding: '4px 10px', background: 'rgba(248, 113, 113, 0.1)', color: '#f87171', borderRadius: '100px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>Перепройти</span>}
+                                          {passState === true && <span style={{ fontSize: '0.8rem', padding: '6px 16px', background: 'rgba(74, 222, 128, 0.1)', color: '#4ade80', borderRadius: '100px', fontWeight: 'bold', whiteSpace: 'nowrap', display: 'inline-block', minWidth: '95px', textAlign: 'center' }}>Пройдено</span>}
+                                          {passState === false && <span style={{ fontSize: '0.8rem', padding: '6px 16px', background: 'rgba(248, 113, 113, 0.1)', color: '#f87171', borderRadius: '100px', fontWeight: 'bold', whiteSpace: 'nowrap', display: 'inline-block', minWidth: '95px', textAlign: 'center' }}>Перепройти</span>}
                                         </div>
                                       </div>
 
@@ -295,7 +284,7 @@ const QuizCatalog = ({ profile }) => {
                                         Автор: {quiz.profiles?.last_name} {quiz.profiles?.first_name}
                                       </p>
 
-                                      <div className="flex-center" style={{ justifyContent: 'flex-end', gap: '8px', flexWrap: 'wrap' }}>
+                                      <div className="flex-center" style={{ justifyContent: 'flex-end', gap: '8px', flexWrap: 'wrap', marginTop: 'auto' }}>
                                         {canEdit && (
                                           <button onClick={() => navigate(`/redactor?id=${quiz.id}`)} style={{ padding: '8px', background: 'rgba(99,102,241,0.08)', color: 'var(--primary-color)', boxShadow: 'none', borderRadius: '10px' }} title="Редактировать"><Pencil size={15} /></button>
                                         )}
@@ -314,9 +303,8 @@ const QuizCatalog = ({ profile }) => {
                             )}
                           </div>
                         )}
-                      </div>
-                    ))}
-                  </div>
+                    </div>
+                  ))
                 )}
               </div>
             )}

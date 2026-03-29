@@ -290,8 +290,9 @@ const QuizView = ({ session, profile }) => {
           display: 'grid',
           gap: '12px',
           marginTop: 'auto',
-          gridTemplateColumns: currentQ.options.some(opt => opt.length > 39) ? '1fr' : 'repeat(auto-fit, minmax(240px, 1fr))',
-          justifyContent: 'center'
+          gridTemplateColumns: currentQ.options.some(opt => opt.length > 39) ? '1fr' : 'repeat(auto-fit, minmax(320px, 1fr))',
+          justifyContent: 'center',
+          alignItems: 'stretch'
         }}>
           {currentQ.options.map((opt, idx) => {
             const isCorrect = idx === currentQ.correctIndex;
@@ -311,7 +312,8 @@ const QuizView = ({ session, profile }) => {
                 style={{
                   textAlign: 'left', background: bgColor, color: 'var(--text-color)',
                   border: `2px solid ${borderColor}`, padding: '18px 25px', borderRadius: '18px',
-                  fontSize: '1.05rem', position: 'relative', boxShadow: 'none', transition: 'all 0.2s'
+                  fontSize: '1.05rem', position: 'relative', boxShadow: 'none', transition: 'all 0.2s',
+                  height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center'
                 }}
               >
                 <div className="flex-center" style={{ justifyContent: 'space-between', gap: '10px' }}>
