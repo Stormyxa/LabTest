@@ -157,15 +157,18 @@ const Profile = ({ session, profile, refreshProfile }) => {
               </div>
               <button
                 onClick={() => setShowObserverModal(true)}
-                style={{ padding: '6px 15px', background: profile?.is_observer ? 'rgba(0,0,0,0.05)' : 'var(--primary-color)', color: profile?.is_observer ? 'inherit' : 'white', fontSize: '0.8rem', boxShadow: 'none' }}
+                disabled={profile?.role === 'teacher'}
+                style={{ padding: '6px 15px', background: profile?.is_observer ? 'rgba(0,0,0,0.05)' : 'var(--primary-color)', color: profile?.is_observer ? 'inherit' : 'white', fontSize: '0.8rem', boxShadow: 'none', opacity: profile?.role === 'teacher' ? 0.5 : 1 }}
               >
                 {profile?.is_observer ? 'Выключить' : 'Включить'}
               </button>
             </div>
             <p style={{ fontSize: '0.75rem', opacity: 0.6, margin: 0, lineHeight: '1.4' }}>
-              {profile?.is_observer
-                ? 'Вы скрыты из общего рейтинга и статистики региона. Ваши результаты не влияют на показатели школы.'
-                : 'Ваши результаты учитываются в глобальном рейтинге учеников и статистике вашего учебного заведения.'}
+              {profile?.role === 'teacher'
+                ? 'Для учителей этот режим включен принудительно. Ваши личные результаты не отображаются в рейтингах.'
+                : profile?.is_observer
+                  ? 'Вы скрыты из общего рейтинга и статистики региона. Ваши результаты не влияют на показатели школы.'
+                  : 'Ваши результаты учитываются в глобальном рейтинге учеников и статистике вашего учебного заведения.'}
             </p>
           </div>
         </div>
@@ -235,14 +238,14 @@ const Profile = ({ session, profile, refreshProfile }) => {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <label>Ваша школа</label>
-            <select value={schoolId} onChange={(e) => { setSchoolId(e.target.value); setClassId(''); }} disabled={(profile?.is_profile_setup_completed && profile?.role !== 'creator') || !cityId} required>
+            <select value={schoolId} onChange={(e) => { setSchoolId(e.target.value); setClassId(''); }} disabled={(profile?.is_profile_setup_completed && profile?.role !== 'creator') || (profile?.role === 'teacher' && profile?.school_id) || !cityId} required>
               <option value="">Выберите школу...</option>
               {availableSchools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <label>Ваш класс</label>
-            <select value={classId} onChange={(e) => setClassId(e.target.value)} disabled={(profile?.is_profile_setup_completed && profile?.role !== 'creator') || !schoolId} required>
+            <select value={classId} onChange={(e) => setClassId(e.target.value)} disabled={(profile?.is_profile_setup_completed && profile?.role !== 'creator') || !schoolId}>
               <option value="">Выберите класс...</option>
               {availableClasses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>

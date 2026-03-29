@@ -25,6 +25,8 @@ const Editor = ({ session, profile }) => {
   const [selectedClassId, setSelectedClassId] = useState('');
   const [sectionId, setSectionId] = useState('');
   const [jsonInput, setJsonInput] = useState('');
+  const [renamingItem, setRenamingItem] = useState(null); // { id, name, type: 'class' | 'section' }
+  const [newName, setNewName] = useState('');
 
   const [newClassName, setNewClassName] = useState('');
   const [newSectionName, setNewSectionName] = useState('');
@@ -49,7 +51,7 @@ const Editor = ({ session, profile }) => {
     if (s) setSections(s);
 
     // Добавляем получение роли автора profiles(role) чтобы Админы знали, можно ли удалять
-    let query = supabase.from('quizzes').select('*, quiz_sections(name, class_id, book_url), profiles(role)');
+    let query = supabase.from('quizzes').select('*, quiz_sections(name, class_id, book_url), profiles(role, first_name, last_name)');
 
     // Редактор и Учитель видят только свои тесты в редакторе
     if (profile?.role === 'editor' || profile?.role === 'teacher') {
@@ -130,6 +132,18 @@ const Editor = ({ session, profile }) => {
       setSelectedClassId('');
     } catch (err) {
       alert(`Ошибка: ${err.message}`);
+    }
+  };
+
+  const handleRename = async () => {
+    if (!renamingItem || !newName.trim()) return;
+    const table = renamingItem.type === 'class' ? 'quiz_classes' : 'quiz_sections';
+    const { error } = await supabase.from(table).update({ name: newName }).eq('id', renamingItem.id);
+    if (error) alert('Ошибка переименования: ' + error.message);
+    else {
+      setRenamingItem(null);
+      setNewName('');
+      fetchData();
     }
   };
 
@@ -419,6 +433,15 @@ const Editor = ({ session, profile }) => {
                         </div>
                       )}
                       <h2 style={{ fontSize: '1.6rem', margin: 0, color: 'var(--primary-color)' }}>{cls.name}</h2>
+                      {profile?.role === 'creator' && (
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: cls.id, name: cls.name, type: 'class' }); setNewName(cls.name); }} 
+                          style={{ background: 'transparent', color: 'var(--primary-color)', opacity: 0.5, boxShadow: 'none', padding: '5px' }}
+                          title="Переименовать класс"
+                        >
+                          <Pencil size={18} />
+                        </button>
+                      )}
                     </div>
                     {profile?.role === 'creator' && (
                       <button onClick={() => setDeleteClassId(cls.id)} style={{ background: 'transparent', color: 'red', boxShadow: 'none' }} title="Удалить класс">
@@ -466,6 +489,15 @@ const Editor = ({ session, profile }) => {
                             )}
 
                             <h3 style={{ fontSize: '1.3rem', margin: 0, opacity: 0.9 }}>{section.name}</h3>
+                            {profile?.role === 'creator' && (
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: section.id, name: section.name, type: 'section' }); setNewName(section.name); }} 
+                                style={{ background: 'transparent', color: 'var(--text-color)', opacity: 0.4, boxShadow: 'none', padding: '5px' }}
+                                title="Переименовать предмет"
+                              >
+                                <Pencil size={16} />
+                              </button>
+                            )}
                           </div>
 
                           <div className="flex-center" style={{ gap: '10px' }}>
@@ -520,7 +552,15 @@ const Editor = ({ session, profile }) => {
                                     )}
                                     <div>
                                       <h4 style={{ fontSize: '1.2rem', margin: 0, opacity: quiz.is_hidden ? 0.7 : 1 }}>{quiz.title}</h4>
-                                      <p style={{ fontSize: '0.8rem', opacity: 0.5 }}>{new Date(quiz.created_at).toLocaleDateString()}</p>
+                                      <div style={{ display: 'flex', gap: '8px', fontSize: '0.75rem', opacity: 0.5 }}>
+                                        <span>{new Date(quiz.created_at).toLocaleDateString()}</span>
+                                        {quiz.profiles && (
+                                          <>
+                                            <span>•</span>
+                                            <span>Автор: {quiz.profiles.last_name} {quiz.profiles.first_name}</span>
+                                          </>
+                                        )}
+                                      </div>
                                     </div>
                                   </div>
                                   <div className="flex-center" style={{ gap: '10px' }}>
@@ -590,6 +630,36 @@ const Editor = ({ session, profile }) => {
           </div>
         )}
       </div>
+
+      {/* МОДАЛКА ПЕРЕИМЕНОВАНИЯ КЛАССА / СЕКЦИИ */}
+      {renamingItem && (
+        <div className="modal-overlay" onClick={() => setRenamingItem(null)}>
+          <div className="modal-content animate" onClick={e => e.stopPropagation()} style={{ width: '400px' }}>
+            <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '15px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', margin: '0 auto 20px' }}>
+              <Pencil size={32} />
+            </div>
+            <h2 style={{ marginBottom: '10px', textAlign: 'center' }}>Переименовать</h2>
+            <p style={{ fontSize: '0.85rem', opacity: 0.5, textAlign: 'center', marginBottom: '20px' }}>
+              Старое название: <span style={{ fontWeight: '600' }}>{renamingItem.name}</span>
+            </p>
+            <div style={{ marginBottom: '25px' }}>
+              <input 
+                autoFocus
+                type="text" 
+                value={newName} 
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleRename()}
+                placeholder="Введите новое название..."
+                style={{ width: '100%', padding: '12px' }}
+              />
+            </div>
+            <div className="grid-2" style={{ gap: '10px' }}>
+              <button onClick={() => setRenamingItem(null)} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', boxShadow: 'none' }}>Отмена</button>
+              <button onClick={handleRename} style={{ background: 'var(--primary-color)', color: 'white' }}>Сохранить</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {editSectionLink && (
         <div className="modal-overlay" onClick={() => setEditSectionLink(null)}>

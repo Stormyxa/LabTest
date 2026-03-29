@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { CheckCircle, XCircle, ChevronRight, ChevronLeft, RotateCcw, X, AlertTriangle, Book, FileText, ChevronDown, ChevronUp } from 'lucide-react';
 
-const QuizView = ({ session }) => {
+const QuizView = ({ session, profile }) => {
   const { id } = useParams();
   const navigate = useNavigate();
 
@@ -128,6 +128,27 @@ const QuizView = ({ session }) => {
 
   if (loading) return <div className="flex-center" style={{ height: '60vh' }}>Загрузка теста...</div>;
   if (!quiz) return <div className="container" style={{ textAlign: 'center', padding: '100px' }}>Тест не найден.</div>;
+
+  // ЭКРАН ОШИБКИ: НЕТ КЛАССА
+  if (!profile?.class_id) {
+    return (
+      <div className="container flex-center animate" style={{ padding: '100px 20px', flexDirection: 'column', textAlign: 'center' }}>
+        <div className="card" style={{ maxWidth: '500px' }}>
+          <div className="flex-center" style={{ justifyContent: 'center', width: '80px', height: '80px', borderRadius: '50%', background: 'rgba(248, 113, 113, 0.1)', color: '#f87171', margin: '0 auto 25px' }}>
+            <AlertTriangle size={40} />
+          </div>
+          <h2 style={{ marginBottom: '15px' }}>Класс не указан</h2>
+          <p style={{ opacity: 0.7, marginBottom: '30px', lineHeight: '1.6' }}>
+            Для прохождения тестов и сохранения результатов необходимо указать ваш класс в профиле. 
+            Это поможет учителям видеть ваши успехи.
+          </p>
+          <button onClick={() => navigate('/profile', { state: { onboarding: true } })} style={{ width: '100%', padding: '15px' }}>
+            Перейти в профиль
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // ЭКРАН РЕЗУЛЬТАТОВ
   if (showResult) {
@@ -269,7 +290,7 @@ const QuizView = ({ session }) => {
           display: 'grid',
           gap: '12px',
           marginTop: 'auto',
-          gridTemplateColumns: currentQ.options.some(opt => opt.length > 40) ? '1fr' : 'repeat(auto-fit, minmax(320px, 1fr))'
+          gridTemplateColumns: currentQ.options.some(opt => opt.length > 40) ? '1fr' : 'repeat(auto-fit, minmax(280px, 1fr))'
         }}>
           {currentQ.options.map((opt, idx) => {
             const isCorrect = idx === currentQ.correctIndex;

@@ -106,7 +106,7 @@ function App() {
             <QuizCatalog profile={profile} />
           } />
           
-          <Route path="/quiz/:id" element={session ? <QuizView session={session} /> : <Navigate to="/auth" />} />
+          <Route path="/quiz/:id" element={session ? <QuizView session={session} profile={profile} /> : <Navigate to="/auth" />} />
           
           <Route path="/editor" element={isEditor ? <Editor session={session} profile={profile} /> : <Navigate to="/" />} />
           <Route path="/dashboard" element={isAdmin ? <Dashboard session={session} profile={profile} /> : <Navigate to="/" />} />

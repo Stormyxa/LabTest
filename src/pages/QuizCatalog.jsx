@@ -16,6 +16,8 @@ const QuizCatalog = ({ profile }) => {
   const [selectedQuiz, setSelectedQuiz] = useState(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [hideModal, setHideModal] = useState(null); // quiz object
+  const [renamingItem, setRenamingItem] = useState(null);
+  const [newName, setNewName] = useState('');
 
   useEffect(() => {
     fetchData();
@@ -108,6 +110,18 @@ const QuizCatalog = ({ profile }) => {
     else { setHideModal(null); fetchData(); }
   };
 
+  const handleRename = async () => {
+    if (!renamingItem || !newName.trim()) return;
+    const table = renamingItem.type === 'class' ? 'quiz_classes' : 'quiz_sections';
+    const { error } = await supabase.from(table).update({ name: newName }).eq('id', renamingItem.id);
+    if (error) alert('Ошибка переименования: ' + error.message);
+    else {
+      setRenamingItem(null);
+      setNewName('');
+      fetchData();
+    }
+  };
+
   const canEditQuiz = (quiz) => {
     if (!profile) return false;
     if (profile.role === 'creator') return true;
@@ -170,6 +184,15 @@ const QuizCatalog = ({ profile }) => {
                   </div>
                 )}
                 <h3 style={{ fontSize: '1.5rem', margin: 0, fontWeight: 'bold' }}>{cls.name} <span style={{ fontSize: '0.9rem', opacity: 0.5, marginLeft: '10px' }}>({cls.sections.length} предметов)</span></h3>
+                {profile?.role === 'creator' && (
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: cls.id, name: cls.name, type: 'class' }); setNewName(cls.name); }} 
+                    style={{ background: 'transparent', color: 'var(--primary-color)', opacity: 0.5, boxShadow: 'none', padding: '5px' }}
+                    title="Переименовать класс"
+                  >
+                    <Pencil size={18} />
+                  </button>
+                )}
               </div>
               {expandedClasses[cls.id] ? <ChevronUp size={24} /> : <ChevronDown size={24} />}
             </div>
@@ -218,6 +241,15 @@ const QuizCatalog = ({ profile }) => {
                             )}
 
                             <h4 style={{ fontSize: '1.2rem', margin: 0 }}>{section.name} <span style={{ opacity: 0.5, fontSize: '0.9rem', marginLeft: '5px' }}>({section.quizzes.length})</span></h4>
+                            {profile?.role === 'creator' && (
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: section.id, name: section.name, type: 'section' }); setNewName(section.name); }} 
+                                style={{ background: 'transparent', color: 'var(--text-color)', opacity: 0.4, boxShadow: 'none', padding: '5px' }}
+                                title="Переименовать предмет"
+                              >
+                                <Pencil size={16} />
+                              </button>
+                            )}
                           </div>
                           {expandedSections[section.id] ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                         </div>
@@ -263,7 +295,7 @@ const QuizCatalog = ({ profile }) => {
                                         {canEdit && (
                                           <button onClick={() => setHideModal(quiz)} style={{ padding: '8px', background: 'rgba(250,204,21,0.08)', color: '#ca8a04', boxShadow: 'none', borderRadius: '10px' }} title="Скрыть тест"><Eye size={15} /></button>
                                         )}
-                                        {(profile?.role === 'admin' || profile?.role === 'creator' || profile?.id === quiz.author_id) && (
+                                        {(profile?.role === 'admin' || profile?.role === 'creator' || profile?.role === 'teacher' || profile?.id === quiz.author_id) && (
                                           <button onClick={() => navigate(`/analytics?id=${quiz.id}`)} style={{ padding: '8px', background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none', borderRadius: '10px' }} title="Аналитика"><BarChart2 size={15} /></button>
                                         )}
                                         <button onClick={() => setSelectedQuiz(quiz)} style={{ padding: '8px 20px', display: 'flex', alignItems: 'center', gap: '8px', borderRadius: '10px' }}><Play size={15} fill="currentColor" /> Начать</button>
@@ -330,7 +362,38 @@ const QuizCatalog = ({ profile }) => {
           </div>
         </div>
       )}
-      <HideModal />
+
+      {/* МОДАЛКА ПЕРЕИМЕНОВАНИЯ КЛАССА / СЕКЦИИ */}
+      {renamingItem && (
+        <div className="modal-overlay" onClick={() => setRenamingItem(null)}>
+          <div className="modal-content animate" onClick={e => e.stopPropagation()} style={{ width: '400px' }}>
+            <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '15px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', margin: '0 auto 20px' }}>
+              <Pencil size={32} />
+            </div>
+            <h2 style={{ marginBottom: '10px', textAlign: 'center' }}>Переименовать</h2>
+            <p style={{ fontSize: '0.85rem', opacity: 0.5, textAlign: 'center', marginBottom: '20px' }}>
+              Старое название: <span style={{ fontWeight: '600' }}>{renamingItem.name}</span>
+            </p>
+            <div style={{ marginBottom: '25px' }}>
+              <input 
+                autoFocus
+                type="text" 
+                value={newName} 
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleRename()}
+                placeholder="Введите новое название..."
+                style={{ width: '100%', padding: '12px' }}
+              />
+            </div>
+            <div className="grid-2" style={{ gap: '10px' }}>
+              <button onClick={() => setRenamingItem(null)} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', boxShadow: 'none' }}>Отмена</button>
+              <button onClick={handleRename} style={{ background: 'var(--primary-color)', color: 'white' }}>Сохранить</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {hideModal && <HideModal />}
     </div>
   );
 
