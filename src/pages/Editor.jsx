@@ -424,15 +424,15 @@ const Editor = ({ session, profile }) => {
                 <div key={cls.id} className="card" style={{ padding: '0', overflow: 'hidden', border: '2px solid rgba(0,0,0,0.05)', marginBottom: '30px' }}>
 
                   {/* CLASS HEADER */}
-                  <div style={{ padding: '25px', background: 'rgba(99, 102, 241, 0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div className="flex-center" style={{ gap: '15px' }}>
+                  <div className="editor-class-head" style={{ padding: '25px', background: 'rgba(99, 102, 241, 0.08)', borderRadius: '24px 24px 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div className="flex-center" style={{ gap: '15px', overflow: 'hidden' }}>
                       {profile?.role === 'creator' && (
-                        <div className="flex-center" style={{ flexDirection: 'column', gap: '5px' }}>
+                        <div className="flex-center" style={{ flexDirection: 'column', gap: '5px', flexShrink: 0 }}>
                           <button onClick={() => swapClasses(cIndex, -1)} disabled={cIndex === 0} style={{ padding: '2px', background: 'transparent', color: 'var(--primary-color)', boxShadow: 'none' }}><ChevronUp size={20} /></button>
                           <button onClick={() => swapClasses(cIndex, 1)} disabled={cIndex === classes.length - 1} style={{ padding: '2px', background: 'transparent', color: 'var(--primary-color)', boxShadow: 'none' }}><ChevronDown size={20} /></button>
                         </div>
                       )}
-                      <h2 style={{ fontSize: '1.6rem', margin: 0, color: 'var(--primary-color)' }}>{cls.name}</h2>
+                      <h2 style={{ fontSize: '1.6rem', margin: 0, color: 'var(--primary-color)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cls.name}</h2>
                       {profile?.role === 'creator' && (
                         <button 
                           onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: cls.id, name: cls.name, type: 'class' }); setNewName(cls.name); }} 
@@ -456,13 +456,13 @@ const Editor = ({ session, profile }) => {
                     if (qs.length === 0 && (profile?.role === 'editor' || profile?.role === 'teacher')) return null;
 
                     return (
-                      <div key={section.id} style={{ padding: '25px', borderTop: '1px solid rgba(0,0,0,0.05)' }}>
-                        <div className="flex-center" style={{ gap: '15px', marginBottom: '25px', justifyContent: 'space-between' }}>
+                      <div key={section.id} className="editor-section-container" style={{ padding: '25px', borderTop: '1px solid rgba(0,0,0,0.05)' }}>
+                        <div className="flex-center" style={{ gap: '15px', marginBottom: '25px', justifyContent: 'space-between', overflow: 'hidden' }}>
 
-                          <div className="flex-center" style={{ gap: '10px' }}>
+                          <div className="flex-center" style={{ gap: '10px', overflow: 'hidden' }}>
                             {/* ТОЛЬКО СОЗДАТЕЛЬ сортирует предметы */}
                             {profile?.role === 'creator' && (
-                              <div className="flex-center" style={{ gap: '5px' }}>
+                              <div className="flex-center" style={{ gap: '5px', flexShrink: 0 }}>
                                 <button onClick={() => swapSections(cls.id, sIndex, -1)} disabled={sIndex === 0} style={{ padding: '5px', background: 'rgba(0,0,0,0.05)', boxShadow: 'none' }}><ChevronUp size={16} /></button>
                                 <button onClick={() => swapSections(cls.id, sIndex, 1)} disabled={sIndex === clsSections.length - 1} style={{ padding: '5px', background: 'rgba(0,0,0,0.05)', boxShadow: 'none' }}><ChevronDown size={16} /></button>
                               </div>
@@ -488,7 +488,7 @@ const Editor = ({ session, profile }) => {
                               </a>
                             )}
 
-                            <h3 style={{ fontSize: '1.3rem', margin: 0, opacity: 0.9 }}>{section.name}</h3>
+                            <h3 style={{ fontSize: '1.3rem', margin: 0, opacity: 0.9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{section.name}</h3>
                             {profile?.role === 'creator' && (
                               <button 
                                 onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: section.id, name: section.name, type: 'section' }); setNewName(section.name); }} 
