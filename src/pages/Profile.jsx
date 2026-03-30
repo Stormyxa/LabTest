@@ -226,11 +226,13 @@ const Profile = ({ session, profile, refreshProfile }) => {
             </div>
           )}
 
-          <div style={{ gridColumn: '1 / -1', marginTop: '10px' }}>
-            <button type="submit" disabled={loading} style={{ width: '100%', padding: '15px' }}>
-              {loading ? 'Сохранение...' : (profile?.is_profile_setup_completed ? 'Обновить данные' : 'Подтвердить и сохранить')}
-            </button>
-          </div>
+          {(!profile?.is_profile_setup_completed || profile?.role === 'admin' || profile?.role === 'creator') && (
+            <div style={{ gridColumn: '1 / -1', marginTop: '10px' }}>
+              <button type="submit" disabled={loading} style={{ width: '100%', padding: '15px' }}>
+                {loading ? 'Сохранение...' : (profile?.is_profile_setup_completed ? 'Обновить данные' : 'Подтвердить и сохранить')}
+              </button>
+            </div>
+          )}
         </form>
       </div>
 

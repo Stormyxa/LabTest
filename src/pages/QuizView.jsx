@@ -129,8 +129,8 @@ const QuizView = ({ session, profile }) => {
   if (loading) return <div className="flex-center" style={{ height: '60vh' }}>Загрузка теста...</div>;
   if (!quiz) return <div className="container" style={{ textAlign: 'center', padding: '100px' }}>Тест не найден.</div>;
 
-  // ЭКРАН ОШИБКИ: НЕТ КЛАССА
-  if (!profile?.class_id) {
+  // ЭКРАН ОШИБКИ: НЕТ КЛАССА (Наблюдателям можно проходить без класса)
+  if (!profile?.class_id && !profile?.is_observer) {
     return (
       <div className="container flex-center animate" style={{ padding: '100px 20px', flexDirection: 'column', textAlign: 'center' }}>
         <div className="card" style={{ maxWidth: '500px' }}>
