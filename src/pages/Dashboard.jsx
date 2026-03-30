@@ -208,7 +208,11 @@ const Dashboard = ({ session, profile }) => {
 
   const updateClassLimit = async () => {
     if (!editingClassLimit) return;
-    const { error } = await supabase.from('classes').update({ max_students: newLimit }).eq('id', editingClassLimit.id);
+    const { error } = await supabase.rpc('update_class_limit', { 
+      p_class_id: editingClassLimit.id, 
+      p_new_limit: newLimit 
+    });
+    
     if (!error) {
       fetchStructure();
       setEditingClassLimit(null);
@@ -494,8 +498,8 @@ const Dashboard = ({ session, profile }) => {
                         </div>
                       </div>
                       <div className="flex-center" style={{ gap: '5px' }}>
-                        <button onClick={() => { setNewLimit(cls.max_students || 50); setEditingClassLimit(cls); }} style={{ background: 'transparent', color: 'var(--primary-color)', padding: '5px', boxShadow: 'none' }} title="Изменить лимит"><Edit3 size={16} /></button>
-                        <button onClick={() => setDeletingStructure({ table: 'classes', id: cls.id, name: cls.name, typeLabel: 'класс' })} style={{ background: 'transparent', color: 'red', padding: '5px', boxShadow: 'none' }} title="Удалить класс"><Trash2 size={16} /></button>
+                        <button onClick={(e) => { e.stopPropagation(); setNewLimit(cls.max_students || 50); setEditingClassLimit(cls); }} style={{ background: 'transparent', color: 'var(--primary-color)', padding: '5px', boxShadow: 'none' }} title="Изменить лимит"><Edit3 size={16} /></button>
+                        <button onClick={(e) => { e.stopPropagation(); setDeletingStructure({ table: 'classes', id: cls.id, name: cls.name, typeLabel: 'класс' }); }} style={{ background: 'transparent', color: 'red', padding: '5px', boxShadow: 'none' }} title="Удалить класс"><Trash2 size={16} /></button>
                       </div>
                     </div>
 

@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import {
   ChevronLeft, Pencil, Check, X, Plus, Trash2, RotateCcw,
   AlertTriangle, Download, AlertCircle, Lock, BarChart2,
-  GripVertical
+  GripVertical, Eye, EyeOff
 } from 'lucide-react';
 
 const MAX_QUESTIONS = 30;
@@ -28,8 +28,10 @@ const QuizRedactor = () => {
   // Editing state
   const [title, setTitle] = useState('');
   const [questions, setQuestions] = useState([]);
+  const [isHidden, setIsHidden] = useState(false);
   const [savedTitle, setSavedTitle] = useState('');
   const [savedQuestions, setSavedQuestions] = useState([]);
+  const [savedIsHidden, setSavedIsHidden] = useState(false);
 
   // Undo history (snapshots), max 20
   const historyRef = useRef([]);
@@ -85,8 +87,10 @@ const QuizRedactor = () => {
 
     const qs = deepClone(q.content?.questions || []);
     setTitle(q.title);
+    setIsHidden(q.is_hidden || false);
     setQuestions(qs);
     setSavedTitle(q.title);
+    setSavedIsHidden(q.is_hidden || false);
     setSavedQuestions(deepClone(qs));
     historyRef.current = [];
     setCanUndo(false);
@@ -94,7 +98,7 @@ const QuizRedactor = () => {
   };
 
   const hasChanges = () =>
-    title !== savedTitle || JSON.stringify(questions) !== JSON.stringify(savedQuestions);
+    title !== savedTitle || JSON.stringify(questions) !== JSON.stringify(savedQuestions) || isHidden !== savedIsHidden;
 
   const pushHistory = (prevTitle, prevQuestions) => {
     historyRef.current = [...historyRef.current.slice(-19), { title: prevTitle, questions: deepClone(prevQuestions) }];
@@ -132,11 +136,13 @@ const QuizRedactor = () => {
       const trimmedTitle = title.trim();
       const { error } = await supabase.from('quizzes').update({
         title: trimmedTitle,
-        content: { questions }
+        content: { questions },
+        is_hidden: isHidden
       }).eq('id', quizId);
       if (error) throw error;
       setSavedTitle(trimmedTitle);
       setTitle(trimmedTitle);
+      setSavedIsHidden(isHidden);
       setSavedQuestions(deepClone(questions));
       historyRef.current = [];
       setCanUndo(false);
@@ -285,6 +291,23 @@ const QuizRedactor = () => {
           </button>
           <button onClick={() => navigate(`/analytics?id=${quizId}`)} className="flex-center" style={{ ...ghostBtnStyle, padding: '10px 18px' }}>
             <BarChart2 size={16} style={{ marginRight: '6px' }} /> Аналитика
+          </button>
+          <button 
+            onClick={() => setIsHidden(!isHidden)} 
+            className="flex-center" 
+            title={isHidden ? "Показать ученикам" : "Скрыть от учеников"}
+            style={{ 
+              padding: '10px 18px', 
+              background: isHidden ? 'rgba(0,0,0,0.05)' : 'rgba(99,102,241,0.1)', 
+              color: isHidden ? 'inherit' : 'var(--primary-color)', 
+              boxShadow: 'none', 
+              borderRadius: '12px', 
+              fontSize: '0.9rem',
+              opacity: isHidden ? 0.6 : 1
+            }}
+          >
+            {isHidden ? <EyeOff size={16} style={{ marginRight: '6px' }} /> : <Eye size={16} style={{ marginRight: '6px' }} />}
+            {isHidden ? 'Скрыт' : 'Виден'}
           </button>
           <button 
             onClick={() => setShowDeleteModal(true)} 

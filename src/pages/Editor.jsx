@@ -33,6 +33,9 @@ const Editor = ({ session, profile }) => {
   const [newSectionClassId, setNewSectionClassId] = useState('');
   const [newSectionBookUrl, setNewSectionBookUrl] = useState('');
 
+  const [pendingEmptyQuiz, setPendingEmptyQuiz] = useState(null); // { titleList, canBulk, sectionId }
+  const [successLoadedQuiz, setSuccessLoadedQuiz] = useState(null); // 'Test Title'
+
   const [copyFeedbackJson, setCopyFeedbackJson] = useState(false);
   const [copyFeedbackBulk, setCopyFeedbackBulk] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -110,9 +113,9 @@ const Editor = ({ session, profile }) => {
           throw new Error('Массовое создание недоступно.');
         }
 
-        // --- Ordering Fix: Always fetch current absolute max from DB ---
-        const { data: dbQ } = await supabase.from('quizzes').select('sort_order').eq('section_id', sectionId).order('sort_order', { ascending: false }).limit(1);
-        const maxOrder = dbQ && dbQ.length > 0 ? dbQ[0].sort_order : -1;
+        const { data: maxOrderData, error: rpcError } = await supabase.rpc('get_max_sort_order', { p_section_id: sectionId });
+        if (rpcError) throw rpcError;
+        const maxOrder = maxOrderData || -1;
 
         const newQuizzesInsertion = quizzesList.map((q, i) => ({
           title: q.title || titles.split('\n')[0] || 'Новый тест',
@@ -125,6 +128,13 @@ const Editor = ({ session, profile }) => {
 
         const { error } = await supabase.from('quizzes').insert(newQuizzesInsertion);
         if (error) throw error;
+        
+        fetchData();
+        setSuccessLoadedQuiz(newQuizzesInsertion.map(q => q.title).join(', '));
+        setTitles('');
+        setJsonInput('');
+        setSectionId('');
+        setSelectedClassId('');
       } else {
         let titleList = titles.split('\n').map(t => t.trim()).filter(t => t.length > 0);
         if (titleList.length === 0) throw new Error('Введите хотя бы одно название');
@@ -134,27 +144,46 @@ const Editor = ({ session, profile }) => {
           throw new Error('Массовое создание тестов доступно только Создателям и Админам.');
         }
 
-        const sectionQuizzes = myQuizzes.filter(q => q.section_id === sectionId);
-        const maxOrder = sectionQuizzes.length > 0 ? Math.max(...sectionQuizzes.map(q => q.sort_order || 0)) : -1;
-
-        const newQuizzes = titleList.map((t, i) => ({
-          title: t,
-          section_id: sectionId,
-          author_id: session.user.id,
-          content: { questions: [] },
-          is_verified: canBulk,
-          sort_order: maxOrder + 1 + i
-        }));
-
-        const { error } = await supabase.from('quizzes').insert(newQuizzes);
-        if (error) throw error;
+        // Show warning modal BEFORE inserting
+        setPendingEmptyQuiz({ titleList, canBulk, sectionId });
       }
+    } catch (err) {
+      alert(`Ошибка: ${err.message}`);
+    }
+  };
 
-      fetchData();
+  const confirmEmptyQuizCreation = async () => {
+    if (!pendingEmptyQuiz) return;
+    try {
+      const { titleList, canBulk, sectionId: sId } = pendingEmptyQuiz;
+      
+      const { data: maxOrderData, error: rpcError } = await supabase.rpc('get_max_sort_order', { p_section_id: sId });
+      if (rpcError) throw rpcError;
+      const maxOrder = maxOrderData || -1;
+
+      const newQuizzes = titleList.map((t, i) => ({
+        title: t,
+        section_id: sId,
+        author_id: session.user.id,
+        content: { questions: [] },
+        is_verified: canBulk,
+        is_hidden: true, // Auto-hide empty quiz
+        sort_order: maxOrder + 1 + i
+      }));
+
+      const { data: inserted, error } = await supabase.from('quizzes').insert(newQuizzes).select();
+      if (error) throw error;
+
+      setPendingEmptyQuiz(null);
       setTitles('');
-      setJsonInput('');
       setSectionId('');
       setSelectedClassId('');
+      
+      if (inserted && inserted.length > 0) {
+        navigate(`/redactor?id=${inserted[0].id}`);
+      } else {
+        fetchData();
+      }
     } catch (err) {
       alert(`Ошибка: ${err.message}`);
     }
@@ -162,9 +191,10 @@ const Editor = ({ session, profile }) => {
 
   const handleCreateDivider = async (sId, text = '') => {
     try {
-      // --- Ordering Fix: Always fetch current absolute max from DB ---
-      const { data: dbQ } = await supabase.from('quizzes').select('sort_order').eq('section_id', sId).order('sort_order', { ascending: false }).limit(1);
-      const maxOrder = dbQ && dbQ.length > 0 ? dbQ[0].sort_order : -1;
+      // Use RPC to bypass RLS
+      const { data: maxOrderData, error: rpcError } = await supabase.rpc('get_max_sort_order', { p_section_id: sId });
+      if (rpcError) throw rpcError;
+      const maxOrder = maxOrderData || -1;
 
       const { error } = await supabase.from('quizzes').insert({
         title: text || 'Разделитель',
@@ -254,9 +284,16 @@ const Editor = ({ session, profile }) => {
   };
 
   const swapQuizzes = (sectionId, index, direction, quiz) => {
-    // admin/creator can move any quiz; teacher/editor only their own
-    const isAdminOrCreator = profile?.role === 'admin' || profile?.role === 'creator';
-    if (!isAdminOrCreator && quiz?.author_id !== profile?.id) return;
+    const canMoveQuiz = (quiz) => {
+      if (!profile) return false;
+      if (profile.role === 'creator') return true;
+      if (profile.role === 'admin') {
+        return quiz.profiles?.role !== 'creator' && quiz.profiles?.role !== 'admin';
+      }
+      return (profile.role === 'teacher' || profile.role === 'editor') && quiz.author_id === profile.id;
+    };
+
+    if (!canMoveQuiz(quiz)) return;
 
     const qList = [...myQuizzes];
     const sectionQuizzes = qList.filter(q => q.section_id === sectionId);
@@ -632,7 +669,7 @@ const Editor = ({ session, profile }) => {
                             const isAuthor = profile?.id === quiz.author_id;
                             const canDeleteQuiz = isCreator || isAdminAndNotCreatorQuiz || isAuthor;
                             const canEdit = isCreator || (profile?.role === 'admin' && quiz.profiles?.role !== 'creator') || isAuthor;
-                            const canMove = isCreator || (profile?.role === 'admin') || isAuthor;
+                            const canMove = isCreator || (profile?.role === 'admin' && quiz.profiles?.role !== 'creator') || isAuthor;
 
                             if (quiz.content?.is_divider) {
                               return (
@@ -779,6 +816,44 @@ const Editor = ({ session, profile }) => {
           </div>
         )}
       </div>
+
+      {/* SUCCESS JSON LOAD MODAL */}
+      {successLoadedQuiz && (
+        <div className="modal-overlay" onClick={() => setSuccessLoadedQuiz(null)}>
+          <div className="modal-content animate" onClick={e => e.stopPropagation()} style={{ width: '400px' }}>
+            <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '15px', background: 'rgba(74, 222, 128, 0.1)', color: '#4ade80', margin: '0 auto 20px' }}>
+              <CheckCircle size={32} />
+            </div>
+            <h2 style={{ marginBottom: '10px', textAlign: 'center' }}>Успешная загрузка</h2>
+            <p style={{ fontSize: '0.9rem', opacity: 0.7, textAlign: 'center', marginBottom: '25px', lineHeight: '1.5' }}>
+              Ваш тест был успешно импортирован на платформу из JSON: <br />
+              <strong>{successLoadedQuiz}</strong>
+            </p>
+            <div className="flex-center">
+              <button onClick={() => setSuccessLoadedQuiz(null)} style={{ background: 'var(--primary-color)', color: 'white', padding: '12px 30px' }}>Отлично</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PENDING EMPTY QUIZ MODAL */}
+      {pendingEmptyQuiz && (
+        <div className="modal-overlay" onClick={() => setPendingEmptyQuiz(null)}>
+          <div className="modal-content animate" onClick={e => e.stopPropagation()} style={{ width: '450px' }}>
+            <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '15px', background: 'rgba(250, 204, 21, 0.1)', color: '#ca8a04', margin: '0 auto 20px' }}>
+              <AlertTriangle size={32} />
+            </div>
+            <h2 style={{ marginBottom: '10px', textAlign: 'center' }}>Создание пустого теста</h2>
+            <p style={{ fontSize: '0.9rem', opacity: 0.7, textAlign: 'center', marginBottom: '25px', lineHeight: '1.5' }}>
+              Вы пытаетесь создать тест <strong>без вопросов</strong>. <br />Он будет по умолчанию скрытым от учеников. Вы будете перенаправлены в Редактор вопросов для его заполнения.
+            </p>
+            <div className="grid-2" style={{ gap: '10px' }}>
+              <button onClick={() => setPendingEmptyQuiz(null)} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', boxShadow: 'none' }}>Отмена</button>
+              <button onClick={confirmEmptyQuizCreation} style={{ background: 'var(--primary-color)', color: 'white' }}>Продолжить</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* МОДАЛКА ПЕРЕИМЕНОВАНИЯ КЛАССА / СЕКЦИИ */}
       {renamingItem && (

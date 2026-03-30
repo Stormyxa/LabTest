@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { ChevronLeft, User, BarChart, Calendar, CheckCircle, XCircle, Mail, Trash2, AlertTriangle, Filter, Download, Pencil, Shield, EyeOff } from 'lucide-react';
+import { ChevronLeft, User, BarChart, Calendar, CheckCircle, XCircle, Mail, Trash2, AlertTriangle, Filter, Download, Pencil, Shield, EyeOff, ArrowDown, ArrowUp, Info } from 'lucide-react';
 
 const Analytics = () => {
   const [searchParams] = useSearchParams();
@@ -21,6 +21,7 @@ const Analytics = () => {
   
   const [showObservers, setShowObservers] = useState(false);
   const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
+  const [sortConfig, setSortConfig] = useState('date_desc'); // default
 
   useEffect(() => {
     if (searchParams.get('blocked')) {
@@ -131,9 +132,6 @@ const Analytics = () => {
     // 0. Скрыть наблюдателей если не выбран фильтр
     if (!showObservers && p.is_observer) return false;
 
-    // 0. Всегда показывать свой собственный результат
-    if (res.user_id === profile?.id) return true;
-
     // Ограничение видимости для учителя
     if (isTeacher && quiz?.author_id !== profile?.id) {
       if (p.school_id !== profile?.school_id) return false;
@@ -143,6 +141,26 @@ const Analytics = () => {
     if (filterSchool !== 'all' && p.school_id !== filterSchool) return false;
     if (filterClass !== 'all' && p.class_id !== filterClass) return false;
     return true;
+  });
+
+  const sortedResults = [...filteredResults].sort((a, b) => {
+    if (!sortConfig) return 0;
+    
+    if (sortConfig.includes('name')) {
+      const nameA = `${a.profiles?.last_name || ''} ${a.profiles?.first_name || ''}`.trim().toLowerCase() || 'яяя';
+      const nameB = `${b.profiles?.last_name || ''} ${b.profiles?.first_name || ''}`.trim().toLowerCase() || 'яяя';
+      if (sortConfig === 'name_asc') return nameA.localeCompare(nameB, 'ru');
+      return nameB.localeCompare(nameA, 'ru');
+    }
+    
+    if (sortConfig.includes('date')) {
+      const dateA = new Date(a.completed_at).getTime();
+      const dateB = new Date(b.completed_at).getTime();
+      if (sortConfig === 'date_asc') return dateA - dateB;
+      return dateB - dateA;
+    }
+    
+    return 0;
   });
 
   // Логика прав на удаление (Создатель, Сам автор, либо Админ для тестов рангов ниже)
@@ -168,7 +186,7 @@ const Analytics = () => {
       doc.setFont('Roboto');
       doc.text(`Аналитика теста: ${quiz?.title}`, 20, 20);
 
-      const tableData = filteredResults.map(res => {
+      const tableData = sortedResults.map(res => {
         const p = res.profiles;
         const hasName = p?.first_name || p?.last_name;
         const displayName = p?.is_anonymous ? 'Анонимный профиль' : (hasName ? `${p.last_name || ''} ${p.first_name || ''}`.trim() : (p?.email || 'Неизвестный ученик'));
@@ -319,9 +337,43 @@ const Analytics = () => {
       )}
 
       {/* Таблица результатов */}
-      <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-          <thead style={{ background: 'rgba(0,0,0,0.02)', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
+      <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
+        
+        {/* HEADER & SORTING */}
+        <div className="flex-center" style={{ padding: '20px 25px', background: 'rgba(99, 102, 241, 0.04)', borderBottom: '1px solid rgba(0,0,0,0.05)', justifyContent: 'space-between', flexWrap: 'wrap', gap: '15px' }}>
+          <div className="flex-center" style={{ gap: '15px' }}>
+            <span style={{ fontWeight: 'bold', fontSize: '1.2rem', color: 'var(--primary-color)' }}>Результаты учеников</span>
+            <div className="flex-center" style={{ background: 'var(--card-bg)', borderRadius: '12px', padding: '4px', border: '1px solid rgba(0,0,0,0.05)', gap: '4px' }}>
+              <button 
+                onClick={() => setSortConfig(sortConfig === 'name_asc' ? 'name_desc' : 'name_asc')}
+                style={{ 
+                  background: sortConfig.includes('name') ? 'rgba(99, 102, 241, 0.1)' : 'transparent',
+                  color: sortConfig.includes('name') ? 'var(--primary-color)' : 'var(--text-color)',
+                  padding: '6px 12px', fontSize: '0.8rem', boxShadow: 'none', borderRadius: '8px', opacity: sortConfig.includes('name') ? 1 : 0.6
+                }} className="flex-center">
+                Алфавит {sortConfig === 'name_asc' && <ArrowDown size={14} style={{ marginLeft: '4px' }}/>} {sortConfig === 'name_desc' && <ArrowUp size={14} style={{ marginLeft: '4px' }}/>}
+              </button>
+              <button 
+                onClick={() => setSortConfig(sortConfig === 'date_desc' ? 'date_asc' : 'date_desc')}
+                style={{ 
+                  background: sortConfig.includes('date') ? 'rgba(99, 102, 241, 0.1)' : 'transparent',
+                  color: sortConfig.includes('date') ? 'var(--primary-color)' : 'var(--text-color)',
+                  padding: '6px 12px', fontSize: '0.8rem', boxShadow: 'none', borderRadius: '8px', opacity: sortConfig.includes('date') ? 1 : 0.6
+                }} className="flex-center">
+                Дата {sortConfig === 'date_desc' && <ArrowDown size={14} style={{ marginLeft: '4px' }}/>} {sortConfig === 'date_asc' && <ArrowUp size={14} style={{ marginLeft: '4px' }}/>}
+              </button>
+            </div>
+          </div>
+          
+          <div className="flex-center" style={{ gap: '8px', opacity: 0.6, fontSize: '0.8rem', maxWidth: '350px' }}>
+            <Info size={24} style={{ flexShrink: 0, color: 'var(--primary-color)' }} />
+            <span>Если ученика нет в списке, убедитесь, что его аккаунт привязан к правильному классу, а не находится в режиме наблюдателя.</span>
+          </div>
+        </div>
+
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '800px' }}>
+            <thead style={{ background: 'rgba(0,0,0,0.02)', fontSize: '0.9rem', opacity: 0.7 }}>
             <tr>
               <th style={{ padding: '20px' }}>Ученик</th>
               <th style={{ padding: '20px' }}>Учебное заведение</th>
@@ -331,7 +383,7 @@ const Analytics = () => {
             </tr>
           </thead>
           <tbody>
-            {filteredResults.map((res) => {
+            {sortedResults.map((res) => {
               const p = res.profiles;
               const hasName = p?.first_name || p?.last_name;
               const displayName = p?.is_anonymous ? 'Анонимный профиль' : (hasName ? `${p.last_name || ''} ${p.first_name || ''}` : (p?.email || 'Неизвестный ученик'));
@@ -382,9 +434,10 @@ const Analytics = () => {
                 </tr>
               );
             })}
-            {filteredResults.length === 0 && <tr><td colSpan="5" style={{ padding: '60px', textAlign: 'center', opacity: 0.5 }}>Прохождений пока нет.</td></tr>}
+            {sortedResults.length === 0 && <tr><td colSpan="5" style={{ padding: '60px', textAlign: 'center', opacity: 0.5 }}>Прохождений пока нет.</td></tr>}
           </tbody>
         </table>
+      </div>
       </div>
 
       {/* Модальное окно: удаление результата */}

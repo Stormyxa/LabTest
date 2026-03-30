@@ -22,9 +22,12 @@ const Profile = ({ session, profile, refreshProfile }) => {
 
   const [phoneNumber, setPhoneNumber] = useState(profile?.phone_number || '');
   const [showPhone, setShowPhone] = useState(profile?.show_phone_number || false);
+  
+  // Modal states
+  const [showNoClassModal, setShowNoClassModal] = useState(false);
+  const [agreeObserver, setAgreeObserver] = useState(false);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState(location.state?.msg || '');
-  const [showObserverModal, setShowObserverModal] = useState(false);
   const [stats, setStats] = useState({ passed: 0, perfect: 0, totalPoints: 0, created: 0 });
 
   useEffect(() => {
@@ -34,17 +37,6 @@ const Profile = ({ session, profile, refreshProfile }) => {
       onboardingRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, []);
-
-  // Бесшумное включение режима наблюдателя для учителей
-  useEffect(() => {
-    if (profile?.role === 'teacher' && !profile?.is_observer) {
-      const forceObserver = async () => {
-        const { error } = await supabase.from('profiles').update({ is_observer: true }).eq('id', session.user.id);
-        if (!error) refreshProfile();
-      };
-      forceObserver();
-    }
-  }, [profile]);
 
   const fetchStructure = async () => {
     const { data: c } = await supabase.from('cities').select('*').order('name');
@@ -72,18 +64,35 @@ const Profile = ({ session, profile, refreshProfile }) => {
 
   const handleUpdateProfile = async (e) => {
     e.preventDefault();
+
+    // If student didn't pick a class, enforce observer modal
+    if (!classId && profile?.role !== 'teacher' && profile?.role !== 'admin' && profile?.role !== 'creator') {
+      setShowNoClassModal(true);
+      return;
+    }
+
+    // Otherwise, normal save (if they picked a class, observer is false)
+    await executeUpdate(false);
+  };
+
+  const executeUpdate = async (makeObserver) => {
     setLoading(true);
+    let finalObserverStatus = makeObserver;
+    if (classId && profile?.role !== 'teacher') finalObserverStatus = false;
+    if (profile?.role === 'teacher') finalObserverStatus = true;
 
     const { error } = await supabase.from('profiles').update({
       first_name: firstName, last_name: lastName, patronymic: patronymic, birth_date: birthDate,
       city_id: cityId || null, school_id: schoolId || null, class_id: classId || null,
-      phone_number: phoneNumber, show_phone_number: showPhone, is_profile_setup_completed: true
+      phone_number: phoneNumber, show_phone_number: showPhone, is_profile_setup_completed: true,
+      is_observer: finalObserverStatus
     }).eq('id', session.user.id);
 
     if (error) setMsg(`Ошибка: ${error.message}`);
     else {
       await refreshProfile();
       setMsg('Данные успешно сохранены!');
+      setShowNoClassModal(false);
       setTimeout(() => setMsg(''), 3000);
     }
     setLoading(false);
@@ -101,7 +110,6 @@ const Profile = ({ session, profile, refreshProfile }) => {
     setPhoneNumber(masked);
   };
 
-  // Фильтруем школы и классы на основе выбора
   const availableSchools = schools.filter(s => s.city_id === cityId);
   const availableClasses = classes.filter(c => c.school_id === schoolId);
   const avatarUrl = `https://api.dicebear.com/7.x/avataaars/svg?seed=${session.user.id}`;
@@ -160,86 +168,31 @@ const Profile = ({ session, profile, refreshProfile }) => {
             <StatBox label="Всего баллов" value={stats.totalPoints} icon={<TrendingUp size={20} />} />
             <StatBox label="Создано тестов" value={stats.created} icon={<FileText size={20} />} />
           </div>
-          <div style={{ marginTop: '20px', padding: '20px', background: profile?.is_observer ? 'rgba(250, 204, 21, 0.05)' : 'rgba(99, 102, 241, 0.03)', borderRadius: '20px', border: profile?.is_observer ? '1px dashed #ca8a04' : '1px solid rgba(0,0,0,0.03)' }}>
-            <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '10px' }}>
-              <div className="flex-center" style={{ gap: '10px' }}>
-                {profile?.is_observer ? <Shield color="#ca8a04" size={20} /> : <Zap color="var(--primary-color)" size={20} />}
-                <h4 style={{ margin: 0 }}>Режим наблюдателя</h4>
-              </div>
-              <button
-                onClick={() => setShowObserverModal(true)}
-                disabled={profile?.role === 'teacher'}
-                style={{ padding: '6px 15px', background: profile?.is_observer ? 'rgba(0,0,0,0.05)' : 'var(--primary-color)', color: profile?.is_observer ? 'inherit' : 'white', fontSize: '0.8rem', boxShadow: 'none', opacity: profile?.role === 'teacher' ? 0.5 : 1 }}
-              >
-                {profile?.is_observer ? 'Выключить' : 'Включить'}
-              </button>
-            </div>
-            <p style={{ fontSize: '0.75rem', opacity: 0.6, margin: 0, lineHeight: '1.4' }}>
-              {profile?.role === 'teacher'
-                ? 'Для учителей этот режим включен принудительно. Ваши личные результаты не отображаются в рейтингах.'
-                : profile?.is_observer
-                  ? 'Вы скрыты из общего рейтинга и статистики региона. Ваши результаты не влияют на показатели школы.'
-                  : 'Ваши результаты учитываются в глобальном рейтинге учеников и статистике вашего учебного заведения.'}
-            </p>
-          </div>
         </div>
       </div>
-
-      {showObserverModal && (
-        <div className="modal-overlay" onClick={() => setShowObserverModal(false)}>
-          <div className="modal-content animate" style={{ width: '450px' }} onClick={e => e.stopPropagation()}>
-            <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: profile?.is_observer ? 'rgba(99, 102, 241, 0.1)' : 'rgba(250, 204, 21, 0.1)', color: profile?.is_observer ? 'var(--primary-color)' : '#ca8a04', margin: '0 auto 25px' }}>
-              {profile?.is_observer ? <Zap size={32} /> : <Shield size={32} />}
-            </div>
-            <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>{profile?.is_observer ? 'Вернуться в рейтинг?' : 'Стать наблюдателем?'}</h2>
-            <p style={{ opacity: 0.7, marginBottom: '30px', textAlign: 'center', lineHeight: '1.6' }}>
-              {profile?.is_observer
-                ? 'Ваши будущие результаты снова начнут отображаться в таблицах лидеров и влиять на статистику вашей школы.'
-                : 'Вы перестанете отображаться в списках «Лучшие ученики» и «Статистика региона». Это позволит вам проходить тесты для ознакомления, не искажая реальные показатели успеваемости.'}
-            </p>
-            <div className="grid-2" style={{ gap: '15px' }}>
-              <button onClick={() => setShowObserverModal(false)} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit' }}>Отмена</button>
-              <button
-                onClick={async () => {
-                  const { error } = await supabase.from('profiles').update({ is_observer: !profile.is_observer }).eq('id', session.user.id);
-                  if (!error) {
-                    await refreshProfile();
-                    setShowObserverModal(false);
-                  }
-                }}
-                style={{ background: profile?.is_observer ? 'var(--primary-color)' : '#ca8a04', color: 'white' }}
-              >
-                {profile?.is_observer ? 'Да, вернуться' : 'Да, я наблюдатель'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <div ref={onboardingRef} className="card animate" style={{ marginTop: '40px' }}>
         <h3 style={{ marginBottom: '25px' }}>{profile?.is_profile_setup_completed ? 'Основные данные (только чтение)' : 'Подтверждение данных'}</h3>
 
         <form onSubmit={handleUpdateProfile} style={{ display: 'grid', gap: '20px', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))' }}>
 
-          {/* Личные данные */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <label>Фамилия</label>
-            <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} placeholder="Иванов" required />
+            <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} pattern="^[А-Яа-яЁё\s\-]+$" title="Только кириллица, пробелы и дефисы" placeholder="Иванов" required />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <label>Имя</label>
-            <input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} placeholder="Иван" required />
+            <input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} pattern="^[А-Яа-яЁё\s\-]+$" title="Только кириллица, пробелы и дефисы" placeholder="Иван" required />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <label>Отчество (необязательно)</label>
-            <input type="text" value={patronymic} onChange={(e) => setPatronymic(e.target.value)} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} placeholder="Иванович" />
+            <input type="text" value={patronymic} onChange={(e) => setPatronymic(e.target.value)} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} pattern="^[А-Яа-яЁё\s\-]*$" title="Только кириллица, пробелы и дефисы" placeholder="Иванович" />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <label>Дата рождения</label>
             <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} required />
           </div>
 
-          {/* Структура: Город, Школа, Класс */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <label>Ваш город</label>
             <select value={cityId} onChange={(e) => { setCityId(e.target.value); setSchoolId(''); setClassId(''); }} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} required>
@@ -262,7 +215,6 @@ const Profile = ({ session, profile, refreshProfile }) => {
             </select>
           </div>
 
-          {/* Телефон перенесен сюда */}
           {(profile?.role === 'admin' || profile?.role === 'creator') && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <label>Мой номер WhatsApp</label>
@@ -274,15 +226,44 @@ const Profile = ({ session, profile, refreshProfile }) => {
             </div>
           )}
 
-          {(!profile?.is_profile_setup_completed || profile?.role === 'admin' || profile?.role === 'creator') && (
-            <div style={{ gridColumn: '1 / -1', marginTop: '10px' }}>
-              <button type="submit" disabled={loading} style={{ width: '100%', padding: '15px' }}>
-                {loading ? 'Сохранение...' : (profile?.is_profile_setup_completed ? 'Обновить данные' : 'Подтвердить и сохранить')}
-              </button>
-            </div>
-          )}
+          <div style={{ gridColumn: '1 / -1', marginTop: '10px' }}>
+            <button type="submit" disabled={loading} style={{ width: '100%', padding: '15px' }}>
+              {loading ? 'Сохранение...' : (profile?.is_profile_setup_completed ? 'Обновить данные' : 'Подтвердить и сохранить')}
+            </button>
+          </div>
         </form>
       </div>
+
+      {showNoClassModal && (
+        <div className="modal-overlay" onClick={() => setShowNoClassModal(false)}>
+          <div className="modal-content animate" style={{ width: '450px' }} onClick={e => e.stopPropagation()}>
+            <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(250, 204, 21, 0.1)', color: '#ca8a04', margin: '0 auto 25px' }}>
+              <Shield size={32} />
+            </div>
+            <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>Режим наблюдателя</h2>
+            <p style={{ opacity: 0.7, marginBottom: '20px', textAlign: 'center', lineHeight: '1.6' }}>
+              Вы не выбрали класс. Это означает, что ваши результаты не будут учитываться в рейтингах и статистике. Вы перейдете в <strong>режим наблюдателя</strong>.
+            </p>
+            
+            <label className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px', background: 'rgba(0,0,0,0.03)', padding: '15px', borderRadius: '12px', cursor: 'pointer', marginBottom: '20px' }}>
+              <input type="checkbox" checked={agreeObserver} onChange={(e) => setAgreeObserver(e.target.checked)} style={{ width: '18px', height: '18px' }} />
+              <span style={{ fontSize: '0.9rem', fontWeight: '500' }}>Я согласен стать наблюдателем</span>
+            </label>
+
+            <div className="grid-2" style={{ gap: '15px' }}>
+              <button onClick={() => setShowNoClassModal(false)} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit' }}>Вернуться к выбору</button>
+              <button 
+                onClick={() => executeUpdate(true)} 
+                disabled={!agreeObserver || loading}
+                style={{ background: agreeObserver ? 'var(--primary-color)' : 'rgba(0,0,0,0.1)', color: agreeObserver ? 'white' : 'black', opacity: agreeObserver ? 1 : 0.5 }}
+              >
+                Сохранить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
