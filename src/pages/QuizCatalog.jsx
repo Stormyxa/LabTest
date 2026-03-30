@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { Search, Play, CheckCircle, ChevronDown, ChevronUp, Award, Save, BarChart2, Book, Pencil, Eye, AlertTriangle, Plus, Shield, EyeOff, Trash2 } from 'lucide-react';
+import { Search, Play, CheckCircle, ChevronDown, ChevronUp, Award, Save, BarChart2, Book, Pencil, Eye, AlertTriangle, Plus, Shield, EyeOff, Trash2, Dices } from 'lucide-react';
 
 const QuizCatalog = ({ profile }) => {
   const navigate = useNavigate();
@@ -32,6 +32,7 @@ const QuizCatalog = ({ profile }) => {
   const [hideModal, setHideModal] = useState(null); // quiz object
   const [renamingItem, setRenamingItem] = useState(null);
   const [newName, setNewName] = useState('');
+  const [randomQuizModal, setRandomQuizModal] = useState(null); // { sectionName, quiz }
 
   useEffect(() => {
     fetchData();
@@ -176,6 +177,16 @@ const QuizCatalog = ({ profile }) => {
     }
   };
 
+  const handleStartRandomQuiz = (e, section) => {
+    e?.stopPropagation?.();
+    const validQuizzes = section.quizzes.filter(q => !q.content?.is_divider && !q.is_hidden);
+    if (validQuizzes.length === 0) return alert('В этом предмете нет доступных тестов для прохождения.');
+    
+    // Select a random quiz from the valid ones
+    const randomQuiz = validQuizzes[Math.floor(Math.random() * validQuizzes.length)];
+    setRandomQuizModal({ sectionName: section.name, quiz: randomQuiz });
+  };
+
   const canEditQuiz = (quiz) => {
     if (!profile) return false;
     if (profile.role === 'creator') return true;
@@ -318,6 +329,27 @@ const QuizCatalog = ({ profile }) => {
                         {/* QUIZZES */}
                         {expandedSections[section.id] && (
                           <div className="catalog-section-content" style={{ padding: '15px', background: 'rgba(0,0,0,0.02)' }}>
+                            {section.quizzes.filter(q => !q.content?.is_divider).length > 0 && (
+                              <button 
+                                onClick={(e) => handleStartRandomQuiz(e, section)}
+                                className="flex-center animate"
+                                style={{ 
+                                  width: '100%', 
+                                  padding: '15px', 
+                                  marginBottom: '20px', 
+                                  background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(168, 85, 247, 0.1) 100%)', 
+                                  color: 'var(--primary-color)', 
+                                  borderRadius: '16px',
+                                  border: '1px solid rgba(99, 102, 241, 0.2)',
+                                  boxShadow: 'none',
+                                  fontWeight: 'bold',
+                                  fontSize: '1.05rem',
+                                  gap: '10px'
+                                }}
+                              >
+                                <Dices size={20} /> Случайный тест по предмету
+                              </button>
+                            )}
                             {section.quizzes.length === 0 ? (
                               <p style={{ opacity: 0.5, textAlign: 'center', margin: 0 }}>Нет добавленных тестов.</p>
                             ) : (
@@ -484,9 +516,32 @@ const QuizCatalog = ({ profile }) => {
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', margin: '0 auto 25px' }}><Award size={32} /></div>
             <h2 style={{ marginBottom: '15px' }}>Вы готовы?</h2>
             <p style={{ opacity: 0.7, marginBottom: '30px', lineHeight: '1.6' }}>Начать тест: <br /> <strong>"{selectedQuiz.title}"</strong>.</p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+            <div className="grid-2" style={{ gap: '15px' }}>
               <button onClick={() => setSelectedQuiz(null)} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>Отмена</button>
               <button onClick={() => navigate(`/quiz/${selectedQuiz.id}`)} style={{ padding: '15px' }}>Начать обучение</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* RANDOM QUIZ MODAL */}
+      {randomQuizModal && (
+        <div className="modal-overlay" onClick={() => setRandomQuizModal(null)}>
+          <div className="modal-content animate" onClick={e => e.stopPropagation()} style={{ width: '450px' }}>
+            <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(168, 85, 247, 0.1) 100%)', color: 'var(--primary-color)', margin: '0 auto 25px' }}>
+              <Dices size={32} />
+            </div>
+            <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>Случайный тест</h2>
+            <p style={{ opacity: 0.7, marginBottom: '20px', lineHeight: '1.6', textAlign: 'center' }}>
+              Вы выбрали прохождение случайного теста по предмету <br /> <strong>«{randomQuizModal.sectionName}»</strong>.
+            </p>
+            <div style={{ padding: '15px', background: 'rgba(0,0,0,0.03)', borderRadius: '12px', marginBottom: '30px', textAlign: 'center' }}>
+              <span style={{ fontSize: '0.85rem', opacity: 0.6, display: 'block', marginBottom: '5px' }}>Вам выпал тест:</span>
+              <span style={{ fontWeight: 'bold', color: 'var(--primary-color)' }}>{randomQuizModal.quiz.title}</span>
+            </div>
+            <div className="grid-2" style={{ gap: '15px' }}>
+              <button onClick={() => setRandomQuizModal(null)} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>Отмена</button>
+              <button onClick={() => navigate(`/quiz/${randomQuizModal.quiz.id}`)} style={{ padding: '15px', background: 'linear-gradient(135deg, var(--primary-color) 0%, #a855f7 100%)' }}>Начать обучение</button>
             </div>
           </div>
         </div>
