@@ -205,3 +205,11 @@ select {
     padding: 15px 12px !important;
   }
 }
+
+/* iOS Safari form elements fixes */
+select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}

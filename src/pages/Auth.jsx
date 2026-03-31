@@ -27,6 +27,8 @@ const Auth = () => {
   }, []);
 
   const translateError = (msg) => {
+    if (msg.includes('Email not confirmed')) return 'Почта не подтверждена. Пожалуйста, проверьте ваш ящик (включая папку "Спам") и перейдите по ссылке.';
+    if (msg.includes('Token has expired')) return 'Срок действия ссылки истек. Пожалуйста, запросите письмо заново.';
     if (msg.includes('Invalid login credentials')) return 'Неверный email или пароль.';
     if (msg.includes('User already registered')) return 'Пользователь с таким email уже зарегистрирован.';
     if (msg.includes('Password should be at least')) return 'Пароль должен содержать минимум 6 символов.';
@@ -55,8 +57,24 @@ const Auth = () => {
         authData = data; authError = error;
       }
       else if (authMode === 'login') {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-        authData = data; authError = error;
+        // Проверяем роль до входа в систему через новую RPC-функцию
+        const { data: userRole, error: roleError } = await supabase.rpc('get_role_by_email', { user_email: email });
+        
+        if (!roleError && (userRole === 'admin' || userRole === 'creator')) {
+          // Если это руководство, шлём им письмо вместо входа по паролю
+          const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: `${window.location.origin}/` } });
+          if (error) {
+            authError = error;
+          } else {
+            setLoading(false);
+            setModal({ isOpen: true, type: 'success', title: 'Вход для Администрации', message: 'В целях повышения безопасности вам на почту была отправлена одноразовая ссылка для входа в платформу. Пожалуйста, проверьте свой ящик.' });
+            return;
+          }
+        } else {
+          // Обычный вход для остальных ролей
+          const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+          authData = data; authError = error;
+        }
       }
       else if (authMode === 'forgot') {
         const { error } = await supabase.auth.resetPasswordForEmail(email, {

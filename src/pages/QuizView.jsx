@@ -1,7 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { CheckCircle, XCircle, ChevronRight, ChevronLeft, RotateCcw, X, AlertTriangle, Book, FileText, ChevronDown, ChevronUp } from 'lucide-react';
+import { CheckCircle, XCircle, ChevronRight, ChevronLeft, RotateCcw, X, AlertTriangle, Book, FileText, ChevronDown, ChevronUp, Clock } from 'lucide-react';
+
+const SECONDS_PER_QUESTION = 25;
+const EXIT_GRACE_SECONDS = 30;
 
 const QuizView = ({ session, profile }) => {
   const { id } = useParams();
@@ -14,14 +17,116 @@ const QuizView = ({ session, profile }) => {
   const [showResult, setShowResult] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showExitModal, setShowExitModal] = useState(false);
+  const [isBlurred, setIsBlurred] = useState(false);
   const [startTime] = useState(Date.now());
+  const startTimeRef = useRef(Date.now());
 
-  // Состояние для отображения списка правильных ответов в конце
+  // Results display
   const [showAnswersList, setShowAnswersList] = useState(false);
+
+  // Timer
+  const [isFirstAttempt, setIsFirstAttempt] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(null);
+  const timerRef = useRef(null);
+  const finishedRef = useRef(false);
+  const answersRef = useRef({});   // mirrors answers state
+  const questionsRef = useRef([]); // mirrors questions state
+  const exitElapsedRef = useRef(0);
+  const saveResultRef = useRef(null); // stable ref to saveResult
+  const finishTimeRef = useRef(null); // frozen finish timestamp for results screen
 
   useEffect(() => {
     fetchQuiz();
   }, [id]);
+
+  // beforeunload: save result if elapsed >= EXIT_GRACE_SECONDS
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (finishedRef.current || !questionsRef.current.length) return;
+      const elapsed = Math.round((Date.now() - startTimeRef.current) / 1000);
+      if (elapsed < EXIT_GRACE_SECONDS) return;
+
+      // Store pending result in localStorage — will be saved on next visit
+      const qs = questionsRef.current;
+      const ans = answersRef.current;
+      const correctCount = qs.filter((q, idx) => ans[idx] === q.correctIndex).length;
+      const pendingKey = `quiz_pending_${id}`;
+      localStorage.setItem(pendingKey, JSON.stringify({
+        quiz_id: id,
+        user_id: session.user.id,
+        score: correctCount,
+        total_questions: qs.length,
+        is_passed: (correctCount / qs.length) >= 0.5,
+        answers_array: qs.map((q, idx) => ans[idx] === q.correctIndex),
+        class_id: profile?.class_id || null,
+        completed_at: new Date().toISOString(),
+      }));
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [id]);
+
+  // visibilitychange: save result when tab is hidden after EXIT_GRACE_SECONDS,
+  // AND handle blur overlay for active quiz
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // Show blur if quiz is active
+        if (!showResult && !loading) setIsBlurred(true);
+
+        // Save pending result to localStorage (fires reliably even on tab close)
+        if (!finishedRef.current && questionsRef.current.length > 0) {
+          const elapsed = Math.round((Date.now() - startTimeRef.current) / 1000);
+          if (elapsed >= EXIT_GRACE_SECONDS) {
+            const qs = questionsRef.current;
+            const ans = answersRef.current;
+            const correctCount = qs.filter((q, idx) => ans[idx] === q.correctIndex).length;
+            localStorage.setItem(`quiz_pending_${id}`, JSON.stringify({
+              quiz_id: id,
+              user_id: session.user.id,
+              score: correctCount,
+              total_questions: qs.length,
+              is_passed: (correctCount / qs.length) >= 0.5,
+              answers_array: qs.map((q, idx) => ans[idx] === q.correctIndex),
+              class_id: profile?.class_id || null,
+              completed_at: new Date().toISOString(),
+            }));
+          }
+        }
+      } else {
+        setIsBlurred(false);
+        // If user came back and quiz not finished, clear the pending save
+        if (!finishedRef.current) {
+          localStorage.removeItem(`quiz_pending_${id}`);
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [showResult, loading, id]);
+
+  // Timer countdown — calls through saveResultRef to avoid stale closure
+  useEffect(() => {
+    if (!isFirstAttempt || timeLeft === null || showResult) return;
+
+    if (timeLeft <= 0) {
+      if (!finishedRef.current) {
+        finishedRef.current = true;
+        localStorage.removeItem(`quiz_timer_${id}`);
+        saveResultRef.current(answersRef.current).then(() => setShowResult(true));
+      }
+      return;
+    }
+
+    // Persist remaining time each second
+    localStorage.setItem(`quiz_timer_${id}`, JSON.stringify({ timeLeft, ts: Date.now() }));
+
+    timerRef.current = setTimeout(() => {
+      setTimeLeft(prev => prev - 1);
+    }, 1000);
+
+    return () => clearTimeout(timerRef.current);
+  }, [isFirstAttempt, timeLeft, showResult]);
 
   const fetchQuiz = async () => {
     const { data } = await supabase
@@ -33,35 +138,71 @@ const QuizView = ({ session, profile }) => {
     if (data) {
       setQuiz(data);
       const rawQuestions = data.content.questions || [];
-      
-      // 1. Перемешиваем вопросы (Fisher-Yates)
+
+      // Shuffle questions (Fisher-Yates)
       const shuffledQuestions = [...rawQuestions];
       for (let i = shuffledQuestions.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [shuffledQuestions[i], shuffledQuestions[j]] = [shuffledQuestions[j], shuffledQuestions[i]];
       }
 
-      // 2. Перемешиваем варианты ответа внутри каждого вопроса
+      // Shuffle options within each question
       const fullyShuffled = shuffledQuestions.map(q => {
         const optionsWithIndices = q.options.map((opt, idx) => ({ opt, originalIndex: idx }));
-        
-        // Перемешиваем варианты
         for (let i = optionsWithIndices.length - 1; i > 0; i--) {
           const j = Math.floor(Math.random() * (i + 1));
           [optionsWithIndices[i], optionsWithIndices[j]] = [optionsWithIndices[j], optionsWithIndices[i]];
         }
-
-        // Находим новый индекс правильного ответа
         const newCorrectIndex = optionsWithIndices.findIndex(o => o.originalIndex === q.correctIndex);
-
-        return {
-          ...q,
-          options: optionsWithIndices.map(o => o.opt),
-          correctIndex: newCorrectIndex
-        };
+        return { ...q, options: optionsWithIndices.map(o => o.opt), correctIndex: newCorrectIndex };
       });
 
       setQuestions(fullyShuffled);
+      questionsRef.current = fullyShuffled;
+
+      // Check if this is first attempt
+      const { count } = await supabase
+        .from('quiz_results')
+        .select('*', { count: 'exact', head: true })
+        .eq('quiz_id', data.id)
+        .eq('user_id', session.user.id);
+
+      const first = (count || 0) === 0;
+      setIsFirstAttempt(first);
+
+      if (first) {
+        // Restore timer from localStorage if page was refreshed mid-attempt
+        const stored = localStorage.getItem(`quiz_timer_${data.id}`);
+        if (stored) {
+          try {
+            const { timeLeft: storedTime, ts } = JSON.parse(stored);
+            const secondsPassed = Math.round((Date.now() - ts) / 1000);
+            const restored = Math.max(0, storedTime - secondsPassed);
+            setTimeLeft(restored);
+          } catch { setTimeLeft(fullyShuffled.length * SECONDS_PER_QUESTION); }
+        } else {
+          setTimeLeft(fullyShuffled.length * SECONDS_PER_QUESTION);
+        }
+      }
+
+      // Save any pending result from a closed tab
+      const pendingKey = `quiz_pending_${data.id}`;
+      const pendingRaw = localStorage.getItem(pendingKey);
+      if (pendingRaw) {
+        try {
+          const pending = JSON.parse(pendingRaw);
+          localStorage.removeItem(pendingKey);
+          // Check if already saved (first attempt might have been saved)
+          const { data: existing } = await supabase.from('quiz_results').select('id').eq('quiz_id', pending.quiz_id).eq('user_id', pending.user_id).maybeSingle();
+          if (existing) {
+            await supabase.from('quiz_results').update({ score: pending.score, total_questions: pending.total_questions, is_passed: pending.is_passed, completed_at: pending.completed_at, answers_array: pending.answers_array }).eq('id', existing.id);
+          } else {
+            const ins = { ...pending, first_score: pending.score, first_completed_at: pending.completed_at };
+            if (!ins.class_id) delete ins.class_id;
+            await supabase.from('quiz_results').insert(ins);
+          }
+        } catch (e) { console.error('Pending save failed:', e); }
+      }
     }
     setLoading(false);
   };
@@ -71,6 +212,7 @@ const QuizView = ({ session, profile }) => {
 
     const updatedAnswers = { ...answers, [currentIdx]: optionIdx };
     setAnswers(updatedAnswers);
+    answersRef.current = updatedAnswers; // keep ref in sync
 
     setTimeout(() => {
       if (currentIdx < questions.length - 1) {
@@ -81,55 +223,76 @@ const QuizView = ({ session, profile }) => {
     }, 1000);
   };
 
-  const finishQuiz = async (finalAnswers = answers) => {
-    setShowResult(true);
-
-    const correctCount = questions.filter((q, idx) => finalAnswers[idx] === q.correctIndex).length;
-    const isPassed = (correctCount / questions.length) >= 0.5;
+  // Saves result to DB — uses refs so it's always current even in stale closures
+  const saveResult = async (finalAnswers) => {
+    const qs = questionsRef.current; // use ref, not state (avoids stale closure)
+    if (!qs || qs.length === 0) { console.warn('saveResult: questions not loaded yet'); return; }
+    const correctCount = qs.filter((q, idx) => finalAnswers[idx] === q.correctIndex).length;
+    const isPassed = (correctCount / qs.length) >= 0.5;
     const now = new Date().toISOString();
-    const answersArray = questions.map((q, idx) => finalAnswers[idx] === q.correctIndex);
-
+    const answersArray = qs.map((q, idx) => finalAnswers[idx] === q.correctIndex);
     try {
       const { data: existing, error: checkError } = await supabase
         .from('quiz_results')
-        .select('id, first_score, first_completed_at')
+        .select('id')
         .eq('quiz_id', id)
         .eq('user_id', session.user.id)
         .maybeSingle();
-
       if (checkError) throw checkError;
-
-      const timeSpentRel = Math.round((Date.now() - startTime) / 1000);
-      const resultData = {
-        score: correctCount,
-        total_questions: questions.length,
-        is_passed: isPassed,
-        completed_at: now,
-        time_spent: timeSpentRel
-      };
-
       if (existing) {
-        const { error: updateError } = await supabase.from('quiz_results').update(resultData).eq('quiz_id', id).eq('user_id', session.user.id);
-        if (updateError) throw updateError;
+        await supabase.from('quiz_results').update({
+          score: correctCount, total_questions: qs.length,
+          is_passed: isPassed, completed_at: now, answers_array: answersArray,
+        }).eq('id', existing.id);
       } else {
-        resultData.quiz_id = id;
-        resultData.user_id = session.user.id;
-        resultData.first_score = correctCount;
-        resultData.first_completed_at = now;
-        resultData.answers_map = answersArray;
-        const { error: insertError } = await supabase.from('quiz_results').insert(resultData);
-        if (insertError) throw insertError;
+        const resultData = {
+          quiz_id: id, user_id: session.user.id,
+          score: correctCount, total_questions: qs.length,
+          is_passed: isPassed, completed_at: now,
+          first_score: correctCount, first_completed_at: now,
+          answers_array: answersArray,
+        };
+        if (profile?.class_id) resultData.class_id = profile.class_id;
+        await supabase.from('quiz_results').insert(resultData);
       }
     } catch (err) {
-      console.error("Ошибка сохранения результата:", err);
-      alert("Не удалось сохранить результат в базу данных. Пожалуйста, сообщите администратору. Ошибка: " + err.message);
+      console.error('Ошибка сохранения результата:', err);
     }
+  };
+
+  // Keep saveResultRef always pointing to latest saveResult
+  saveResultRef.current = saveResult;
+
+  const finishQuiz = async (finalAnswers = answers) => {
+    clearTimeout(timerRef.current);
+    finishedRef.current = true;
+    finishTimeRef.current = Date.now(); // freeze finish time
+    localStorage.removeItem(`quiz_pending_${id}`);
+    localStorage.removeItem(`quiz_timer_${id}`);
+    await saveResultRef.current(finalAnswers);
+    setShowResult(true);
+  };
+
+  const handleExit = () => {
+    const elapsed = Math.round((Date.now() - startTimeRef.current) / 1000);
+    exitElapsedRef.current = elapsed;
+    setShowExitModal(true);
+  };
+
+  const confirmExit = async () => {
+    const elapsed = exitElapsedRef.current;
+    if (elapsed >= EXIT_GRACE_SECONDS) {
+      clearTimeout(timerRef.current);
+      finishedRef.current = true;
+      await saveResultRef.current(answersRef.current); // use stable ref
+    }
+    navigate('/catalog');
   };
 
   if (loading) return <div className="flex-center" style={{ height: '60vh' }}>Загрузка теста...</div>;
   if (!quiz) return <div className="container" style={{ textAlign: 'center', padding: '100px' }}>Тест не найден.</div>;
 
-  // ЭКРАН ОШИБКИ: НЕТ КЛАССА (Наблюдателям можно проходить без класса)
+  // SCREEN: NO CLASS (Observers can pass without a class)
   if (!profile?.class_id && !profile?.is_observer) {
     return (
       <div className="container flex-center animate" style={{ padding: '100px 20px', flexDirection: 'column', textAlign: 'center' }}>
@@ -139,7 +302,7 @@ const QuizView = ({ session, profile }) => {
           </div>
           <h2 style={{ marginBottom: '15px' }}>Класс не указан</h2>
           <p style={{ opacity: 0.7, marginBottom: '30px', lineHeight: '1.6' }}>
-            Для прохождения тестов и сохранения результатов необходимо указать ваш класс в профиле. 
+            Для прохождения тестов и сохранения результатов необходимо указать ваш класс в профиле.
             Это поможет учителям видеть ваши успехи.
           </p>
           <button onClick={() => navigate('/profile', { state: { onboarding: true } })} style={{ width: '100%', padding: '15px' }}>
@@ -150,11 +313,13 @@ const QuizView = ({ session, profile }) => {
     );
   }
 
-  // ЭКРАН РЕЗУЛЬТАТОВ
+  // RESULTS SCREEN
   if (showResult) {
     const correctCount = questions.filter((q, idx) => answers[idx] === q.correctIndex).length;
     const percent = Math.round((correctCount / questions.length) * 100);
-    const timeSpent = Math.round((Date.now() - startTime) / 1000);
+    // Use frozen finish time — prevents re-calculation on every re-render
+    const finishMs = finishTimeRef.current || Date.now();
+    const timeSpent = Math.round((finishMs - startTimeRef.current) / 1000);
 
     return (
       <div className="container flex-center animate" style={{ padding: '60px 20px', flexDirection: 'column' }}>
@@ -181,46 +346,32 @@ const QuizView = ({ session, profile }) => {
           </div>
         </div>
 
-        {/* БЛОК РАЗБОРА ОТВЕТОВ */}
         {showAnswersList && (
           <div className="animate" style={{ maxWidth: '600px', width: '100%', marginTop: '30px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
             <h3 style={{ textAlign: 'left', marginBottom: '10px', opacity: 0.7 }}>Подробный разбор:</h3>
             {questions.map((q, idx) => {
               const userChoice = answers[idx];
               const isCorrect = userChoice === q.correctIndex;
-
               return (
-                <div key={idx} className="card" style={{ textAlign: 'left', padding: '25px', background: 'var(--card-bg)', border: `1px solid ${isCorrect ? 'rgba(74, 222, 128, 0.2)' : 'rgba(248, 113, 113, 0.2)'}` }}>
+                <div key={idx} className="card" style={{ textAlign: 'left', padding: '25px', border: `1px solid ${isCorrect ? 'rgba(74, 222, 128, 0.2)' : 'rgba(248, 113, 113, 0.2)'}` }}>
                   <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
-                    <div style={{
-                      width: '30px', height: '30px', borderRadius: '50%', flexShrink: 0,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      background: isCorrect ? 'rgba(74, 222, 128, 0.1)' : 'rgba(248, 113, 113, 0.1)',
-                      color: isCorrect ? '#4ade80' : '#f87171',
-                      fontWeight: 'bold', fontSize: '0.9rem'
-                    }}>
+                    <div style={{ width: '30px', height: '30px', borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: isCorrect ? 'rgba(74, 222, 128, 0.1)' : 'rgba(248, 113, 113, 0.1)', color: isCorrect ? '#4ade80' : '#f87171', fontWeight: 'bold', fontSize: '0.9rem' }}>
                       {idx + 1}
                     </div>
                     <div style={{ flex: 1 }}>
                       <h4 style={{ margin: '0 0 15px 0', lineHeight: '1.4' }}>{q.question}</h4>
-
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {/* Твой ответ */}
                         <div style={{ fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <span style={{ opacity: 0.6 }}>Ваш ответ:</span>
                           <span style={{ color: isCorrect ? '#4ade80' : '#f87171', fontWeight: '600' }}>
-                            {q.options[userChoice] || 'Пропущено'}
+                            {userChoice !== undefined ? q.options[userChoice] : 'Пропущено'}
                           </span>
-                          {isCorrect ? <CheckCircle size={16} color="#4ade80" /> : <XCircle size={16} color="#f87171" />}
+                          {userChoice !== undefined && (isCorrect ? <CheckCircle size={16} color="#4ade80" /> : <XCircle size={16} color="#f87171" />)}
                         </div>
-
-                        {/* Правильный ответ (если ошибся) */}
                         {!isCorrect && (
                           <div style={{ fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: 'rgba(74, 222, 128, 0.05)', borderRadius: '10px' }}>
                             <span style={{ opacity: 0.6 }}>Правильный:</span>
-                            <span style={{ color: '#4ade80', fontWeight: '600' }}>
-                              {q.options[q.correctIndex]}
-                            </span>
+                            <span style={{ color: '#4ade80', fontWeight: '600' }}>{q.options[q.correctIndex]}</span>
                           </div>
                         )}
                       </div>
@@ -237,153 +388,170 @@ const QuizView = ({ session, profile }) => {
 
   const currentQ = questions[currentIdx];
   const chosen = answers[currentIdx];
+  const elapsed = Math.round((Date.now() - startTimeRef.current) / 1000);
+  const pastGrace = elapsed >= EXIT_GRACE_SECONDS;
+
+  // Timer color
+  const timerPercent = timeLeft !== null ? timeLeft / (questions.length * SECONDS_PER_QUESTION) : 1;
+  const timerColor = timerPercent > 0.5 ? '#4ade80' : timerPercent > 0.2 ? '#facc15' : '#f87171';
+
+  const formatTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
   return (
-    <div className="container animate" style={{ maxWidth: '800px', padding: '60px 20px', position: 'relative' }}>
-
-      <button
-        onClick={() => setShowExitModal(true)}
-        className="flex-center"
-        style={{ position: 'absolute', top: '20px', right: '20px', width: '40px', height: '40px', borderRadius: '12px', background: 'rgba(255,0,0,0.05)', color: 'red', padding: 0, boxShadow: 'none', zIndex: 10 }}
-        title="Выйти из теста"
-      >
-        <X size={20} />
-      </button>
-
-      <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '20px', opacity: 0.6, paddingRight: '50px' }}>
-        <span style={{ whiteSpace: 'nowrap', fontSize: '0.9rem', fontWeight: '500' }}>Вопрос {currentIdx + 1} из {questions.length}</span>
-
-        <div className="flex-center" style={{ gap: '10px', flex: 1, justifyContent: 'flex-end', marginLeft: '20px', minWidth: 0 }}>
-          {quiz.quiz_sections?.book_url && (
-            <a
-              href={quiz.quiz_sections.book_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ color: 'var(--primary-color)', flexShrink: 0, display: 'flex' }}
-              title="Открыть учебник"
-            >
-              <Book size={20} />
-            </a>
-          )}
-          <h3 style={{
-            fontSize: '0.95rem',
-            fontWeight: '600',
-            margin: 0,
-            textAlign: 'right',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap'
-          }}>
-            {quiz.title}
-          </h3>
-        </div>
-      </div>
-
-      <div style={{ width: '100%', height: '8px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', marginBottom: '40px', overflow: 'hidden' }}>
-        <div style={{ width: `${((currentIdx + 1) / questions.length) * 100}%`, height: '100%', background: 'var(--primary-color)', transition: 'width 0.3s' }} />
-      </div>
-
-      <div className="card animate" key={currentIdx} style={{ minHeight: '450px', display: 'flex', flexDirection: 'column' }}>
-        <h2 style={{ marginBottom: '40px', fontSize: '1.7rem', lineHeight: '1.4' }}>{currentQ.question}</h2>
-
+    <div style={{ position: 'relative' }}>
+      {/* BLUR OVERLAY when tab is hidden */}
+      {isBlurred && (
         <div style={{
-          display: 'grid',
-          gap: '12px',
-          marginTop: 'auto',
-          gridTemplateColumns: currentQ.options.some(opt => opt.length > 39) ? '1fr' : 'repeat(auto-fit, minmax(320px, 1fr))',
-          justifyContent: 'center',
-          alignItems: 'stretch'
+          position: 'fixed', inset: 0, zIndex: 99999,
+          backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '20px',
+          color: 'white', textAlign: 'center', padding: '20px'
         }}>
-          {currentQ.options.map((opt, idx) => {
-            const isCorrect = idx === currentQ.correctIndex;
-            const isSelected = chosen === idx;
-            let bgColor = 'var(--card-bg)';
-            let borderColor = 'rgba(0,0,0,0.1)';
-
-            if (chosen !== undefined) {
-              if (isCorrect) (bgColor = 'rgba(74, 222, 128, 0.2)'), (borderColor = '#4ade80');
-              else if (isSelected) (bgColor = 'rgba(248, 113, 113, 0.2)'), (borderColor = '#f87171');
-            }
-
-            return (
-              <button
-                key={idx}
-                onClick={() => handleSelect(idx)}
-                style={{
-                  textAlign: 'left', background: bgColor, color: 'var(--text-color)',
-                  border: `2px solid ${borderColor}`, padding: '18px 25px', borderRadius: '18px',
-                  fontSize: '1.05rem', position: 'relative', boxShadow: 'none', transition: 'all 0.2s',
-                  height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center'
-                }}
-              >
-                <div className="flex-center" style={{ justifyContent: 'space-between', gap: '10px' }}>
-                  <span>{opt}</span>
-                  <div style={{ flexShrink: 0 }}>
-                    {chosen !== undefined && isCorrect && <CheckCircle size={20} color="#4ade80" />}
-                    {chosen !== undefined && isSelected && !isCorrect && <XCircle size={20} color="#f87171" />}
-                  </div>
-                </div>
-              </button>
-            );
-          })}
+          <AlertTriangle size={48} color="#facc15" />
+          <h2>Вкладка свёрнута</h2>
+          <p style={{ opacity: 0.8, maxWidth: '350px' }}>Тест продолжается. Вернитесь обратно, чтобы продолжить прохождение.</p>
         </div>
-      </div>
+      )}
 
-      <div className="flex-center" style={{ justifyContent: 'space-between', marginTop: '30px', gap: '15px' }}>
-        <button
-          onClick={() => setCurrentIdx(prev => prev - 1)}
-          disabled={currentIdx === 0}
-          className="flex-center"
-          style={{
-            background: 'rgba(0,0,0,0.05)',
-            color: 'var(--text-color)',
-            opacity: currentIdx === 0 ? 0.3 : 1,
-            padding: '12px 25px',
-            fontSize: '1.1rem',
-            fontWeight: '600',
-            gap: '8px',
-            flex: 1,
-            maxWidth: '200px'
-          }}
-        >
-          <ChevronLeft size={24} /> <span>Назад</span>
-        </button>
-
-        <button
-          onClick={currentIdx < questions.length - 1 ? () => setCurrentIdx(prev => prev + 1) : () => finishQuiz()}
-          className="flex-center"
-          style={{
-            padding: '12px 25px',
-            fontSize: '1.1rem',
-            fontWeight: '600',
-            gap: '8px',
-            flex: 1,
-            maxWidth: '250px'
-          }}
-        >
-          <span>{currentIdx === questions.length - 1 ? 'Завершить' : 'Далее'}</span> <ChevronRight size={24} />
-        </button>
-      </div>
-
-      {showExitModal && (
-        <div className="modal-overlay" onClick={() => setShowExitModal(false)}>
-          <div className="modal-content animate" onClick={e => e.stopPropagation()}>
-            <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(248, 113, 113, 0.1)', color: '#f87171', margin: '0 auto 25px' }}>
-              <AlertTriangle size={32} />
-            </div>
-            <h2 style={{ marginBottom: '15px' }}>Прервать тест?</h2>
-            <p style={{ opacity: 0.7, marginBottom: '30px', lineHeight: '1.6' }}>
-              Ваш прогресс в этом тесте не будет сохранен. <br /> Вы действительно хотите выйти?
-            </p>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-              <button onClick={() => setShowExitModal(false)} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>Вернуться</button>
-              <button onClick={() => navigate('/catalog')} style={{ background: '#f87171', color: 'white', padding: '15px' }}>Да, выйти</button>
-            </div>
+      {/* STICKY TIMER (first attempt only) */}
+      {isFirstAttempt && timeLeft !== null && !showResult && (
+        <div style={{
+          position: 'sticky', top: 0, zIndex: 100,
+          background: 'var(--card-bg)',
+          borderBottom: `3px solid ${timerColor}`,
+          padding: '10px 20px',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+          boxShadow: '0 2px 12px rgba(0,0,0,0.1)',
+          transition: 'border-color 0.5s'
+        }}>
+          <Clock size={18} color={timerColor} />
+          <span style={{ fontWeight: '700', fontSize: '1.1rem', color: timerColor, fontVariantNumeric: 'tabular-nums', transition: 'color 0.5s' }}>
+            {formatTime(timeLeft)}
+          </span>
+          <span style={{ opacity: 0.5, fontSize: '0.85rem' }}>— Оставшееся время</span>
+          {/* Mini progress bar */}
+          <div style={{ flex: 1, maxWidth: '200px', height: '6px', background: 'rgba(0,0,0,0.08)', borderRadius: '10px', overflow: 'hidden', marginLeft: '10px' }}>
+            <div style={{ width: `${timerPercent * 100}%`, height: '100%', background: timerColor, transition: 'width 1s linear, background 0.5s' }} />
           </div>
         </div>
       )}
 
+      <div
+        className="container animate"
+        style={{
+          maxWidth: '800px',
+          padding: '60px 20px',
+          position: 'relative',
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
+          MozUserSelect: 'none',
+          msUserSelect: 'none',
+        }}
+      >
+        {/* Exit button */}
+        <button
+          onClick={handleExit}
+          className="flex-center"
+          style={{ position: 'absolute', top: '20px', right: '20px', width: '40px', height: '40px', borderRadius: '12px', background: 'rgba(255,0,0,0.05)', color: 'red', padding: 0, boxShadow: 'none', zIndex: 10 }}
+          title="Выйти из теста"
+        >
+          <X size={20} />
+        </button>
+
+        <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '20px', opacity: 0.6, paddingRight: '50px' }}>
+          <span style={{ whiteSpace: 'nowrap', fontSize: '0.9rem', fontWeight: '500' }}>Вопрос {currentIdx + 1} из {questions.length}</span>
+          <div className="flex-center" style={{ gap: '10px', flex: 1, justifyContent: 'flex-end', marginLeft: '20px', minWidth: 0 }}>
+            {quiz.quiz_sections?.book_url && (
+              <a href={quiz.quiz_sections.book_url} target="_blank" rel="noopener noreferrer"
+                style={{ color: 'var(--primary-color)', flexShrink: 0, display: 'flex' }} title="Открыть учебник">
+                <Book size={20} />
+              </a>
+            )}
+            <h3 style={{ fontSize: '0.95rem', fontWeight: '600', margin: 0, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {quiz.title}
+            </h3>
+          </div>
+        </div>
+
+        <div style={{ width: '100%', height: '8px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', marginBottom: '40px', overflow: 'hidden' }}>
+          <div style={{ width: `${((currentIdx + 1) / questions.length) * 100}%`, height: '100%', background: 'var(--primary-color)', transition: 'width 0.3s' }} />
+        </div>
+
+        <div className="card animate" key={currentIdx} style={{ minHeight: '450px', display: 'flex', flexDirection: 'column' }}>
+          <h2 style={{ marginBottom: '40px', fontSize: '1.7rem', lineHeight: '1.4' }}>{currentQ.question}</h2>
+
+          <div style={{
+            display: 'grid', gap: '12px', marginTop: 'auto',
+            gridTemplateColumns: currentQ.options.some(opt => opt.length > 39) ? '1fr' : 'repeat(auto-fit, minmax(320px, 1fr))',
+            justifyContent: 'center', alignItems: 'stretch'
+          }}>
+            {currentQ.options.map((opt, idx) => {
+              const isCorrect = idx === currentQ.correctIndex;
+              const isSelected = chosen === idx;
+              let bgColor = 'var(--card-bg)';
+              let borderColor = 'rgba(0,0,0,0.1)';
+              if (chosen !== undefined) {
+                if (isCorrect) (bgColor = 'rgba(74, 222, 128, 0.2)'), (borderColor = '#4ade80');
+                else if (isSelected) (bgColor = 'rgba(248, 113, 113, 0.2)'), (borderColor = '#f87171');
+              }
+              return (
+                <button key={idx} onClick={() => handleSelect(idx)}
+                  style={{
+                    textAlign: 'left', background: bgColor, color: 'var(--text-color)',
+                    border: `2px solid ${borderColor}`, padding: '18px 25px', borderRadius: '18px',
+                    fontSize: '1.05rem', position: 'relative', boxShadow: 'none', transition: 'all 0.2s',
+                    height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center',
+                    userSelect: 'none', WebkitUserSelect: 'none',
+                  }}>
+                  <div className="flex-center" style={{ justifyContent: 'space-between', gap: '10px' }}>
+                    <span>{opt}</span>
+                    <div style={{ flexShrink: 0 }}>
+                      {chosen !== undefined && isCorrect && <CheckCircle size={20} color="#4ade80" />}
+                      {chosen !== undefined && isSelected && !isCorrect && <XCircle size={20} color="#f87171" />}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="flex-center" style={{ justifyContent: 'space-between', marginTop: '30px', gap: '15px' }}>
+          <button onClick={() => setCurrentIdx(prev => prev - 1)} disabled={currentIdx === 0} className="flex-center"
+            style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', opacity: currentIdx === 0 ? 0.3 : 1, padding: '12px 25px', fontSize: '1.1rem', fontWeight: '600', gap: '8px', flex: 1, maxWidth: '200px' }}>
+            <ChevronLeft size={24} /> <span>Назад</span>
+          </button>
+          <button onClick={currentIdx < questions.length - 1 ? () => setCurrentIdx(prev => prev + 1) : () => finishQuiz()} className="flex-center"
+            style={{ padding: '12px 25px', fontSize: '1.1rem', fontWeight: '600', gap: '8px', flex: 1, maxWidth: '250px' }}>
+            <span>{currentIdx === questions.length - 1 ? 'Завершить' : 'Далее'}</span> <ChevronRight size={24} />
+          </button>
+        </div>
+
+        {/* EXIT MODAL */}
+        {showExitModal && (
+          <div className="modal-overlay" onClick={() => setShowExitModal(false)}>
+            <div className="modal-content animate" onClick={e => e.stopPropagation()}>
+              <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: pastGrace ? 'rgba(250, 204, 21, 0.1)' : 'rgba(248, 113, 113, 0.1)', color: pastGrace ? '#ca8a04' : '#f87171', margin: '0 auto 25px' }}>
+                <AlertTriangle size={32} />
+              </div>
+              <h2 style={{ marginBottom: '15px' }}>Прервать тест?</h2>
+              <p style={{ opacity: 0.7, marginBottom: '30px', lineHeight: '1.6' }}>
+                {pastGrace
+                  ? <>Вы уже прошли более {EXIT_GRACE_SECONDS} секунд. <br /> Ваш <strong>текущий результат будет сохранён</strong>, а на неотвеченные вопросы будет засчитана ошибка.</>
+                  : <>Вы выходите слишком рано. <br /> Ваш прогресс <strong>не будет сохранён</strong>. Вы действительно хотите выйти?</>
+                }
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                <button onClick={() => setShowExitModal(false)} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>Вернуться</button>
+                <button onClick={confirmExit} style={{ background: pastGrace ? '#ca8a04' : '#f87171', color: 'white', padding: '15px' }}>
+                  {pastGrace ? 'Сохранить и выйти' : 'Да, выйти'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
