@@ -51,7 +51,18 @@ const QuizCatalog = ({ profile }) => {
     const { data: c } = await supabase.from('quiz_classes').select('*').order('sort_order', { ascending: true });
     // Поскольку мы делаем select('*'), book_url подтянется автоматически из таблицы quiz_sections
     const { data: s } = await supabase.from('quiz_sections').select('*').order('sort_order', { ascending: true });
-    const { data: q } = await supabase.from('quizzes').select('*, profiles(first_name, last_name, patronymic, role)').eq('is_archived', false).eq('is_hidden', false).order('sort_order', { ascending: true });
+    const isPrivileged = profile?.role === 'admin' || profile?.role === 'creator';
+    let quizQuery = supabase.from('quizzes')
+      .select('*, profiles(first_name, last_name, patronymic, role)')
+      .eq('is_archived', false)
+      .order('sort_order', { ascending: true });
+
+    if (!isPrivileged) {
+      // В каталоге обычные пользователи (даже авторы) видят ТОЛЬКО не скрытые тесты.
+      // Скрытые тесты автор видит только в "древе тестов" (в личном кабинете/редакторе).
+      quizQuery = quizQuery.eq('is_hidden', false);
+    }
+    const { data: q } = await quizQuery;
 
     if (c && s && q) {
       const formatted = c.map(cls => ({

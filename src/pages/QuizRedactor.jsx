@@ -252,23 +252,39 @@ const QuizRedactor = () => {
     </div>
   );
 
-  if (blocked === 'has_results') return (
-    <div className="container flex-center animate" style={{ flexDirection: 'column', height: '70vh', gap: '20px' }}>
-      <div style={iconBoxStyle('#f87171')}><AlertTriangle size={36} /></div>
-      <h2>Редактирование невозможно</h2>
-      <p style={{ opacity: 0.6, textAlign: 'center', maxWidth: '520px', lineHeight: '1.7' }}>
-        Этот тест был пройден <strong>{resultCount}</strong> раз(а). Чтобы редактировать его, необходимо
-        сначала удалить все результаты через страницу аналитики.<br />
-        <span style={{ fontSize: '0.85rem', color: '#f87171' }}>Удаление результатов уберёт их из статистики учеников.</span>
-      </p>
-      <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', justifyContent: 'center' }}>
-        <button onClick={() => navigate(-1)} className="flex-center" style={ghostBtnStyle}><ChevronLeft size={18} style={{ marginRight: '6px' }} /> Назад</button>
-        <button onClick={() => navigate(`/analytics?id=${quizId}`)} className="flex-center" style={{ padding: '12px 24px' }}>
-          <BarChart2 size={18} style={{ marginRight: '8px' }} /> Перейти к аналитике
-        </button>
+  if (blocked === 'has_results') {
+    const downloadBlocked = () => {
+      const data = { title: quiz?.title, questions: quiz?.content?.questions || [] };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${(quiz?.title || 'quiz').replace(/[/\\?%*:|"<>]/g, '-')}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    };
+
+    return (
+      <div className="container flex-center animate" style={{ flexDirection: 'column', height: '70vh', gap: '20px' }}>
+        <div style={iconBoxStyle('#f87171')}><AlertTriangle size={36} /></div>
+        <h2>Редактирование невозможно</h2>
+        <p style={{ opacity: 0.6, textAlign: 'center', maxWidth: '520px', lineHeight: '1.7' }}>
+          Этот тест был пройден <strong>{resultCount}</strong> раз(а). Чтобы редактировать его, необходимо
+          сначала удалить все результаты через страницу аналитики.<br />
+          <span style={{ fontSize: '0.85rem', color: '#f87171' }}>Удаление результатов уберёт их из статистики учеников.</span>
+        </p>
+        <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', justifyContent: 'center' }}>
+          <button onClick={() => navigate(-1)} className="flex-center" style={ghostBtnStyle}><ChevronLeft size={18} style={{ marginRight: '6px' }} /> Назад</button>
+          <button onClick={downloadBlocked} className="flex-center" style={{ padding: '12px 24px', background: 'rgba(74,222,128,0.1)', color: '#4ade80', boxShadow: 'none' }}>
+            <Download size={18} style={{ marginRight: '8px' }} /> Скачать JSON
+          </button>
+          <button onClick={() => navigate(`/analytics?id=${quizId}`)} className="flex-center" style={{ padding: '12px 24px' }}>
+            <BarChart2 size={18} style={{ marginRight: '8px' }} /> Перейти к аналитике
+          </button>
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
 
   const changed = hasChanges();
 
