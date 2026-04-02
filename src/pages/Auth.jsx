@@ -149,6 +149,7 @@ const Auth = () => {
               onChange={(e) => setEmail(e.target.value)}
               required
               style={{ width: '100%' }}
+              autoComplete="email"
             />
           )}
 

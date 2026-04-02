@@ -574,6 +574,8 @@ const QuizCatalog = ({ profile }) => {
             <div style={{ marginBottom: '25px' }}>
               <input 
                 autoFocus
+                id="catalog-rename-input"
+                name="new-name"
                 type="text" 
                 value={newName} 
                 onChange={(e) => setNewName(e.target.value)}

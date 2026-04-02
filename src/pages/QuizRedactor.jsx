@@ -347,9 +347,16 @@ const QuizRedactor = () => {
         <div style={{ fontSize: '0.75rem', opacity: 0.4, marginBottom: '10px', letterSpacing: '1px', textTransform: 'uppercase' }}>Заголовок теста</div>
         {editingTitle ? (
           <div className="flex-center" style={{ gap: '10px' }}>
-            <input type="text" value={title} onChange={e => setTitle(e.target.value)} autoFocus
+            <input 
+              id="quiz-title-edit"
+              name="quiz-title"
+              type="text" 
+              value={title} 
+              onChange={e => setTitle(e.target.value)} 
+              autoFocus
               style={{ fontSize: '1.5rem', fontWeight: '700', flex: 1 }}
-              onKeyDown={e => { if (e.key === 'Enter') setEditingTitle(false); }} />
+              onKeyDown={e => { if (e.key === 'Enter') setEditingTitle(false); }} 
+            />
             <button onClick={() => setEditingTitle(false)} style={{ padding: '8px', background: 'var(--primary-color)', color: 'white', borderRadius: '10px', boxShadow: 'none' }}><Check size={20} /></button>
           </div>
         ) : (
@@ -400,11 +407,17 @@ const QuizRedactor = () => {
                   <span style={{ background: 'var(--primary-color)', color: 'white', width: '28px', height: '28px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem', fontWeight: '700', flexShrink: 0 }}>{qIdx + 1}</span>
                   {editQIdx === qIdx ? (
                     <div className="flex-center" style={{ gap: '8px', flex: 1 }}>
-                      <input type="text" value={q.question} autoFocus
+                      <input 
+                        id={`q-text-${qIdx}`}
+                        name={`question-${qIdx}`}
+                        type="text" 
+                        value={q.question} 
+                        autoFocus
                         onChange={e => updateQText(qIdx, e.target.value)}
                         style={{ flex: 1, fontWeight: '600', fontSize: '1rem' }}
                         onKeyDown={e => { if (e.key === 'Enter') setEditQIdx(null); }}
-                        onBlur={() => setEditQIdx(null)} />
+                        onBlur={() => setEditQIdx(null)} 
+                      />
                       <button onClick={() => setEditQIdx(null)} style={{ padding: '6px', background: 'var(--primary-color)', color: 'white', borderRadius: '8px', boxShadow: 'none', flexShrink: 0 }}><Check size={16} /></button>
                     </div>
                   ) : (
@@ -454,11 +467,17 @@ const QuizRedactor = () => {
                       padding: '10px 14px', borderRadius: '12px', border: `2px solid ${isCorrect ? 'rgba(99,102,241,0.25)' : 'rgba(0,0,0,0.06)'}`,
                       background: isCorrect ? 'rgba(99,102,241,0.04)' : 'var(--card-bg)', transition: 'all 0.2s' }}>
                       {editOptKey === key ? (
-                        <input type="text" value={opt} autoFocus
+                        <input 
+                          id={`q-${qIdx}-opt-${oIdx}`}
+                          name={`option-${qIdx}-${oIdx}`}
+                          type="text" 
+                          value={opt} 
+                          autoFocus
                           onChange={e => updateOpt(qIdx, oIdx, e.target.value)}
                           onBlur={() => setEditOptKey(null)}
                           onKeyDown={e => { if (e.key === 'Enter') setEditOptKey(null); }}
-                          style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: '0.95rem', color: 'var(--text-color)' }} />
+                          style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: '0.95rem', color: 'var(--text-color)' }} 
+                        />
                       ) : (
                         <span style={{ flex: 1, fontSize: '0.95rem' }}>{opt || <span style={{ opacity: 0.3 }}>Текст варианта...</span>}</span>
                       )}

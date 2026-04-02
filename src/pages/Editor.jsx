@@ -501,11 +501,11 @@ const Editor = ({ session, profile }) => {
                     </select>
 
                     <div style={{ display: 'flex', gap: '10px' }}>
-                      <input type="text" style={{ flex: 1 }} placeholder="Название предмета" value={newSectionName} onChange={(e) => setNewSectionName(e.target.value)} />
+                      <input id="new-section-name" name="section-name" type="text" style={{ flex: 1 }} placeholder="Название предмета" value={newSectionName} onChange={(e) => setNewSectionName(e.target.value)} />
                     </div>
 
                     <div style={{ display: 'flex', gap: '10px' }}>
-                      <input type="url" style={{ flex: 1 }} placeholder="Ссылка на учебник (опционально)" value={newSectionBookUrl} onChange={(e) => setNewSectionBookUrl(e.target.value)} />
+                      <input id="new-section-book-url" name="book-url" type="url" style={{ flex: 1 }} placeholder="Ссылка на учебник (опционально)" value={newSectionBookUrl} onChange={(e) => setNewSectionBookUrl(e.target.value)} />
                     </div>
 
                     <button onClick={handleCreateSection} style={{ padding: '10px 20px', width: '100%' }} disabled={!newSectionClassId}>
@@ -869,6 +869,8 @@ const Editor = ({ session, profile }) => {
             <div style={{ marginBottom: '25px' }}>
               <input 
                 autoFocus
+                id="rename-input"
+                name="new-name"
                 type="text" 
                 value={newName} 
                 onChange={(e) => setNewName(e.target.value)}
@@ -896,6 +898,8 @@ const Editor = ({ session, profile }) => {
               Укажите URL адрес материала, либо оставьте пустым для удаления
             </p>
             <input
+              id="edit-book-url"
+              name="book-url"
               type="url"
               placeholder="https://..."
               value={editSectionLink.url}

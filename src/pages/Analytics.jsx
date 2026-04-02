@@ -262,15 +262,35 @@ const Analytics = () => {
       <div className="flex-center" style={{ gap: '15px', marginBottom: '30px', flexWrap: 'wrap', justifyContent: 'space-between' }}>
         <div className="card" style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'center', marginBottom: 0, flex: 1 }}>
           <Filter size={20} style={{ opacity: 0.5 }} />
-          <select value={filterCity} onChange={e => { setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all'); }} style={{ width: 'auto', flex: 1, minWidth: '150px' }} disabled={isTeacher}>
+          <select 
+            id="analytics-filter-city"
+            name="city"
+            value={filterCity} 
+            onChange={e => { setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all'); }} 
+            style={{ width: 'auto', flex: 1, minWidth: '150px' }} 
+            disabled={isTeacher}
+          >
             <option value="all">Все города</option>
             {cities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
-          <select value={filterSchool} onChange={e => { setFilterSchool(e.target.value); setFilterClass('all'); }} style={{ width: 'auto', flex: 1, minWidth: '150px' }} disabled={isTeacher}>
+          <select 
+            id="analytics-filter-school"
+            name="school"
+            value={filterSchool} 
+            onChange={e => { setFilterSchool(e.target.value); setFilterClass('all'); }} 
+            style={{ width: 'auto', flex: 1, minWidth: '150px' }} 
+            disabled={isTeacher}
+          >
             <option value="all">Все школы</option>
             {availableSchools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
-          <select value={filterClass} onChange={e => setFilterClass(e.target.value)} style={{ width: 'auto', flex: 1, minWidth: '150px' }}>
+          <select 
+            id="analytics-filter-class"
+            name="class"
+            value={filterClass} 
+            onChange={e => setFilterClass(e.target.value)} 
+            style={{ width: 'auto', flex: 1, minWidth: '150px' }}
+          >
             <option value="all">Все классы</option>
             {availableClasses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>

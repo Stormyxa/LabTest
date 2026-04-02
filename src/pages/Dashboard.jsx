@@ -381,8 +381,8 @@ const Dashboard = ({ session, profile }) => {
 
           <form onSubmit={handleAddBlacklist} className="flex-center" style={{ gap: '15px', marginBottom: '30px', padding: '20px', background: 'rgba(255,0,0,0.02)', borderRadius: '15px', border: '1px dashed red' }}>
             <div style={{ flex: 1 }}>
-              <label style={{ fontSize: '0.85rem', opacity: 0.6, marginBottom: '5px', display: 'block' }}>Заблокировать новую почту вручную</label>
-              <input type="email" placeholder="example@mail.ru" value={newBlacklistEmail} onChange={(e) => setNewBlacklistEmail(e.target.value)} required style={{ width: '100%' }} />
+              <label htmlFor="blacklist-email" style={{ fontSize: '0.85rem', opacity: 0.6, marginBottom: '5px', display: 'block' }}>Заблокировать новую почту вручную</label>
+              <input id="blacklist-email" name="email" type="email" placeholder="example@mail.ru" value={newBlacklistEmail} onChange={(e) => setNewBlacklistEmail(e.target.value)} required style={{ width: '100%' }} />
             </div>
             <button type="submit" style={{ background: 'red', marginTop: '22px' }}>Заблокировать</button>
           </form>
@@ -419,7 +419,7 @@ const Dashboard = ({ session, profile }) => {
           <div className="card">
             <h3 className="flex-center" style={{ gap: '10px', marginBottom: '20px', justifyContent: 'flex-start' }}><MapPin size={20} color="var(--primary-color)" /> Города</h3>
             <div className="flex-center" style={{ gap: '10px', marginBottom: '20px' }}>
-              <input type="text" placeholder="Новый город" value={newCity} onChange={e => setNewCity(e.target.value)} style={{ flex: 1, padding: '10px' }} />
+              <input id="new-city-name" name="city-name" type="text" placeholder="Новый город" value={newCity} onChange={e => setNewCity(e.target.value)} style={{ flex: 1, padding: '10px' }} />
               <button onClick={handleCreateCity} style={{ padding: '10px' }}><Plus size={20} /></button>
             </div>
             <div style={{ display: 'grid', gap: '10px' }}>
@@ -435,12 +435,12 @@ const Dashboard = ({ session, profile }) => {
           <div className="card">
             <h3 className="flex-center" style={{ gap: '10px', marginBottom: '20px', justifyContent: 'flex-start' }}><Building size={20} color="var(--primary-color)" /> Школы</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px' }}>
-              <select value={newSchoolCityId} onChange={e => setNewSchoolCityId(e.target.value)} style={{ padding: '10px' }}>
+              <select id="new-school-city" name="city-id" value={newSchoolCityId} onChange={e => setNewSchoolCityId(e.target.value)} style={{ padding: '10px' }}>
                 <option value="">Выберите город...</option>
                 {cities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
               <div className="flex-center" style={{ gap: '10px' }}>
-                <input type="text" placeholder="Название школы" value={newSchool} onChange={e => setNewSchool(e.target.value)} style={{ flex: 1, padding: '10px' }} />
+                <input id="new-school-name" name="school-name" type="text" placeholder="Название школы" value={newSchool} onChange={e => setNewSchool(e.target.value)} style={{ flex: 1, padding: '10px' }} />
                 <button onClick={handleCreateSchool} style={{ padding: '10px' }} disabled={!newSchoolCityId}><Plus size={20} /></button>
               </div>
             </div>
@@ -578,8 +578,10 @@ const Dashboard = ({ session, profile }) => {
               Тип: {availableSchools.find(s => s.id === editingClassLimit.school_id)?.name}
             </p>
             <div style={{ marginBottom: '25px' }}>
-              <label style={{ fontSize: '0.85rem', opacity: 0.5, display: 'block', marginBottom: '8px' }}>Новый лимит (учеников)</label>
+              <label htmlFor="class-limit-input" style={{ fontSize: '0.85rem', opacity: 0.5, display: 'block', marginBottom: '8px' }}>Новый лимит (учеников)</label>
               <input 
+                id="class-limit-input"
+                name="max_students"
                 type="number" 
                 value={newLimit} 
                 onChange={(e) => setNewLimit(parseInt(e.target.value) || 0)} 
@@ -625,15 +627,17 @@ const Dashboard = ({ session, profile }) => {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
               <div className="grid-2" style={{ gap: '15px' }}>
                 <div>
-                  <label style={{ fontSize: '0.85rem', opacity: 0.5, display: 'block' }}>Email (Только чтение)</label>
-                  <input type="email" value={editingUser.email || ''} disabled style={{ opacity: 0.7 }} />
+                  <label htmlFor="edit-user-email" style={{ fontSize: '0.85rem', opacity: 0.5, display: 'block' }}>Email (Только чтение)</label>
+                  <input id="edit-user-email" name="email" type="email" value={editingUser.email || ''} disabled style={{ opacity: 0.7 }} />
                 </div>
                 {/* ПОЛЕ ДЛЯ СМЕНЫ ПАРОЛЯ */}
                 {profile?.role === 'creator' && (
                   <div>
-                    <label style={{ fontSize: '0.85rem', opacity: 0.5, display: 'block' }}>Сбросить пароль (скрыто)</label>
+                    <label htmlFor="edit-user-password" style={{ fontSize: '0.85rem', opacity: 0.5, display: 'block' }}>Сбросить пароль (скрыто)</label>
                     <div style={{ position: 'relative' }}>
                       <input
+                        id="edit-user-password"
+                        name="new-password"
                         type={showNewPassword ? 'text' : 'password'}
                         placeholder="Оставьте пустым..."
                         value={newPassword}
@@ -653,14 +657,14 @@ const Dashboard = ({ session, profile }) => {
               </div>
 
               <div className="grid-2" style={{ gap: '15px' }}>
-                <div><label style={{ fontSize: '0.85rem', opacity: 0.5, display: 'block' }}>Фамилия</label><input type="text" value={editingUser.last_name || ''} onChange={(e) => setEditingUser({ ...editingUser, last_name: e.target.value })} /></div>
-                <div><label style={{ fontSize: '0.85rem', opacity: 0.5, display: 'block' }}>Имя</label><input type="text" value={editingUser.first_name || ''} onChange={(e) => setEditingUser({ ...editingUser, first_name: e.target.value })} /></div>
+                <div><label htmlFor="edit-user-last-name" style={{ fontSize: '0.85rem', opacity: 0.5, display: 'block' }}>Фамилия</label><input id="edit-user-last-name" name="last_name" type="text" value={editingUser.last_name || ''} onChange={(e) => setEditingUser({ ...editingUser, last_name: e.target.value })} /></div>
+                <div><label htmlFor="edit-user-first-name" style={{ fontSize: '0.85rem', opacity: 0.5, display: 'block' }}>Имя</label><input id="edit-user-first-name" name="first_name" type="text" value={editingUser.first_name || ''} onChange={(e) => setEditingUser({ ...editingUser, first_name: e.target.value })} /></div>
               </div>
-              <div><label style={{ fontSize: '0.85rem', opacity: 0.5, display: 'block' }}>Отчество</label><input type="text" value={editingUser.patronymic || ''} onChange={(e) => setEditingUser({ ...editingUser, patronymic: e.target.value })} /></div>
+              <div><label htmlFor="edit-user-patronymic" style={{ fontSize: '0.85rem', opacity: 0.5, display: 'block' }}>Отчество</label><input id="edit-user-patronymic" name="patronymic" type="text" value={editingUser.patronymic || ''} onChange={(e) => setEditingUser({ ...editingUser, patronymic: e.target.value })} /></div>
 
               <div>
-                <label style={{ fontSize: '0.85rem', opacity: 0.5, display: 'block' }}>Роль доступа</label>
-                <select value={editingUser.role} onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })} disabled={profile?.role !== 'creator' && (editingUser.role === 'creator' || editingUser.role === 'admin')}>
+                <label htmlFor="edit-user-role" style={{ fontSize: '0.85rem', opacity: 0.5, display: 'block' }}>Роль доступа</label>
+                <select id="edit-user-role" name="role" value={editingUser.role} onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })} disabled={profile?.role !== 'creator' && (editingUser.role === 'creator' || editingUser.role === 'admin')}>
                   <option value="player">Ученик (Игрок)</option>
                   <option value="editor">Редактор</option>
                   <option value="teacher">Учитель</option>
@@ -672,19 +676,19 @@ const Dashboard = ({ session, profile }) => {
               <div style={{ padding: '15px', background: 'rgba(0,0,0,0.02)', borderRadius: '15px', border: '1px solid rgba(0,0,0,0.05)' }}>
                 <h4 style={{ marginBottom: '15px', fontSize: '0.95rem' }}>Заведение</h4>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <select value={editingUser.city_id || ''} onChange={(e) => setEditingUser({ ...editingUser, city_id: e.target.value || null, school_id: null, class_id: null })}><option value="">Без города</option>{cities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
-                  <select value={editingUser.school_id || ''} onChange={(e) => setEditingUser({ ...editingUser, school_id: e.target.value || null, class_id: null })} disabled={!editingUser.city_id}><option value="">Без школы</option>{schools.filter(s => s.city_id === editingUser.city_id).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
-                  <select value={editingUser.class_id || ''} onChange={(e) => setEditingUser({ ...editingUser, class_id: e.target.value || null })} disabled={!editingUser.school_id}><option value="">Без класса</option>{classesList.filter(c => c.school_id === editingUser.school_id).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+                  <select id="edit-user-city" name="city-id" value={editingUser.city_id || ''} onChange={(e) => setEditingUser({ ...editingUser, city_id: e.target.value || null, school_id: null, class_id: null })}><option value="">Без города</option>{cities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+                  <select id="edit-user-school" name="school-id" value={editingUser.school_id || ''} onChange={(e) => setEditingUser({ ...editingUser, school_id: e.target.value || null, class_id: null })} disabled={!editingUser.city_id}><option value="">Без школы</option>{schools.filter(s => s.city_id === editingUser.city_id).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
+                  <select id="edit-user-class" name="class-id" value={editingUser.class_id || ''} onChange={(e) => setEditingUser({ ...editingUser, class_id: e.target.value || null })} disabled={!editingUser.school_id}><option value="">Без класса</option>{classesList.filter(c => c.school_id === editingUser.school_id).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
                 </div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', padding: '15px', background: 'rgba(0,0,0,0.02)', borderRadius: '15px', border: '1px solid rgba(0,0,0,0.05)' }}>
-                <label className="flex-center" style={{ gap: '10px', cursor: 'pointer', fontSize: '0.9rem' }}>
-                  <input type="checkbox" checked={editingUser.is_observer} onChange={(e) => setEditingUser({ ...editingUser, is_observer: e.target.checked })} style={{ width: '18px', height: '18px' }} />
+                <label htmlFor="edit-user-observer" className="flex-center" style={{ gap: '10px', cursor: 'pointer', fontSize: '0.9rem' }}>
+                  <input id="edit-user-observer" name="is_observer" type="checkbox" checked={editingUser.is_observer} onChange={(e) => setEditingUser({ ...editingUser, is_observer: e.target.checked })} style={{ width: '18px', height: '18px' }} />
                   <span>Наблюдатель</span>
                 </label>
-                <label className="flex-center" style={{ gap: '10px', cursor: 'pointer', fontSize: '0.9rem' }}>
-                  <input type="checkbox" checked={editingUser.is_hidden} onChange={(e) => setEditingUser({ ...editingUser, is_hidden: e.target.checked })} style={{ width: '18px', height: '18px' }} />
+                <label htmlFor="edit-user-hidden" className="flex-center" style={{ gap: '10px', cursor: 'pointer', fontSize: '0.9rem' }}>
+                  <input id="edit-user-hidden" name="is_hidden" type="checkbox" checked={editingUser.is_hidden} onChange={(e) => setEditingUser({ ...editingUser, is_hidden: e.target.checked })} style={{ width: '18px', height: '18px' }} />
                   <span>Скрыть из списков</span>
                 </label>
               </div>

@@ -219,38 +219,38 @@ const Profile = ({ session, profile, refreshProfile }) => {
         <form onSubmit={handleUpdateProfile} style={{ display: 'grid', gap: '20px', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))' }}>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <label>Фамилия</label>
+            <label htmlFor="last-name">Фамилия</label>
             <input id="last-name" name="last_name" type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} pattern="^[А-Яа-яЁё\s\-]+$" title="Только кириллица, пробелы и дефисы" placeholder="Иванов" required autoComplete="family-name" />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <label>Имя</label>
+            <label htmlFor="first-name">Имя</label>
             <input id="first-name" name="first_name" type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} pattern="^[А-Яа-яЁё\s\-]+$" title="Только кириллица, пробелы и дефисы" placeholder="Иван" required autoComplete="given-name" />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <label>Отчество (необязательно)</label>
+            <label htmlFor="patronymic">Отчество (необязательно)</label>
             <input id="patronymic" name="patronymic" type="text" value={patronymic} onChange={(e) => setPatronymic(e.target.value)} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} pattern="^[А-Яа-яЁё\s\-]*$" title="Только кириллица, пробелы и дефисы" placeholder="Иванович" autoComplete="additional-name" />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <label>Дата рождения</label>
-            <input id="birth-date" name="birth_date" type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} required autoComplete="bday" />
+            <label htmlFor="birth-date">Дата рождения</label>
+            <input id="birth-date" name="birth_date" type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} required />
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <label>Ваш город</label>
+            <label htmlFor="city-select">Ваш город</label>
             <select id="city-select" name="city" value={cityId} onChange={(e) => { setCityId(e.target.value); setSchoolId(''); setClassId(''); }} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} required>
               <option value="">Выберите город...</option>
               {cities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <label>Ваша школа</label>
+            <label htmlFor="school-select">Ваша школа</label>
             <select id="school-select" name="school" value={schoolId} onChange={(e) => { setSchoolId(e.target.value); setClassId(''); }} disabled={(profile?.is_profile_setup_completed && profile?.role !== 'creator') || (profile?.role === 'teacher' && profile?.school_id) || !cityId} required>
               <option value="">Выберите школу...</option>
               {availableSchools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <label>Ваш класс</label>
+            <label htmlFor="class-select">Ваш класс</label>
             <select id="class-select" name="class" value={classId} onChange={(e) => setClassId(e.target.value)} disabled={(profile?.is_profile_setup_completed && profile?.role !== 'creator') || !schoolId}>
               <option value="">Выберите класс...</option>
               {availableClasses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -259,7 +259,7 @@ const Profile = ({ session, profile, refreshProfile }) => {
 
           {(profile?.role === 'admin' || profile?.role === 'creator') && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <label>Мой номер WhatsApp</label>
+              <label htmlFor="phone-number">Мой номер WhatsApp</label>
               <input id="phone-number" name="phone_number" type="text" value={phoneNumber} onChange={handlePhoneChange} placeholder="+7 (___) ___-__-__" autoComplete="tel" />
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px' }}>
                 <input type="checkbox" id="show-phone" name="show_phone" checked={showPhone} onChange={(e) => setShowPhone(e.target.checked)} style={{ width: '20px', height: '20px' }} />
@@ -289,7 +289,7 @@ const Profile = ({ session, profile, refreshProfile }) => {
               Вы не выбрали класс. Это означает, что ваши результаты не будут учитываться в рейтингах и статистике. Вы перейдете в <strong>режим наблюдателя</strong>.
             </p>
             
-            <label className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px', background: 'rgba(0,0,0,0.03)', padding: '15px', borderRadius: '12px', cursor: 'pointer', marginBottom: '20px' }}>
+            <label htmlFor="agree-observer" className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px', background: 'rgba(0,0,0,0.03)', padding: '15px', borderRadius: '12px', cursor: 'pointer', marginBottom: '20px' }}>
               <input id="agree-observer" name="agree_observer" type="checkbox" checked={agreeObserver} onChange={(e) => setAgreeObserver(e.target.checked)} style={{ width: '18px', height: '18px' }} />
               <span style={{ fontSize: '0.9rem', fontWeight: '500' }}>Я согласен стать наблюдателем</span>
             </label>

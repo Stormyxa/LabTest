@@ -140,6 +140,8 @@ const Statistics = ({ session, profile }) => {
       <div className="card" style={{ marginBottom: '30px', display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'center' }}>
         <Filter size={20} style={{ opacity: 0.5 }} />
         <select
+          id="stat-filter-city"
+          name="city"
           value={filterCity}
           onChange={e => { setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all'); }}
           style={{ width: 'auto', flex: 1, minWidth: '150px' }}
@@ -150,6 +152,8 @@ const Statistics = ({ session, profile }) => {
         </select>
 
         <select
+          id="stat-filter-school"
+          name="school"
           value={filterSchool}
           onChange={e => { setFilterSchool(e.target.value); setFilterClass('all'); }}
           style={{ width: 'auto', flex: 1, minWidth: '150px' }}
@@ -160,6 +164,8 @@ const Statistics = ({ session, profile }) => {
         </select>
 
         <select
+          id="stat-filter-class"
+          name="class"
           value={filterClass}
           onChange={e => setFilterClass(e.target.value)}
           style={{ width: 'auto', flex: 1, minWidth: '150px' }}
