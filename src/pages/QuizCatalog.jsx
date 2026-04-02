@@ -234,6 +234,8 @@ const QuizCatalog = ({ profile }) => {
         <div style={{ position: 'relative', width: '300px' }}>
           <Search size={20} style={{ position: 'absolute', left: '15px', top: '12px', opacity: 0.5 }} />
           <input
+            id="catalog-search"
+            name="catalog-search"
             type="text"
             placeholder="Поиск по классам, темам..."
             value={searchQuery}

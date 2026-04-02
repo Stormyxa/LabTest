@@ -141,6 +141,8 @@ const Auth = () => {
           {/* EMAIL: Показывать везде, кроме режима обновления пароля */}
           {authMode !== 'update' && (
             <input
+              id="auth-email"
+              name="email"
               type="email"
               placeholder="Электронная почта"
               value={email}
@@ -154,12 +156,15 @@ const Auth = () => {
           {authMode !== 'forgot' && (
             <div style={{ position: 'relative', width: '100%' }}>
               <input
+                id="auth-password"
+                name="password"
                 type={showPassword ? "text" : "password"}
                 placeholder={authMode === 'update' ? "Новый пароль" : "Пароль"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 style={{ width: '100%', paddingRight: '45px' }}
+                autoComplete={authMode === 'login' ? "current-password" : "new-password"}
               />
               <button
                 type="button"
@@ -175,12 +180,15 @@ const Auth = () => {
           {(authMode === 'register' || authMode === 'update') && (
             <div className="animate" style={{ position: 'relative', width: '100%' }}>
               <input
+                id="auth-confirm-password"
+                name="confirm-password"
                 type={showConfirmPassword ? "text" : "password"}
                 placeholder="Повторите пароль"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
                 style={{ width: '100%', paddingRight: '45px', border: password && confirmPassword && password !== confirmPassword ? '2px solid #f87171' : '' }}
+                autoComplete="new-password"
               />
               <button
                 type="button"

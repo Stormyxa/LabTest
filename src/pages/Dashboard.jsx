@@ -272,23 +272,31 @@ const Dashboard = ({ session, profile }) => {
           <>
             <div style={{ position: 'relative', minWidth: '300px', flex: 1 }}>
               <Search size={20} style={{ position: 'absolute', left: '15px', top: '12px', opacity: 0.5 }} />
-              <input type="text" placeholder="Поиск по ФИО, Email..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ paddingLeft: '45px' }} />
+              <input 
+                id="dashboard-user-search"
+                name="dashboard-user-search"
+                type="text" 
+                placeholder="Поиск по ФИО, Email..." 
+                value={search} 
+                onChange={(e) => setSearch(e.target.value)} 
+                style={{ paddingLeft: '45px' }} 
+              />
             </div>
-            <select value={filterRole} onChange={e => setFilterRole(e.target.value)} style={{ width: 'auto' }}>
+            <select id="filter-role" name="role" value={filterRole} onChange={e => setFilterRole(e.target.value)} style={{ width: 'auto' }}>
               <option value="all">Все роли</option>
               {['player', 'teacher', 'editor', 'admin', 'creator'].map(r => (
                 <option key={r} value={r}>{r === 'player' ? 'Ученик' : r === 'teacher' ? 'Учитель' : r === 'editor' ? 'Редактор' : r === 'admin' ? 'Админ' : 'Создатель'}</option>
               ))}
             </select>
-            <select value={filterCity} onChange={e => { setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all'); }} style={{ width: 'auto' }}>
+            <select id="filter-city" name="city" value={filterCity} onChange={e => { setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all'); }} style={{ width: 'auto' }}>
               <option value="all">Все города</option>
               {cities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
-            <select value={filterSchool} onChange={e => { setFilterSchool(e.target.value); setFilterClass('all'); }} style={{ width: 'auto' }}>
+            <select id="filter-school" name="school" value={filterSchool} onChange={e => { setFilterSchool(e.target.value); setFilterClass('all'); }} style={{ width: 'auto' }}>
               <option value="all">Все школы</option>
               {availableSchools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
-            <select value={filterClass} onChange={e => setFilterClass(e.target.value)} style={{ width: 'auto' }}>
+            <select id="filter-class" name="class" value={filterClass} onChange={e => setFilterClass(e.target.value)} style={{ width: 'auto' }}>
               <option value="all">Все классы</option>
               {availableClassFilters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>

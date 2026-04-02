@@ -29,6 +29,11 @@ const Profile = ({ session, profile, refreshProfile }) => {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState(location.state?.msg || '');
   const [stats, setStats] = useState({ passed: 0, perfect: 0, totalPoints: 0, created: 0 });
+  const [autoAdvance, setAutoAdvance] = useState(localStorage.getItem('quiz_auto_advance') === 'true');
+
+  useEffect(() => {
+    localStorage.setItem('quiz_auto_advance', autoAdvance);
+  }, [autoAdvance]);
 
   useEffect(() => {
     fetchStructure();
@@ -168,6 +173,43 @@ const Profile = ({ session, profile, refreshProfile }) => {
             <StatBox label="Всего баллов" value={stats.totalPoints} icon={<TrendingUp size={20} />} />
             <StatBox label="Создано тестов" value={stats.created} icon={<FileText size={20} />} />
           </div>
+
+          <div style={{ marginTop: '20px', padding: '20px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '20px', border: '1px dashed rgba(99, 102, 241, 0.2)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '15px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
+                <div style={{ padding: '10px', background: 'rgba(99, 102, 241, 0.1)', borderRadius: '12px', color: 'var(--primary-color)', flexShrink: 0 }}>
+                  <Zap size={20} />
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: '700' }}>Авто-прокрутка (Обучение)</h4>
+                  <p style={{ margin: '4px 0 0 0', fontSize: '0.75rem', opacity: 0.6, lineHeight: '1.4' }}>Автоматический переход к следующему вопросу (доступно после 1-го прохождения).</p>
+                </div>
+              </div>
+
+              <label className="switch" style={{ position: 'relative', display: 'inline-block', width: '48px', height: '26px', flexShrink: 0 }}>
+                <input 
+                  id="auto-advance"
+                  name="auto-advance"
+                  type="checkbox" 
+                  checked={autoAdvance} 
+                  onChange={(e) => setAutoAdvance(e.target.checked)}
+                  style={{ opacity: 0, width: 0, height: 0 }}
+                />
+                <span style={{ 
+                  position: 'absolute', cursor: 'pointer', inset: 0, 
+                  background: autoAdvance ? 'var(--primary-color)' : 'rgba(0,0,0,0.2)',
+                  borderRadius: '30px', transition: '0.3s'
+                }}>
+                  <span style={{
+                    position: 'absolute', height: '20px', width: '20px', 
+                    left: autoAdvance ? '25px' : '3px', top: '3px',
+                    background: 'white', borderRadius: '50%', transition: '0.3s',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                  }} />
+                </span>
+              </label>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -178,38 +220,38 @@ const Profile = ({ session, profile, refreshProfile }) => {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <label>Фамилия</label>
-            <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} pattern="^[А-Яа-яЁё\s\-]+$" title="Только кириллица, пробелы и дефисы" placeholder="Иванов" required />
+            <input id="last-name" name="last_name" type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} pattern="^[А-Яа-яЁё\s\-]+$" title="Только кириллица, пробелы и дефисы" placeholder="Иванов" required autoComplete="family-name" />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <label>Имя</label>
-            <input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} pattern="^[А-Яа-яЁё\s\-]+$" title="Только кириллица, пробелы и дефисы" placeholder="Иван" required />
+            <input id="first-name" name="first_name" type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} pattern="^[А-Яа-яЁё\s\-]+$" title="Только кириллица, пробелы и дефисы" placeholder="Иван" required autoComplete="given-name" />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <label>Отчество (необязательно)</label>
-            <input type="text" value={patronymic} onChange={(e) => setPatronymic(e.target.value)} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} pattern="^[А-Яа-яЁё\s\-]*$" title="Только кириллица, пробелы и дефисы" placeholder="Иванович" />
+            <input id="patronymic" name="patronymic" type="text" value={patronymic} onChange={(e) => setPatronymic(e.target.value)} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} pattern="^[А-Яа-яЁё\s\-]*$" title="Только кириллица, пробелы и дефисы" placeholder="Иванович" autoComplete="additional-name" />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <label>Дата рождения</label>
-            <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} required />
+            <input id="birth-date" name="birth_date" type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} required autoComplete="bday" />
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <label>Ваш город</label>
-            <select value={cityId} onChange={(e) => { setCityId(e.target.value); setSchoolId(''); setClassId(''); }} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} required>
+            <select id="city-select" name="city" value={cityId} onChange={(e) => { setCityId(e.target.value); setSchoolId(''); setClassId(''); }} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} required>
               <option value="">Выберите город...</option>
               {cities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <label>Ваша школа</label>
-            <select value={schoolId} onChange={(e) => { setSchoolId(e.target.value); setClassId(''); }} disabled={(profile?.is_profile_setup_completed && profile?.role !== 'creator') || (profile?.role === 'teacher' && profile?.school_id) || !cityId} required>
+            <select id="school-select" name="school" value={schoolId} onChange={(e) => { setSchoolId(e.target.value); setClassId(''); }} disabled={(profile?.is_profile_setup_completed && profile?.role !== 'creator') || (profile?.role === 'teacher' && profile?.school_id) || !cityId} required>
               <option value="">Выберите школу...</option>
               {availableSchools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <label>Ваш класс</label>
-            <select value={classId} onChange={(e) => setClassId(e.target.value)} disabled={(profile?.is_profile_setup_completed && profile?.role !== 'creator') || !schoolId}>
+            <select id="class-select" name="class" value={classId} onChange={(e) => setClassId(e.target.value)} disabled={(profile?.is_profile_setup_completed && profile?.role !== 'creator') || !schoolId}>
               <option value="">Выберите класс...</option>
               {availableClasses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
@@ -218,10 +260,10 @@ const Profile = ({ session, profile, refreshProfile }) => {
           {(profile?.role === 'admin' || profile?.role === 'creator') && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <label>Мой номер WhatsApp</label>
-              <input type="text" value={phoneNumber} onChange={handlePhoneChange} placeholder="+7 (___) ___-__-__" />
+              <input id="phone-number" name="phone_number" type="text" value={phoneNumber} onChange={handlePhoneChange} placeholder="+7 (___) ___-__-__" autoComplete="tel" />
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px' }}>
-                <input type="checkbox" id="showPhone" checked={showPhone} onChange={(e) => setShowPhone(e.target.checked)} style={{ width: '20px', height: '20px' }} />
-                <label htmlFor="showPhone" style={{ fontSize: '0.85rem' }}>Показывать в разделе "Команда"</label>
+                <input type="checkbox" id="show-phone" name="show_phone" checked={showPhone} onChange={(e) => setShowPhone(e.target.checked)} style={{ width: '20px', height: '20px' }} />
+                <label htmlFor="show-phone" style={{ fontSize: '0.85rem' }}>Показывать в разделе "Команда"</label>
               </div>
             </div>
           )}
@@ -248,7 +290,7 @@ const Profile = ({ session, profile, refreshProfile }) => {
             </p>
             
             <label className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px', background: 'rgba(0,0,0,0.03)', padding: '15px', borderRadius: '12px', cursor: 'pointer', marginBottom: '20px' }}>
-              <input type="checkbox" checked={agreeObserver} onChange={(e) => setAgreeObserver(e.target.checked)} style={{ width: '18px', height: '18px' }} />
+              <input id="agree-observer" name="agree_observer" type="checkbox" checked={agreeObserver} onChange={(e) => setAgreeObserver(e.target.checked)} style={{ width: '18px', height: '18px' }} />
               <span style={{ fontSize: '0.9rem', fontWeight: '500' }}>Я согласен стать наблюдателем</span>
             </label>
 

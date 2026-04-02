@@ -431,18 +431,18 @@ const Editor = ({ session, profile }) => {
                     {(profile?.role === 'admin' || profile?.role === 'creator') ? 'Название (необязательно если указано в JSON в качестве title)' : 'Название теста'}
                   </label>
                   {(profile?.role === 'admin' || profile?.role === 'creator') ? (
-                    <textarea placeholder="Например:&#10;§17. Антропогенез и этногенез" value={titles} onChange={(e) => setTitles(e.target.value)} style={{ height: '80px', resize: 'vertical' }} required={!jsonInput.trim()} />
+                    <textarea id="quiz-title" name="quiz-title" placeholder="Например:&#10;§17. Антропогенез и этногенез" value={titles} onChange={(e) => setTitles(e.target.value)} style={{ height: '80px', resize: 'vertical' }} required={!jsonInput.trim()} />
                   ) : (
-                    <input type="text" placeholder="Напр: История Древнего мира" value={titles} onChange={(e) => setTitles(e.target.value)} required={!jsonInput.trim()} />
+                    <input id="quiz-title" name="quiz-title" type="text" placeholder="Напр: История Древнего мира" value={titles} onChange={(e) => setTitles(e.target.value)} required={!jsonInput.trim()} />
                   )}
                 </div>
 
                 <div style={{ display: 'flex', gap: '10px' }}>
-                  <select value={selectedClassId} onChange={(e) => { setSelectedClassId(e.target.value); setSectionId(''); }} required style={{ flex: 1 }}>
+                  <select id="quiz-class" name="class" value={selectedClassId} onChange={(e) => { setSelectedClassId(e.target.value); setSectionId(''); }} required style={{ flex: 1 }}>
                     <option value="">Выберите класс...</option>
                     {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
-                  <select value={sectionId} onChange={(e) => setSectionId(e.target.value)} required disabled={!selectedClassId} style={{ flex: 1 }}>
+                  <select id="quiz-section" name="section" value={sectionId} onChange={(e) => setSectionId(e.target.value)} required disabled={!selectedClassId} style={{ flex: 1 }}>
                     <option value="">Выберите предмет...</option>
                     {sections.filter(s => s.class_id === selectedClassId).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
@@ -450,7 +450,7 @@ const Editor = ({ session, profile }) => {
 
                 <div style={{ position: 'relative' }}>
                   <label style={{ fontSize: '0.85rem', opacity: 0.5, marginBottom: '8px', display: 'block' }}>JSON содержание (если есть)</label>
-                  <textarea placeholder="Вставьте JSON формат вашего теста здесь..." value={jsonInput} onChange={(e) => setJsonInput(e.target.value)} style={{ width: '100%', height: '150px' }} />
+                  <textarea id="quiz-json" name="quiz-json" placeholder="Вставьте JSON формат вашего теста здесь..." value={jsonInput} onChange={(e) => setJsonInput(e.target.value)} style={{ width: '100%', height: '150px' }} />
                   <FileJson size={24} style={{ position: 'absolute', right: '20px', top: '40px', opacity: 0.2 }} />
                 </div>
 
@@ -484,7 +484,7 @@ const Editor = ({ session, profile }) => {
                 <div style={{ marginBottom: '30px' }}>
                   <h4 style={{ marginBottom: '15px' }}>Папки / Классы</h4>
                   <div className="flex-center" style={{ gap: '10px' }}>
-                    <input type="text" placeholder="Название класса" value={newClassName} onChange={(e) => setNewClassName(e.target.value)} />
+                    <input id="new-class-name" name="new-class-name" type="text" placeholder="Название класса" value={newClassName} onChange={(e) => setNewClassName(e.target.value)} />
                     <button onClick={handleCreateClass} style={{ padding: '10px 20px' }}><Plus size={20} /></button>
                   </div>
                 </div>
@@ -495,7 +495,7 @@ const Editor = ({ session, profile }) => {
                 <div>
                   <h4 style={{ marginBottom: '15px' }}>Секции / Предметы</h4>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <select value={newSectionClassId} onChange={(e) => setNewSectionClassId(e.target.value)}>
+                    <select id="new-section-class" name="new-section-class" value={newSectionClassId} onChange={(e) => setNewSectionClassId(e.target.value)}>
                       <option value="">Укажите класс...</option>
                       {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>

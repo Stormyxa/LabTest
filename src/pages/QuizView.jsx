@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useBlocker } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { CheckCircle, XCircle, ChevronRight, ChevronLeft, RotateCcw, X, AlertTriangle, Book, FileText, ChevronDown, ChevronUp, Clock } from 'lucide-react';
+import { 
+  CheckCircle, XCircle, ChevronRight, ChevronLeft, RotateCcw, X, 
+  AlertTriangle, Book, FileText, ChevronDown, ChevronUp, Clock, Zap 
+} from 'lucide-react';
 
 const SECONDS_PER_QUESTION = 25;
 const EXIT_GRACE_SECONDS = 30;
@@ -35,6 +38,21 @@ const QuizView = ({ session, profile }) => {
   const saveResultRef = useRef(null); // stable ref to saveResult
   const finishTimeRef = useRef(null); // frozen finish timestamp for results screen
 
+  // NAVIGATION BLOCKER: intercept internal links (Profile, Catalog, etc.)
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      !finishedRef.current && !loading && !showResult && currentLocation.pathname !== nextLocation.pathname
+  );
+
+  // When blocked, show our exit modal
+  useEffect(() => {
+    if (blocker.state === 'blocked') {
+      const elapsed = Math.round((Date.now() - startTimeRef.current) / 1000);
+      exitElapsedRef.current = elapsed;
+      setShowExitModal(true);
+    }
+  }, [blocker.state]);
+
   useEffect(() => {
     fetchQuiz();
   }, [id]);
@@ -44,7 +62,11 @@ const QuizView = ({ session, profile }) => {
     const handleBeforeUnload = () => {
       if (finishedRef.current || !questionsRef.current.length) return;
       const elapsed = Math.round((Date.now() - startTimeRef.current) / 1000);
-      if (elapsed < EXIT_GRACE_SECONDS) return;
+      const answeredCount = Object.keys(answersRef.current).length;
+      
+      // Save if elapsed >= 30s OR (not first attempt AND answered > 2)
+      const shouldSave = elapsed >= EXIT_GRACE_SECONDS || (!isFirstAttempt && answeredCount > 2);
+      if (!shouldSave) return;
 
       // Store pending result in localStorage — will be saved on next visit
       const qs = questionsRef.current;
@@ -77,7 +99,10 @@ const QuizView = ({ session, profile }) => {
         // Save pending result to localStorage (fires reliably even on tab close)
         if (!finishedRef.current && questionsRef.current.length > 0) {
           const elapsed = Math.round((Date.now() - startTimeRef.current) / 1000);
-          if (elapsed >= EXIT_GRACE_SECONDS) {
+          const answeredCount = Object.keys(answersRef.current).length;
+          const shouldSave = elapsed >= EXIT_GRACE_SECONDS || (!isFirstAttempt && answeredCount > 2);
+
+          if (shouldSave) {
             const qs = questionsRef.current;
             const ans = answersRef.current;
             const correctCount = qs.filter((q, idx) => ans[idx] === q.correctIndex).length;
@@ -172,16 +197,29 @@ const QuizView = ({ session, profile }) => {
 
       if (first) {
         // Restore timer from localStorage if page was refreshed mid-attempt
-        const stored = localStorage.getItem(`quiz_timer_${data.id}`);
-        if (stored) {
+        const timerKey = `quiz_timer_${data.id}`;
+        const answersKey = `quiz_answers_${data.id}`;
+        
+        const storedTimer = localStorage.getItem(timerKey);
+        if (storedTimer) {
           try {
-            const { timeLeft: storedTime, ts } = JSON.parse(stored);
+            const { timeLeft: storedTime, ts } = JSON.parse(storedTimer);
             const secondsPassed = Math.round((Date.now() - ts) / 1000);
             const restored = Math.max(0, storedTime - secondsPassed);
             setTimeLeft(restored);
           } catch { setTimeLeft(fullyShuffled.length * SECONDS_PER_QUESTION); }
         } else {
           setTimeLeft(fullyShuffled.length * SECONDS_PER_QUESTION);
+        }
+
+        // Restore answers from localStorage
+        const storedAnswers = localStorage.getItem(answersKey);
+        if (storedAnswers) {
+          try {
+            const parsedAnswers = JSON.parse(storedAnswers);
+            setAnswers(parsedAnswers);
+            answersRef.current = parsedAnswers;
+          } catch (e) { console.error('Failed to restore answers:', e); }
         }
       }
 
@@ -208,19 +246,44 @@ const QuizView = ({ session, profile }) => {
   };
 
   const handleSelect = (optionIdx) => {
-    if (answers[currentIdx] !== undefined) return;
+    const isAlreadyAnswered = answers[currentIdx] !== undefined;
+    
+    // In learning mode (not first attempt), we don't allow changing answers after the feedback is shown
+    if (!isFirstAttempt && isAlreadyAnswered) return;
 
     const updatedAnswers = { ...answers, [currentIdx]: optionIdx };
     setAnswers(updatedAnswers);
     answersRef.current = updatedAnswers; // keep ref in sync
 
-    setTimeout(() => {
-      if (currentIdx < questions.length - 1) {
-        setCurrentIdx(prev => prev + 1);
-      } else {
-        finishQuiz(updatedAnswers);
-      }
-    }, 1000);
+    // Persist answers during first attempt
+    if (isFirstAttempt) {
+      localStorage.setItem(`quiz_answers_${id}`, JSON.stringify(updatedAnswers));
+    }
+
+    // In learning mode, auto-advance after 1s
+    if (!isFirstAttempt) {
+      const autoAdvance = localStorage.getItem('quiz_auto_advance') === 'true';
+      
+      setTimeout(() => {
+        if (autoAdvance) {
+          // SMART AUTO-ADVANCE: find next unanswered GAP
+          // 1. Try finding first unanswered AFTER current
+          let nextGap = questions.findIndex((q, i) => i > currentIdx && updatedAnswers[i] === undefined);
+          
+          // 2. If not found, wrap around to find from the BEGINNING
+          if (nextGap === -1) {
+            nextGap = questions.findIndex((q, i) => updatedAnswers[i] === undefined);
+          }
+
+          if (nextGap !== -1) {
+            setCurrentIdx(nextGap);
+          } else {
+            // All answered!
+            finishQuiz(updatedAnswers);
+          }
+        }
+      }, 1000);
+    }
   };
 
   // Saves result to DB — uses refs so it's always current even in stale closures
@@ -269,7 +332,9 @@ const QuizView = ({ session, profile }) => {
     finishTimeRef.current = Date.now(); // freeze finish time
     localStorage.removeItem(`quiz_pending_${id}`);
     localStorage.removeItem(`quiz_timer_${id}`);
+    localStorage.removeItem(`quiz_answers_${id}`);
     await saveResultRef.current(finalAnswers);
+    if (blocker.state === 'blocked') blocker.proceed();
     setShowResult(true);
   };
 
@@ -280,13 +345,25 @@ const QuizView = ({ session, profile }) => {
   };
 
   const confirmExit = async () => {
+    // Mark as finished immediately so the blocker doesn't re-trigger during navigation
+    finishedRef.current = true; 
+
     const elapsed = exitElapsedRef.current;
-    if (elapsed >= EXIT_GRACE_SECONDS) {
+    const answeredCount = Object.keys(answersRef.current).length;
+    const shouldSave = elapsed >= EXIT_GRACE_SECONDS || (!isFirstAttempt && answeredCount > 2);
+
+    if (shouldSave) {
       clearTimeout(timerRef.current);
-      finishedRef.current = true;
       await saveResultRef.current(answersRef.current); // use stable ref
     }
-    navigate('/catalog');
+    
+    if (blocker.state === 'blocked') blocker.proceed();
+    else navigate('/catalog');
+  };
+
+  const cancelExit = () => {
+    setShowExitModal(false);
+    if (blocker.state === 'blocked') blocker.reset();
   };
 
   if (loading) return <div className="flex-center" style={{ height: '60vh' }}>Загрузка теста...</div>;
@@ -389,7 +466,8 @@ const QuizView = ({ session, profile }) => {
   const currentQ = questions[currentIdx];
   const chosen = answers[currentIdx];
   const elapsed = Math.round((Date.now() - startTimeRef.current) / 1000);
-  const pastGrace = elapsed >= EXIT_GRACE_SECONDS;
+  const answeredCount = Object.keys(answers).length;
+  const pastGrace = elapsed >= EXIT_GRACE_SECONDS || (!isFirstAttempt && answeredCount > 2);
 
   // Timer color
   const timerPercent = timeLeft !== null ? timeLeft / (questions.length * SECONDS_PER_QUESTION) : 1;
@@ -474,8 +552,39 @@ const QuizView = ({ session, profile }) => {
           </div>
         </div>
 
-        <div style={{ width: '100%', height: '8px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', marginBottom: '40px', overflow: 'hidden' }}>
-          <div style={{ width: `${((currentIdx + 1) / questions.length) * 100}%`, height: '100%', background: 'var(--primary-color)', transition: 'width 0.3s' }} />
+        <div style={{ width: '100%', height: '8px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', marginBottom: '20px', overflow: 'hidden' }}>
+          <div style={{ width: `${(Object.keys(answers).length / questions.length) * 100}%`, height: '100%', background: 'var(--primary-color)', transition: 'width 0.3s' }} />
+        </div>
+
+        {/* QUESTION NAVIGATOR (DOTS) */}
+        <div className="flex-center" style={{ gap: '8px', marginBottom: '30px', flexWrap: 'wrap', justifyContent: 'center' }}>
+          {questions.map((q, idx) => {
+            const isCurrent = idx === currentIdx;
+            const hasAns = answers[idx] !== undefined;
+            const isCorrect = hasAns && answers[idx] === q.correctIndex;
+            
+            let dotColor = 'rgba(0,0,0,0.1)';
+            if (isFirstAttempt) {
+              if (hasAns) dotColor = 'var(--primary-color)';
+            } else {
+              if (hasAns) dotColor = isCorrect ? '#4ade80' : '#f87171';
+            }
+
+            return (
+              <button
+                key={idx}
+                onClick={() => setCurrentIdx(idx)}
+                style={{
+                  width: '12px', height: '12px', borderRadius: '50%', padding: 0, minWidth: 0, boxShadow: 'none',
+                  background: dotColor,
+                  transform: isCurrent ? 'scale(1.3)' : 'scale(1)',
+                  border: isCurrent ? '2px solid var(--text-color)' : 'none',
+                  transition: 'all 0.2s', cursor: 'pointer'
+                }}
+                title={`Вопрос ${idx + 1}`}
+              />
+            );
+          })}
         </div>
 
         <div className="card animate" key={currentIdx} style={{ minHeight: '450px', display: 'flex', flexDirection: 'column' }}>
@@ -489,16 +598,34 @@ const QuizView = ({ session, profile }) => {
             {currentQ.options.map((opt, idx) => {
               const isCorrect = idx === currentQ.correctIndex;
               const isSelected = chosen === idx;
+              
               let bgColor = 'var(--card-bg)';
               let borderColor = 'rgba(0,0,0,0.1)';
+              let textColor = 'var(--text-color)';
+
               if (chosen !== undefined) {
-                if (isCorrect) (bgColor = 'rgba(74, 222, 128, 0.2)'), (borderColor = '#4ade80');
-                else if (isSelected) (bgColor = 'rgba(248, 113, 113, 0.2)'), (borderColor = '#f87171');
+                if (isFirstAttempt) {
+                  // Exam mode: just highlight selected in purple
+                  if (isSelected) {
+                    bgColor = 'rgba(99, 102, 241, 0.1)';
+                    borderColor = 'var(--primary-color)';
+                  }
+                } else {
+                  // Learning mode: show Green/Red feedback
+                  if (isCorrect) {
+                    bgColor = 'rgba(74, 222, 128, 0.2)';
+                    borderColor = '#4ade80';
+                  } else if (isSelected) {
+                    bgColor = 'rgba(248, 113, 113, 0.2)';
+                    borderColor = '#f87171';
+                  }
+                }
               }
+
               return (
                 <button key={idx} onClick={() => handleSelect(idx)}
                   style={{
-                    textAlign: 'left', background: bgColor, color: 'var(--text-color)',
+                    textAlign: 'left', background: bgColor, color: textColor,
                     border: `2px solid ${borderColor}`, padding: '18px 25px', borderRadius: '18px',
                     fontSize: '1.05rem', position: 'relative', boxShadow: 'none', transition: 'all 0.2s',
                     height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center',
@@ -507,8 +634,8 @@ const QuizView = ({ session, profile }) => {
                   <div className="flex-center" style={{ justifyContent: 'space-between', gap: '10px' }}>
                     <span>{opt}</span>
                     <div style={{ flexShrink: 0 }}>
-                      {chosen !== undefined && isCorrect && <CheckCircle size={20} color="#4ade80" />}
-                      {chosen !== undefined && isSelected && !isCorrect && <XCircle size={20} color="#f87171" />}
+                      {!isFirstAttempt && chosen !== undefined && isCorrect && <CheckCircle size={20} color="#4ade80" />}
+                      {!isFirstAttempt && chosen !== undefined && isSelected && !isCorrect && <XCircle size={20} color="#f87171" />}
                     </div>
                   </div>
                 </button>
@@ -535,17 +662,21 @@ const QuizView = ({ session, profile }) => {
               <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: pastGrace ? 'rgba(250, 204, 21, 0.1)' : 'rgba(248, 113, 113, 0.1)', color: pastGrace ? '#ca8a04' : '#f87171', margin: '0 auto 25px' }}>
                 <AlertTriangle size={32} />
               </div>
-              <h2 style={{ marginBottom: '15px' }}>Прервать тест?</h2>
+              <h2 style={{ marginBottom: '15px' }}>{isFirstAttempt ? 'Выйти из теста?' : 'Прервать тест?'}</h2>
               <p style={{ opacity: 0.7, marginBottom: '30px', lineHeight: '1.6' }}>
-                {pastGrace
-                  ? <>Вы уже прошли более {EXIT_GRACE_SECONDS} секунд. <br /> Ваш <strong>текущий результат будет сохранён</strong>, а на неотвеченные вопросы будет засчитана ошибка.</>
-                  : <>Вы выходите слишком рано. <br /> Ваш прогресс <strong>не будет сохранён</strong>. Вы действительно хотите выйти?</>
+                {isFirstAttempt 
+                  ? <>Ваши текущие ответы <strong>сохранены</strong>, но таймер продолжает идти в фоне даже после выхода. <br /> Вы сможете вернуться и завершить тест, пока время не вышло.</>
+                  : elapsed >= EXIT_GRACE_SECONDS 
+                    ? <>Вы прошли более {EXIT_GRACE_SECONDS} секунд. <br /> Ваш <strong>текущий результат будет сохранён</strong>, а на неотвеченные вопросы будет засчитана ошибка.</>
+                    : (!isFirstAttempt && answeredCount > 2)
+                      ? <>Вы ответили на {answeredCount} вопроса. <br /> Ваш <strong>прогресс будет сохранён</strong> в статистике.</>
+                      : <>Вы выходите слишком рано. <br /> Ваш прогресс <strong>не будет сохранён</strong>. Вы действительно хотите выйти?</>
                 }
               </p>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                <button onClick={() => setShowExitModal(false)} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>Вернуться</button>
-                <button onClick={confirmExit} style={{ background: pastGrace ? '#ca8a04' : '#f87171', color: 'white', padding: '15px' }}>
-                  {pastGrace ? 'Сохранить и выйти' : 'Да, выйти'}
+                <button onClick={cancelExit} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>Вернуться</button>
+                <button onClick={confirmExit} style={{ background: (pastGrace || isFirstAttempt) ? '#ca8a04' : '#f87171', color: 'white', padding: '15px' }}>
+                  {(pastGrace || isFirstAttempt) ? 'Сохранить и выйти' : 'Да, выйти'}
                 </button>
               </div>
             </div>
