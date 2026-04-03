@@ -124,7 +124,33 @@ const Statistics = ({ session, profile }) => {
     }
   };
 
-  if (loading) return <div className="flex-center" style={{ height: '60vh' }}>Загрузка статистики...</div>;
+  const StatSkeleton = () => (
+    <div className="container" style={{ padding: '40px 20px' }}>
+      <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '40px' }}>
+        <div className="skeleton" style={{ height: '35px', width: '300px' }} />
+        <div className="skeleton" style={{ height: '45px', width: '160px', borderRadius: '100px' }} />
+      </div>
+      <div className="card" style={{ marginBottom: '30px', height: '80px' }}>
+        <div className="skeleton" style={{ height: '100%', width: '100%' }} />
+      </div>
+      <div className="grid-2" style={{ gap: '20px', marginBottom: '40px' }}>
+        {[1, 2].map(i => (
+          <div key={i} className="card" style={{ height: '120px' }}>
+            <div className="skeleton" style={{ height: '100%', width: '100%' }} />
+          </div>
+        ))}
+      </div>
+      <div className="card" style={{ padding: 0 }}>
+        {[1, 2, 3, 4, 5].map(i => (
+          <div key={i} style={{ padding: '20px', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
+            <div className="skeleton" style={{ height: '30px', width: '100%' }} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  if (loading) return <StatSkeleton />;
 
   return (
     <div className="container animate" style={{ padding: '40px 20px' }}>

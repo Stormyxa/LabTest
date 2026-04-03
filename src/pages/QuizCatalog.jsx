@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { Search, Play, CheckCircle, ChevronDown, ChevronUp, Award, Save, BarChart2, Book, Pencil, Eye, AlertTriangle, Plus, Shield, EyeOff, Trash2, Dices } from 'lucide-react';
+import { Search, Play, CheckCircle, ChevronDown, ChevronUp, Award, Save, BarChart2, Book, Pencil, Eye, AlertTriangle, Plus, Shield, EyeOff, Trash2, Dices, Clock, TrendingUp } from 'lucide-react';
 
 const QuizCatalog = ({ profile }) => {
   const navigate = useNavigate();
@@ -9,6 +9,7 @@ const QuizCatalog = ({ profile }) => {
   const [passedQuizzes, setPassedQuizzes] = useState({});
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [quizStats, setQuizStats] = useState({}); // { quiz_id: { avgScore, participants } }
 
   const [expandedClasses, setExpandedClasses] = useState(() => {
     const saved = localStorage.getItem('catalog_expanded_classes');
@@ -49,7 +50,6 @@ const QuizCatalog = ({ profile }) => {
     }
 
     const { data: c } = await supabase.from('quiz_classes').select('*').order('sort_order', { ascending: true });
-    // Поскольку мы делаем select('*'), book_url подтянется автоматически из таблицы quiz_sections
     const { data: s } = await supabase.from('quiz_sections').select('*').order('sort_order', { ascending: true });
     const isPrivileged = profile?.role === 'admin' || profile?.role === 'creator';
     let quizQuery = supabase.from('quizzes')
@@ -58,13 +58,31 @@ const QuizCatalog = ({ profile }) => {
       .order('sort_order', { ascending: true });
 
     if (!isPrivileged) {
-      // В каталоге обычные пользователи (даже авторы) видят ТОЛЬКО не скрытые тесты.
-      // Скрытые тесты автор видит только в "древе тестов" (в личном кабинете/редакторе).
       quizQuery = quizQuery.eq('is_hidden', false);
     }
     const { data: q } = await quizQuery;
 
     if (c && s && q) {
+      // Calculate global stats for each quiz
+      const { data: allResults } = await supabase.from('quiz_results').select('quiz_id, score, total_questions');
+      const statsMap = {};
+      if (allResults) {
+        allResults.forEach(r => {
+          if (!statsMap[r.quiz_id]) statsMap[r.quiz_id] = { earned: 0, total: 0, participants: 0 };
+          statsMap[r.quiz_id].earned += r.score;
+          statsMap[r.quiz_id].total += r.total_questions;
+          statsMap[r.quiz_id].participants += 1;
+        });
+      }
+      const finalStats = {};
+      Object.keys(statsMap).forEach(id => {
+        finalStats[id] = {
+          avgScore: statsMap[id].total > 0 ? Math.round((statsMap[id].earned / statsMap[id].total) * 100) : 0,
+          participants: statsMap[id].participants
+        };
+      });
+      setQuizStats(finalStats);
+
       const formatted = c.map(cls => ({
         ...cls,
         sections: s.filter(sec => sec.class_id === cls.id).map(sec => ({
@@ -91,10 +109,8 @@ const QuizCatalog = ({ profile }) => {
     const newClasses = [...classes];
     const cIndex = newClasses.findIndex(c => c.id === classId);
     if (cIndex === -1) return;
-
     const secArr = [...newClasses[cIndex].sections];
     if (index + direction < 0 || index + direction >= secArr.length) return;
-
     const temp = secArr[index]; secArr[index] = secArr[index + direction]; secArr[index + direction] = temp;
     newClasses[cIndex].sections = secArr.map((x, i) => ({ ...x, sort_order: i }));
     setClasses(newClasses);
@@ -108,13 +124,10 @@ const QuizCatalog = ({ profile }) => {
     const newClasses = [...classes];
     const cIndex = newClasses.findIndex(c => c.id === classId);
     if (cIndex === -1) return;
-
     const sIndex = newClasses[cIndex].sections.findIndex(s => s.id === sectionId);
     if (sIndex === -1) return;
-
     const qsArr = [...newClasses[cIndex].sections[sIndex].quizzes];
     if (index + direction < 0 || index + direction >= qsArr.length) return;
-
     const temp = qsArr[index]; qsArr[index] = qsArr[index + direction]; qsArr[index + direction] = temp;
     newClasses[cIndex].sections[sIndex].quizzes = qsArr.map((q, i) => ({ ...q, sort_order: i }));
     setClasses(newClasses);
@@ -132,7 +145,6 @@ const QuizCatalog = ({ profile }) => {
     try {
       const { data: q } = await supabase.from('quizzes').select('sort_order').eq('section_id', sId).order('sort_order', { ascending: false }).limit(1);
       const maxOrder = q && q.length > 0 ? q[0].sort_order : -1;
-
       const { error } = await supabase.from('quizzes').insert({
         title: text || 'Разделитель',
         section_id: sId,
@@ -141,19 +153,14 @@ const QuizCatalog = ({ profile }) => {
         is_verified: true,
         sort_order: maxOrder + 1
       });
-
       if (error) throw error;
       fetchData();
-    } catch (err) {
-      alert(`Ошибка: ${err.message}`);
-    }
+    } catch (err) { alert(`Ошибка: ${err.message}`); }
   };
 
   const handleRename = async () => {
     if (!renamingItem || !newName.trim()) return;
-
     if (renamingItem.type === 'quiz') {
-      // Find the quiz to get current content
       let targetQuiz = null;
       for (const c of classes) {
         for (const s of c.sections) {
@@ -162,38 +169,23 @@ const QuizCatalog = ({ profile }) => {
         }
         if (targetQuiz) break;
       }
-
       const updateData = { title: newName };
-      if (targetQuiz?.content?.is_divider) {
-        updateData.content = { ...targetQuiz.content, divider_text: newName };
-      }
-
+      if (targetQuiz?.content?.is_divider) { updateData.content = { ...targetQuiz.content, divider_text: newName }; }
       const { error } = await supabase.from('quizzes').update(updateData).eq('id', renamingItem.id);
       if (error) alert('Ошибка переименования: ' + error.message);
-      else {
-        setRenamingItem(null);
-        setNewName('');
-        fetchData();
-      }
+      else { setRenamingItem(null); setNewName(''); fetchData(); }
       return;
     }
-
     const table = renamingItem.type === 'class' ? 'quiz_classes' : 'quiz_sections';
     const { error } = await supabase.from(table).update({ name: newName }).eq('id', renamingItem.id);
     if (error) alert('Ошибка переименования: ' + error.message);
-    else {
-      setRenamingItem(null);
-      setNewName('');
-      fetchData();
-    }
+    else { setRenamingItem(null); setNewName(''); fetchData(); }
   };
 
   const handleStartRandomQuiz = (e, section) => {
     e?.stopPropagation?.();
     const validQuizzes = section.quizzes.filter(q => !q.content?.is_divider && !q.is_hidden);
     if (validQuizzes.length === 0) return alert('В этом предмете нет доступных тестов для прохождения.');
-    
-    // Select a random quiz from the valid ones
     const randomQuiz = validQuizzes[Math.floor(Math.random() * validQuizzes.length)];
     setRandomQuizModal({ sectionName: section.name, quiz: randomQuiz });
   };
@@ -211,33 +203,50 @@ const QuizCatalog = ({ profile }) => {
     return (profile.role === 'teacher' || profile.role === 'editor') && quiz.author_id === profile.id;
   };
 
-  const filteredData = classes.map(cls => {
-    if (cls.name.toLowerCase().includes(searchQuery.toLowerCase()) && searchQuery !== '') return cls;
+  const filteredData = classes.map(cls => ({
+    ...cls,
+    sections: cls.sections.map(sec => ({
+      ...sec,
+      quizzes: sec.quizzes.filter(quiz => quiz.title.toLowerCase().includes(searchQuery.toLowerCase()))
+    })).filter(sec => sec.quizzes.length > 0 || sec.name.toLowerCase().includes(searchQuery.toLowerCase()))
+  })).filter(cls => cls.sections.length > 0 || cls.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
-    const filterSections = cls.sections.map(sec => {
-      if (sec.name.toLowerCase().includes(searchQuery.toLowerCase()) && searchQuery !== '') return sec;
-      return {
-        ...sec,
-        quizzes: sec.quizzes.filter(q => q.title.toLowerCase().includes(searchQuery.toLowerCase()))
-      };
-    }).filter(sec => sec.quizzes.length > 0 || (sec.name.toLowerCase().includes(searchQuery.toLowerCase()) && searchQuery !== ''));
-
-    return { ...cls, sections: filterSections };
-  }).filter(cls => cls.sections.length > 0 || (cls.name.toLowerCase().includes(searchQuery.toLowerCase()) && searchQuery !== ''));
-
-  if (loading) return <div className="flex-center" style={{ height: '60vh' }}>Загрузка каталога...</div>;
+  const CatalogSkeleton = () => (
+    <div style={{ width: '100%' }}>
+      <div className="flex-center" style={{ marginBottom: '20px', opacity: 0.5, gap: '10px' }}>
+        <Clock size={18} className="skeleton-pulse" />
+        <span className="skeleton-text" style={{ width: '100px', height: '14px' }}>Загрузка элементов...</span>
+      </div>
+      {[1, 2].map(i => (
+        <div key={i} className="card" style={{ marginBottom: '30px', padding: '0', overflow: 'hidden', border: '1px solid rgba(0,0,0,0.05)', opacity: 0.6 }}>
+          <div className="skeleton" style={{ height: '70px', width: '100%' }} />
+          <div style={{ padding: '25px' }}>
+            <div className="skeleton-text skeleton" style={{ width: '180px', height: '24px', marginBottom: '25px' }} />
+            <div className="grid-2">
+              {[1, 2, 3, 4].map(j => (
+                <div key={j} className="skeleton-card skeleton" style={{ height: '120px' }} />
+              ))}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 
   return (
-    <div className="container animate" style={{ padding: '40px 20px' }}>
-      <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '30px', flexWrap: 'wrap', gap: '20px' }}>
-        <h2 style={{ fontSize: '2rem' }}>Каталог тестов</h2>
-        <div style={{ position: 'relative', width: '300px' }}>
-          <Search size={20} style={{ position: 'absolute', left: '15px', top: '12px', opacity: 0.5 }} />
-          <input
+    <div className="container" style={{ padding: '40px 20px' }}>
+      <div className="flex-center animate" style={{ justifyContent: 'space-between', marginBottom: '40px', flexWrap: 'wrap', gap: '20px' }}>
+        <div>
+          <h2 style={{ fontSize: '2rem', fontWeight: '800', letterSpacing: '-1px', margin: 0 }}>Каталог тестов</h2>
+          <p style={{ opacity: 0.6, marginTop: '5px' }}>Выберите предмет и начните обучение</p>
+        </div>
+        <div style={{ position: 'relative', maxWidth: '400px', width: '100%' }}>
+          <Search style={{ position: 'absolute', left: '15px', top: '50%', transform: 'translateY(-50%)', opacity: 0.4 }} size={20} />
+          <input 
             id="catalog-search"
-            name="catalog-search"
-            type="text"
-            placeholder="Поиск по классам, темам..."
+            name="search"
+            type="text" 
+            placeholder="Поиск по названию или предмету..." 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             style={{ paddingLeft: '45px' }}
@@ -246,126 +255,142 @@ const QuizCatalog = ({ profile }) => {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '40px' }}>
-        {filteredData.map((cls, cIndex) => (
-          <div key={cls.id} className="card" style={{ padding: '0', overflow: 'hidden', border: '1px solid var(--primary-color)', borderRadius: '24px' }}>
-
-            {/* CLASS FOLDER HEAD */}
-            <div
-              onClick={() => setExpandedClasses(prev => ({ ...prev, [cls.id]: !prev[cls.id] }))}
-              style={{ padding: '20px 30px', background: 'rgba(99, 102, 241, 0.08)', borderRadius: '24px 24px 0 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
-            >
-              <div className="flex-center" style={{ gap: '15px' }}>
-                {profile?.role === 'creator' && !searchQuery && (
-                  <div className="flex-center" style={{ gap: '5px' }}>
-                    <button onClick={(e) => swapClasses(cIndex, -1, e)} disabled={cIndex === 0} style={{ padding: '5px', background: 'transparent', color: 'var(--primary-color)', boxShadow: 'none' }}><ChevronUp size={20} /></button>
-                    <button onClick={(e) => swapClasses(cIndex, 1, e)} disabled={cIndex === classes.length - 1} style={{ padding: '5px', background: 'transparent', color: 'var(--primary-color)', boxShadow: 'none' }}><ChevronDown size={20} /></button>
+        {loading ? (
+          <CatalogSkeleton />
+        ) : (
+          filteredData.map((cls, cIndex) => {
+            // Updated Locking Logic: Only lock if ALL sections are empty
+            const isEmptyClass = cls.sections.length === 0 || cls.sections.every(sec => 
+              sec.quizzes.filter(q => !q.content?.is_divider).length === 0
+            );
+            return (
+              <div key={cls.id} className="card" style={{ 
+                padding: '0', 
+                overflow: 'hidden', 
+                border: isEmptyClass ? '1px dashed rgba(0,0,0,0.1)' : '1px solid var(--primary-color)', 
+                borderRadius: '24px',
+                filter: isEmptyClass ? 'grayscale(0.8)' : 'none',
+                opacity: isEmptyClass ? 0.7 : 1
+              }}>
+                <div
+                  onClick={() => !isEmptyClass && setExpandedClasses(prev => ({ ...prev, [cls.id]: !prev[cls.id] }))}
+                  style={{ 
+                    padding: '20px 30px', 
+                    background: isEmptyClass ? 'rgba(0,0,0,0.02)' : 'rgba(99, 102, 241, 0.08)', 
+                    borderRadius: '24px 24px 0 0', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'space-between', 
+                    cursor: isEmptyClass ? 'default' : 'pointer' 
+                  }}
+                >
+                  <div className="flex-center" style={{ gap: '15px' }}>
+                    {profile?.role === 'creator' && !searchQuery && (
+                      <div className="flex-center" style={{ gap: '5px' }}>
+                        <button onClick={(e) => swapClasses(cIndex, -1, e)} disabled={cIndex === 0} style={{ padding: '5px', background: 'transparent', color: 'var(--primary-color)', boxShadow: 'none' }}><ChevronUp size={20} /></button>
+                        <button onClick={(e) => swapClasses(cIndex, 1, e)} disabled={cIndex === classes.length - 1} style={{ padding: '5px', background: 'transparent', color: 'var(--primary-color)', boxShadow: 'none' }}><ChevronDown size={20} /></button>
+                      </div>
+                    )}
+                    <h3 style={{ fontSize: '1.5rem', margin: 0, fontWeight: 'bold' }}>{cls.name} <span style={{ fontSize: '0.9rem', opacity: 0.5, marginLeft: '10px' }}>({cls.sections.length} предметов)</span></h3>
+                    {isEmptyClass && (
+                      <span style={{ fontSize: '0.7rem', padding: '4px 10px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 'bold', opacity: 0.6 }}>
+                        <Clock size={12} /> В РАЗРАБОТКЕ
+                      </span>
+                    )}
+                    {profile?.role === 'creator' && (
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: cls.id, name: cls.name, type: 'class' }); setNewName(cls.name); }} 
+                        style={{ background: 'transparent', color: 'var(--primary-color)', opacity: 0.5, boxShadow: 'none', padding: '5px' }}
+                        title="Переименовать класс"
+                      >
+                        <Pencil size={18} />
+                      </button>
+                    )}
                   </div>
-                )}
-                <h3 style={{ fontSize: '1.5rem', margin: 0, fontWeight: 'bold' }}>{cls.name} <span style={{ fontSize: '0.9rem', opacity: 0.5, marginLeft: '10px' }}>({cls.sections.length} предметов)</span></h3>
-                {profile?.role === 'creator' && (
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: cls.id, name: cls.name, type: 'class' }); setNewName(cls.name); }} 
-                    style={{ background: 'transparent', color: 'var(--primary-color)', opacity: 0.5, boxShadow: 'none', padding: '5px' }}
-                    title="Переименовать класс"
-                  >
-                    <Pencil size={18} />
-                  </button>
-                )}
-              </div>
-              {expandedClasses[cls.id] ? <ChevronUp size={24} /> : <ChevronDown size={24} />}
-            </div>
+                  {!isEmptyClass && (expandedClasses[cls.id] ? <ChevronUp size={24} /> : <ChevronDown size={24} />)}
+                </div>
 
-            {expandedClasses[cls.id] && (
-              <div className="animate catalog-class-content" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px', background: 'rgba(0,0,0,0.02)' }}>
-                {cls.sections.length === 0 ? (
-                  <p style={{ opacity: 0.5, textAlign: 'center', padding: '20px' }}>В этом классе пока нет предметов.</p>
-                ) : (
-                  cls.sections.map((section, sIndex) => (
-                    <div key={section.id} className="card" style={{ padding: '0', overflow: 'hidden', border: '1px solid rgba(0,0,0,0.05)', borderRadius: '20px' }}>
-                      {/* SECTION HEAD */}
-                    <div 
-                      onClick={() => setExpandedSections(prev => ({ ...prev, [section.id]: !prev[section.id] }))}
-                      className="flex-center catalog-section-head" 
-                      style={{ padding: '15px 25px', background: 'rgba(99, 102, 241, 0.04)', borderRadius: '20px 20px 0 0', justifyContent: 'space-between', cursor: 'pointer' }}
-                    >
-                        <div className="flex-center" style={{ gap: '15px' }}>
-                          {(profile?.role === 'admin' || profile?.role === 'creator') && !searchQuery && (
-                            <div className="flex-center" style={{ gap: '5px' }}>
-                              <button onClick={(e) => swapSections(cls.id, sIndex, -1, e)} disabled={sIndex === 0} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronUp size={16} /></button>
-                              <button onClick={(e) => swapSections(cls.id, sIndex, 1, e)} disabled={sIndex === cls.sections.length - 1} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronDown size={16} /></button>
+                {expandedClasses[cls.id] && !isEmptyClass && (
+                  <div className="animate catalog-class-content" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px', background: 'rgba(0,0,0,0.02)' }}>
+                    {cls.sections.map((section, sIndex) => {
+                      const isEmptySection = section.quizzes.filter(q => !q.content?.is_divider).length === 0;
+                      return (
+                        <div key={section.id} className="card" style={{ 
+                          padding: '0', 
+                          overflow: 'hidden', 
+                          border: isEmptySection ? '1px dashed rgba(0,0,0,0.1)' : '1px solid rgba(0,0,0,0.05)', 
+                          borderRadius: '20px',
+                          filter: isEmptySection ? 'grayscale(0.8)' : 'none',
+                          opacity: isEmptySection ? 0.6 : 1
+                        }}>
+                          <div 
+                            onClick={() => !isEmptySection && setExpandedSections(prev => ({ ...prev, [section.id]: !prev[section.id] }))}
+                            className="flex-center catalog-section-head" 
+                            style={{ 
+                              padding: '15px 25px', 
+                              background: isEmptySection ? 'transparent' : 'rgba(99, 102, 241, 0.04)', 
+                              borderRadius: '20px 20px 0 0', 
+                              justifyContent: 'space-between', 
+                              cursor: isEmptySection ? 'default' : 'pointer' 
+                            }}
+                          >
+                            <div className="flex-center" style={{ gap: '15px' }}>
+                              {(profile?.role === 'admin' || profile?.role === 'creator') && !searchQuery && (
+                                <div className="flex-center" style={{ gap: '5px' }}>
+                                  <button onClick={(e) => swapSections(cls.id, sIndex, -1, e)} disabled={sIndex === 0} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronUp size={16} /></button>
+                                  <button onClick={(e) => swapSections(cls.id, sIndex, 1, e)} disabled={sIndex === cls.sections.length - 1} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronDown size={16} /></button>
+                                </div>
+                              )}
+                              {section.book_url && (
+                                <a
+                                  href={section.book_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  style={{ padding: '5px', background: 'var(--primary-color)', color: 'white', borderRadius: '8px', display: 'flex', alignItems: 'center' }}
+                                >
+                                  <Book size={16} />
+                                </a>
+                              )}
+                              <h4 style={{ fontSize: '1.2rem', margin: 0 }}>{section.name} <span style={{ opacity: 0.5, fontSize: '0.9rem', marginLeft: '5px' }}>({section.quizzes.filter(q => !q.content?.is_divider).length})</span></h4>
+                              {isEmptySection && (
+                                <span style={{ fontSize: '0.65rem', padding: '3px 8px', background: 'rgba(0,0,0,0.05)', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 'bold' }}>
+                                  <Clock size={10} /> В РАЗРАБОТКЕ
+                                </span>
+                              )}
+                              {profile?.role === 'creator' && (
+                                <div className="flex-center" style={{ gap: '10px' }}>
+                                  <button 
+                                    onClick={(e) => { e.stopPropagation(); handleCreateDivider(section.id); }} 
+                                    className="flex-center" 
+                                    style={{ padding: '5px 12px', fontSize: '0.75rem', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', borderRadius: '8px', border: 'none', boxShadow: 'none', fontWeight: 'bold' }}
+                                  >
+                                    <Plus size={14} style={{ marginRight: '4px' }} /> Разделитель
+                                  </button>
+                                  <button 
+                                    onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: section.id, name: section.name, type: 'section' }); setNewName(section.name); }} 
+                                    style={{ background: 'transparent', color: 'var(--text-color)', opacity: 0.4, boxShadow: 'none', padding: '5px' }}
+                                    title="Переименовать предмет"
+                                  >
+                                    <Pencil size={16} />
+                                  </button>
+                                </div>
+                              )}
                             </div>
-                          )}
-                          {section.book_url && (
-                            <a
-                              href={section.book_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={(e) => e.stopPropagation()}
-                              style={{ padding: '5px', background: 'var(--primary-color)', color: 'white', borderRadius: '8px', display: 'flex', alignItems: 'center' }}
-                            >
-                              <Book size={16} />
-                            </a>
-                          )}
-
-                            <h4 style={{ fontSize: '1.2rem', margin: 0 }}>{section.name} <span style={{ opacity: 0.5, fontSize: '0.9rem', marginLeft: '5px' }}>({section.quizzes.filter(q => !q.content?.is_divider).length})</span></h4>
-                            {profile?.role === 'creator' && (
-                              <div className="flex-center" style={{ gap: '10px' }}>
-                                <button 
-                                  onClick={(e) => { e.stopPropagation(); handleCreateDivider(section.id); }} 
-                                  className="flex-center" 
-                                  style={{ 
-                                    padding: '5px 12px', 
-                                    fontSize: '0.75rem', 
-                                    background: 'rgba(99, 102, 241, 0.1)', 
-                                    color: 'var(--primary-color)', 
-                                    borderRadius: '8px',
-                                    border: 'none',
-                                    boxShadow: 'none',
-                                    fontWeight: 'bold'
-                                  }}
-                                >
-                                  <Plus size={14} style={{ marginRight: '4px' }} /> Разделитель
-                                </button>
-                                <button 
-                                  onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: section.id, name: section.name, type: 'section' }); setNewName(section.name); }} 
-                                  style={{ background: 'transparent', color: 'var(--text-color)', opacity: 0.4, boxShadow: 'none', padding: '5px' }}
-                                  title="Переименовать предмет"
-                                >
-                                  <Pencil size={16} />
-                                </button>
-                              </div>
-                            )}
+                            {!isEmptySection && (expandedSections[section.id] ? <ChevronUp size={20} /> : <ChevronDown size={20} />)}
                           </div>
-                          {expandedSections[section.id] ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-                        </div>
 
-                        {/* QUIZZES */}
-                        {expandedSections[section.id] && (
-                          <div className="catalog-section-content" style={{ padding: '15px', background: 'rgba(0,0,0,0.02)' }}>
-                            {section.quizzes.filter(q => !q.content?.is_divider).length > 0 && (
-                              <button 
-                                onClick={(e) => handleStartRandomQuiz(e, section)}
-                                className="flex-center animate"
-                                style={{ 
-                                  width: '100%', 
-                                  padding: '15px', 
-                                  marginBottom: '20px', 
-                                  background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(168, 85, 247, 0.1) 100%)', 
-                                  color: 'var(--primary-color)', 
-                                  borderRadius: '16px',
-                                  border: '1px solid rgba(99, 102, 241, 0.2)',
-                                  boxShadow: 'none',
-                                  fontWeight: 'bold',
-                                  fontSize: '1.05rem',
-                                  gap: '10px'
-                                }}
-                              >
-                                <Dices size={20} /> Случайный тест по предмету
-                              </button>
-                            )}
-                            {section.quizzes.length === 0 ? (
-                              <p style={{ opacity: 0.5, textAlign: 'center', margin: 0 }}>Нет добавленных тестов.</p>
-                            ) : (
+                          {expandedSections[section.id] && !isEmptySection && (
+                            <div className="catalog-section-content" style={{ padding: '15px', background: 'rgba(0,0,0,0.02)' }}>
+                              {section.quizzes.filter(q => !q.content?.is_divider).length > 0 && (
+                                <button 
+                                  onClick={(e) => handleStartRandomQuiz(e, section)}
+                                  className="flex-center animate"
+                                  style={{ width: '100%', padding: '15px', marginBottom: '20px', background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(168, 85, 247, 0.1) 100%)', color: 'var(--primary-color)', borderRadius: '16px', border: '1px solid rgba(99, 102, 241, 0.2)', boxShadow: 'none', fontWeight: 'bold', fontSize: '1.05rem', gap: '10px' }}
+                                >
+                                  <Dices size={20} /> Случайный тест по предмету
+                                </button>
+                              )}
                               <div className="grid-2" style={{ gap: '15px' }}>
                                 {(() => {
                                   let currentDividerHidden = false;
@@ -373,14 +398,7 @@ const QuizCatalog = ({ profile }) => {
                                     if (quiz.content?.is_divider) {
                                       currentDividerHidden = quiz.is_hidden;
                                       return (
-                                        <div key={quiz.id} className="grid-full" style={{ 
-                                          gridColumn: '1 / -1', 
-                                          margin: '10px 0',
-                                          padding: '10px 0',
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          gap: '15px'
-                                        }}>
+                                        <div key={quiz.id} className="grid-full animate" style={{ gridColumn: '1 / -1', margin: '10px 0', padding: '10px 0', display: 'flex', alignItems: 'center', gap: '15px' }}>
                                           <div className="flex-center" style={{ gap: '15px' }}>
                                             {profile?.role === 'creator' && !searchQuery && (
                                               <div className="flex-center" style={{ flexDirection: 'column', gap: '2px' }}>
@@ -398,100 +416,61 @@ const QuizCatalog = ({ profile }) => {
                                           {profile?.role === 'creator' && (
                                             <div className="flex-center" style={{ gap: '5px' }}>
                                               <button onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: quiz.id, name: quiz.title, type: 'quiz' }); setNewName(quiz.title); }} style={{ background: 'transparent', color: 'var(--primary-color)', opacity: 0.4, padding: '5px', boxShadow: 'none' }}><Pencil size={14} /></button>
-                                              <button onClick={async (e) => { 
-                                                e.stopPropagation(); 
-                                                await supabase.from('quizzes').update({ is_hidden: !quiz.is_hidden }).eq('id', quiz.id); 
-                                                fetchData(); 
-                                              }} style={{ background: 'transparent', color: quiz.is_hidden ? '#ca8a04' : 'inherit', opacity: 0.4, padding: '5px', boxShadow: 'none' }}>
+                                              <button onClick={async (e) => { e.stopPropagation(); await supabase.from('quizzes').update({ is_hidden: !quiz.is_hidden }).eq('id', quiz.id); fetchData(); }} style={{ background: 'transparent', color: quiz.is_hidden ? '#ca8a04' : 'inherit', opacity: 0.4, padding: '5px', boxShadow: 'none' }}>
                                                 {quiz.is_hidden ? <Shield size={14} /> : <EyeOff size={14} />}
                                               </button>
-                                              <button onClick={async (e) => {
-                                                e.stopPropagation();
-                                                if (confirm('Удалить разделитель?')) {
-                                                  await supabase.from('quizzes').delete().eq('id', quiz.id);
-                                                  fetchData();
-                                                }
-                                              }} style={{ background: 'transparent', color: 'red', opacity: 0.4, padding: '5px', boxShadow: 'none' }}><Trash2 size={14} /></button>
+                                              <button onClick={async (e) => { e.stopPropagation(); if (confirm('Удалить разделитель?')) { await supabase.from('quizzes').delete().eq('id', quiz.id); fetchData(); } }} style={{ background: 'transparent', color: 'red', opacity: 0.4, padding: '5px', boxShadow: 'none' }}><Trash2 size={14} /></button>
                                             </div>
                                           )}
                                         </div>
                                       );
                                     }
-
                                     if (currentDividerHidden && profile?.role !== 'creator' && profile?.role !== 'admin') return null;
-
                                     const passState = passedQuizzes[quiz.id];
-                                    const canEdit = canEditQuiz(quiz);
-                                    const canMove = canMoveQuiz(quiz);
                                     return (
-                                      <div key={quiz.id} className="card" style={{ 
-                                        padding: '20px', 
-                                        background: 'var(--card-bg)', 
-                                        boxShadow: 'var(--soft-shadow)', 
-                                        display: 'flex', 
-                                        flexDirection: 'column', 
-                                        height: '100%',
-                                        opacity: currentDividerHidden ? 0.5 : 1,
-                                        border: currentDividerHidden ? '1px dashed #ca8a04' : '1px solid rgba(99, 102, 241, 0.1)'
-                                      }}>
-                                      <div className="flex-center" style={{ 
-                                        justifyContent: 'space-between', 
-                                        marginBottom: '15px', 
-                                        flexWrap: 'wrap', 
-                                        gap: '10px' 
-                                      }}>
-                                        <div className="flex-center" style={{ gap: '10px', minWidth: '200px', flex: 1 }}>
-                                          {canMove && !searchQuery && (
-                                            <div className="flex-center" style={{ flexDirection: 'column', gap: '5px' }}>
-                                              <button onClick={(e) => swapQuizzes(cls.id, section.id, qIndex, -1, e, quiz)} disabled={qIndex === 0} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronUp size={18} /></button>
-                                              <button onClick={(e) => swapQuizzes(cls.id, section.id, qIndex, 1, e, quiz)} disabled={qIndex === section.quizzes.length - 1} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronDown size={18} /></button>
+                                      <div key={quiz.id} className="card animate" style={{ padding: '20px', background: 'var(--card-bg)', boxShadow: 'var(--soft-shadow)', display: 'flex', flexDirection: 'column', height: '100%', opacity: currentDividerHidden ? 0.5 : 1, border: currentDividerHidden ? '1px dashed #ca8a04' : '1px solid rgba(99, 102, 241, 0.1)' }}>
+                                        <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '15px' }}>
+                                          <div style={{ flex: 1, minWidth: 0 }}>
+                                            <h4 style={{ fontSize: '1.1rem', margin: 0, lineHeight: '1.4' }}>{quiz.title}{quiz.is_verified && <CheckCircle size={16} color="var(--primary-color)" style={{ marginLeft: '5px', display: 'inline' }} />}</h4>
+                                            <p style={{ fontSize: '0.8rem', opacity: 0.5, margin: '4px 0 0 0' }}>Автор: {quiz.profiles?.last_name} {quiz.profiles?.first_name}</p>
+                                          </div>
+                                          {passState !== undefined && <span style={{ fontSize: '0.8rem', padding: '6px 16px', background: passState ? 'rgba(74, 222, 128, 0.1)' : 'rgba(248, 113, 113, 0.1)', color: passState ? '#4ade80' : '#f87171', borderRadius: '100px', fontWeight: 'bold' }}>{passState ? 'Пройдено' : 'Перепройти'}</span>}
+                                        </div>
+
+                                        <div style={{ marginTop: 'auto', paddingTop: '15px' }}>
+                                          {(profile?.role === 'admin' || profile?.role === 'creator' || profile?.id === quiz.author_id) && quizStats[quiz.id] && (
+                                            <div className="flex-center" style={{ justifyContent: 'flex-end', marginBottom: '12px' }}>
+                                              <div className="flex-center" style={{ gap: '6px', fontSize: '0.85rem', color: 'var(--primary-color)', fontWeight: 'bold', background: 'rgba(99, 102, 241, 0.05)', padding: '6px 12px', borderRadius: '10px' }} title="Общая успеваемость">
+                                                <TrendingUp size={14} /> {quizStats[quiz.id].avgScore}% успех
+                                              </div>
                                             </div>
                                           )}
-                                          <h4 style={{ fontSize: '1.1rem', margin: 0, lineHeight: '1.4' }}>
-                                            {quiz.title}
-                                            {quiz.is_verified && <CheckCircle size={16} color="var(--primary-color)" style={{ marginLeft: '5px', display: 'inline' }} />}
-                                          </h4>
-                                        </div>
-                                        <div style={{ flexShrink: 0 }}>
-                                          {passState === true && <span style={{ fontSize: '0.8rem', padding: '6px 16px', background: 'rgba(74, 222, 128, 0.1)', color: '#4ade80', borderRadius: '100px', fontWeight: 'bold', whiteSpace: 'nowrap', display: 'inline-block', minWidth: '95px', textAlign: 'center' }}>Пройдено</span>}
-                                          {passState === false && <span style={{ fontSize: '0.8rem', padding: '6px 16px', background: 'rgba(248, 113, 113, 0.1)', color: '#f87171', borderRadius: '100px', fontWeight: 'bold', whiteSpace: 'nowrap', display: 'inline-block', minWidth: '95px', textAlign: 'center' }}>Перепройти</span>}
+                                          <div className="flex-center" style={{ justifyContent: 'flex-end', gap: '8px', flexWrap: 'wrap' }}>
+                                            {canEditQuiz(quiz) && <button onClick={() => navigate(`/redactor?id=${quiz.id}`)} style={{ padding: '8px', background: 'rgba(99,102,241,0.08)', color: 'var(--primary-color)', boxShadow: 'none', borderRadius: '10px' }} title="Редактировать"><Pencil size={15} /></button>}
+                                            {canEditQuiz(quiz) && <button onClick={() => setHideModal(quiz)} style={{ padding: '8px', background: 'rgba(250,204,21,0.08)', color: '#ca8a04', boxShadow: 'none', borderRadius: '10px' }} title="Скрыть"><Eye size={15} /></button>}
+                                            {(profile?.role === 'admin' || profile?.role === 'creator' || profile?.role === 'teacher' || profile?.id === quiz.author_id) && <button onClick={() => navigate(`/analytics?id=${quiz.id}`)} style={{ padding: '8px', background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none', borderRadius: '10px' }} title="Аналитика"><BarChart2 size={15} /></button>}
+                                            <button onClick={() => setSelectedQuiz(quiz)} style={{ padding: '8px 20px', display: 'flex', alignItems: 'center', gap: '8px', borderRadius: '10px' }}><Play size={15} fill="currentColor" /> Начать</button>
+                                          </div>
                                         </div>
                                       </div>
-
-                                      <p style={{ fontSize: '0.8rem', opacity: 0.6, marginBottom: '20px' }}>
-                                        Автор: {quiz.profiles?.last_name} {quiz.profiles?.first_name}
-                                      </p>
-
-                                      <div className="flex-center" style={{ justifyContent: 'flex-end', gap: '8px', flexWrap: 'wrap', marginTop: 'auto' }}>
-                                        {canEdit && (
-                                          <button onClick={() => navigate(`/redactor?id=${quiz.id}`)} style={{ padding: '8px', background: 'rgba(99,102,241,0.08)', color: 'var(--primary-color)', boxShadow: 'none', borderRadius: '10px' }} title="Редактировать"><Pencil size={15} /></button>
-                                        )}
-                                        {canEdit && (
-                                          <button onClick={() => setHideModal(quiz)} style={{ padding: '8px', background: 'rgba(250,204,21,0.08)', color: '#ca8a04', boxShadow: 'none', borderRadius: '10px' }} title="Скрыть тест"><Eye size={15} /></button>
-                                        )}
-                                        {(profile?.role === 'admin' || profile?.role === 'creator' || profile?.role === 'teacher' || profile?.id === quiz.author_id) && (
-                                          <button onClick={() => navigate(`/analytics?id=${quiz.id}`)} style={{ padding: '8px', background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none', borderRadius: '10px' }} title="Аналитика"><BarChart2 size={15} /></button>
-                                        )}
-                                        <button onClick={() => setSelectedQuiz(quiz)} style={{ padding: '8px 20px', display: 'flex', alignItems: 'center', gap: '8px', borderRadius: '10px' }}><Play size={15} fill="currentColor" /> Начать</button>
-                                      </div>
-                                    </div>
-                                  );
+                                    );
                                   });
                                 })()}
                               </div>
-                            )}
-                          </div>
-                        )}
-                    </div>
-                  ))
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
-            )}
-          </div>
-        ))}
+            );
+          })
+        )}
 
-        {filteredData.length === 0 && (
-          <div className="card" style={{ textAlign: 'center', padding: '60px' }}>
+        {!loading && filteredData.length === 0 && (
+          <div className="card animate" style={{ textAlign: 'center', padding: '60px' }}>
             <h3>Ничего не найдено</h3>
             <p style={{ opacity: 0.6 }}>Попробуйте изменить поисковый запрос.</p>
           </div>
@@ -537,7 +516,6 @@ const QuizCatalog = ({ profile }) => {
         </div>
       )}
 
-      {/* RANDOM QUIZ MODAL */}
       {randomQuizModal && (
         <div className="modal-overlay" onClick={() => setRandomQuizModal(null)}>
           <div className="modal-content animate" onClick={e => e.stopPropagation()} style={{ width: '450px' }}>
@@ -560,7 +538,6 @@ const QuizCatalog = ({ profile }) => {
         </div>
       )}
 
-      {/* МОДАЛКА ПЕРЕИМЕНОВАНИЯ КЛАССА / СЕКЦИИ */}
       {renamingItem && (
         <div className="modal-overlay" onClick={() => setRenamingItem(null)}>
           <div className="modal-content animate" onClick={e => e.stopPropagation()} style={{ width: '400px' }}>
@@ -596,7 +573,6 @@ const QuizCatalog = ({ profile }) => {
     </div>
   );
 
-  // ─── Hide quiz modal ──────────────────────────────────────────────
   function HideModal() {
     if (!hideModal) return null;
     return (

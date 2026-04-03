@@ -34,7 +34,23 @@ const Logs = ({ profile }) => {
     fetchLogs();
   };
 
-  if (loading) return <div className="flex-center" style={{ height: '60vh' }}>Загрузка логов...</div>;
+  const LogSkeleton = () => (
+    <div className="container" style={{ padding: '40px 20px' }}>
+      <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '40px' }}>
+        <div className="skeleton" style={{ height: '35px', width: '250px' }} />
+        <div className="skeleton" style={{ height: '40px', width: '120px' }} />
+      </div>
+      <div className="card" style={{ padding: 0 }}>
+        {[1, 2, 3, 4, 5, 6].map(i => (
+          <div key={i} style={{ padding: '20px', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
+            <div className="skeleton" style={{ height: '24px', width: '100%' }} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  if (loading) return <LogSkeleton />;
 
   return (
     <div className="container animate" style={{ padding: '40px 20px' }}>

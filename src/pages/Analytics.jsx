@@ -22,6 +22,7 @@ const Analytics = () => {
   const [showObservers, setShowObservers] = useState(false);
   const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
   const [sortConfig, setSortConfig] = useState('date_desc'); // default
+  const [useFirstResults, setUseFirstResults] = useState(false);
 
   useEffect(() => {
     if (searchParams.get('blocked')) {
@@ -36,6 +37,7 @@ const Analytics = () => {
   const [filterCity, setFilterCity] = useState('all');
   const [filterSchool, setFilterSchool] = useState('all');
   const [filterClass, setFilterClass] = useState('all');
+
 
   useEffect(() => {
     fetchProfile();
@@ -185,21 +187,21 @@ const Analytics = () => {
       doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
       doc.setFont('Roboto');
       doc.text(`Аналитика теста: ${quiz?.title}`, 20, 20);
+      doc.text(`Метод расчета: ${useFirstResults ? 'Первая попытка' : 'Лучший текущий результат'}`, 20, 28);
 
       const tableData = sortedResults.map(res => {
         const p = res.profiles;
         const hasName = p?.first_name || p?.last_name;
         const displayName = p?.is_anonymous ? 'Анонимный профиль' : (hasName ? `${p.last_name || ''} ${p.first_name || ''}`.trim() : (p?.email || 'Неизвестный ученик'));
         const institution = [cities.find(c => c.id === p?.city_id)?.name, schools.find(s => s.id === p?.school_id)?.name, classes.find(c => c.id === p?.class_id)?.name].filter(Boolean).join(' / ') || '—';
-        const answers = res.answers_array || res.answers_map || [];
-
+        
         return [displayName, institution, `${res.score} / ${res.total_questions}`, `${res.first_score} / ${res.total_questions}`, new Date(res.completed_at).toLocaleDateString()];
       });
 
       autoTable(doc, {
-        head: [['Ученик', 'Заведение', 'Текущий рез.', '1-я попытка', 'Дата']],
+        head: [['Ученик', 'Заведение', 'Тек. рез.', '1-я попытка', 'Дата']],
         body: tableData,
-        startY: 30,
+        startY: 35,
         styles: { font: 'Roboto' },
         headStyles: { fontStyle: 'normal' }
       });
@@ -211,15 +213,16 @@ const Analytics = () => {
     }
   };
 
-  if (loading) return <div className="flex-center" style={{ height: '60vh' }}>Загрузка аналитики...</div>;
+  if (loading) return <AnalyticsSkeleton />;
   if (!quiz) return <div className="container">Тест не найден.</div>;
 
   const totalPotentialScore = filteredResults.reduce((acc, curr) => acc + curr.total_questions, 0);
-  const totalEarnedScore = filteredResults.reduce((acc, curr) => acc + curr.score, 0);
+  const totalEarnedScore = filteredResults.reduce((acc, curr) => acc + (useFirstResults ? curr.first_score : curr.score), 0);
   const avgScore = totalPotentialScore > 0 ? Math.round((totalEarnedScore / totalPotentialScore) * 100) : 0;
 
   return (
-    <div className="container animate" style={{ padding: '40px 20px' }}>
+    <>
+      <div className="container animate" style={{ padding: '40px 20px' }}>
       <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '30px' }}>
         <button onClick={() => navigate(-1)} className="flex-center" style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', boxShadow: 'none', padding: '10px 20px' }}>
           <ChevronLeft size={20} /> Назад
@@ -251,6 +254,40 @@ const Analytics = () => {
         </div>
 
         <div className="flex-center" style={{ gap: '15px' }}>
+          <div className="card flex-center" style={{ padding: '5px', gap: '5px', marginBottom: 0, borderRadius: '15px', background: 'rgba(0,0,0,0.03)' }}>
+            <button 
+              onClick={() => setUseFirstResults(true)} 
+              title="Статистика по первой попытке"
+              style={{ 
+                padding: '8px 15px', 
+                fontSize: '0.75rem', 
+                borderRadius: '12px',
+                background: useFirstResults ? 'var(--primary-color)' : 'transparent',
+                color: useFirstResults ? 'white' : 'var(--text-color)',
+                boxShadow: useFirstResults ? '0 4px 10px rgba(99, 102, 241, 0.3)' : 'none',
+                fontWeight: 'bold',
+                border: 'none'
+              }}
+            >
+              1-я попытка
+            </button>
+            <button 
+              onClick={() => setUseFirstResults(false)} 
+              title="Статистика по текущему (лучшему) результату"
+              style={{ 
+                padding: '8px 15px', 
+                fontSize: '0.75rem', 
+                borderRadius: '12px',
+                background: !useFirstResults ? 'var(--primary-color)' : 'transparent',
+                color: !useFirstResults ? 'white' : 'var(--text-color)',
+                boxShadow: !useFirstResults ? '0 4px 10px rgba(99, 102, 241, 0.3)' : 'none',
+                fontWeight: 'bold',
+                border: 'none'
+              }}
+            >
+              Текущий
+            </button>
+          </div>
           <button onClick={generatePDF} className="flex-center card" style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none', padding: '15px 20px', marginBottom: 0, cursor: 'pointer', border: 'none', fontWeight: 'bold' }}>
             <Download size={20} style={{ marginRight: '8px' }} /> Отчет PDF
           </button>
@@ -335,10 +372,11 @@ const Analytics = () => {
           </h3>
           <div style={{ display: 'grid', gap: '15px' }}>
             {quiz.content.questions.map((q, idx) => {
-              const correctAnswers = filteredResults.filter(r => {
-                const answers = r.answers_array || r.answers_map;
-                return answers && answers[idx] === true;
-              }).length;
+              const correctAnswers = filteredResults.reduce((acc, r) => {
+                const answers = useFirstResults ? (r.first_answers_array || r.answers_array) : (r.answers_array || r.answers_map);
+                if (!answers || !answers[idx]) return acc;
+                return acc + 1;
+              }, 0);
               const percent = Math.round((correctAnswers / filteredResults.length) * 100);
               return (
                 <div key={idx}>
@@ -462,7 +500,10 @@ const Analytics = () => {
           </tbody>
         </table>
       </div>
-      </div>
+    </div>
+  </div>
+
+  {/* ─── MODALS ─── */}
 
       {/* Модальное окно: удаление результата */}
       {deletingId && (
@@ -529,7 +570,7 @@ const Analytics = () => {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 };
 
@@ -539,6 +580,28 @@ const StatMini = ({ label, value, icon }) => (
     <div style={{ textAlign: 'left' }}>
       <p style={{ fontSize: '0.75rem', opacity: 0.5, margin: 0 }}>{label}</p>
       <h4 style={{ margin: 0, fontSize: '1.2rem' }}>{value}</h4>
+    </div>
+  </div>
+);
+
+const AnalyticsSkeleton = () => (
+  <div className="container" style={{ padding: '40px 20px' }}>
+    <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '30px' }}>
+      <div className="skeleton" style={{ width: '100px', height: '40px', borderRadius: '12px' }} />
+      <div className="flex-center" style={{ gap: '10px' }}>
+        <div className="skeleton" style={{ width: '150px', height: '40px', borderRadius: '12px' }} />
+        <div className="skeleton" style={{ width: '150px', height: '40px', borderRadius: '12px' }} />
+      </div>
+    </div>
+    <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '40px', gap: '20px' }}>
+      <div className="skeleton" style={{ width: '300px', height: '40px', borderRadius: '10px' }} />
+      <div className="skeleton" style={{ width: '200px', height: '40px', borderRadius: '30px' }} />
+    </div>
+    <div className="grid-2" style={{ marginBottom: '40px', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+      {[1, 2, 3, 4].map(i => <div key={i} className="skeleton" style={{ height: '80px', borderRadius: '20px' }} />)}
+    </div>
+    <div className="card" style={{ height: '300px', marginBottom: '40px' }}>
+      <div className="skeleton" style={{ width: '100%', height: '100%' }} />
     </div>
   </div>
 );

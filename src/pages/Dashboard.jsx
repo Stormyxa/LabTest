@@ -3,6 +3,28 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { User, Shield, Search, Edit3, Trash2, Mail, X, AlertTriangle, MapPin, Building, GraduationCap, Plus, History, Ban, ShieldAlert, Unlock, Eye, EyeOff, Zap, ChevronDown, ChevronRight } from 'lucide-react';
 
+const DashboardSkeleton = () => (
+  <div className="animate">
+    <div className="flex-center" style={{ gap: '15px', marginBottom: '30px', justifyContent: 'flex-start' }}>
+      <div className="skeleton" style={{ height: '50px', width: '300px', borderRadius: '12px' }}></div>
+      <div className="skeleton" style={{ height: '50px', width: '120px', borderRadius: '12px' }}></div>
+      <div className="skeleton" style={{ height: '50px', width: '120px', borderRadius: '12px' }}></div>
+      <div className="skeleton" style={{ height: '50px', width: '120px', borderRadius: '12px' }}></div>
+    </div>
+    <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
+      <div className="skeleton" style={{ height: '60px', width: '100%' }}></div>
+      {[1, 2, 3, 4, 5].map(i => (
+        <div key={i} style={{ padding: '20px', borderBottom: '1px solid rgba(0,0,0,0.02)', display: 'flex', gap: '20px' }}>
+          <div className="skeleton" style={{ height: '40px', flex: 1, borderRadius: '8px' }}></div>
+          <div className="skeleton" style={{ height: '40px', flex: 1, borderRadius: '8px' }}></div>
+          <div className="skeleton" style={{ height: '40px', flex: 1, borderRadius: '8px' }}></div>
+          <div className="skeleton" style={{ height: '40px', width: '100px', borderRadius: '8px' }}></div>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
 const Dashboard = ({ session, profile }) => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('users');
@@ -236,12 +258,6 @@ const Dashboard = ({ session, profile }) => {
   const availableSchools = (schools || []).filter(s => filterCity === 'all' || s.city_id === filterCity);
   const availableClassFilters = (classesList || []).filter(c => filterSchool === 'all' || c.school_id === filterSchool);
 
-  if (loading) return (
-    <div className="flex-center" style={{ height: '60vh', flexDirection: 'column', gap: '20px' }}>
-      <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>Загрузка панели...</div>
-      {errorMessage && <div className="card" style={{ color: 'red', border: '1px solid red', maxWidth: '400px' }}>{errorMessage}</div>}
-    </div>
-  );
 
   return (
     <div className="container animate" style={{ padding: '40px 20px' }}>
@@ -267,42 +283,53 @@ const Dashboard = ({ session, profile }) => {
         </div>
       </div>
 
-      <div className="flex-center" style={{ gap: '15px', width: '100%', justifyContent: 'flex-start', flexWrap: 'wrap', marginBottom: '30px' }}>
-        {activeTab === 'users' && (
-          <>
-            <div style={{ position: 'relative', minWidth: '300px', flex: 1 }}>
-              <Search size={20} style={{ position: 'absolute', left: '15px', top: '12px', opacity: 0.5 }} />
-              <input 
-                id="dashboard-user-search"
-                name="dashboard-user-search"
-                type="text" 
-                placeholder="Поиск по ФИО, Email..." 
-                value={search} 
-                onChange={(e) => setSearch(e.target.value)} 
-                style={{ paddingLeft: '45px' }} 
-              />
+      {loading ? <DashboardSkeleton /> : (
+        <>
+          <div className="flex-center" style={{ gap: '15px', width: '100%', justifyContent: 'flex-start', flexWrap: 'wrap', marginBottom: '30px' }}>
+            {activeTab === 'users' && (
+              <>
+                <div style={{ position: 'relative', minWidth: '300px', flex: 1 }}>
+                  <Search size={20} style={{ position: 'absolute', left: '15px', top: '12px', opacity: 0.5 }} />
+                  <input 
+                    id="dashboard-user-search"
+                    name="search"
+                    type="text" 
+                    placeholder="Поиск по ФИО, Email..." 
+                    value={search} 
+                    onChange={(e) => setSearch(e.target.value)} 
+                    style={{ paddingLeft: '45px' }} 
+                  />
+                </div>
+                <select id="filter-role" name="role" value={filterRole} onChange={e => setFilterRole(e.target.value)} style={{ width: 'auto' }}>
+                  <option value="all">Все роли</option>
+                  {['player', 'teacher', 'editor', 'admin', 'creator'].map(r => (
+                    <option key={r} value={r}>{r === 'player' ? 'Ученик' : r === 'teacher' ? 'Учитель' : r === 'editor' ? 'Редактор' : r === 'admin' ? 'Админ' : 'Создатель'}</option>
+                  ))}
+                </select>
+                <select id="filter-city" name="city" value={filterCity} onChange={e => { setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all'); }} style={{ width: 'auto' }}>
+                  <option value="all">Все города</option>
+                  {cities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+                <select id="filter-school" name="school" value={filterSchool} onChange={e => { setFilterSchool(e.target.value); setFilterClass('all'); }} style={{ width: 'auto' }}>
+                  <option value="all">Все школы</option>
+                  {availableSchools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+                <select id="filter-class" name="class" value={filterClass} onChange={e => setFilterClass(e.target.value)} style={{ width: 'auto' }}>
+                  <option value="all">Все классы</option>
+                  {availableClassFilters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </>
+            )}
+          </div>
+
+          {errorMessage && (
+            <div className="card" style={{ background: 'rgba(239, 68, 68, 0.05)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)', marginBottom: '30px' }}>
+              <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px' }}>
+                <AlertTriangle size={18} />
+                <span>{errorMessage}</span>
+              </div>
             </div>
-            <select id="filter-role" name="role" value={filterRole} onChange={e => setFilterRole(e.target.value)} style={{ width: 'auto' }}>
-              <option value="all">Все роли</option>
-              {['player', 'teacher', 'editor', 'admin', 'creator'].map(r => (
-                <option key={r} value={r}>{r === 'player' ? 'Ученик' : r === 'teacher' ? 'Учитель' : r === 'editor' ? 'Редактор' : r === 'admin' ? 'Админ' : 'Создатель'}</option>
-              ))}
-            </select>
-            <select id="filter-city" name="city" value={filterCity} onChange={e => { setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all'); }} style={{ width: 'auto' }}>
-              <option value="all">Все города</option>
-              {cities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-            <select id="filter-school" name="school" value={filterSchool} onChange={e => { setFilterSchool(e.target.value); setFilterClass('all'); }} style={{ width: 'auto' }}>
-              <option value="all">Все школы</option>
-              {availableSchools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-            <select id="filter-class" name="class" value={filterClass} onChange={e => setFilterClass(e.target.value)} style={{ width: 'auto' }}>
-              <option value="all">Все классы</option>
-              {availableClassFilters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </>
-        )}
-      </div>
+          )}
 
       {activeTab === 'users' && (
         <div className="card" style={{ padding: '0', overflowX: 'auto' }}>
@@ -762,7 +789,9 @@ const Dashboard = ({ session, profile }) => {
           </div>
         </div>
       )}
-    </div>
+    </>
+  )}
+</div>
   );
 };
 

@@ -67,10 +67,46 @@ const Profile = ({ session, profile, refreshProfile }) => {
     }
   };
 
+  const isLatin = (str) => /[a-zA-Z]/.test(str);
+  
+  const FORBIDDEN_WORDS = ['ОТПРАВЛЕНО', 'АККАУНТ', 'АДМИН', 'АДМИНИСТРАТОР', 'ПОДДЕРЖКА', 'SYSTEM', 'ADMIN', 'ROOT', 'DEVELOPER'];
+  
+  const getLevenshteinDistance = (a, b) => {
+    if (a.length === 0) return b.length;
+    if (b.length === 0) return a.length;
+    const matrix = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+    for (let j = 1; j <= b.length; j++) matrix[0][j] = j;
+    for (let i = 1; i <= a.length; i++) {
+      for (let j = 1; j <= b.length; j++) {
+        const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+        matrix[i][j] = Math.min(matrix[i - 1][j] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j - 1] + cost);
+      }
+    }
+    return matrix[a.length][b.length];
+  };
+
+  const isNameForbidden = (name) => {
+    if (!name) return false;
+    const upper = name.trim().toUpperCase();
+    return FORBIDDEN_WORDS.some(word => {
+      if (upper === word) return true;
+      if (getLevenshteinDistance(upper, word) <= 1) return true;
+      return false;
+    });
+  };
+
   const handleUpdateProfile = async (e) => {
     e.preventDefault();
+    
+    if (isLatin(firstName) || isLatin(lastName) || isLatin(patronymic)) {
+      setMsg('Ошибка: Пожалуйста, используйте только кириллицу для ФИО.');
+      return;
+    }
 
-    // If student didn't pick a class, enforce observer modal
+    if (isNameForbidden(firstName) || isNameForbidden(lastName) || isNameForbidden(patronymic)) {
+      setMsg('Ошибка: Данное имя или фамилия недоступны для использования.');
+      return;
+    }
     if (!classId && profile?.role !== 'teacher' && profile?.role !== 'admin' && profile?.role !== 'creator') {
       setShowNoClassModal(true);
       return;
@@ -120,8 +156,9 @@ const Profile = ({ session, profile, refreshProfile }) => {
   const avatarUrl = `https://api.dicebear.com/7.x/avataaars/svg?seed=${session.user.id}`;
 
   return (
-    <div className="container animate" style={{ padding: '40px 20px' }}>
-      {msg && <div className="card" style={{ marginBottom: '20px', background: 'var(--primary-color)', color: 'white', padding: '15px' }}>{msg}</div>}
+    <>
+      <div className="container animate" style={{ padding: '40px 20px' }}>
+        {msg && <div className="card" style={{ marginBottom: '20px', background: 'var(--primary-color)', color: 'white', padding: '15px' }}>{msg}</div>}
 
       <div className="grid-2">
         <div className="card flex-center" style={{ flexDirection: 'column', textAlign: 'center' }}>
@@ -232,7 +269,7 @@ const Profile = ({ session, profile, refreshProfile }) => {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <label htmlFor="birth-date">Дата рождения</label>
-            <input id="birth-date" name="birth_date" type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} required />
+            <input id="birth-date" name="birth_date" type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} required autoComplete="bday" />
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -277,6 +314,7 @@ const Profile = ({ session, profile, refreshProfile }) => {
           )}
         </form>
       </div>
+    </div>
 
       {showNoClassModal && (
         <div className="modal-overlay" onClick={() => setShowNoClassModal(false)}>
@@ -307,8 +345,7 @@ const Profile = ({ session, profile, refreshProfile }) => {
           </div>
         </div>
       )}
-
-    </div>
+    </>
   );
 };
 

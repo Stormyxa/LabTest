@@ -254,7 +254,7 @@ const QuizView = ({ session, profile }) => {
           if (existing) {
             await supabase.from('quiz_results').update({ score: pending.score, total_questions: pending.total_questions, is_passed: pending.is_passed, completed_at: pending.completed_at, answers_array: pending.answers_array }).eq('id', existing.id);
           } else {
-            const ins = { ...pending, first_score: pending.score, first_completed_at: pending.completed_at };
+            const ins = { ...pending, first_score: pending.score, first_completed_at: pending.completed_at, first_answers_array: pending.answers_array };
             if (!ins.class_id) delete ins.class_id;
             await supabase.from('quiz_results').insert(ins);
           }
@@ -341,7 +341,7 @@ const QuizView = ({ session, profile }) => {
           score: correctCount, total_questions: qs.length,
           is_passed: isPassed, completed_at: now,
           first_score: correctCount, first_completed_at: now,
-          answers_array: answersArray,
+          answers_array: answersArray, first_answers_array: answersArray,
         };
         if (profile?.class_id) resultData.class_id = profile.class_id;
         await supabase.from('quiz_results').insert(resultData);

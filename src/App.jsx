@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo } from 'react';
 import { createBrowserRouter, RouterProvider, Navigate, Link, Outlet, createRoutesFromElements, Route } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import Home from './pages/Home';
@@ -58,7 +58,7 @@ function App() {
     setLoading(false);
   };
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('theme', theme);
   }, [theme]);
@@ -73,8 +73,8 @@ function App() {
     createRoutesFromElements(
       <Route element={
         <div className="app-shell">
-          <nav className="navbar" style={{ position: 'sticky', top: 0, zIndex: 100, background: 'var(--card-bg)', backdropFilter: 'var(--glass)', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-            <div className="container flex-center" style={{justifyContent: 'space-between', padding: '15px 20px'}}>
+          <nav className="navbar">
+            <div className="container flex-center" style={{justifyContent: 'space-between', padding: '15px 20px', maxWidth: '100%'}}>
               <Link to="/" style={{textDecoration: 'none', color: 'inherit'}}>
                 <h2 style={{fontWeight: '800', letterSpacing: '-1px'}}>LabTest</h2>
               </Link>

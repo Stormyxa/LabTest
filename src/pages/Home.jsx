@@ -23,61 +23,63 @@ const Home = ({ session, profile }) => {
   };
 
   return (
-    <div className="container animate" style={{ textAlign: 'center', padding: '100px 20px' }}>
-      <div className="card" style={{ maxWidth: '800px', margin: '0 auto', background: 'var(--card-bg)', border: '1px solid rgba(0,0,0,0.05)', position: 'relative' }}>
+    <>
+      <div className="container animate" style={{ padding: '60px 20px', textAlign: 'center' }}>
+        <div className="card" style={{ maxWidth: '800px', margin: '0 auto', background: 'var(--card-bg)', border: '1px solid rgba(0,0,0,0.05)', position: 'relative' }}>
 
-        {/* Top Left Icons */}
-        <div style={{ position: 'absolute', top: '20px', left: '20px', display: 'flex', gap: '10px' }}>
-          <button
-            className="flex-center"
-            onClick={() => setShowInfo(true)}
-            style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', width: '40px', height: '40px', borderRadius: '12px', padding: '0' }}
-            title="О проекте"
-          >
-            <Info size={20} />
-          </button>
-          <button
-            className="flex-center"
-            onClick={() => setShowTeam(true)}
-            style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', width: '40px', height: '40px', borderRadius: '12px', padding: '0' }}
-            title="Стать частью команды"
-          >
-            <Users size={20} />
-          </button>
-        </div>
-
-        <h1 style={{ fontSize: '3.5rem', marginBottom: '20px', fontWeight: '800', color: 'var(--primary-color)' }}>LabTest</h1>
-        <p style={{ fontSize: '1.2rem', opacity: 0.8, marginBottom: '40px' }}>
-          Добро пожаловать в учебную лабораторию тестов.
-          Проходите испытания, зарабатывайте баллы и повышайте свой уровень знаний.
-        </p>
-
-        <div className="flex-center" style={{ gap: '20px', flexWrap: 'wrap', justifyContent: 'center' }}>
-          {!session ? (
-            <button onClick={() => navigate('/auth')} style={{ fontSize: '1.1rem', padding: '15px 40px' }}>
-              Начать обучение
+          {/* Top Left Icons */}
+          <div style={{ position: 'absolute', top: '20px', left: '20px', display: 'flex', gap: '10px' }}>
+            <button
+              className="flex-center"
+              onClick={() => setShowInfo(true)}
+              style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', width: '40px', height: '40px', borderRadius: '12px', padding: '0' }}
+              title="О проекте"
+            >
+              <Info size={20} />
             </button>
-          ) : (
-            <>
-              <button
-                onClick={() => navigate('/catalog')}
-                style={{ fontSize: '1.1rem', padding: '15px 40px', background: 'var(--secondary-color)' }}
-              >
-                <LayoutGrid size={20} style={{ marginRight: '10px' }} />
-                Каталог тестов
-              </button>
+            <button
+              className="flex-center"
+              onClick={() => setShowTeam(true)}
+              style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', width: '40px', height: '40px', borderRadius: '12px', padding: '0' }}
+              title="Стать частью команды"
+            >
+              <Users size={20} />
+            </button>
+          </div>
 
-              {(profile?.role === 'admin' || profile?.role === 'creator') && (
+          <h1 style={{ fontSize: '3.5rem', marginBottom: '20px', fontWeight: '800', color: 'var(--primary-color)' }}>LabTest</h1>
+          <p style={{ fontSize: '1.2rem', opacity: 0.8, marginBottom: '40px' }}>
+            Добро пожаловать в учебную лабораторию тестов.
+            Проходите испытания, зарабатывайте баллы и повышайте свой уровень знаний.
+          </p>
+
+          <div className="flex-center" style={{ gap: '20px', flexWrap: 'wrap', justifyContent: 'center' }}>
+            {!session ? (
+              <button onClick={() => navigate('/auth')} style={{ fontSize: '1.1rem', padding: '15px 40px' }}>
+                Начать обучение
+              </button>
+            ) : (
+              <>
                 <button
-                  onClick={() => navigate('/dashboard')}
-                  style={{ fontSize: '1.1rem', padding: '15px 40px', background: 'var(--accent-color)' }}
+                  onClick={() => navigate('/catalog')}
+                  style={{ fontSize: '1.1rem', padding: '15px 40px', background: 'var(--secondary-color)' }}
                 >
-                  <Settings size={20} style={{ marginRight: '10px' }} />
-                  Панель управления
+                  <LayoutGrid size={20} style={{ marginRight: '10px' }} />
+                  Каталог тестов
                 </button>
-              )}
-            </>
-          )}
+
+                {(profile?.role === 'admin' || profile?.role === 'creator') && (
+                  <button
+                    onClick={() => navigate('/dashboard')}
+                    style={{ fontSize: '1.1rem', padding: '15px 40px', background: 'var(--accent-color)' }}
+                  >
+                    <Settings size={20} style={{ marginRight: '10px' }} />
+                    Панель управления
+                  </button>
+                )}
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -154,7 +156,7 @@ const Home = ({ session, profile }) => {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 };
 

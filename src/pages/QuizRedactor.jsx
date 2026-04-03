@@ -46,6 +46,7 @@ const QuizRedactor = () => {
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showFormattingWarning, setShowFormattingWarning] = useState(false);
   const [deleteQModal, setDeleteQModal] = useState(null);
   const [saving, setSaving] = useState(false);
   const [validErrors, setValidErrors] = useState([]);
@@ -129,11 +130,46 @@ const QuizRedactor = () => {
     return errs.length === 0;
   };
 
-  const handleSave = async () => {
+  const normalizeTitle = (t) => {
+    if (!t) return t;
+    let res = t.trim();
+    // Long dashes and math minuses to standard hyphen
+    res = res.replace(/[—–−]/g, '-');
+    // Quotes to Guillemets: "word" -> «word»
+    res = res.replace(/"([^"]+)"/g, '«$1»');
+    // Para pattern: § 10. Title
+    const paraMatch = res.match(/^§?\s*(\d+)\.?\s*(.*)/);
+    if (paraMatch) {
+      res = `§ ${paraMatch[1]}. ${paraMatch[2].trim()}`;
+    }
+    return res;
+  };
+
+  const handleSave = async (force = false) => {
+    // Normalization only on FIRST publication (Hidden -> Visible)
+    const isFirstPublication = savedIsHidden === true && isHidden === false;
+    let finalTitle = title;
+    if (isFirstPublication) {
+      finalTitle = normalizeTitle(title);
+      setTitle(finalTitle);
+    }
+    
     if (!validate()) { setShowValidErrors(true); setShowSaveModal(false); return; }
+    
+    // Check for ALL CAPS or poor formatting (warn on all saves)
+    const isAllCaps = finalTitle === finalTitle.toUpperCase() && finalTitle.length > 5;
+    const hasDashes = finalTitle.includes(' - ') || finalTitle.includes(' — ');
+    
+    if (!force && (isAllCaps || hasDashes)) {
+      setShowFormattingWarning(true);
+      setShowSaveModal(false);
+      return;
+    }
+
+    setShowFormattingWarning(false);
     setSaving(true);
     try {
-      const trimmedTitle = title.trim();
+      const trimmedTitle = finalTitle.trim();
       const { error } = await supabase.from('quizzes').update({
         title: trimmedTitle,
         content: { questions },
@@ -240,7 +276,29 @@ const QuizRedactor = () => {
   };
 
   // ─── BLOCKED STATES ───────────────────────────────────────────
-  if (loading) return <div className="flex-center" style={{ height: '60vh' }}>Загрузка редактора...</div>;
+  const RedactorSkeleton = () => (
+    <div className="container" style={{ padding: '40px 20px' }}>
+      <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '30px' }}>
+        <div className="skeleton" style={{ height: '40px', width: '120px' }} />
+        <div className="flex-center" style={{ gap: '10px' }}>
+          <div className="skeleton" style={{ height: '40px', width: '150px' }} />
+          <div className="skeleton" style={{ height: '40px', width: '150px' }} />
+        </div>
+      </div>
+      <div className="card" style={{ marginBottom: '30px', height: '100px' }}>
+        <div className="skeleton" style={{ height: '100%', width: '100%' }} />
+      </div>
+      <div style={{ display: 'grid', gap: '20px' }}>
+        {[1, 2, 3].map(i => (
+          <div key={i} className="card" style={{ height: '200px' }}>
+            <div className="skeleton" style={{ height: '100%', width: '100%' }} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  if (loading) return <RedactorSkeleton />;
   if (notFound) return <div className="container" style={{ textAlign: 'center', padding: '100px' }}>Тест не найден.</div>;
 
   if (blocked === 'no_permission') return (
@@ -290,7 +348,8 @@ const QuizRedactor = () => {
 
   // ─── MAIN EDITOR ──────────────────────────────────────────────
   return (
-    <div className="container animate" style={{ padding: '40px 20px', paddingBottom: changed ? '130px' : '60px' }}>
+    <>
+      <div className="container animate" style={{ padding: '40px 20px', paddingBottom: changed ? '130px' : '60px' }}>
       {/* Header */}
       <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '30px', flexWrap: 'wrap', gap: '12px' }}>
         <button onClick={() => changed ? setShowCancelModal(true) : navigate(-1)} className="flex-center" style={ghostBtnStyle}>
@@ -523,10 +582,11 @@ const QuizRedactor = () => {
           </div>
         )}
       </div>
+    </div>
 
-      {/* ─── Unsaved changes bar ─── */}
-      {changed && (
-        <div className="animate" style={{ position: 'fixed', bottom: '20px', left: '50%', transform: 'translateX(-50%)', background: 'var(--card-bg)', padding: '15px 25px', borderRadius: '50px', boxShadow: '0 10px 40px rgba(0,0,0,0.15)', border: '1px solid rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', gap: '20px', zIndex: 1000, flexWrap: 'wrap', justifyContent: 'center' }}>
+    {/* ─── Unsaved changes bar ─── */}
+      {hasChanges() && (
+        <div style={{ position: 'fixed', bottom: '30px', left: '50%', transform: 'translateX(-50%)', background: 'var(--card-bg)', padding: '15px 25px', borderRadius: '50px', boxShadow: '0 10px 40px rgba(0,0,0,0.15)', border: '1px solid rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', gap: '20px', zIndex: 2000, flexWrap: 'wrap', justifyContent: 'center' }}>
           <span style={{ fontWeight: '500', fontSize: '0.95rem' }}>⚠ Есть несохранённые изменения</span>
           <div style={{ display: 'flex', gap: '10px' }}>
             <button onClick={() => setShowCancelModal(true)}
@@ -571,7 +631,31 @@ const QuizRedactor = () => {
             </p>
             <div className="grid-2" style={{ gap: '10px' }}>
               <button onClick={() => setShowSaveModal(false)} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit' }}>Отмена</button>
-              <button onClick={handleSave} disabled={saving}>{saving ? 'Сохранение...' : 'Да, сохранить'}</button>
+              <button onClick={() => handleSave(false)} disabled={saving}>{saving ? 'Сохранение...' : 'Да, сохранить'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Formatting Warning modal */}
+      {showFormattingWarning && (
+        <div className="modal-overlay" onClick={() => setShowFormattingWarning(false)}>
+          <div className="modal-content animate" style={{ width: '450px' }} onClick={e => e.stopPropagation()}>
+            <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', background: 'rgba(250, 204, 21, 0.1)', color: '#ca8a04', borderRadius: '20px', margin: '0 auto 20px' }}><AlertTriangle size={30} /></div>
+            <h3 style={{ marginBottom: '15px', textAlign: 'center' }}>Внимание к форматированию</h3>
+            <p style={{ opacity: 0.7, fontSize: '0.95rem', marginBottom: '25px', textAlign: 'center', lineHeight: '1.6' }}>
+              Возможно, заголовок введён полностью <strong>БОЛЬШИМИ БУКВАМИ</strong> или содержит тире. <br/>
+              Напоминаем: при первом выкладывании система попытается нормализовать кавычки и пробелы после параграфа (например, <em>«§ 10.»</em>). Убедитесь, что всё выглядит корректно.
+            </p>
+            <div className="grid-2" style={{ gap: '12px' }}>
+              <button onClick={() => setShowFormattingWarning(false)} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit' }}>Вернуться к редактуре</button>
+              <button 
+                onClick={() => handleSave(true)} 
+                disabled={saving}
+                style={{ background: 'var(--primary-color)', color: 'white' }}
+              >
+                {saving ? 'Сохранение...' : 'Всё равно сохранить'}
+              </button>
             </div>
           </div>
         </div>
@@ -624,7 +708,7 @@ const QuizRedactor = () => {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 };
 

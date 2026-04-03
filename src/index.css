@@ -28,11 +28,15 @@
   transition: background-color 0.3s ease, color 0.3s ease, transform 0.2s ease;
 }
 
-/* ЗАЩИТА ОТ ГОРИЗОНТАЛЬНОГО СКРОЛЛА */
 html,
 body {
-  overflow-x: hidden;
+  margin: 0;
+  padding: 0;
   width: 100%;
+}
+
+body {
+  overflow-x: hidden;
 }
 
 body {
@@ -108,12 +112,92 @@ select {
   justify-content: center;
 }
 
+/* --- АНИМАЦИИ И ПЕРЕХОДЫ --- */
+.animate {
+  animation: fadeInUp 0.5s ease-out forwards;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* --- SKELETON LOADERS (Заглушки) --- */
+.skeleton {
+  background: var(--card-bg);
+  background: linear-gradient(
+    90deg,
+    rgba(128, 128, 128, 0.04) 25%,
+    rgba(128, 128, 128, 0.12) 50%,
+    rgba(128, 128, 128, 0.04) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-pulse 1.2s infinite linear;
+  border-radius: 12px;
+}
+
+@keyframes skeleton-pulse {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+.skeleton-pulse {
+  animation: pulse-soft 2s infinite ease-in-out;
+}
+
+@keyframes pulse-soft {
+  0% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+  100% { opacity: 0.4; }
+}
+
+.skeleton-text {
+  height: 1rem;
+  margin-bottom: 0.5rem;
+  width: 100%;
+}
+
+.skeleton-card {
+  height: 120px;
+  width: 100%;
+  border-radius: var(--border-radius);
+  margin-bottom: 15px;
+}
+
+.skeleton-button {
+  height: 40px;
+  width: 120px;
+  border-radius: 100px;
+}
+
 .grid-2 {
   display: grid;
   /* ИСПРАВЛЕНИЕ СЕТКИ ДЛЯ МАЛЕНЬКИХ ТЕЛЕФОНОВ: 
      min(100%, 300px) означает "300px, но если экран меньше, то сжимайся" */
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
   gap: 24px;
+}
+
+.navbar {
+  width: 100%;
+  border-bottom: 2px solid rgba(0, 0, 0, 0.06);
+  background: var(--card-bg);
+  backdrop-filter: var(--glass);
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  left: 0;
+  right: 0;
 }
 
 /* Modals */
