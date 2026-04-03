@@ -269,8 +269,7 @@ const QuizCatalog = ({ profile }) => {
                 overflow: 'hidden', 
                 border: isEmptyClass ? '1px dashed rgba(0,0,0,0.1)' : '1px solid var(--primary-color)', 
                 borderRadius: '24px',
-                filter: isEmptyClass ? 'grayscale(0.8)' : 'none',
-                opacity: isEmptyClass ? 0.7 : 1
+                opacity: isEmptyClass ? 0.6 : 1
               }}>
                 <div
                   onClick={() => !isEmptyClass && setExpandedClasses(prev => ({ ...prev, [cls.id]: !prev[cls.id] }))}
@@ -320,8 +319,7 @@ const QuizCatalog = ({ profile }) => {
                           overflow: 'hidden', 
                           border: isEmptySection ? '1px dashed rgba(0,0,0,0.1)' : '1px solid rgba(0,0,0,0.05)', 
                           borderRadius: '20px',
-                          filter: isEmptySection ? 'grayscale(0.8)' : 'none',
-                          opacity: isEmptySection ? 0.6 : 1
+                          opacity: isEmptySection ? 0.5 : 1
                         }}>
                           <div 
                             onClick={() => !isEmptySection && setExpandedSections(prev => ({ ...prev, [section.id]: !prev[section.id] }))}
