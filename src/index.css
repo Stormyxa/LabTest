@@ -72,6 +72,14 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+.catalog-container {
+  background: var(--card-bg);
+  border-radius: var(--border-radius);
+  padding: 2rem;
+  box-shadow: var(--soft-shadow);
+  border: 1px solid rgba(0, 0, 0, 0.03);
+}
+
 button {
   cursor: pointer;
   padding: 12px 24px;
@@ -279,9 +287,6 @@ select {
 
   .card {
     padding: 1.25rem !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-    background: rgba(255, 255, 255, 0.95) !important;
   }
 
   .grid-2 {

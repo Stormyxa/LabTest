@@ -12,20 +12,20 @@ const QuizCatalog = ({ profile }) => {
   const [quizStats, setQuizStats] = useState({}); // { quiz_id: { avgScore, participants } }
 
   const [expandedClasses, setExpandedClasses] = useState(() => {
-    const saved = localStorage.getItem('catalog_expanded_classes');
+    const saved = localStorage.getItem('catalog_expanded_classes_v2');
     return saved ? JSON.parse(saved) : {};
   });
   const [expandedSections, setExpandedSections] = useState(() => {
-    const saved = localStorage.getItem('catalog_expanded_sections');
+    const saved = localStorage.getItem('catalog_expanded_sections_v2');
     return saved ? JSON.parse(saved) : {};
   });
 
   useEffect(() => {
-    localStorage.setItem('catalog_expanded_classes', JSON.stringify(expandedClasses));
+    localStorage.setItem('catalog_expanded_classes_v2', JSON.stringify(expandedClasses));
   }, [expandedClasses]);
 
   useEffect(() => {
-    localStorage.setItem('catalog_expanded_sections', JSON.stringify(expandedSections));
+    localStorage.setItem('catalog_expanded_sections_v2', JSON.stringify(expandedSections));
   }, [expandedSections]);
 
   const [selectedQuiz, setSelectedQuiz] = useState(null);
@@ -264,7 +264,7 @@ const QuizCatalog = ({ profile }) => {
               sec.quizzes.filter(q => !q.content?.is_divider).length === 0
             );
             return (
-              <div key={cls.id} className="card" style={{ 
+              <div key={cls.id} className="catalog-container" style={{ 
                 padding: '0', 
                 overflow: 'hidden', 
                 border: isEmptyClass ? '1px dashed rgba(0,0,0,0.1)' : '1px solid var(--primary-color)', 
@@ -314,7 +314,7 @@ const QuizCatalog = ({ profile }) => {
                     {cls.sections.map((section, sIndex) => {
                       const isEmptySection = section.quizzes.filter(q => !q.content?.is_divider).length === 0;
                       return (
-                        <div key={section.id} className="card" style={{ 
+                        <div key={section.id} className="catalog-container" style={{ 
                           padding: '0', 
                           overflow: 'hidden', 
                           border: isEmptySection ? '1px dashed rgba(0,0,0,0.1)' : '1px solid rgba(0,0,0,0.05)', 

@@ -620,7 +620,7 @@ const Editor = ({ session, profile }) => {
                   }
 
                   return (
-                    <div key={cls.id} className="card" style={{ padding: '0', overflow: 'hidden', border: '2px solid rgba(0,0,0,0.05)', marginBottom: '30px' }}>
+                    <div key={cls.id} className="catalog-container" style={{ padding: '0', overflow: 'hidden', border: '2px solid rgba(0,0,0,0.05)', marginBottom: '30px' }}>
                       <div 
                         onClick={() => setExpandedClasses(prev => ({ ...prev, [cls.id]: !prev[cls.id] }))}
                         className="editor-class-head" 
