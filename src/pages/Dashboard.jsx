@@ -260,7 +260,8 @@ const Dashboard = ({ session, profile }) => {
 
 
   return (
-    <div className="container animate" style={{ padding: '40px 20px' }}>
+    <>
+      <div className="container animate" style={{ padding: '40px 20px' }}>
       <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '40px', flexWrap: 'wrap', gap: '20px' }}>
         <div className="flex-center" style={{ gap: '20px' }}>
           <div>
@@ -573,6 +574,9 @@ const Dashboard = ({ session, profile }) => {
           </div>
         </div>
       )}
+      </>
+      )}
+    </div>
 
       {/* МОДАЛКИ */}
 
@@ -790,8 +794,6 @@ const Dashboard = ({ session, profile }) => {
         </div>
       )}
     </>
-  )}
-</div>
   );
 };
 
