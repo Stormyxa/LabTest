@@ -71,6 +71,15 @@ const QuizView = ({ session, profile }) => {
       // Store pending result in localStorage — will be saved on next visit
       const qs = questionsRef.current;
       const ans = answersRef.current;
+      
+      // Calculate results based on ORIGINAL indices to ensure analytics compatibility
+      const originalAnswers = [];
+      qs.forEach((q) => {
+        if (q.originalIndex !== undefined) {
+          originalAnswers[q.originalIndex] = ans[questions.indexOf(q)] === q.correctIndex;
+        }
+      });
+
       const correctCount = qs.filter((q, idx) => ans[idx] === q.correctIndex).length;
       const pendingKey = `quiz_pending_${id}`;
       localStorage.setItem(pendingKey, JSON.stringify({
@@ -79,7 +88,7 @@ const QuizView = ({ session, profile }) => {
         score: correctCount,
         total_questions: qs.length,
         is_passed: (correctCount / qs.length) >= 0.5,
-        answers_array: qs.map((q, idx) => ans[idx] === q.correctIndex),
+        answers_array: originalAnswers,
         class_id: profile?.class_id || null,
         completed_at: new Date().toISOString(),
       }));
@@ -105,6 +114,14 @@ const QuizView = ({ session, profile }) => {
           if (shouldSave) {
             const qs = questionsRef.current;
             const ans = answersRef.current;
+            
+            const originalAnswers = [];
+            qs.forEach((q) => {
+              if (q.originalIndex !== undefined) {
+                originalAnswers[q.originalIndex] = ans[questions.indexOf(q)] === q.correctIndex;
+              }
+            });
+
             const correctCount = qs.filter((q, idx) => ans[idx] === q.correctIndex).length;
             localStorage.setItem(`quiz_pending_${id}`, JSON.stringify({
               quiz_id: id,
@@ -112,7 +129,7 @@ const QuizView = ({ session, profile }) => {
               score: correctCount,
               total_questions: qs.length,
               is_passed: (correctCount / qs.length) >= 0.5,
-              answers_array: qs.map((q, idx) => ans[idx] === q.correctIndex),
+              answers_array: originalAnswers,
               class_id: profile?.class_id || null,
               completed_at: new Date().toISOString(),
             }));
@@ -163,9 +180,11 @@ const QuizView = ({ session, profile }) => {
     if (data) {
       setQuiz(data);
       const rawQuestions = data.content.questions || [];
+      // Assign original indices before shuffling
+      const indexedQuestions = rawQuestions.map((q, idx) => ({ ...q, originalIndex: idx }));
 
       // Shuffle questions (Fisher-Yates)
-      const shuffledQuestions = [...rawQuestions];
+      const shuffledQuestions = [...indexedQuestions];
       for (let i = shuffledQuestions.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [shuffledQuestions[i], shuffledQuestions[j]] = [shuffledQuestions[j], shuffledQuestions[i]];
@@ -290,10 +309,19 @@ const QuizView = ({ session, profile }) => {
   const saveResult = async (finalAnswers) => {
     const qs = questionsRef.current; // use ref, not state (avoids stale closure)
     if (!qs || qs.length === 0) { console.warn('saveResult: questions not loaded yet'); return; }
+    
+    // Map answers back to original indices
+    const originalAnswers = [];
+    qs.forEach((q, idx) => {
+      if (q.originalIndex !== undefined) {
+        originalAnswers[q.originalIndex] = finalAnswers[idx] === q.correctIndex;
+      }
+    });
+
     const correctCount = qs.filter((q, idx) => finalAnswers[idx] === q.correctIndex).length;
     const isPassed = (correctCount / qs.length) >= 0.5;
     const now = new Date().toISOString();
-    const answersArray = qs.map((q, idx) => finalAnswers[idx] === q.correctIndex);
+    const answersArray = originalAnswers;
     try {
       const { data: existing, error: checkError } = await supabase
         .from('quiz_results')

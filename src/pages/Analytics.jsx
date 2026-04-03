@@ -191,6 +191,7 @@ const Analytics = () => {
         const hasName = p?.first_name || p?.last_name;
         const displayName = p?.is_anonymous ? 'Анонимный профиль' : (hasName ? `${p.last_name || ''} ${p.first_name || ''}`.trim() : (p?.email || 'Неизвестный ученик'));
         const institution = [cities.find(c => c.id === p?.city_id)?.name, schools.find(s => s.id === p?.school_id)?.name, classes.find(c => c.id === p?.class_id)?.name].filter(Boolean).join(' / ') || '—';
+        const answers = res.answers_array || res.answers_map || [];
 
         return [displayName, institution, `${res.score} / ${res.total_questions}`, `${res.first_score} / ${res.total_questions}`, new Date(res.completed_at).toLocaleDateString()];
       });
@@ -334,7 +335,10 @@ const Analytics = () => {
           </h3>
           <div style={{ display: 'grid', gap: '15px' }}>
             {quiz.content.questions.map((q, idx) => {
-              const correctAnswers = filteredResults.filter(r => r.answers_map && r.answers_map[idx] === true).length;
+              const correctAnswers = filteredResults.filter(r => {
+                const answers = r.answers_array || r.answers_map;
+                return answers && answers[idx] === true;
+              }).length;
               const percent = Math.round((correctAnswers / filteredResults.length) * 100);
               return (
                 <div key={idx}>
