@@ -182,9 +182,7 @@ select {
 
 .grid-2 {
   display: grid;
-  /* ИСПРАВЛЕНИЕ СЕТКИ ДЛЯ МАЛЕНЬКИХ ТЕЛЕФОНОВ: 
-     min(100%, 300px) означает "300px, но если экран меньше, то сжимайся" */
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 24px;
 }
 
@@ -281,6 +279,10 @@ select {
 
   .card {
     padding: 1.25rem !important;
+  }
+
+  .grid-2 {
+    grid-template-columns: 1fr !important;
   }
 
   /* Специально для самых вложенных карточек тестов */
