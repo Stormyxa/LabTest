@@ -8,10 +8,22 @@ const Home = ({ session, profile }) => {
   const [showInfo, setShowInfo] = useState(false);
   const [showTeam, setShowTeam] = useState(false);
   const [team, setTeam] = useState([]);
+  const [creatorPhone, setCreatorPhone] = useState('');
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (showTeam) fetchTeam();
   }, [showTeam]);
+
+  useEffect(() => {
+    if (showInfo && !creatorPhone) {
+      const getCreatorPhone = async () => {
+        const { data } = await supabase.from('profiles').select('phone_number').eq('role', 'creator').single();
+        if (data?.phone_number) setCreatorPhone(data.phone_number);
+      };
+      getCreatorPhone();
+    }
+  }, [showInfo, creatorPhone]);
 
   const fetchTeam = async () => {
     const { data } = await supabase
@@ -47,7 +59,7 @@ const Home = ({ session, profile }) => {
             </button>
           </div>
 
-          <h1 style={{ fontSize: '3.5rem', marginBottom: '20px', fontWeight: '800', color: 'var(--primary-color)' }}>LabTest</h1>
+          <h1 style={{ fontSize: '3.5rem', margin: '40px 0 20px 0', fontWeight: '800', color: 'var(--primary-color)' }}>LabTest</h1>
           <p style={{ fontSize: '1.2rem', opacity: 0.8, marginBottom: '40px' }}>
             Добро пожаловать в учебную лабораторию тестов.
             Проходите испытания, зарабатывайте баллы и повышайте свой уровень знаний.
@@ -88,9 +100,26 @@ const Home = ({ session, profile }) => {
         <div className="modal-overlay" onClick={() => setShowInfo(false)}>
           <div className="modal-content animate" onClick={e => e.stopPropagation()}>
             <h2 style={{ marginBottom: '20px' }}>О проекте</h2>
-            <p style={{ marginBottom: '30px', lineHeight: '1.6', textAlign: 'left' }}>
+            <p style={{ marginBottom: '15px', lineHeight: '1.6', textAlign: 'left' }}>
               Сайт создан учеником СШ№43 Афанасиади Анастасом в рамках проекта по информатике. 2026г.
             </p>
+            <div style={{ marginBottom: '30px', lineHeight: '1.6', textAlign: 'left', opacity: 0.9, fontSize: '0.9rem', background: 'rgba(99, 102, 241, 0.05)', padding: '15px', borderRadius: '12px', border: '1px solid rgba(99, 102, 241, 0.1)' }}>
+              Проект разрабатывается на голом энтузиазме. Если у Вас есть возможность и желание поддержать автора, Вы можете скинуть любую небольшую сумму денег на Kaspi (получатель: <strong>Анастас А.</strong>).
+              {creatorPhone && (
+                <div style={{ marginTop: '12px' }}>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(creatorPhone);
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2000);
+                    }}
+                    style={{ background: copied ? '#4ade80' : 'var(--primary-color)', color: 'white', padding: '10px 16px', borderRadius: '8px', fontSize: '0.9rem', width: '100%', transition: 'all 0.3s', boxShadow: 'none' }}
+                  >
+                    {copied ? 'Скопировано!' : `Копировать номер (${creatorPhone})`}
+                  </button>
+                </div>
+              )}
+            </div>
 
             <div style={{ display: 'flex', gap: '15px', marginBottom: '30px', justifyContent: 'center' }}>
               {/* Ссылка на GitHub */}
