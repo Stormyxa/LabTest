@@ -682,8 +682,9 @@ const QuizView = ({ session, profile }) => {
             <span>{currentIdx === questions.length - 1 ? 'Завершить' : 'Далее'}</span> <ChevronRight size={24} />
           </button>
         </div>
+      </div>
 
-        {/* EXIT MODAL */}
+      {/* EXIT MODAL */}
         {showExitModal && (
           <div className="modal-overlay" onClick={() => setShowExitModal(false)}>
             <div className="modal-content animate" onClick={e => e.stopPropagation()}>
@@ -710,7 +711,6 @@ const QuizView = ({ session, profile }) => {
             </div>
           </div>
         )}
-      </div>
     </div>
   );
 };

@@ -119,8 +119,7 @@ const QuizCatalog = ({ profile }) => {
 
   const swapQuizzes = (classId, sectionId, index, direction, e, quiz) => {
     e.stopPropagation();
-    const isAdminOrCreator = profile?.role === 'admin' || profile?.role === 'creator';
-    if (!isAdminOrCreator && quiz?.author_id !== profile?.id) return;
+    if (!canMoveQuiz(quiz)) return;
     const newClasses = [...classes];
     const cIndex = newClasses.findIndex(c => c.id === classId);
     if (cIndex === -1) return;
@@ -129,9 +128,11 @@ const QuizCatalog = ({ profile }) => {
     const qsArr = [...newClasses[cIndex].sections[sIndex].quizzes];
     if (index + direction < 0 || index + direction >= qsArr.length) return;
     const temp = qsArr[index]; qsArr[index] = qsArr[index + direction]; qsArr[index + direction] = temp;
-    newClasses[cIndex].sections[sIndex].quizzes = qsArr.map((q, i) => ({ ...q, sort_order: i }));
-    setClasses(newClasses);
-    setHasUnsavedChanges(true);
+    newClasses[cIndex].sections[sIndex].quizzes = qsArr.map((q, i) => ({ ...q, sort_order: i, is_dirty: true }));
+    React.startTransition(() => {
+      setClasses(newClasses);
+      setHasUnsavedChanges(true);
+    });
   };
 
   const handleHideQuiz = async () => {
@@ -199,17 +200,23 @@ const QuizCatalog = ({ profile }) => {
   };
   const canMoveQuiz = (quiz) => {
     if (!profile) return false;
-    if (profile.role === 'admin' || profile.role === 'creator') return true;
-    return (profile.role === 'teacher' || profile.role === 'editor') && quiz.author_id === profile.id;
+    if (profile.role === 'creator') return true;
+    if (profile.role === 'admin' && quiz.profiles?.role !== 'creator') return true;
+    if ((profile.role === 'teacher' || profile.role === 'editor') && quiz.author_id === profile.id) return true;
+    return false;
   };
 
-  const filteredData = classes.map(cls => ({
-    ...cls,
-    sections: cls.sections.map(sec => ({
-      ...sec,
-      quizzes: sec.quizzes.filter(quiz => quiz.title.toLowerCase().includes(searchQuery.toLowerCase()))
-    })).filter(sec => sec.quizzes.length > 0 || sec.name.toLowerCase().includes(searchQuery.toLowerCase()))
-  })).filter(cls => cls.sections.length > 0 || cls.name.toLowerCase().includes(searchQuery.toLowerCase()));
+  const filteredData = React.useMemo(() => {
+    if (!searchQuery) return classes;
+    const query = searchQuery.toLowerCase();
+    return classes.map(cls => ({
+      ...cls,
+      sections: cls.sections.map(sec => ({
+        ...sec,
+        quizzes: sec.quizzes.filter(quiz => quiz.title.toLowerCase().includes(query))
+      })).filter(sec => sec.quizzes.length > 0 || sec.name.toLowerCase().includes(query))
+    })).filter(cls => cls.sections.length > 0 || cls.name.toLowerCase().includes(query));
+  }, [classes, searchQuery]);
 
   const CatalogSkeleton = () => (
     <div style={{ width: '100%' }}>
@@ -426,28 +433,36 @@ const QuizCatalog = ({ profile }) => {
                                     if (currentDividerHidden && profile?.role !== 'creator' && profile?.role !== 'admin') return null;
                                     const passState = passedQuizzes[quiz.id];
                                     return (
-                                      <div key={quiz.id} className="card animate" style={{ padding: '20px', background: 'var(--card-bg)', boxShadow: 'var(--soft-shadow)', display: 'flex', flexDirection: 'column', height: '100%', opacity: currentDividerHidden ? 0.5 : 1, border: currentDividerHidden ? '1px dashed #ca8a04' : '1px solid rgba(99, 102, 241, 0.1)' }}>
+                                      <div key={quiz.id} className="card animate" style={{ padding: '20px', background: 'var(--card-bg)', boxShadow: 'var(--soft-shadow)', display: 'flex', flexDirection: 'column', height: '100%', opacity: currentDividerHidden ? 0.5 : 1, border: currentDividerHidden ? '1px dashed #ca8a04' : '1px solid rgba(99, 102, 241, 0.1)', position: 'relative' }}>
+                                        {canMoveQuiz(quiz) && !searchQuery && (
+                                          <div style={{ position: 'absolute', top: '15px', right: '15px', display: 'flex', gap: '5px', zIndex: 10 }}>
+                                            <button onClick={(e) => swapQuizzes(cls.id, section.id, qIndex, -1, e, quiz)} disabled={qIndex === 0} style={{ padding: '4px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none', borderRadius: '8px' }} title="Переместить левее"><ChevronUp size={16} /></button>
+                                            <button onClick={(e) => swapQuizzes(cls.id, section.id, qIndex, 1, e, quiz)} disabled={qIndex === section.quizzes.length - 1} style={{ padding: '4px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none', borderRadius: '8px' }} title="Переместить правее"><ChevronDown size={16} /></button>
+                                          </div>
+                                        )}
                                         <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '15px' }}>
-                                          <div style={{ flex: 1, minWidth: 0 }}>
+                                          <div style={{ flex: 1, minWidth: 0, paddingRight: '50px' }}>
                                             <h4 style={{ fontSize: '1.1rem', margin: 0, lineHeight: '1.4' }}>{quiz.title}{quiz.is_verified && <CheckCircle size={16} color="var(--primary-color)" style={{ marginLeft: '5px', display: 'inline' }} />}</h4>
                                             <p style={{ fontSize: '0.8rem', opacity: 0.5, margin: '4px 0 0 0' }}>Автор: {quiz.profiles?.last_name} {quiz.profiles?.first_name}</p>
                                           </div>
-                                          {passState !== undefined && <span style={{ fontSize: '0.8rem', padding: '6px 16px', background: passState ? 'rgba(74, 222, 128, 0.1)' : 'rgba(248, 113, 113, 0.1)', color: passState ? '#4ade80' : '#f87171', borderRadius: '100px', fontWeight: 'bold' }}>{passState ? 'Пройдено' : 'Перепройти'}</span>}
                                         </div>
 
                                         <div style={{ marginTop: 'auto', paddingTop: '15px' }}>
-                                          {(profile?.role === 'admin' || profile?.role === 'creator' || profile?.id === quiz.author_id) && quizStats[quiz.id] && (
-                                            <div className="flex-center" style={{ justifyContent: 'flex-end', marginBottom: '12px' }}>
-                                              <div className="flex-center" style={{ gap: '6px', fontSize: '0.85rem', color: 'var(--primary-color)', fontWeight: 'bold', background: 'rgba(99, 102, 241, 0.05)', padding: '6px 12px', borderRadius: '10px' }} title="Общая успеваемость">
-                                                <TrendingUp size={14} /> {quizStats[quiz.id].avgScore}% успех
-                                              </div>
+                                          <div className="flex-center" style={{ justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                                            <div className="flex-center" style={{ gap: '10px', flexDirection: 'column', alignItems: 'flex-start' }}>
+                                              {passState !== undefined && <span style={{ fontSize: '0.8rem', padding: '6px 16px', background: passState ? 'rgba(74, 222, 128, 0.1)' : 'rgba(248, 113, 113, 0.1)', color: passState ? '#4ade80' : '#f87171', borderRadius: '100px', fontWeight: 'bold' }}>{passState ? 'Пройдено' : 'Перепройти'}</span>}
+                                              {(profile?.role === 'admin' || profile?.role === 'creator' || profile?.id === quiz.author_id) && quizStats[quiz.id] && (
+                                                <div className="flex-center" style={{ gap: '6px', fontSize: '0.85rem', color: 'var(--primary-color)', fontWeight: 'bold', background: 'rgba(99, 102, 241, 0.05)', padding: '6px 12px', borderRadius: '10px' }} title="Общая успеваемость">
+                                                  <TrendingUp size={14} /> {quizStats[quiz.id].avgScore}% успех
+                                                </div>
+                                              )}
                                             </div>
-                                          )}
-                                          <div className="flex-center" style={{ justifyContent: 'flex-end', gap: '8px', flexWrap: 'wrap' }}>
-                                            {canEditQuiz(quiz) && <button onClick={() => navigate(`/redactor?id=${quiz.id}`)} style={{ padding: '8px', background: 'rgba(99,102,241,0.08)', color: 'var(--primary-color)', boxShadow: 'none', borderRadius: '10px' }} title="Редактировать"><Pencil size={15} /></button>}
-                                            {canEditQuiz(quiz) && <button onClick={() => setHideModal(quiz)} style={{ padding: '8px', background: 'rgba(250,204,21,0.08)', color: '#ca8a04', boxShadow: 'none', borderRadius: '10px' }} title="Скрыть"><Eye size={15} /></button>}
-                                            {(profile?.role === 'admin' || profile?.role === 'creator' || profile?.role === 'teacher' || profile?.id === quiz.author_id) && <button onClick={() => navigate(`/analytics?id=${quiz.id}`)} style={{ padding: '8px', background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none', borderRadius: '10px' }} title="Аналитика"><BarChart2 size={15} /></button>}
-                                            <button onClick={() => setSelectedQuiz(quiz)} style={{ padding: '8px 20px', display: 'flex', alignItems: 'center', gap: '8px', borderRadius: '10px' }}><Play size={15} fill="currentColor" /> Начать</button>
+                                            <div className="flex-center" style={{ gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end', flex: 1 }}>
+                                              {canEditQuiz(quiz) && <button onClick={() => navigate(`/redactor?id=${quiz.id}`)} style={{ padding: '8px', background: 'rgba(99,102,241,0.08)', color: 'var(--primary-color)', boxShadow: 'none', borderRadius: '10px' }} title="Редактировать"><Pencil size={15} /></button>}
+                                              {canEditQuiz(quiz) && <button onClick={() => setHideModal(quiz)} style={{ padding: '8px', background: 'rgba(250,204,21,0.08)', color: '#ca8a04', boxShadow: 'none', borderRadius: '10px' }} title="Скрыть"><Eye size={15} /></button>}
+                                              {(profile?.role === 'admin' || profile?.role === 'creator' || profile?.role === 'teacher' || profile?.id === quiz.author_id) && <button onClick={() => navigate(`/analytics?id=${quiz.id}`)} style={{ padding: '8px', background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none', borderRadius: '10px' }} title="Аналитика"><BarChart2 size={15} /></button>}
+                                              <button onClick={() => setSelectedQuiz(quiz)} style={{ padding: '8px 20px', display: 'flex', alignItems: 'center', gap: '8px', borderRadius: '10px' }}><Play size={15} fill="currentColor" /> Начать</button>
+                                            </div>
                                           </div>
                                         </div>
                                       </div>
@@ -476,25 +491,33 @@ const QuizCatalog = ({ profile }) => {
       </div>
 
       {hasUnsavedChanges && (
-        <div className="animate" style={{ position: 'fixed', bottom: '20px', left: '50%', transform: 'translateX(-50%)', background: 'var(--card-bg)', padding: '15px 25px', borderRadius: '50px', boxShadow: '0 10px 40px rgba(0,0,0,0.1)', border: '1px solid rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', gap: '20px', zIndex: 1000 }}>
-          <span style={{ fontWeight: '500' }}>Порядок изменён</span>
+        <div style={{ position: 'fixed', bottom: '30px', left: '50%', transform: 'translateX(-50%)', background: 'var(--card-bg)', padding: '15px 25px', borderRadius: '50px', boxShadow: '0 10px 40px rgba(0,0,0,0.15)', border: '1px solid rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', gap: '20px', zIndex: 2000 }}>
+          <span style={{ fontWeight: '500', fontSize: '0.95rem' }}>⚠ Порядок изменён</span>
           <div style={{ display: 'flex', gap: '10px' }}>
-            <button onClick={() => { setHasUnsavedChanges(false); fetchData(); }} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', padding: '8px 15px', borderRadius: '30px', boxShadow: 'none', fontSize: '0.9rem' }}>Отмена</button>
+            <button onClick={() => { setHasUnsavedChanges(false); fetchData(); }} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', padding: '9px 18px', borderRadius: '30px', boxShadow: 'none', fontSize: '0.9rem' }}>
+              Отменить
+            </button>
             <button onClick={async () => {
-              setLoading(true);
-              for (const c of classes) {
-                await supabase.from('quiz_classes').update({ sort_order: c.sort_order }).eq('id', c.id);
-                for (const s of c.sections) {
-                  await supabase.from('quiz_sections').update({ sort_order: s.sort_order }).eq('id', s.id);
-                  for (const q of s.quizzes) {
-                    await supabase.from('quizzes').update({ sort_order: q.sort_order }).eq('id', q.id);
+              try {
+                setHasUnsavedChanges(false);
+                setLoading(true);
+                const updates = [];
+                for (const c of classes) {
+                  for (const s of c.sections) {
+                    for (const q of s.quizzes) {
+                      if (q.is_dirty) updates.push(supabase.from('quizzes').update({ sort_order: q.sort_order }).eq('id', q.id));
+                    }
                   }
                 }
+                await Promise.all(updates);
+                await fetchData();
+              } catch (e) {
+                console.error(e);
+              } finally {
+                setLoading(false);
               }
-              setHasUnsavedChanges(false);
-              fetchData();
-            }} style={{ padding: '8px 15px', borderRadius: '30px', fontSize: '0.9rem' }} className="flex-center">
-              <Save size={16} style={{ marginRight: '5px' }} /> Сохранить порядок
+            }} style={{ padding: '9px 22px', borderRadius: '30px', fontSize: '0.9rem', fontWeight: '600' }} className="flex-center">
+              Сохранить
             </button>
           </div>
         </div>

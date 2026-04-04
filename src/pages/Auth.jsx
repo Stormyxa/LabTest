@@ -120,8 +120,9 @@ const Auth = () => {
   };
 
   return (
-    <div className="container flex-center animate" style={{ minHeight: '80vh', position: 'relative' }}>
-      <div className="card" style={{ width: '400px' }}>
+    <>
+      <div className="container flex-center animate" style={{ minHeight: '80vh', position: 'relative' }}>
+        <div className="card" style={{ width: '400px' }}>
 
         <h2 style={{ marginBottom: '20px', textAlign: 'center' }}>
           {authMode === 'register' && 'Регистрация'}
@@ -231,10 +232,11 @@ const Auth = () => {
           </div>
         )}
       </div>
-
-      {/* МОДАЛЬНОЕ ОКНО */}
-      {modal.isOpen && (
-        <div className="modal-overlay" onClick={() => setModal({ ...modal, isOpen: false })}>
+    </div>
+      
+    {/* МОДАЛЬНОЕ ОКНО */}
+    {modal.isOpen && (
+      <div className="modal-overlay" onClick={() => setModal({ ...modal, isOpen: false })}>
           <div className="modal-content animate" style={{ width: '400px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{
               justifyContent: 'center', width: '70px', height: '70px', borderRadius: '50%', margin: '0 auto 20px',
@@ -263,7 +265,7 @@ const Auth = () => {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 };
 
