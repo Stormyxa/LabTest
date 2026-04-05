@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { User, Shield, Search, Edit3, Trash2, Mail, X, AlertTriangle, MapPin, Building, GraduationCap, Plus, History, Ban, ShieldAlert, Unlock, Eye, EyeOff, Zap, ChevronDown, ChevronRight } from 'lucide-react';
+import { useScrollRestoration } from '../lib/useScrollRestoration';
 
 const DashboardSkeleton = () => (
   <div className="animate">
@@ -31,6 +32,9 @@ const Dashboard = ({ session, profile }) => {
 
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  useScrollRestoration(loading);
+
   const [search, setSearch] = useState('');
   const [filterRole, setFilterRole] = useState('all');
   const [filterCity, setFilterCity] = useState('all');

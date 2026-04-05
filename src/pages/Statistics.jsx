@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Trophy, Download, Users, School, Filter, MapPin, Building } from 'lucide-react';
+import { useScrollRestoration } from '../lib/useScrollRestoration';
 
 const Statistics = ({ session, profile }) => {
   const [stats, setStats] = useState([]);
@@ -12,6 +13,8 @@ const Statistics = ({ session, profile }) => {
   const [classes, setClasses] = useState([]);
 
   const [loading, setLoading] = useState(true);
+
+  useScrollRestoration(loading);
 
   const [filterCity, setFilterCity] = useState('all');
   const [filterSchool, setFilterSchool] = useState('all');

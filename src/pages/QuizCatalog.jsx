@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Search, Play, CheckCircle, ChevronDown, ChevronUp, Award, Save, BarChart2, Book, Pencil, Eye, AlertTriangle, Plus, Shield, EyeOff, Trash2, Dices, Clock, TrendingUp } from 'lucide-react';
+import { useScrollRestoration } from '../lib/useScrollRestoration';
 
 const QuizCatalog = ({ profile }) => {
   const navigate = useNavigate();
@@ -19,6 +20,8 @@ const QuizCatalog = ({ profile }) => {
     const saved = localStorage.getItem('catalog_expanded_sections_v2');
     return saved ? JSON.parse(saved) : {};
   });
+
+  useScrollRestoration(loading);
 
   useEffect(() => {
     localStorage.setItem('catalog_expanded_classes_v2', JSON.stringify(expandedClasses));

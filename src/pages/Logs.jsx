@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { History, AlertCircle, Clock, Trash2, ShieldAlert } from 'lucide-react';
+import { useScrollRestoration } from '../lib/useScrollRestoration';
 
 const Logs = ({ profile }) => {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  useScrollRestoration(loading);
 
   useEffect(() => {
     fetchLogs();

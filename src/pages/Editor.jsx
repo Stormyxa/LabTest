@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { useScrollRestoration } from '../lib/useScrollRestoration';
 import {
   Plus, Trash2, FileJson, AlertCircle, TrendingUp,
   CheckCircle, Check, Copy, X, AlertTriangle,
@@ -57,6 +58,8 @@ const Editor = ({ session, profile }) => {
   const [activeTab, setActiveTab] = useState('create');
 
   const [deleteId, setDeleteId] = useState(null);
+
+  useScrollRestoration(loading);
   const [deleteSectionId, setDeleteSectionId] = useState(null);
   const [deleteClassId, setDeleteClassId] = useState(null);
   const [editSectionLink, setEditSectionLink] = useState(null);

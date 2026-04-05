@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Info, Users, LayoutGrid, Settings, MessageCircle, Github, ExternalLink, Youtube } from 'lucide-react';
+import { useScrollRestoration } from '../lib/useScrollRestoration';
 
 const Home = ({ session, profile }) => {
   const navigate = useNavigate();
@@ -10,6 +11,8 @@ const Home = ({ session, profile }) => {
   const [team, setTeam] = useState([]);
   const [creatorPhone, setCreatorPhone] = useState('');
   const [copied, setCopied] = useState(false);
+
+  useScrollRestoration(false);
 
   useEffect(() => {
     if (showTeam) fetchTeam();

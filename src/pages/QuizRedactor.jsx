@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { useScrollRestoration } from '../lib/useScrollRestoration';
 import {
   ChevronLeft, Pencil, Check, X, Plus, Trash2, RotateCcw,
   AlertTriangle, Download, AlertCircle, Lock, BarChart2,
@@ -24,6 +25,8 @@ const QuizRedactor = () => {
   const [notFound, setNotFound] = useState(false);
   const [blocked, setBlocked] = useState(null); // null | 'no_permission' | 'has_results'
   const [resultCount, setResultCount] = useState(0);
+
+  useScrollRestoration(loading);
 
   // Editing state
   const [title, setTitle] = useState('');
