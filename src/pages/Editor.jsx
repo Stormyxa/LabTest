@@ -806,13 +806,14 @@ const Editor = ({ session, profile }) => {
       </div>
 
       {hasUnsavedChanges && (
-        <div className="animate" style={{ position: 'fixed', bottom: '20px', left: '50%', transform: 'translateX(-50%)', background: 'var(--card-bg)', padding: '15px 25px', borderRadius: '50px', boxShadow: '0 10px 40px rgba(0,0,0,0.1)', border: '1px solid rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', gap: '20px', zIndex: 1000 }}>
-          <span style={{ fontWeight: '500' }}>Порядок изменён</span>
+        <div style={{ position: 'fixed', bottom: '30px', left: '50%', transform: 'translateX(-50%)', background: 'var(--card-bg)', padding: '15px 25px', borderRadius: '50px', boxShadow: '0 10px 40px rgba(0,0,0,0.15)', border: '1px solid rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', gap: '20px', zIndex: 2000 }}>
+          <span style={{ fontWeight: '500', fontSize: '0.95rem' }}>⚠ Порядок изменён</span>
           <div style={{ display: 'flex', gap: '10px' }}>
-            <button onClick={() => { setHasUnsavedChanges(false); fetchData(); }} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', padding: '8px 15px', borderRadius: '30px', boxShadow: 'none', fontSize: '0.9rem' }}>Отмена</button>
+            <button onClick={() => { setHasUnsavedChanges(false); fetchData(); }} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', padding: '9px 18px', borderRadius: '30px', boxShadow: 'none', fontSize: '0.9rem' }}>Отменить</button>
             <button onClick={async () => {
-              setLoading(true);
               try {
+                setHasUnsavedChanges(false);
+                setLoading(true);
                 const updates = [];
                 for (const c of classes) {
                   if (c.is_dirty) updates.push(supabase.from('quiz_classes').update({ sort_order: c.sort_order }).eq('id', c.id));
@@ -824,14 +825,14 @@ const Editor = ({ session, profile }) => {
                   if (q.is_dirty) updates.push(supabase.from('quizzes').update({ sort_order: q.sort_order }).eq('id', q.id));
                 }
                 await Promise.all(updates);
+                await fetchData();
               } catch (e) {
                 console.error(e);
               } finally {
-                setHasUnsavedChanges(false);
-                fetchData();
+                setLoading(false);
               }
-            }} style={{ padding: '8px 15px', borderRadius: '30px', fontSize: '0.9rem' }} className="flex-center">
-              <Save size={16} style={{ marginRight: '5px' }} /> Сохранить порядок
+            }} style={{ padding: '9px 22px', borderRadius: '30px', fontSize: '0.9rem', fontWeight: '600' }} className="flex-center">
+              Сохранить
             </button>
           </div>
         </div>

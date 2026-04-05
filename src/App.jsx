@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo } from 'react';
-import { createBrowserRouter, RouterProvider, Navigate, Link, Outlet, createRoutesFromElements, Route } from 'react-router-dom';
+import { createBrowserRouter, RouterProvider, Navigate, Link, Outlet, createRoutesFromElements, Route, ScrollRestoration } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import Home from './pages/Home';
 import Auth from './pages/Auth';
@@ -97,6 +97,7 @@ function App() {
             </div>
           </nav>
           <Outlet />
+          <ScrollRestoration />
         </div>
       }>
         <Route path="/" element={<Home session={session} profile={profile} />} />
