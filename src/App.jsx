@@ -21,6 +21,10 @@ function App() {
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
 
   useEffect(() => {
+    document.title = "LabTest";
+  }, []);
+
+  useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session) fetchProfile(session.user.id);
@@ -45,7 +49,7 @@ function App() {
       .select('*, classes(name)')
       .eq('id', id)
       .single();
-    
+
     if (data) {
       // Sync email if missing in profile but present in session
       const userEmail = currentSession?.user?.email || session?.user?.email;
@@ -74,11 +78,11 @@ function App() {
       <Route element={
         <div className="app-shell">
           <nav className="navbar">
-            <div className="container flex-center" style={{justifyContent: 'space-between', padding: '15px 20px', maxWidth: '100%'}}>
-              <Link to="/" style={{textDecoration: 'none', color: 'inherit'}}>
-                <h2 style={{fontWeight: '800', letterSpacing: '-1px'}}>LabTest</h2>
+            <div className="container flex-center" style={{ justifyContent: 'space-between', padding: '15px 20px', maxWidth: '100%' }}>
+              <Link to="/" style={{ textDecoration: 'none', color: 'inherit' }}>
+                <h2 style={{ fontWeight: '800', letterSpacing: '-1px' }}>LabTest</h2>
               </Link>
-              <div className="nav-links flex-center" style={{gap: '10px'}}>
+              <div className="nav-links flex-center" style={{ gap: '10px' }}>
                 <ThemeToggle theme={theme} onToggle={toggleTheme} />
                 <Link to="/catalog"><NavButton label="Тесты" /></Link>
                 <Link to="/statistics"><NavButton label="Статистика" /></Link>
@@ -97,30 +101,30 @@ function App() {
       }>
         <Route path="/" element={<Home session={session} profile={profile} />} />
         <Route path="/auth" element={!session ? <Auth /> : <Navigate to="/" />} />
-        
+
         <Route path="/catalog" element={
-          !session ? <Navigate to="/auth" /> : 
-          !profile?.is_profile_setup_completed ? <Navigate to="/profile" state={{ from: '/catalog', msg: 'Подтвердите данные профиля.' }} /> :
-          <QuizCatalog profile={profile} />
+          !session ? <Navigate to="/auth" /> :
+            !profile?.is_profile_setup_completed ? <Navigate to="/profile" state={{ from: '/catalog', msg: 'Подтвердите данные профиля.' }} /> :
+              <QuizCatalog profile={profile} />
         } />
-        
+
         <Route path="/quiz/:id" element={session ? <QuizView session={session} profile={profile} /> : <Navigate to="/auth" />} />
-        
+
         <Route path="/editor" element={isEditor ? <Editor session={session} profile={profile} /> : <Navigate to="/" />} />
         <Route path="/dashboard" element={isAdmin ? <Dashboard session={session} profile={profile} /> : <Navigate to="/" />} />
         <Route path="/logs" element={isAdmin ? <Logs profile={profile} /> : <Navigate to="/" />} />
         <Route path="/statistics" element={<Statistics session={session} profile={profile} />} />
         <Route path="/analytics" element={isEditor ? <Analytics profile={profile} /> : <Navigate to="/" />} />
         <Route path="/redactor" element={isEditor ? <QuizRedactor /> : <Navigate to="/" />} />
-        
+
         <Route path="/profile" element={session ? <Profile session={session} profile={profile} refreshProfile={() => fetchProfile(session.user.id)} /> : <Navigate to="/auth" />} />
       </Route>
     )
   ), [session, profile, theme, isEditor, isAdmin]);
 
-  if (loading) return <div className="flex-center" style={{height: '100vh', flexDirection: 'column', gap: '20px'}}>
-    <div className="animate" style={{fontSize: '2rem', fontWeight: '800'}}>LabTest</div>
-    <div style={{opacity: 0.5}}>Загрузка лаборатории...</div>
+  if (loading) return <div className="flex-center" style={{ height: '100vh', flexDirection: 'column', gap: '20px' }}>
+    <div className="animate" style={{ fontSize: '2rem', fontWeight: '800' }}>LabTest</div>
+    <div style={{ opacity: 0.5 }}>Загрузка лаборатории...</div>
   </div>;
 
   return <RouterProvider router={router} />;
@@ -139,7 +143,7 @@ const NavButton = ({ label, variant = 'ghost' }) => (
 );
 
 const ThemeToggle = ({ theme, onToggle }) => (
-  <button onClick={onToggle} style={{background: 'rgba(128,128,128,0.1)', color: 'var(--text-color)', padding: '8px 12px', border: '1px solid rgba(0,0,0,0.05)', borderRadius: '12px'}}>
+  <button onClick={onToggle} style={{ background: 'rgba(128,128,128,0.1)', color: 'var(--text-color)', padding: '8px 12px', border: '1px solid rgba(0,0,0,0.05)', borderRadius: '12px' }}>
     {theme === 'light' ? '🌙' : '☀️'}
   </button>
 );
