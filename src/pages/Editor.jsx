@@ -314,7 +314,7 @@ const Editor = ({ session, profile }) => {
     const temp = newClasses[index];
     newClasses[index] = newClasses[index + direction];
     newClasses[index + direction] = temp;
-    setClasses(newClasses.map((c, i) => ({ ...c, sort_order: i })));
+    setClasses(newClasses.map((c, i) => ({ ...c, sort_order: i, is_dirty: true })));
     setHasUnsavedChanges(true);
   };
 
@@ -330,7 +330,7 @@ const Editor = ({ session, profile }) => {
     const updatedSections = [...sections].map(s => {
       if (s.class_id === classId) {
         const matching = classSections.shift();
-        return { ...matching, sort_order: orderCounter++ };
+        return { ...matching, sort_order: orderCounter++, is_dirty: true };
       }
       return s;
     });
@@ -363,6 +363,7 @@ const Editor = ({ session, profile }) => {
       if (q.section_id === sectionId) {
         const updated = sectionQuizzes.shift();
         updated.sort_order = order++;
+        updated.is_dirty = true;
         return updated;
       }
       return q;
@@ -811,17 +812,24 @@ const Editor = ({ session, profile }) => {
             <button onClick={() => { setHasUnsavedChanges(false); fetchData(); }} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', padding: '8px 15px', borderRadius: '30px', boxShadow: 'none', fontSize: '0.9rem' }}>Отмена</button>
             <button onClick={async () => {
               setLoading(true);
-              for (const c of classes) {
-                await supabase.from('quiz_classes').update({ sort_order: c.sort_order }).eq('id', c.id);
+              try {
+                const updates = [];
+                for (const c of classes) {
+                  if (c.is_dirty) updates.push(supabase.from('quiz_classes').update({ sort_order: c.sort_order }).eq('id', c.id));
+                }
+                for (const s of sections) {
+                  if (s.is_dirty) updates.push(supabase.from('quiz_sections').update({ sort_order: s.sort_order }).eq('id', s.id));
+                }
+                for (const q of myQuizzes) {
+                  if (q.is_dirty) updates.push(supabase.from('quizzes').update({ sort_order: q.sort_order }).eq('id', q.id));
+                }
+                await Promise.all(updates);
+              } catch (e) {
+                console.error(e);
+              } finally {
+                setHasUnsavedChanges(false);
+                fetchData();
               }
-              for (const s of sections) {
-                await supabase.from('quiz_sections').update({ sort_order: s.sort_order }).eq('id', s.id);
-              }
-              for (const q of myQuizzes) {
-                await supabase.from('quizzes').update({ sort_order: q.sort_order }).eq('id', q.id);
-              }
-              setHasUnsavedChanges(false);
-              fetchData();
             }} style={{ padding: '8px 15px', borderRadius: '30px', fontSize: '0.9rem' }} className="flex-center">
               <Save size={16} style={{ marginRight: '5px' }} /> Сохранить порядок
             </button>

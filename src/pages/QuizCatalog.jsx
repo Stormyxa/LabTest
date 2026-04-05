@@ -100,7 +100,7 @@ const QuizCatalog = ({ profile }) => {
     const arr = [...classes];
     if (index + direction < 0 || index + direction >= arr.length) return;
     const temp = arr[index]; arr[index] = arr[index + direction]; arr[index + direction] = temp;
-    setClasses(arr.map((x, i) => ({ ...x, sort_order: i })));
+    setClasses(arr.map((x, i) => ({ ...x, sort_order: i, is_dirty: true })));
     setHasUnsavedChanges(true);
   };
 
@@ -112,7 +112,7 @@ const QuizCatalog = ({ profile }) => {
     const secArr = [...newClasses[cIndex].sections];
     if (index + direction < 0 || index + direction >= secArr.length) return;
     const temp = secArr[index]; secArr[index] = secArr[index + direction]; secArr[index + direction] = temp;
-    newClasses[cIndex].sections = secArr.map((x, i) => ({ ...x, sort_order: i }));
+    newClasses[cIndex].sections = secArr.map((x, i) => ({ ...x, sort_order: i, is_dirty: true }));
     setClasses(newClasses);
     setHasUnsavedChanges(true);
   };
@@ -279,7 +279,7 @@ const QuizCatalog = ({ profile }) => {
                 opacity: isEmptyClass ? 0.6 : 1
               }}>
                 <div
-                  onClick={() => !isEmptyClass && setExpandedClasses(prev => ({ ...prev, [cls.id]: !prev[cls.id] }))}
+                  onClick={() => (!isEmptyClass || profile?.role === 'creator') && setExpandedClasses(prev => ({ ...prev, [cls.id]: !prev[cls.id] }))}
                   style={{
                     padding: '20px 30px',
                     background: isEmptyClass ? 'rgba(0,0,0,0.02)' : 'rgba(99, 102, 241, 0.08)',
@@ -287,7 +287,7 @@ const QuizCatalog = ({ profile }) => {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    cursor: isEmptyClass ? 'default' : 'pointer'
+                    cursor: (!isEmptyClass || profile?.role === 'creator') ? 'pointer' : 'default'
                   }}
                 >
                   <div className="flex-center" style={{ gap: '15px' }}>
@@ -313,10 +313,10 @@ const QuizCatalog = ({ profile }) => {
                       </button>
                     )}
                   </div>
-                  {!isEmptyClass && (expandedClasses[cls.id] ? <ChevronUp size={24} /> : <ChevronDown size={24} />)}
+                  {(!isEmptyClass || profile?.role === 'creator') && (expandedClasses[cls.id] ? <ChevronUp size={24} /> : <ChevronDown size={24} />)}
                 </div>
 
-                {expandedClasses[cls.id] && !isEmptyClass && (
+                {expandedClasses[cls.id] && (!isEmptyClass || profile?.role === 'creator') && (
                   <div className="animate catalog-class-content" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px', background: 'rgba(0,0,0,0.02)' }}>
                     {cls.sections.map((section, sIndex) => {
                       const isEmptySection = section.quizzes.filter(q => !q.content?.is_divider).length === 0;
@@ -329,14 +329,14 @@ const QuizCatalog = ({ profile }) => {
                           opacity: isEmptySection ? 0.5 : 1
                         }}>
                           <div
-                            onClick={() => !isEmptySection && setExpandedSections(prev => ({ ...prev, [section.id]: !prev[section.id] }))}
+                            onClick={() => (!isEmptySection || profile?.role === 'creator') && setExpandedSections(prev => ({ ...prev, [section.id]: !prev[section.id] }))}
                             className="flex-center catalog-section-head"
                             style={{
                               padding: '15px 25px',
                               background: isEmptySection ? 'transparent' : 'rgba(99, 102, 241, 0.04)',
                               borderRadius: '20px 20px 0 0',
                               justifyContent: 'space-between',
-                              cursor: isEmptySection ? 'default' : 'pointer'
+                              cursor: (!isEmptySection || profile?.role === 'creator') ? 'pointer' : 'default'
                             }}
                           >
                             <div className="flex-center" style={{ gap: '15px' }}>
@@ -382,10 +382,10 @@ const QuizCatalog = ({ profile }) => {
                                 </div>
                               )}
                             </div>
-                            {!isEmptySection && (expandedSections[section.id] ? <ChevronUp size={20} /> : <ChevronDown size={20} />)}
+                            {(!isEmptySection || profile?.role === 'creator') && (expandedSections[section.id] ? <ChevronUp size={20} /> : <ChevronDown size={20} />)}
                           </div>
 
-                          {expandedSections[section.id] && !isEmptySection && (
+                          {expandedSections[section.id] && (!isEmptySection || profile?.role === 'creator') && (
                             <div className="catalog-section-content" style={{ padding: '15px', background: 'rgba(0,0,0,0.02)' }}>
                               {section.quizzes.filter(q => !q.content?.is_divider).length > 0 && (
                                 <button
@@ -503,7 +503,9 @@ const QuizCatalog = ({ profile }) => {
                 setLoading(true);
                 const updates = [];
                 for (const c of classes) {
+                  if (c.is_dirty) updates.push(supabase.from('quiz_classes').update({ sort_order: c.sort_order }).eq('id', c.id));
                   for (const s of c.sections) {
+                    if (s.is_dirty) updates.push(supabase.from('quiz_sections').update({ sort_order: s.sort_order }).eq('id', s.id));
                     for (const q of s.quizzes) {
                       if (q.is_dirty) updates.push(supabase.from('quizzes').update({ sort_order: q.sort_order }).eq('id', q.id));
                     }

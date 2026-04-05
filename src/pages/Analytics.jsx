@@ -370,7 +370,7 @@ const Analytics = () => {
           <h3 style={{ marginBottom: '25px', display: 'flex', alignItems: 'center', gap: '10px' }}>
             <BarChart size={20} /> Успеваемость по вопросам (с учетом фильтров)
           </h3>
-          <div style={{ display: 'grid', gap: '15px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
             {quiz.content.questions.map((q, idx) => {
               const correctAnswers = filteredResults.reduce((acc, r) => {
                 const answers = useFirstResults ? (r.first_answers_array || r.answers_array) : (r.answers_array || r.answers_map);
@@ -380,11 +380,11 @@ const Analytics = () => {
               const percent = Math.round((correctAnswers / filteredResults.length) * 100);
               return (
                 <div key={idx}>
-                  <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.9rem' }}>
-                    <span style={{ opacity: 0.8, maxWidth: '80%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.9rem', gap: '15px' }}>
+                    <span style={{ opacity: 0.8, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
                       {idx + 1}. {q.question}
                     </span>
-                    <span style={{ fontWeight: '700', color: percent > 70 ? '#4ade80' : (percent > 40 ? '#facc15' : '#f87171') }}>
+                    <span style={{ fontWeight: '700', whiteSpace: 'nowrap', color: percent > 70 ? '#4ade80' : (percent > 40 ? '#facc15' : '#f87171') }}>
                       {percent}% ({correctAnswers}/{filteredResults.length})
                     </span>
                   </div>
