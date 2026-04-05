@@ -59,7 +59,7 @@ const Home = ({ session, profile }) => {
             </button>
           </div>
 
-          <h1 style={{ fontSize: '3.5rem', margin: '40px 0 20px 0', fontWeight: '800', color: 'var(--primary-color)' }}>LabTest</h1>
+          <h1 style={{ fontSize: '3.5rem', margin: '40px 0 20px 0', fontWeight: '800', color: 'var(--secondary-color)' }}>LabTest</h1>
           <p style={{ fontSize: '1.2rem', opacity: 0.8, marginBottom: '40px' }}>
             Добро пожаловать в учебную лабораторию тестов.
             Проходите испытания, зарабатывайте баллы и повышайте свой уровень знаний.

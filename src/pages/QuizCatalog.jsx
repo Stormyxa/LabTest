@@ -249,11 +249,11 @@ const QuizCatalog = ({ profile }) => {
         </div>
         <div style={{ position: 'relative', maxWidth: '400px', width: '100%' }}>
           <Search style={{ position: 'absolute', left: '15px', top: '50%', transform: 'translateY(-50%)', opacity: 0.4 }} size={20} />
-          <input 
+          <input
             id="catalog-search"
             name="search"
-            type="text" 
-            placeholder="Поиск по названию или предмету..." 
+            type="text"
+            placeholder="Поиск по названию или предмету..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             style={{ paddingLeft: '45px' }}
@@ -267,27 +267,27 @@ const QuizCatalog = ({ profile }) => {
         ) : (
           filteredData.map((cls, cIndex) => {
             // Updated Locking Logic: Only lock if ALL sections are empty
-            const isEmptyClass = cls.sections.length === 0 || cls.sections.every(sec => 
+            const isEmptyClass = cls.sections.length === 0 || cls.sections.every(sec =>
               sec.quizzes.filter(q => !q.content?.is_divider).length === 0
             );
             return (
-              <div key={cls.id} className="catalog-container" style={{ 
-                padding: '0', 
-                overflow: 'hidden', 
-                border: isEmptyClass ? '1px dashed rgba(0,0,0,0.1)' : '1px solid var(--primary-color)', 
+              <div key={cls.id} className="catalog-container" style={{
+                padding: '0',
+                overflow: 'hidden',
+                border: isEmptyClass ? '1px dashed rgba(0,0,0,0.1)' : '1px solid var(--border-color)',
                 borderRadius: '24px',
                 opacity: isEmptyClass ? 0.6 : 1
               }}>
                 <div
                   onClick={() => !isEmptyClass && setExpandedClasses(prev => ({ ...prev, [cls.id]: !prev[cls.id] }))}
-                  style={{ 
-                    padding: '20px 30px', 
-                    background: isEmptyClass ? 'rgba(0,0,0,0.02)' : 'rgba(99, 102, 241, 0.08)', 
-                    borderRadius: '24px 24px 0 0', 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'space-between', 
-                    cursor: isEmptyClass ? 'default' : 'pointer' 
+                  style={{
+                    padding: '20px 30px',
+                    background: isEmptyClass ? 'rgba(0,0,0,0.02)' : 'rgba(99, 102, 241, 0.08)',
+                    borderRadius: '24px 24px 0 0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    cursor: isEmptyClass ? 'default' : 'pointer'
                   }}
                 >
                   <div className="flex-center" style={{ gap: '15px' }}>
@@ -304,8 +304,8 @@ const QuizCatalog = ({ profile }) => {
                       </span>
                     )}
                     {profile?.role === 'creator' && (
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: cls.id, name: cls.name, type: 'class' }); setNewName(cls.name); }} 
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: cls.id, name: cls.name, type: 'class' }); setNewName(cls.name); }}
                         style={{ background: 'transparent', color: 'var(--primary-color)', opacity: 0.5, boxShadow: 'none', padding: '5px' }}
                         title="Переименовать класс"
                       >
@@ -321,22 +321,22 @@ const QuizCatalog = ({ profile }) => {
                     {cls.sections.map((section, sIndex) => {
                       const isEmptySection = section.quizzes.filter(q => !q.content?.is_divider).length === 0;
                       return (
-                        <div key={section.id} className="catalog-container" style={{ 
-                          padding: '0', 
-                          overflow: 'hidden', 
-                          border: isEmptySection ? '1px dashed rgba(0,0,0,0.1)' : '1px solid rgba(0,0,0,0.05)', 
+                        <div key={section.id} className="catalog-container" style={{
+                          padding: '0',
+                          overflow: 'hidden',
+                          border: isEmptySection ? '1px dashed rgba(0,0,0,0.1)' : '1px solid rgba(0,0,0,0.05)',
                           borderRadius: '20px',
                           opacity: isEmptySection ? 0.5 : 1
                         }}>
-                          <div 
+                          <div
                             onClick={() => !isEmptySection && setExpandedSections(prev => ({ ...prev, [section.id]: !prev[section.id] }))}
-                            className="flex-center catalog-section-head" 
-                            style={{ 
-                              padding: '15px 25px', 
-                              background: isEmptySection ? 'transparent' : 'rgba(99, 102, 241, 0.04)', 
-                              borderRadius: '20px 20px 0 0', 
-                              justifyContent: 'space-between', 
-                              cursor: isEmptySection ? 'default' : 'pointer' 
+                            className="flex-center catalog-section-head"
+                            style={{
+                              padding: '15px 25px',
+                              background: isEmptySection ? 'transparent' : 'rgba(99, 102, 241, 0.04)',
+                              borderRadius: '20px 20px 0 0',
+                              justifyContent: 'space-between',
+                              cursor: isEmptySection ? 'default' : 'pointer'
                             }}
                           >
                             <div className="flex-center" style={{ gap: '15px' }}>
@@ -365,15 +365,15 @@ const QuizCatalog = ({ profile }) => {
                               )}
                               {profile?.role === 'creator' && (
                                 <div className="flex-center" style={{ gap: '10px' }}>
-                                  <button 
-                                    onClick={(e) => { e.stopPropagation(); handleCreateDivider(section.id); }} 
-                                    className="flex-center" 
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleCreateDivider(section.id); }}
+                                    className="flex-center"
                                     style={{ padding: '5px 12px', fontSize: '0.75rem', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', borderRadius: '8px', border: 'none', boxShadow: 'none', fontWeight: 'bold' }}
                                   >
                                     <Plus size={14} style={{ marginRight: '4px' }} /> Разделитель
                                   </button>
-                                  <button 
-                                    onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: section.id, name: section.name, type: 'section' }); setNewName(section.name); }} 
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: section.id, name: section.name, type: 'section' }); setNewName(section.name); }}
                                     style={{ background: 'transparent', color: 'var(--text-color)', opacity: 0.4, boxShadow: 'none', padding: '5px' }}
                                     title="Переименовать предмет"
                                   >
@@ -388,7 +388,7 @@ const QuizCatalog = ({ profile }) => {
                           {expandedSections[section.id] && !isEmptySection && (
                             <div className="catalog-section-content" style={{ padding: '15px', background: 'rgba(0,0,0,0.02)' }}>
                               {section.quizzes.filter(q => !q.content?.is_divider).length > 0 && (
-                                <button 
+                                <button
                                   onClick={(e) => handleStartRandomQuiz(e, section)}
                                   className="flex-center animate"
                                   style={{ width: '100%', padding: '15px', marginBottom: '20px', background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(168, 85, 247, 0.1) 100%)', color: 'var(--primary-color)', borderRadius: '16px', border: '1px solid rgba(99, 102, 241, 0.2)', boxShadow: 'none', fontWeight: 'bold', fontSize: '1.05rem', gap: '10px' }}
@@ -570,12 +570,12 @@ const QuizCatalog = ({ profile }) => {
               Старое название: <span style={{ fontWeight: '600' }}>{renamingItem.name}</span>
             </p>
             <div style={{ marginBottom: '25px' }}>
-              <input 
+              <input
                 autoFocus
                 id="catalog-rename-input"
                 name="new-name"
-                type="text" 
-                value={newName} 
+                type="text"
+                value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleRename()}
                 placeholder="Введите новое название..."
