@@ -16,9 +16,13 @@ const Statistics = ({ session, profile }) => {
 
   useScrollRestoration(loading);
 
-  const [filterCity, setFilterCity] = useState('all');
-  const [filterSchool, setFilterSchool] = useState('all');
-  const [filterClass, setFilterClass] = useState('all');
+  const [filterCity, setFilterCity] = useState(sessionStorage.getItem('f_city') || 'all');
+  const [filterSchool, setFilterSchool] = useState(sessionStorage.getItem('f_school') || 'all');
+  const [filterClass, setFilterClass] = useState(sessionStorage.getItem('f_class') || 'all');
+
+  useEffect(() => { sessionStorage.setItem('f_city', filterCity); }, [filterCity]);
+  useEffect(() => { sessionStorage.setItem('f_school', filterSchool); }, [filterSchool]);
+  useEffect(() => { sessionStorage.setItem('f_class', filterClass); }, [filterClass]);
   const [sortBy, setSortBy] = useState('points');
 
   useEffect(() => {

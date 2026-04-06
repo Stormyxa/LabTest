@@ -43,6 +43,21 @@ const Profile = ({ session, profile, refreshProfile }) => {
     }
   }, []);
 
+  // Sync profile data to local state if state is empty (prevents accidental wiping on slow loads)
+  useEffect(() => {
+    if (profile) {
+      setFirstName(prev => prev || profile.first_name || '');
+      setLastName(prev => prev || profile.last_name || '');
+      setPatronymic(prev => prev || profile.patronymic || '');
+      setBirthDate(prev => prev || profile.birth_date || '');
+      setCityId(prev => prev || profile.city_id || '');
+      setSchoolId(prev => prev || profile.school_id || '');
+      setClassId(prev => prev || profile.class_id || '');
+      setPhoneNumber(prev => prev || profile.phone_number || '');
+      setShowPhone(prev => prev || profile.show_phone_number || false);
+    }
+  }, [profile]);
+
   const fetchStructure = async () => {
     const { data: c } = await supabase.from('cities').select('*').order('name');
     const { data: s } = await supabase.from('schools').select('*').order('name');

@@ -19,10 +19,28 @@ const Analytics = () => {
   const [profile, setProfile] = useState(null);
   const [quizAuthorRole, setQuizAuthorRole] = useState(null);
   
-  const [showObservers, setShowObservers] = useState(false);
+  const [showObservers, setShowObservers] = useState(sessionStorage.getItem('analytics_show_observers') === 'true');
   const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
   const [sortConfig, setSortConfig] = useState('date_desc'); // default
-  const [useFirstResults, setUseFirstResults] = useState(false);
+  const [useFirstResults, setUseFirstResults] = useState(sessionStorage.getItem('analytics_use_first') === 'true');
+
+  useEffect(() => {
+    sessionStorage.setItem('analytics_use_first', useFirstResults);
+  }, [useFirstResults]);
+
+  // Expanded questions state - persistent for this quiz in session
+  const [expandedQuestions, setExpandedQuestions] = useState(() => {
+    const saved = sessionStorage.getItem(`expanded_q_${quizId}`);
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  useEffect(() => {
+    if (quizId) sessionStorage.setItem(`expanded_q_${quizId}`, JSON.stringify(expandedQuestions));
+  }, [expandedQuestions, quizId]);
+
+  useEffect(() => {
+    sessionStorage.setItem('analytics_show_observers', showObservers);
+  }, [showObservers]);
 
   useEffect(() => {
     if (searchParams.get('blocked')) {
@@ -34,9 +52,13 @@ const Analytics = () => {
   const [cities, setCities] = useState([]);
   const [schools, setSchools] = useState([]);
   const [classes, setClasses] = useState([]);
-  const [filterCity, setFilterCity] = useState('all');
-  const [filterSchool, setFilterSchool] = useState('all');
-  const [filterClass, setFilterClass] = useState('all');
+  const [filterCity, setFilterCity] = useState(sessionStorage.getItem('f_city') || 'all');
+  const [filterSchool, setFilterSchool] = useState(sessionStorage.getItem('f_school') || 'all');
+  const [filterClass, setFilterClass] = useState(sessionStorage.getItem('f_class') || 'all');
+
+  useEffect(() => { sessionStorage.setItem('f_city', filterCity); }, [filterCity]);
+  useEffect(() => { sessionStorage.setItem('f_school', filterSchool); }, [filterSchool]);
+  useEffect(() => { sessionStorage.setItem('f_class', filterClass); }, [filterClass]);
 
 
   useEffect(() => {
@@ -145,6 +167,32 @@ const Analytics = () => {
     return true;
   });
 
+  // Smart Reset: Removed as requested for a more intuitive filter approach
+  /*
+  useEffect(() => {
+    if (!loading && results.length > 0 && filteredResults.length === 0) { ... }
+  }, [loading, results.length, filteredResults.length]);
+  */
+
+  // Подсчитываем количество результатов для каждого заведения
+  const cityCounts = results.reduce((acc, r) => {
+    const cid = r.profiles?.city_id;
+    if (cid) acc[cid] = (acc[cid] || 0) + 1;
+    return acc;
+  }, {});
+
+  const schoolCounts = results.reduce((acc, r) => {
+    const sid = r.profiles?.school_id;
+    if (sid) acc[sid] = (acc[sid] || 0) + 1;
+    return acc;
+  }, {});
+
+  const classCounts = results.reduce((acc, r) => {
+    const clid = r.profiles?.class_id;
+    if (clid) acc[clid] = (acc[clid] || 0) + 1;
+    return acc;
+  }, {});
+
   const sortedResults = [...filteredResults].sort((a, b) => {
     if (!sortConfig) return 0;
     
@@ -165,11 +213,21 @@ const Analytics = () => {
     return 0;
   });
 
-  // Логика прав на удаление (Создатель, Сам автор, либо Админ для тестов рангов ниже)
-  const canDelete =
-    profile?.role === 'creator' ||
-    profile?.id === quiz?.author_id ||
-    (profile?.role === 'admin' && quizAuthorRole !== 'creator' && quizAuthorRole !== 'admin');
+  // Логика прав на удаление
+  const isPrivileged = profile?.role === 'creator' || profile?.role === 'admin';
+  const isSystemCreator = profile?.role === 'creator';
+  
+  // Проверяем наличие РЕЗУЛЬТАТОВ ДРУГИХ ПОЛЬЗОВАТЕЛЕЙ (не автора)
+  const hasForeignResults = results.length > 0 && results.some(r => r.user_id !== quiz?.author_id);
+
+  const canDeleteEverything = isSystemCreator || (profile?.role === 'admin' && quizAuthorRole !== 'creator');
+  const isAuthor = profile?.id === quiz?.author_id;
+
+  // Автор может удалять, только если НЕТ чужих результатов
+  const canDelete = canDeleteEverything || (isAuthor && !hasForeignResults);
+  
+  // Флаг для отображения поясняющего текста
+  const showRestrictionMessage = isAuthor && hasForeignResults && !canDeleteEverything;
 
   // Генерация PDF
   const generatePDF = async () => {
@@ -244,6 +302,12 @@ const Analytics = () => {
               <Trash2 size={18} style={{ marginRight: '8px' }} /> Удалить тест
             </button>
           )}
+          {showRestrictionMessage && (
+            <div className="flex-center" style={{ gap: '8px', padding: '10px 15px', background: 'rgba(255, 107, 107, 0.05)', color: '#ff6b6b', borderRadius: '12px', fontSize: '0.85rem', maxWidth: '300px' }}>
+              <Lock size={16} />
+              <span>Для удаления теста или результатов обратитесь к администратору (есть результаты других учеников)</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -309,7 +373,11 @@ const Analytics = () => {
             disabled={isTeacher}
           >
             <option value="all">Все города</option>
-            {cities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {cities.map(c => (
+              <option key={c.id} value={c.id} disabled={!cityCounts[c.id]}>
+                {c.name} {!cityCounts[c.id] ? '(0)' : ''}
+              </option>
+            ))}
           </select>
           <select 
             id="analytics-filter-school"
@@ -320,7 +388,11 @@ const Analytics = () => {
             disabled={isTeacher}
           >
             <option value="all">Все школы</option>
-            {availableSchools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            {availableSchools.map(s => (
+              <option key={s.id} value={s.id} disabled={!schoolCounts[s.id]}>
+                {s.name} {!schoolCounts[s.id] ? '(0)' : ''}
+              </option>
+            ))}
           </select>
           <select 
             id="analytics-filter-class"
@@ -330,7 +402,11 @@ const Analytics = () => {
             style={{ width: 'auto', flex: 1, minWidth: '150px' }}
           >
             <option value="all">Все классы</option>
-            {availableClasses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {availableClasses.map(c => (
+              <option key={c.id} value={c.id} disabled={!classCounts[c.id]}>
+                {c.name} {!classCounts[c.id] ? '(0)' : ''}
+              </option>
+            ))}
           </select>
         </div>
 
@@ -378,10 +454,25 @@ const Analytics = () => {
                 return acc + 1;
               }, 0);
               const percent = Math.round((correctAnswers / filteredResults.length) * 100);
+              const isExpanded = !!expandedQuestions[idx];
+
               return (
                 <div key={idx}>
-                  <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.9rem', gap: '15px' }}>
-                    <span style={{ opacity: 0.8, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
+                  <div 
+                    className="flex-center" 
+                    style={{ justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.9rem', gap: '15px', cursor: 'pointer' }}
+                    onClick={() => setExpandedQuestions(p => ({ ...p, [idx]: !p[idx] }))}
+                  >
+                    <span style={{ 
+                      opacity: 0.8, 
+                      flex: 1, 
+                      minWidth: 0, 
+                      overflow: 'hidden', 
+                      textOverflow: isExpanded ? 'unset' : 'ellipsis', 
+                      whiteSpace: isExpanded ? 'normal' : 'nowrap', 
+                      display: 'block',
+                      lineHeight: '1.4'
+                    }}>
                       {idx + 1}. {q.question}
                     </span>
                     <span style={{ fontWeight: '700', whiteSpace: 'nowrap', color: percent > 70 ? '#4ade80' : (percent > 40 ? '#facc15' : '#f87171') }}>

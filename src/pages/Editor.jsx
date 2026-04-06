@@ -127,32 +127,22 @@ const Editor = ({ session, profile }) => {
 
     if (q) {
       const quizzesWithStats = await Promise.all(q.map(async (quiz) => {
-        const { data: res } = await supabase.from('quiz_results').select('score, total_questions').eq('quiz_id', quiz.id);
+        const { data: res } = await supabase.from('quiz_results').select('score, total_questions, user_id').eq('quiz_id', quiz.id);
         const participants = res?.length || 0;
+        const hasForeignResults = res?.some(r => r.user_id !== quiz.author_id);
+        const avgTotalScore = res?.reduce((acc, curr) => acc + curr.score, 0) || 0;
+        const avgNumQuestions = res?.reduce((acc, curr) => acc + curr.total_questions, 0) || 0;
         const avgScore = participants > 0
-          ? Math.round((res.reduce((acc, curr) => acc + curr.score, 0) / res.reduce((acc, curr) => acc + curr.total_questions, 0)) * 100)
+          ? Math.round((avgTotalScore / avgNumQuestions) * 100)
           : 0;
-        return { ...quiz, participants, avgScore };
+        return { ...quiz, participants, avgScore, hasForeignResults };
       }));
       setMyQuizzes(quizzesWithStats);
     }
     setLoading(false);
   };
 
-  const normalizeTitle = (t) => {
-    if (!t) return t;
-    let res = t.trim();
-    // Long dashes and math minuses to standard hyphen
-    res = res.replace(/[—–−]/g, '-');
-    // Quotes to Guillemets: "word" -> «word»
-    res = res.replace(/"([^"]+)"/g, '«$1»');
-    // Para pattern: § 10. Title
-    const paraMatch = res.match(/^§?\s*(\d+)\.?\s*(.*)/);
-    if (paraMatch) {
-      res = `§ ${paraMatch[1]}. ${paraMatch[2].trim()}`;
-    }
-    return res;
-  };
+
 
   const handleCreateQuiz = async (e) => {
     if (e) e.preventDefault();
@@ -176,7 +166,7 @@ const Editor = ({ session, profile }) => {
         const maxOrder = maxOrderData || -1;
 
         const newQuizzesInsertion = quizzesList.map((q, i) => ({
-          title: normalizeTitle(q.title || titles.split('\n')[0] || 'Новый тест'),
+          title: (q.title || titles.split('\n')[0] || 'Новый тест').trim(),
           section_id: sectionId,
           author_id: session.user.id,
           content: { questions: q.questions },
@@ -220,7 +210,7 @@ const Editor = ({ session, profile }) => {
       const maxOrder = maxOrderData || -1;
 
       const newQuizzes = titleList.map((t, i) => ({
-        title: normalizeTitle(t),
+        title: t.trim(),
         section_id: sId,
         author_id: session.user.id,
         content: { questions: [] },
@@ -741,7 +731,15 @@ const Editor = ({ session, profile }) => {
                                             <div className="flex-center" style={{ gap: '8px' }}>
                                               <button onClick={() => { setRenamingItem({ id: quiz.id, name: quiz.title, type: 'quiz' }); setNewName(quiz.title); }} style={{ background: 'transparent', color: 'var(--primary-color)', opacity: 0.6, boxShadow: 'none', padding: '5px' }}><Pencil size={16} /></button>
                                               <button onClick={() => toggleHideQuiz(quiz)} style={{ background: 'transparent', color: quiz.is_hidden ? '#ca8a04' : 'inherit', opacity: 0.6, boxShadow: 'none', padding: '5px' }}>{quiz.is_hidden ? <Eye size={16} /> : <EyeOff size={16} />}</button>
-                                              <button onClick={() => setDeleteId(quiz.id)} style={{ background: 'transparent', color: 'red', opacity: 0.6, boxShadow: 'none', padding: '5px' }}><Trash2 size={16} /></button>
+                                              {(profile?.role === 'creator' || profile?.role === 'admin' || (quiz.author_id === profile?.id && !quiz.hasForeignResults)) ? (
+                                                <button onClick={() => setDeleteId(quiz.id)} style={{ background: 'transparent', color: 'red', opacity: 0.6, boxShadow: 'none', padding: '5px' }}><Trash2 size={16} /></button>
+                                              ) : (
+                                                quiz.author_id === profile?.id && (
+                                                  <div style={{ color: '#f87171', opacity: 0.6 }} title="Удаление ограничено: есть результаты других учеников. Обратитесь к админу.">
+                                                    <Lock size={14} />
+                                                  </div>
+                                                )
+                                              )}
                                             </div>
                                           </div>
                                         );
@@ -767,8 +765,14 @@ const Editor = ({ session, profile }) => {
                                             </div>
                                             <div className="flex-center" style={{ gap: '10px' }}>
                                               <button onClick={() => toggleHideQuiz(quiz)} style={{ background: 'transparent', color: quiz.is_hidden ? '#ca8a04' : 'inherit', opacity: 0.5, boxShadow: 'none', padding: '5px' }} title={quiz.is_hidden ? 'Скрыт' : 'Виден всем'}>{quiz.is_hidden ? <Shield size={18} /> : <Eye size={18} />}</button>
-                                              {(profile?.role === 'creator' || (profile?.role === 'admin' && quiz.profiles?.role !== 'creator') || quiz.author_id === profile?.id) && (
+                                              {(profile?.role === 'creator' || (profile?.role === 'admin' && quiz.profiles?.role !== 'creator') || (quiz.author_id === profile?.id && !quiz.hasForeignResults)) ? (
                                                 <button onClick={() => setDeleteId(quiz.id)} style={{ background: 'transparent', color: 'red', opacity: 0.5, boxShadow: 'none', padding: '5px' }} title="Удалить тест"><Trash2 size={18} /></button>
+                                              ) : (
+                                                quiz.author_id === profile?.id && (
+                                                  <div className="flex-center" style={{ padding: '8px', background: 'rgba(248,113,113,0.05)', color: '#f87171', borderRadius: '10px' }} title="Удаление ограничено: есть результаты других учеников. Обратитесь к админу.">
+                                                    <Lock size={18} />
+                                                  </div>
+                                                )
                                               )}
                                             </div>
                                           </div>

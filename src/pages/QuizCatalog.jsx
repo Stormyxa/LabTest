@@ -45,10 +45,12 @@ const QuizCatalog = ({ profile }) => {
   const fetchData = async () => {
     setLoading(true);
 
-    const { data: results } = await supabase.from('quiz_results').select('quiz_id, is_passed').eq('user_id', profile.id);
+    const { data: results } = await supabase.from('quiz_results').select('quiz_id, is_passed, score, total_questions').eq('user_id', profile.id);
     if (results) {
       const passMap = {};
-      results.forEach(r => { passMap[r.quiz_id] = r.is_passed; });
+      results.forEach(r => { 
+        passMap[r.quiz_id] = { is_passed: r.is_passed, score: r.score, total: r.total_questions }; 
+      });
       setPassedQuizzes(passMap);
     }
 
@@ -66,8 +68,12 @@ const QuizCatalog = ({ profile }) => {
     const { data: q } = await quizQuery;
 
     if (c && s && q) {
-      // Calculate global stats for each quiz
-      const { data: allResults } = await supabase.from('quiz_results').select('quiz_id, score, total_questions');
+      // Calculate global stats for each quiz (EXCLUDING OBSERVERS)
+      const { data: allResults } = await supabase
+        .from('quiz_results')
+        .select('quiz_id, score, total_questions, profiles!inner(is_observer)')
+        .eq('profiles.is_observer', false);
+        
       const statsMap = {};
       if (allResults) {
         allResults.forEach(r => {
@@ -453,9 +459,13 @@ const QuizCatalog = ({ profile }) => {
                                         <div style={{ marginTop: 'auto', paddingTop: '15px' }}>
                                           <div className="flex-center" style={{ justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
                                             <div className="flex-center" style={{ gap: '10px', flexDirection: 'column', alignItems: 'flex-start' }}>
-                                              {passState !== undefined && <span style={{ fontSize: '0.8rem', padding: '6px 16px', background: passState ? 'rgba(74, 222, 128, 0.1)' : 'rgba(248, 113, 113, 0.1)', color: passState ? '#4ade80' : '#f87171', borderRadius: '100px', fontWeight: 'bold' }}>{passState ? 'Пройдено' : 'Перепройти'}</span>}
-                                              {(profile?.role === 'admin' || profile?.role === 'creator' || profile?.id === quiz.author_id) && quizStats[quiz.id] && (
-                                                <div className="flex-center" style={{ gap: '6px', fontSize: '0.85rem', color: 'var(--primary-color)', fontWeight: 'bold', background: 'rgba(99, 102, 241, 0.05)', padding: '6px 12px', borderRadius: '10px' }} title="Общая успеваемость">
+                                              {passState !== undefined && (
+                                                <div className="flex-center" style={{ gap: '6px', fontSize: '0.8rem', background: passState.is_passed ? 'rgba(74, 222, 128, 0.1)' : 'rgba(248, 113, 113, 0.1)', color: passState.is_passed ? '#4ade80' : '#f87171', borderRadius: '10px', padding: '6px 12px', fontWeight: 'bold' }}>
+                                                   {passState.score}/{passState.total} ({Math.round((passState.score / passState.total) * 100)}%)
+                                                </div>
+                                              )}
+                                              {quizStats[quiz.id] && (
+                                                <div className="flex-center" style={{ gap: '6px', fontSize: '0.8rem', color: 'var(--primary-color)', fontWeight: 'bold', background: 'rgba(99, 102, 241, 0.05)', padding: '6px 12px', borderRadius: '10px' }} title="Общая успеваемость учеников (без учета наблюдателей)">
                                                   <TrendingUp size={14} /> {quizStats[quiz.id].avgScore}% успех
                                                 </div>
                                               )}
