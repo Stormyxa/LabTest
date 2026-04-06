@@ -212,8 +212,23 @@ const Profile = ({ session, profile, refreshProfile }) => {
             )}
           </div>
 
-          <button onClick={() => supabase.auth.signOut()} style={{ marginTop: '30px', width: '100%', background: 'rgba(255,0,0,0.1)', color: 'red' }}>
-            Выйти из аккаунта
+          <button 
+            onClick={async () => {
+              try {
+                setLoading(true);
+                await supabase.auth.signOut();
+                // Forced redirect to clear any internal React state and ensure clean login screen
+                window.location.href = '/'; 
+              } catch (err) {
+                setMsg('Ошибка при выходе: ' + err.message);
+              } finally {
+                setLoading(false);
+              }
+            }} 
+            disabled={loading}
+            style={{ marginTop: '30px', width: '100%', background: 'rgba(255,0,0,0.1)', color: 'red' }}
+          >
+            {loading ? 'Выход...' : 'Выйти из аккаунта'}
           </button>
         </div>
 
