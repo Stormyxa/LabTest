@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { User, Mail, Calendar, GraduationCap, CheckCircle, Award, FileText, TrendingUp, Star, MapPin, Building, Shield, ShieldOff, Zap } from 'lucide-react';
+import { User, Mail, Calendar, GraduationCap, CheckCircle, Award, FileText, TrendingUp, Star, MapPin, Building, Shield, ShieldOff, Zap, BarChart2 } from 'lucide-react';
 
 const Profile = ({ session, profile, refreshProfile }) => {
   const location = useLocation();
+  const navigate = useNavigate();
   const onboardingRef = useRef(null);
 
   const [cities, setCities] = useState([]);
@@ -240,6 +241,10 @@ const Profile = ({ session, profile, refreshProfile }) => {
             <StatBox label="Всего баллов" value={stats.totalPoints} icon={<TrendingUp size={20} />} />
             <StatBox label="Создано тестов" value={stats.created} icon={<FileText size={20} />} />
           </div>
+
+          <button onClick={() => navigate('/user-analytics')} className="flex-center" style={{ marginTop: '15px', width: '100%', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', padding: '15px', borderRadius: '15px', boxShadow: 'none', fontWeight: 'bold' }}>
+            <BarChart2 size={18} style={{ marginRight: '8px' }} /> Детальная аналитика
+          </button>
 
           <div style={{ marginTop: '20px', padding: '20px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '20px', border: '1px dashed rgba(99, 102, 241, 0.2)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '15px' }}>

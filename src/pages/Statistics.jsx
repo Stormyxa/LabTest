@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Trophy, Download, Users, School, Filter, MapPin, Building } from 'lucide-react';
+import { Trophy, Download, Users, School, Filter, MapPin, Building, Info } from 'lucide-react';
 import { useScrollRestoration } from '../lib/useScrollRestoration';
 
 const Statistics = ({ session, profile }) => {
+  const navigate = useNavigate();
   const [stats, setStats] = useState([]);
 
   const [cities, setCities] = useState([]);
@@ -230,6 +232,7 @@ const Statistics = ({ session, profile }) => {
                 <th style={{ padding: '20px' }}>Пройдено</th>
                 <th style={{ padding: '20px' }}>Баллы</th>
                 <th style={{ padding: '20px' }}>Ср. %</th>
+                <th style={{ padding: '20px' }}></th>
               </tr>
             </thead>
             <tbody>
@@ -255,6 +258,17 @@ const Statistics = ({ session, profile }) => {
                         </div>
                         <span style={{ fontSize: '0.8rem', opacity: 0.6 }}>{u.avgScore}%</span>
                       </div>
+                    </td>
+                    <td style={{ padding: '20px' }}>
+                      {(profile?.role === 'teacher' || profile?.role === 'admin' || profile?.role === 'creator') && (
+                        <button 
+                          onClick={() => navigate(`/user-analytics?userId=${u.id}`)}
+                          style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', padding: '6px', borderRadius: '8px', boxShadow: 'none' }}
+                          title="Аналитика ученика"
+                        >
+                          <Info size={16} />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );

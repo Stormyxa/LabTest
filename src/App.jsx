@@ -12,6 +12,8 @@ import Statistics from './pages/Statistics';
 import Logs from './pages/Logs';
 import Analytics from './pages/Analytics';
 import QuizRedactor from './pages/QuizRedactor';
+import AnalyticsDetails from './pages/AnalyticsDetails';
+import UserAnalytics from './pages/UserAnalytics';
 import './index.css';
 
 function App() {
@@ -86,6 +88,7 @@ function App() {
                 <ThemeToggle theme={theme} onToggle={toggleTheme} />
                 <Link to="/catalog"><NavButton label="Тесты" /></Link>
                 <Link to="/statistics"><NavButton label="Статистика" /></Link>
+                {isEditor && <Link to="/analytics-details"><NavButton label="Аналитика" variant="accent" /></Link>}
                 {isEditor && <Link to="/editor"><NavButton label="Создать" variant="accent" /></Link>}
                 {isAdmin && <Link to="/dashboard"><NavButton label="Панель" variant="accent" /></Link>}
                 {session ? (
@@ -115,6 +118,8 @@ function App() {
         <Route path="/logs" element={isAdmin ? <Logs profile={profile} /> : <Navigate to="/" />} />
         <Route path="/statistics" element={<Statistics session={session} profile={profile} />} />
         <Route path="/analytics" element={isEditor ? <Analytics profile={profile} /> : <Navigate to="/" />} />
+        <Route path="/analytics-details" element={session ? <AnalyticsDetails /> : <Navigate to="/auth" />} />
+        <Route path="/user-analytics" element={session ? <UserAnalytics /> : <Navigate to="/auth" />} />
         <Route path="/redactor" element={isEditor ? <QuizRedactor /> : <Navigate to="/" />} />
 
         <Route path="/profile" element={session ? <Profile session={session} profile={profile} refreshProfile={() => fetchProfile(session.user.id)} /> : <Navigate to="/auth" />} />

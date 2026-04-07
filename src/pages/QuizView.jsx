@@ -37,6 +37,7 @@ const QuizView = ({ session, profile }) => {
   const exitElapsedRef = useRef(0);
   const saveResultRef = useRef(null); // stable ref to saveResult
   const finishTimeRef = useRef(null); // frozen finish timestamp for results screen
+  const questionTimesRef = useRef({}); // tracks seconds spent on each question
 
   // NAVIGATION BLOCKER: intercept internal links (Profile, Catalog, etc.)
   const blocker = useBlocker(
@@ -56,6 +57,23 @@ const QuizView = ({ session, profile }) => {
   useEffect(() => {
     fetchQuiz();
   }, [id]);
+
+  // Stopwatch effect for tracking time spent per question
+  useEffect(() => {
+    if (showResult || loading || isBlurred || !questionsRef.current.length) return;
+
+    const interval = setInterval(() => {
+      // In learning mode (not first attempt), stop counting time if the current question is already answered
+      if (!isFirstAttempt && answersRef.current[currentIdx] !== undefined) {
+        return;
+      }
+      
+      const currentVal = questionTimesRef.current[currentIdx] || 0;
+      questionTimesRef.current[currentIdx] = currentVal + 1;
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [currentIdx, showResult, loading, isBlurred, isFirstAttempt]);
 
   // beforeunload: save result if elapsed >= EXIT_GRACE_SECONDS
   useEffect(() => {
@@ -322,14 +340,49 @@ const QuizView = ({ session, profile }) => {
     const isPassed = (correctCount / qs.length) >= 0.5;
     const now = new Date().toISOString();
     const answersArray = originalAnswers;
+
+    const finalTimeSpent = Math.round(((finishTimeRef.current || Date.now()) - startTimeRef.current) / 1000);
+    const scoreRatio = correctCount / qs.length;
+    const isSuspicious = ((finalTimeSpent / qs.length) < 3 && scoreRatio > 0.8) || (correctCount === 0 && finalTimeSpent < 30);
+
+    // Build detailed answers map
+    const detailedAnswers = qs.map((q, idx) => {
+      const chosenIndex = finalAnswers[idx] !== undefined ? finalAnswers[idx] : null;
+      const isCorrect = chosenIndex === q.correctIndex;
+      const timeSpentOnQ = questionTimesRef.current[idx] || 0;
+      return {
+        originalIndex: q.originalIndex,
+        chosenIndex: chosenIndex,
+        correctIndex: q.correctIndex,
+        timeSpent: timeSpentOnQ,
+        isCorrect: isCorrect
+      };
+    });
+
     try {
+      // 1. Log the detailed attempt into the new table
+      const attemptData = {
+        user_id: session.user.id,
+        quiz_id: id,
+        score: correctCount,
+        max_score: qs.length,
+        time_spent_total: finalTimeSpent,
+        is_passed: isPassed,
+        is_suspicious: isSuspicious,
+        answers_data: detailedAnswers
+      };
+      await supabase.from('quiz_attempts').insert(attemptData);
+
+      // 2. Update summary data in quiz_results for leaderboard and legacy analytics
       const { data: existing, error: checkError } = await supabase
         .from('quiz_results')
         .select('id')
         .eq('quiz_id', id)
         .eq('user_id', session.user.id)
         .maybeSingle();
+      
       if (checkError) throw checkError;
+      
       if (existing) {
         await supabase.from('quiz_results').update({
           score: correctCount, total_questions: qs.length,

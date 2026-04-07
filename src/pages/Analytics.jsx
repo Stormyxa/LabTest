@@ -96,13 +96,34 @@ const Analytics = () => {
     if (error) console.error("Ошибка при загрузке результатов:", error);
 
     if (r && r.length > 0) {
+      // Fetch fresh attempts to calculate behavioral stats
+      const { data: attempts } = await supabase.from('quiz_attempts').select('user_id, is_suspicious, is_passed').eq('quiz_id', quizId);
+      const statsMap = {};
+      if (attempts) {
+        attempts.forEach(att => {
+          if (!statsMap[att.user_id]) statsMap[att.user_id] = { total: 0, suspicious: 0, failed: 0 };
+          statsMap[att.user_id].total += 1;
+          if (att.is_suspicious) statsMap[att.user_id].suspicious += 1;
+          if (!att.is_passed) statsMap[att.user_id].failed += 1;
+        });
+      }
+
       const userIds = r.map(user => user.user_id);
       const { data: p } = await supabase.from('profiles').select('*').in('id', userIds);
 
-      const combined = r.map(res => ({
-        ...res,
-        profiles: p?.find(pr => pr.id === res.user_id) || null
-      }));
+      const combined = r.map(res => {
+        const stats = statsMap[res.user_id] || { total: 0, suspicious: 0, failed: 0 };
+        const isSuspiciousUser = stats.total > 0 && (stats.suspicious / stats.total) > 0.3;
+        const isUnderperformingUser = stats.total > 0 && (stats.failed / stats.total) > 0.5 && !isSuspiciousUser;
+
+        return {
+          ...res,
+          profiles: p?.find(pr => pr.id === res.user_id) || null,
+          isSuspiciousUser,
+          isUnderperformingUser,
+          stats
+        };
+      });
       setResults(combined);
     } else {
       setResults([]);
@@ -545,10 +566,13 @@ const Analytics = () => {
               const className = classes.find(c => c.id === p?.class_id)?.name || '';
 
               return (
-                <tr key={res.id} style={{ borderBottom: '1px solid rgba(0,0,0,0.01)' }}>
+                <tr key={res.id} style={{ 
+                  borderBottom: '1px solid rgba(0,0,0,0.01)',
+                  background: res.isSuspiciousUser ? 'rgba(248, 113, 113, 0.05)' : (res.isUnderperformingUser ? 'rgba(250, 204, 21, 0.05)' : 'transparent')
+                }}>
                   <td style={{ padding: '20px' }}>
                     <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '8px' }}>
-                      <div style={{ fontWeight: '600' }}>{displayName}</div>
+                      <div style={{ fontWeight: '600', color: res.isSuspiciousUser ? '#ef4444' : 'inherit' }}>{displayName}</div>
                       {p?.is_observer && <span style={{ padding: '2px 8px', background: 'rgba(250, 204, 21, 0.1)', color: '#ca8a04', borderRadius: '50px', fontSize: '0.65rem', fontWeight: 'bold' }}>НАБЛЮДАТЕЛЬ</span>}
                       {p?.is_hidden && <span style={{ background: 'rgba(0,0,0,0.05)', color: 'rgba(0,0,0,0.5)', padding: '2px 8px', borderRadius: '50px', fontSize: '0.65rem' }} title="Скрытый пользователь"><EyeOff size={10} /></span>}
                     </div>
@@ -578,11 +602,20 @@ const Analytics = () => {
                     {res.score} / {res.total_questions}
                   </td>
                   <td style={{ padding: '20px' }}>
-                    {canDelete && (
-                      <button onClick={() => setDeletingId(res.id)} style={{ background: 'rgba(255,0,0,0.05)', color: 'red', padding: '8px', borderRadius: '10px', boxShadow: 'none' }}>
-                        <Trash2 size={18} />
+                    <div className="flex-center" style={{ gap: '10px', justifyContent: 'flex-start' }}>
+                      <button 
+                        onClick={() => navigate(`/analytics-details?quizId=${quizId}&userId=${res.user_id}`)} 
+                        style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', padding: '8px', borderRadius: '10px', boxShadow: 'none' }} 
+                        title="Подробная аналитика попыток"
+                      >
+                        <Info size={18} />
                       </button>
-                    )}
+                      {canDelete && (
+                        <button onClick={() => setDeletingId(res.id)} style={{ background: 'rgba(255,0,0,0.05)', color: 'red', padding: '8px', borderRadius: '10px', boxShadow: 'none' }}>
+                          <Trash2 size={18} />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );

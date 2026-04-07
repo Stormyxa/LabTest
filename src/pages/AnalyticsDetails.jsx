@@ -1,0 +1,568 @@
+import React, { useState, useEffect } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import { supabase } from '../lib/supabase';
+import { ChevronLeft, BarChart2, Clock, CheckCircle, XCircle, Search, Filter, AlertTriangle, Menu } from 'lucide-react';
+
+const AnalyticsDetails = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const quizIdParam = searchParams.get('quizId');
+  const userIdParam = searchParams.get('userId');
+
+  const [loading, setLoading] = useState(true);
+  const [contentLoading, setContentLoading] = useState(false);
+  const [profile, setProfile] = useState(null);
+  
+  // Data for sidebar
+  const [quizFolders, setQuizFolders] = useState([]);
+  const [sections, setSections] = useState([]);
+  const [quizzes, setQuizzes] = useState([]);
+  const [users, setUsers] = useState([]); // users who took the selected quiz
+  
+  const [cities, setCities] = useState([]);
+  const [schools, setSchools] = useState([]);
+  const [classes, setClasses] = useState([]);
+
+  // Test Filters
+  const [filterFolder, setFilterFolder] = useState(sessionStorage.getItem('ad_t_folder') || 'all');
+  const [filterSection, setFilterSection] = useState(sessionStorage.getItem('ad_t_section') || 'all');
+  const [filterQuiz, setFilterQuiz] = useState(quizIdParam || sessionStorage.getItem('ad_t_quiz') || '');
+
+  // User Filters
+  const [filterCity, setFilterCity] = useState(sessionStorage.getItem('ad_u_city') || 'all');
+  const [filterSchool, setFilterSchool] = useState(sessionStorage.getItem('ad_u_school') || 'all');
+  const [filterClass, setFilterClass] = useState(sessionStorage.getItem('ad_u_class') || 'all');
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const scrollRef = React.useRef(null);
+
+  useEffect(() => { sessionStorage.setItem('ad_t_folder', filterFolder); }, [filterFolder]);
+  useEffect(() => { sessionStorage.setItem('ad_t_section', filterSection); }, [filterSection]);
+  useEffect(() => { sessionStorage.setItem('ad_t_quiz', filterQuiz); }, [filterQuiz]);
+  useEffect(() => { sessionStorage.setItem('ad_u_city', filterCity); }, [filterCity]);
+  useEffect(() => { sessionStorage.setItem('ad_u_school', filterSchool); }, [filterSchool]);
+  useEffect(() => { sessionStorage.setItem('ad_u_class', filterClass); }, [filterClass]);
+
+  // Data for main content
+  const [targetUser, setTargetUser] = useState(null);
+  const [targetQuiz, setTargetQuiz] = useState(null);
+  const [attempts, setAttempts] = useState([]);
+  const [selectedAttempt, setSelectedAttempt] = useState(null);
+
+  useEffect(() => {
+    fetchInitialData();
+  }, []);
+
+  const fetchInitialData = async () => {
+    setLoading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: p } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+      setProfile(p);
+      
+      const isPrivileged = p.role === 'admin' || p.role === 'creator' || p.role === 'teacher' || p.role === 'editor';
+      if (!isPrivileged) {
+        setSidebarOpen(false); // Force close for students
+      }
+
+      const { data: qF } = await supabase.from('quiz_classes').select('*').order('name');
+      const { data: secs } = await supabase.from('quiz_sections').select('*').order('name');
+      
+      let quizQuery = supabase.from('quizzes').select('*').order('title');
+      if (p.role === 'editor') quizQuery = quizQuery.eq('author_id', p.id);
+      const { data: qs } = await quizQuery;
+
+      const { data: c } = await supabase.from('cities').select('*').order('name');
+      const { data: s } = await supabase.from('schools').select('*').order('name');
+      const { data: cl } = await supabase.from('classes').select('*').order('name');
+      
+      if (qF) setQuizFolders(qF);
+      if (secs) setSections(secs);
+      if (qs) setQuizzes(qs);
+      
+      if (c) setCities(c);
+      if (s) setSchools(s);
+      if (cl) setClasses(cl);
+
+      const targetQuizId = quizIdParam || sessionStorage.getItem('ad_t_quiz');
+      if (targetQuizId) {
+        setFilterQuiz(targetQuizId);
+        fetchUsersForQuiz(targetQuizId, p);
+      }
+    }
+    setLoading(false);
+    
+    // Restore scroll
+    setTimeout(() => {
+      if (scrollRef.current) scrollRef.current.scrollTop = sessionStorage.getItem('ad_list_scroll') || 0;
+    }, 100);
+  };
+
+  const fetchUsersForQuiz = async (qId, currentUserProfile) => {
+    // 1. Get all results for this quiz to find users
+    const { data: results } = await supabase.from('quiz_results').select('user_id, score, total_questions').eq('quiz_id', qId);
+    if (!results) {
+      setUsers([]);
+      return;
+    }
+    
+    // 2. Fetch those user profiles
+    const userIds = [...new Set(results.map(r => r.user_id))];
+    const { data: profs } = await supabase.from('profiles').select('*').in('id', userIds);
+    
+    if (profs) {
+      const isTeacher = currentUserProfile?.role === 'teacher';
+      // filter out observers unless admin/creator, or if teacher restrict to own school
+      let validProfs = profs.filter(p => !p.is_observer);
+      
+      const { data: currentQuizObj } = await supabase.from('quizzes').select('author_id').eq('id', qId).single();
+
+      if (isTeacher && currentQuizObj?.author_id !== currentUserProfile?.id) {
+        validProfs = validProfs.filter(p => p.school_id === currentUserProfile.school_id);
+      }
+
+      // Map max score from results
+      const userList = validProfs.map(p => {
+        const userRes = results.find(r => r.user_id === p.id);
+        return {
+          ...p,
+          maxScore: userRes ? userRes.score : 0, // In quiz_results, 'score' holds the current best or latest depending on implementation, but we'll use it for sort
+        };
+      });
+      userList.sort((a,b) => b.maxScore - a.maxScore);
+      setUsers(userList);
+
+      if (userIdParam) {
+        const tu = userList.find(u => u.id === userIdParam);
+        if (tu) fetchAttempts(qId, tu.id);
+      }
+    }
+  };
+
+  const fetchAttempts = async (qId, uId) => {
+    setContentLoading(true);
+    const { data: q } = await supabase.from('quizzes').select('*').eq('id', qId).single();
+    const { data: u } = await supabase.from('profiles').select('*').eq('id', uId).single();
+    
+    if (q) setTargetQuiz(q);
+    if (u) setTargetUser(u);
+
+    const { data: atts, error } = await supabase
+      .from('quiz_attempts')
+      .select('*')
+      .eq('quiz_id', qId)
+      .eq('user_id', uId)
+      .order('created_at', { ascending: true }); // chronological order
+
+    if (!error && atts) {
+      setAttempts(atts);
+      // Automatically select latest
+      if (atts.length > 0) setSelectedAttempt(atts[atts.length - 1]);
+    } else {
+      setAttempts([]);
+      setSelectedAttempt(null);
+    }
+    setContentLoading(false);
+  };
+
+  const handleQuizSelect = (qId) => {
+    setFilterQuiz(qId);
+    setSearchParams({ quizId: qId });
+    setTargetUser(null);
+    setAttempts([]);
+    fetchUsersForQuiz(qId, profile);
+  };
+
+  const handleUserSelect = (uId) => {
+    setSearchParams({ quizId: filterQuiz, userId: uId });
+    fetchAttempts(filterQuiz, uId);
+  };
+
+  const handleScroll = (e) => {
+    sessionStorage.setItem('ad_list_scroll', e.target.scrollTop);
+  };
+
+  // derived lists for test filters
+  const validSections = filterFolder === 'all' ? sections : sections.filter(s => s.class_id === filterFolder);
+  const validQuizzes = filterSection === 'all' 
+                        ? quizzes.filter(q => filterFolder === 'all' || validSections.some(vs => vs.id === q.section_id)) 
+                        : quizzes.filter(q => q.section_id === filterSection);
+
+  // For locking specific options: if a folder has no quizzes AT ALL, it should be disabled
+  const isFolderEmpty = (fId) => !quizzes.some(q => sections.some(s => s.class_id === fId && q.section_id === s.id));
+  const isSectionEmpty = (sId) => !quizzes.some(q => q.section_id === sId);
+
+  const filteredUsers = users.filter(u => {
+    if (filterCity !== 'all' && u.city_id !== filterCity) return false;
+    if (filterSchool !== 'all' && u.school_id !== filterSchool) return false;
+    if (filterClass !== 'all' && u.class_id !== filterClass) return false;
+    if (searchQuery) {
+      const name = `${u.last_name || ''} ${u.first_name || ''}`.toLowerCase();
+      if (!name.includes(searchQuery.toLowerCase())) return false;
+    }
+    return true;
+  });
+
+  const aggregateStats = () => {
+    if (attempts.length === 0) return { totalTime: 0, avgTime: 0, maxScore: 0, passed: 0, failed: 0 };
+    let totalTime = 0;
+    let maxS = 0;
+    let passed = 0;
+    let failed = 0;
+    attempts.forEach(a => {
+      totalTime += a.time_spent_total;
+      if (a.score > maxS) maxS = a.score;
+      if (a.is_passed) passed++;
+      else failed++;
+    });
+    return {
+      totalTime,
+      avgTime: Math.round(totalTime / attempts.length),
+      maxScore: maxS,
+      passed, failed
+    };
+  };
+
+  const renderChart = () => {
+    if (attempts.length === 0) return <div style={{ padding: '40px', textAlign: 'center', opacity: 0.5 }}>Нет данных о прохождениях</div>;
+    
+    const stats = aggregateStats();
+    // Chart components: Max score, then last up to 10
+    const last10 = attempts.slice(-10);
+    const chartBars = [];
+
+    const qsLength = targetQuiz?.content?.questions?.length || 1;
+    
+    // Max Score Bar (Always Blue)
+    chartBars.push({
+      label: 'Максимум',
+      score: stats.maxScore,
+      maxPossible: qsLength,
+      color: '#3b82f6', // Blue
+      data: null, // special
+      type: 'max'
+    });
+
+    // Attempt bars
+    last10.forEach((att, idx) => {
+      let color = '#4ade80'; // Green
+      if (att.is_suspicious) color = '#ef4444'; // Red
+      else if (!att.is_passed) color = '#facc15'; // Yellow
+      
+      chartBars.push({
+        label: `Попытка ${attempts.length - last10.length + idx + 1}`,
+        score: att.score,
+        maxPossible: att.max_score,
+        color: color,
+        data: att,
+        type: 'attempt',
+        id: att.id
+      });
+    });
+
+    return (
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-end', height: '240px', padding: '20px', background: 'rgba(0,0,0,0.02)', borderRadius: '15px' }}>
+        {/* Background Guide Lines + Text Labels */}
+        <div style={{ position: 'absolute', left: 0, top: '0%', width: '100%', borderTop: '2px dashed transparent', pointerEvents: 'none' }}>
+           <span style={{ position: 'absolute', left: '15px', top: '-10px', fontSize: '0.7rem', opacity: 0.5, fontWeight: 'bold' }}>100%</span>
+        </div>
+        <div style={{ position: 'absolute', left: 0, top: '20%', width: '100%', borderTop: '2px dashed rgba(74, 222, 128, 0.3)', pointerEvents: 'none' }}>
+           <span style={{ position: 'absolute', left: '15px', top: '-10px', fontSize: '0.7rem', color: '#4ade80', fontWeight: 'bold' }}>80%</span>
+        </div>
+        <div style={{ position: 'absolute', left: 0, top: '50%', width: '100%', borderTop: '2px dashed rgba(250, 204, 21, 0.3)', pointerEvents: 'none' }}>
+           <span style={{ position: 'absolute', left: '15px', top: '-10px', fontSize: '0.7rem', color: '#ca8a04', fontWeight: 'bold' }}>50%</span>
+        </div>
+        <div style={{ position: 'absolute', left: 0, top: '80%', width: '100%', borderTop: '2px dashed rgba(239, 68, 68, 0.3)', pointerEvents: 'none' }}>
+           <span style={{ position: 'absolute', left: '15px', top: '-10px', fontSize: '0.7rem', color: '#ef4444', fontWeight: 'bold' }}>20%</span>
+        </div>
+        
+        {/* Vertical Colorful Axis */}
+        <div style={{ zIndex: 5, width: '6px', height: '100%', background: 'linear-gradient(to top, rgba(239, 68, 68, 0.8) 0%, rgba(239, 68, 68, 0.8) 20%, rgba(250, 204, 21, 0.8) 20%, rgba(250, 204, 21, 0.8) 50%, rgba(74, 222, 128, 0.8) 50%, rgba(74, 222, 128, 0.8) 100%)', borderRadius: '3px', marginLeft: '35px', marginRight: '15px' }} />
+
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', height: '100%', flex: 1 }}>
+          {chartBars.map((bar, i) => {
+            const heightPercent = (bar.score / bar.maxPossible) * 100;
+            const isSpecial = bar.type === 'max';
+            const isZero = bar.score === 0;
+            
+            return (
+              <div 
+                key={i}
+                onClick={() => !isSpecial && setSelectedAttempt(bar.data)}
+                style={{
+                  flex: 1, minWidth: '20px', maxWidth: '60px', height: '100%',
+                  display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
+                  cursor: isSpecial ? 'default' : 'pointer',
+                  opacity: (selectedAttempt?.id === bar.id || isSpecial) ? 1 : 0.6,
+                  transition: 'opacity 0.2s', zIndex: 1
+                }}
+                title={isSpecial ? `Максимальный балл: ${bar.score}` : `${bar.label}\nБалл: ${bar.score}\nВремя: ${bar.data.time_spent_total}с\n${bar.data.is_suspicious ? '(Подозрительно)' : ''}`}
+              >
+                <div style={{ textAlign: 'center', fontSize: '0.7rem', paddingBottom: '4px', fontWeight: 'bold' }}>{bar.score}</div>
+                <div style={{ 
+                   width: '100%', 
+                   height: isZero ? '5px' : `${heightPercent}%`, 
+                   background: isZero ? 'rgba(239, 68, 68, 0.3)' : bar.color, 
+                   borderRadius: '6px 6px 0 0', borderBottom: 'none'
+                }} />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  const renderAttemptDetails = () => {
+    if (!selectedAttempt || !targetQuiz) return <div style={{ padding: '20px', opacity: 0.5 }}>Выберите попытку на графике</div>;
+    
+    const qs = targetQuiz.content.questions;
+    let ansData = [];
+    try {
+      ansData = typeof selectedAttempt.answers_data === 'string' ? JSON.parse(selectedAttempt.answers_data) : selectedAttempt.answers_data;
+    } catch(e){}
+
+    // compute average time per question for THIS user
+    const avgTimePerQ = {};
+    attempts.forEach(att => {
+      let d = typeof att.answers_data === 'string' ? JSON.parse(att.answers_data) : att.answers_data;
+      if (Array.isArray(d)) {
+        d.forEach(ans => {
+           if (!avgTimePerQ[ans.originalIndex]) avgTimePerQ[ans.originalIndex] = { totalTime: 0, count: 0 };
+           avgTimePerQ[ans.originalIndex].totalTime += (ans.timeSpent || 0);
+           avgTimePerQ[ans.originalIndex].count++;
+        });
+      }
+    });
+
+    return (
+      <div style={{ marginTop: '30px' }}>
+        <h3 style={{ marginBottom: '20px' }}>
+          Детали прохождения от {new Date(selectedAttempt.created_at).toLocaleString()}
+          {selectedAttempt.is_suspicious && <span style={{ marginLeft: '10px', fontSize: '0.8rem', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '4px 10px', borderRadius: '10px' }}><AlertTriangle size={14} style={{ display: 'inline', marginRight: '4px' }}/> Подозрительно</span>}
+        </h3>
+        
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginBottom: '30px' }}>
+          <div className="card" style={{ padding: '15px' }}>
+            <div style={{ fontSize: '0.8rem', opacity: 0.6 }}>Балл</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{selectedAttempt.score} / {selectedAttempt.max_score}</div>
+          </div>
+          <div className="card" style={{ padding: '15px' }}>
+            <div style={{ fontSize: '0.8rem', opacity: 0.6 }}>Затрачено времени</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{selectedAttempt.time_spent_total} сек</div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+          {ansData.map((ans, i) => {
+            const originQ = qs.find(q => (q.originalIndex || qs.indexOf(q)) === ans.originalIndex);
+            if (!originQ) return null;
+            
+            const isCorrect = ans.isCorrect;
+            const avgQTime = avgTimePerQ[ans.originalIndex]?.count > 0 ? Math.round(avgTimePerQ[ans.originalIndex].totalTime / avgTimePerQ[ans.originalIndex].count) : 0;
+            
+            return (
+              <div key={i} className="card" style={{ padding: '20px', borderLeft: `4px solid ${isCorrect ? '#4ade80' : '#ef4444'}` }}>
+                <h4 style={{ marginBottom: '10px' }}>Вопрос: {originQ.question}</h4>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px' }}>
+                  <span style={{ opacity: 0.6 }}>Ответ:</span> 
+                  <strong style={{ color: isCorrect ? '#4ade80' : '#ef4444' }}>
+                    {ans.chosenIndex !== null ? originQ.options[ans.chosenIndex] : 'Пропущено'}
+                  </strong>
+                  {isCorrect ? <CheckCircle size={16} color="#4ade80" /> : <XCircle size={16} color="#ef4444" />}
+                </div>
+                {!isCorrect && ans.correctIndex !== undefined && (
+                  <div style={{ marginBottom: '10px', fontSize: '0.9rem' }}>
+                    <span style={{ opacity: 0.6 }}>Верный ответ: </span> 
+                    <strong>{originQ.options[ans.correctIndex]}</strong>
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: '20px', fontSize: '0.85rem', opacity: 0.7, background: 'rgba(0,0,0,0.02)', padding: '10px', borderRadius: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <Clock size={14} /> Время на вопрос: {ans.timeSpent}с
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <BarChart2 size={14} /> Среднее (за все попытки): {avgQTime}с
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  const isPrivileged = profile?.role === 'admin' || profile?.role === 'creator' || profile?.role === 'teacher' || profile?.role === 'editor';
+
+  return (
+    <div style={{ display: 'flex', minHeight: 'calc(100vh - 70px)' }}>
+      {/* Sidebar */}
+      {isPrivileged && (
+        <div 
+          style={{ 
+            width: sidebarOpen ? '320px' : '0', 
+            background: 'var(--card-bg)', 
+            borderRight: '1px solid rgba(0,0,0,0.05)', 
+            transition: 'width 0.3s', 
+            overflow: 'hidden',
+            display: 'flex', flexDirection: 'column'
+          }}
+        >
+          <div style={{ padding: '20px', width: '320px', display: 'flex', flexDirection: 'column', height: '100%' }}>
+            <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '20px' }}>
+              <h3 style={{ fontSize: '1.2rem', margin: 0 }}>Детальная Аналитика</h3>
+              <button onClick={() => setSidebarOpen(false)} style={{ background: 'transparent', color: 'inherit', boxShadow: 'none', padding: '5px' }}><ChevronLeft size={20}/></button>
+            </div>
+            
+            {loading ? (
+              <div style={{ flex: 1 }}>
+                <div className="skeleton" style={{ height: '30px', marginBottom: '10px' }} />
+                <div className="skeleton" style={{ height: '30px', marginBottom: '10px' }} />
+                <div className="skeleton" style={{ height: '30px', marginBottom: '20px' }} />
+                <div className="skeleton" style={{ height: '100px' }} />
+              </div>
+            ) : (
+              <>
+                <div style={{ marginBottom: '20px' }}>
+                  <label htmlFor="ad-folder" style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '5px', display: 'block' }}>Выбор Теста</label>
+                  <select id="ad-folder" value={filterFolder} onChange={e => {setFilterFolder(e.target.value); setFilterSection('all');}} style={{ width: '100%', marginBottom: '10px', padding: '8px' }}>
+                    <option value="all">Все папки</option>
+                    {quizFolders.map(f => <option key={f.id} value={f.id} disabled={isFolderEmpty(f.id)}>{f.name} {isFolderEmpty(f.id) ? '(пусто)' : ''}</option>)}
+                  </select>
+                  <select id="ad-section" value={filterSection} onChange={e => setFilterSection(e.target.value)} style={{ width: '100%', marginBottom: '10px', padding: '8px' }} aria-label="Предмет">
+                    <option value="all">Все предметы</option>
+                    {validSections.map(s => <option key={s.id} value={s.id} disabled={isSectionEmpty(s.id)}>{s.name} {isSectionEmpty(s.id) ? '(пусто)' : ''}</option>)}
+                  </select>
+                  <select id="ad-quiz" value={filterQuiz} onChange={e => handleQuizSelect(e.target.value)} style={{ width: '100%', padding: '8px' }} aria-label="Тест">
+                    <option value="" disabled>-- Выберите тест --</option>
+                    {validQuizzes.map(q => <option key={q.id} value={q.id}>{q.title}</option>)}
+                  </select>
+                </div>
+
+                <div style={{ height: '1px', background: 'rgba(0,0,0,0.05)', margin: '15px 0' }} />
+
+                {filterQuiz ? (
+                  <>
+                    <label htmlFor="ad-city" style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '10px', display: 'block' }}>Фильтры Учеников</label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '15px' }}>
+                      <select id="ad-city" value={filterCity} onChange={e => {setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all');}} style={{ padding: '6px', fontSize: '0.85rem' }}>
+                        <option value="all">Все города</option>
+                        {cities.map(c => <option key={c.id} value={c.id} disabled={!users.some(u => u.city_id === c.id)}>{c.name}</option>)}
+                      </select>
+                      <select id="ad-school" value={filterSchool} onChange={e => {setFilterSchool(e.target.value); setFilterClass('all');}} disabled={profile?.role === 'teacher'} style={{ padding: '6px', fontSize: '0.85rem' }} aria-label="Школа">
+                        <option value="all">Все школы</option>
+                        {schools.filter(s => filterCity==='all' || s.city_id === filterCity).map(s => <option key={s.id} value={s.id} disabled={!users.some(u => u.school_id === s.id)}>{s.name}</option>)}
+                      </select>
+                      <select id="ad-class" value={filterClass} onChange={e => setFilterClass(e.target.value)} style={{ padding: '6px', fontSize: '0.85rem' }} aria-label="Класс">
+                        <option value="all">Все классы</option>
+                        {classes.filter(c => filterSchool==='all' || c.school_id === filterSchool).map(c => <option key={c.id} value={c.id} disabled={!users.some(u => u.class_id === c.id)}>{c.name}</option>)}
+                      </select>
+                      <div style={{ position: 'relative' }}>
+                        <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', opacity: 0.5 }} />
+                        <label htmlFor="ad-search" style={{ display: 'none' }}>Поиск</label>
+                        <input id="ad-search" type="text" placeholder="Поиск..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ width: '100%', padding: '6px 10px 6px 30px', fontSize: '0.85rem' }} />
+                      </div>
+                    </div>
+
+                    <label style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '10px', display: 'block' }}>Ученики ({filteredUsers.length})</label>
+                    <div ref={scrollRef} onScroll={handleScroll} style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '5px', paddingRight: '5px' }}>
+                      {filteredUsers.map(u => (
+                        <button 
+                          key={u.id} 
+                          onClick={() => handleUserSelect(u.id)}
+                          style={{ 
+                            textAlign: 'left', padding: '10px', 
+                            background: targetUser?.id === u.id ? 'var(--primary-color)' : 'rgba(0,0,0,0.02)',
+                            color: targetUser?.id === u.id ? 'white' : 'var(--text-color)',
+                            borderRadius: '8px', border: 'none', cursor: 'pointer',
+                            fontSize: '0.85rem', width: '100%'
+                          }}>
+                          <div style={{ fontWeight: 'bold' }}>{u.last_name} {u.first_name}</div>
+                          <div style={{ opacity: 0.8, fontSize: '0.75rem' }}>Max: {u.maxScore} баллов</div>
+                        </button>
+                      ))}
+                      {filteredUsers.length === 0 && <div style={{ fontSize: '0.8rem', opacity: 0.5, textAlign: 'center', marginTop: '10px' }}>Нет учеников по фильтру</div>}
+                    </div>
+                  </>
+                ) : (
+                   <div style={{ opacity: 0.5, fontSize: '0.9rem', textAlign: 'center', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Сначала выберите тест<br/>для просмотра учеников.</div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Main Content Area */}
+      <div style={{ flex: 1, padding: '40px 60px', overflowY: 'auto', position: 'relative' }}>
+        {isPrivileged && !sidebarOpen && (
+          <button onClick={() => setSidebarOpen(true)} className="flex-center" style={{ position: 'absolute', left: '20px', top: '40px', background: 'var(--card-bg)', color: 'inherit', padding: '10px', borderRadius: '10px', zIndex: 10 }}>
+            <Menu size={20} />
+          </button>
+        )}
+        <button onClick={() => navigate(-1)} className="flex-center" style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', boxShadow: 'none', padding: '10px 20px', marginBottom: '20px', width: 'max-content', marginLeft: (!sidebarOpen && isPrivileged) ? '50px' : '0' }}>
+          <ChevronLeft size={20} /> Вернуться
+        </button>
+
+        {loading || contentLoading ? (
+          <div className="animate" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div className="skeleton" style={{ height: '40px', width: '300px' }} />
+            <div className="skeleton" style={{ height: '30px', width: '200px' }} />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', margin: '30px 0' }}>
+               <div className="skeleton" style={{ height: '100px' }} />
+               <div className="skeleton" style={{ height: '100px' }} />
+               <div className="skeleton" style={{ height: '100px' }} />
+            </div>
+            <div className="skeleton" style={{ height: '240px' }} />
+          </div>
+        ) : (!targetQuiz || !targetUser) ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60%', flexDirection: 'column', opacity: 0.5 }}>
+            <BarChart2 size={64} style={{ marginBottom: '20px', color: 'var(--primary-color)' }} />
+            <h2>Выберите тест и ученика для анализа</h2>
+          </div>
+        ) : (
+          <div className="animate">
+            <h2 style={{ fontSize: '2rem', marginBottom: '10px' }}>
+              {targetUser.last_name} {targetUser.first_name}
+            </h2>
+            <h3 style={{ opacity: 0.6, fontSize: '1.2rem', marginBottom: '30px' }}>Тест: {targetQuiz.title}</h3>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginBottom: '30px' }}>
+               <div className="card" style={{ padding: '20px' }}>
+                 <div style={{ opacity: 0.6, fontSize: '0.9rem' }}>Всего попыток</div>
+                 <div style={{ fontSize: '1.8rem', fontWeight: 'bold' }}>{attempts.length}</div>
+               </div>
+               <div className="card" style={{ padding: '20px' }}>
+                 <div style={{ opacity: 0.6, fontSize: '0.9rem' }}>Успешных / Провальных</div>
+                 <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#4ade80' }}>
+                   {aggregateStats().passed} <span style={{color: 'var(--text-color)', opacity: 0.3}}>/</span> <span style={{color: '#facc15'}}>{aggregateStats().failed}</span>
+                 </div>
+               </div>
+               <div className="card" style={{ padding: '20px' }}>
+                 <div style={{ opacity: 0.6, fontSize: '0.9rem' }}>Среднее время</div>
+                 <div style={{ fontSize: '1.8rem', fontWeight: 'bold' }}>{aggregateStats().avgTime} сек</div>
+               </div>
+            </div>
+
+            <div className="card">
+              <h3 style={{ marginBottom: '20px' }}>График попыток</h3>
+              {renderChart()}
+              <div className="flex-center" style={{ gap: '15px', marginTop: '15px', fontSize: '0.8rem', opacity: 0.7 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: '12px', height: '12px', background: '#3b82f6', borderRadius: '3px' }}/> Максимальный балл</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: '12px', height: '12px', background: '#4ade80', borderRadius: '3px' }}/> Успех</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: '12px', height: '12px', background: '#facc15', borderRadius: '3px' }}/> Провал</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: '12px', height: '12px', background: '#ef4444', borderRadius: '3px' }}/> Подозрительно</div>
+              </div>
+            </div>
+
+            {renderAttemptDetails()}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default AnalyticsDetails;
