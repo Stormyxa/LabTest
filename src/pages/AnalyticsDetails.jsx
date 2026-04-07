@@ -66,10 +66,10 @@ const AnalyticsDetails = () => {
         setSidebarOpen(false); // Force close for students
       }
 
-      const { data: qF } = await supabase.from('quiz_classes').select('*').order('name');
-      const { data: secs } = await supabase.from('quiz_sections').select('*').order('name');
+      const { data: qF } = await supabase.from('classes').select('id, name, sort_order').order('sort_order', { ascending: true });
+      const { data: secs } = await supabase.from('sections').select('id, class_id, name, sort_order').order('sort_order', { ascending: true });
       
-      let quizQuery = supabase.from('quizzes').select('*').order('title');
+      let quizQuery = supabase.from('quizzes').select('id, title, section_id, author_id, is_archived, sort_order').eq('is_archived', false).order('sort_order', { ascending: true });
       if (p.role === 'editor') quizQuery = quizQuery.eq('author_id', p.id);
       const { data: qs } = await quizQuery;
 
@@ -114,7 +114,7 @@ const AnalyticsDetails = () => {
     if (profs) {
       const isTeacher = currentUserProfile?.role === 'teacher';
       // filter out observers unless admin/creator, or if teacher restrict to own school
-      let validProfs = profs.filter(p => !p.is_observer);
+      let validProfs = profs.filter(p => !p.is_observer && (p.first_name?.trim() || p.last_name?.trim()));
       
       const { data: currentQuizObj } = await supabase.from('quizzes').select('author_id').eq('id', qId).single();
 
@@ -397,7 +397,7 @@ const AnalyticsDetails = () => {
   const isPrivileged = profile?.role === 'admin' || profile?.role === 'creator' || profile?.role === 'teacher' || profile?.role === 'editor';
 
   return (
-    <div style={{ display: 'flex', minHeight: 'calc(100vh - 70px)' }}>
+    <div style={{ display: 'flex', height: 'calc(100vh - 70px)', overflow: 'hidden' }}>
       {/* Sidebar */}
       {isPrivileged && (
         <div 
@@ -411,11 +411,16 @@ const AnalyticsDetails = () => {
           }}
         >
           <div style={{ padding: '20px', width: '320px', display: 'flex', flexDirection: 'column', height: '100%' }}>
-            <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '20px' }}>
-              <h3 style={{ fontSize: '1.2rem', margin: 0 }}>Детальная Аналитика</h3>
+            <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '15px' }}>
+              <h3 style={{ fontSize: '1.2rem', margin: 0 }}>Аналитика</h3>
               <button onClick={() => setSidebarOpen(false)} style={{ background: 'transparent', color: 'inherit', boxShadow: 'none', padding: '5px' }}><ChevronLeft size={20}/></button>
             </div>
             
+            <div style={{ display: 'flex', background: 'rgba(0,0,0,0.05)', borderRadius: '8px', padding: '4px', marginBottom: '20px' }}>
+              <button style={{ flex: 1, padding: '8px', borderRadius: '6px', fontSize: '0.8rem', background: 'white', border: 'none', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', cursor: 'default', fontWeight: 'bold' }}>По Тестам</button>
+              <button onClick={() => navigate('/user-analytics')} style={{ flex: 1, padding: '8px', borderRadius: '6px', fontSize: '0.8rem', background: 'transparent', border: 'none', boxShadow: 'none', cursor: 'pointer', color: 'var(--text-color)', opacity: 0.7 }}>По Ученикам</button>
+            </div>
+
             {loading ? (
               <div style={{ flex: 1 }}>
                 <div className="skeleton" style={{ height: '30px', marginBottom: '10px' }} />
@@ -496,7 +501,7 @@ const AnalyticsDetails = () => {
       )}
 
       {/* Main Content Area */}
-      <div style={{ flex: 1, padding: '40px 60px', overflowY: 'auto', position: 'relative' }}>
+      <div style={{ flex: 1, padding: '40px 60px', overflowY: 'auto', position: 'relative', height: '100%' }}>
         {isPrivileged && !sidebarOpen && (
           <button onClick={() => setSidebarOpen(true)} className="flex-center" style={{ position: 'absolute', left: '20px', top: '40px', background: 'var(--card-bg)', color: 'inherit', padding: '10px', borderRadius: '10px', zIndex: 10 }}>
             <Menu size={20} />

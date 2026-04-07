@@ -242,7 +242,7 @@ const Profile = ({ session, profile, refreshProfile }) => {
             <StatBox label="Создано тестов" value={stats.created} icon={<FileText size={20} />} />
           </div>
 
-          <button onClick={() => navigate('/user-analytics')} className="flex-center" style={{ marginTop: '15px', width: '100%', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', padding: '15px', borderRadius: '15px', boxShadow: 'none', fontWeight: 'bold' }}>
+          <button onClick={() => navigate(`/user-analytics?userId=${session.user.id}`)} className="flex-center" style={{ marginTop: '15px', width: '100%', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', padding: '15px', borderRadius: '15px', boxShadow: 'none', fontWeight: 'bold' }}>
             <BarChart2 size={18} style={{ marginRight: '8px' }} /> Детальная аналитика
           </button>
 

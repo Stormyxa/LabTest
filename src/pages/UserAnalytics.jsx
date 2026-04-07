@@ -149,6 +149,7 @@ const UserAnalytics = () => {
   };
 
   const filteredUsers = users.filter(u => {
+    if (!u.first_name?.trim() && !u.last_name?.trim()) return false;
     if (filterCity !== 'all' && u.city_id !== filterCity) return false;
     if (filterSchool !== 'all' && u.school_id !== filterSchool) return false;
     if (filterClass !== 'all' && u.class_id !== filterClass) return false;
@@ -174,7 +175,7 @@ const UserAnalytics = () => {
   const isPrivileged = profile?.role === 'admin' || profile?.role === 'creator' || profile?.role === 'teacher' || profile?.role === 'editor';
 
   return (
-    <div style={{ display: 'flex', minHeight: 'calc(100vh - 70px)' }}>
+    <div style={{ display: 'flex', height: 'calc(100vh - 70px)', overflow: 'hidden' }}>
       {isPrivileged && (
         <div style={{ 
             width: sidebarOpen ? '320px' : '0', 
@@ -185,9 +186,14 @@ const UserAnalytics = () => {
             display: 'flex', flexDirection: 'column'
           }}>
           <div style={{ padding: '20px', width: '320px', display: 'flex', flexDirection: 'column', height: '100%' }}>
-            <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '20px' }}>
-              <h3 style={{ fontSize: '1.2rem', margin: 0 }}>Аналитика Учеников</h3>
+            <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '15px' }}>
+              <h3 style={{ fontSize: '1.2rem', margin: 0 }}>Аналитика</h3>
               <button onClick={() => setSidebarOpen(false)} style={{ background: 'transparent', color: 'inherit', boxShadow: 'none', padding: '5px' }}><ChevronLeft size={20}/></button>
+            </div>
+
+            <div style={{ display: 'flex', background: 'rgba(0,0,0,0.05)', borderRadius: '8px', padding: '4px', marginBottom: '20px' }}>
+              <button onClick={() => navigate('/analytics-details')} style={{ flex: 1, padding: '8px', borderRadius: '6px', fontSize: '0.8rem', background: 'transparent', border: 'none', boxShadow: 'none', cursor: 'pointer', color: 'var(--text-color)', opacity: 0.7 }}>По Тестам</button>
+              <button style={{ flex: 1, padding: '8px', borderRadius: '6px', fontSize: '0.8rem', background: 'white', border: 'none', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', cursor: 'default', fontWeight: 'bold' }}>По Ученикам</button>
             </div>
 
             {loading ? (
@@ -249,7 +255,7 @@ const UserAnalytics = () => {
       )}
 
       {/* Main Content Area */}
-      <div style={{ flex: 1, padding: '40px 60px', overflowY: 'auto', position: 'relative' }}>
+      <div style={{ flex: 1, padding: '40px 60px', overflowY: 'auto', position: 'relative', height: '100%' }}>
         {isPrivileged && !sidebarOpen && (
           <button onClick={() => setSidebarOpen(true)} className="flex-center" style={{ position: 'absolute', left: '20px', top: '40px', background: 'var(--card-bg)', color: 'inherit', padding: '10px', borderRadius: '10px', zIndex: 10 }}>
             <Menu size={20} />
