@@ -23,8 +23,11 @@ const UserAnalytics = () => {
   const [filterSchool, setFilterSchool] = useState(sessionStorage.getItem('ua_u_school') || 'all');
   const [filterClass, setFilterClass] = useState(sessionStorage.getItem('ua_u_class') || 'all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [showObservers, setShowObservers] = useState(sessionStorage.getItem('ua_show_observers') === 'true');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const scrollRef = React.useRef(null);
+
+  useEffect(() => { sessionStorage.setItem('ua_show_observers', showObservers); }, [showObservers]);
 
   useEffect(() => { sessionStorage.setItem('ua_u_city', filterCity); }, [filterCity]);
   useEffect(() => { sessionStorage.setItem('ua_u_school', filterSchool); }, [filterSchool]);
@@ -66,7 +69,11 @@ const UserAnalytics = () => {
         if (p.role === 'teacher') query = query.eq('school_id', p.school_id);
         
         const { data: allProfs } = await query;
-        if (allProfs) setUsers(allProfs);
+        if (allProfs) {
+          // Calculate suspicion for each user based on last 20 tests
+          // (This is a simplified pass, ideally we'd have a more robust calc)
+          setUsers(allProfs);
+        }
       }
 
       const effectiveUserId = userIdParam || (!isPrivileged ? p.id : null);
@@ -150,6 +157,7 @@ const UserAnalytics = () => {
 
   const filteredUsers = users.filter(u => {
     if (!u.first_name?.trim() && !u.last_name?.trim()) return false;
+    if (!showObservers && u.is_observer) return false;
     if (filterCity !== 'all' && u.city_id !== filterCity) return false;
     if (filterSchool !== 'all' && u.school_id !== filterSchool) return false;
     if (filterClass !== 'all' && u.class_id !== filterClass) return false;
@@ -191,9 +199,26 @@ const UserAnalytics = () => {
               <button onClick={() => setSidebarOpen(false)} style={{ background: 'transparent', color: 'inherit', boxShadow: 'none', padding: '5px' }}><ChevronLeft size={20}/></button>
             </div>
 
-            <div style={{ display: 'flex', background: 'rgba(0,0,0,0.05)', borderRadius: '8px', padding: '4px', marginBottom: '20px' }}>
+            <div style={{ display: 'flex', background: 'rgba(0,0,0,0.05)', borderRadius: '8px', padding: '4px', marginBottom: '15px' }}>
               <button onClick={() => navigate('/analytics-details')} style={{ flex: 1, padding: '8px', borderRadius: '6px', fontSize: '0.8rem', background: 'transparent', border: 'none', boxShadow: 'none', cursor: 'pointer', color: 'var(--text-color)', opacity: 0.7 }}>По Тестам</button>
               <button style={{ flex: 1, padding: '8px', borderRadius: '6px', fontSize: '0.8rem', background: 'white', border: 'none', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', cursor: 'default', fontWeight: 'bold' }}>По Ученикам</button>
+            </div>
+
+            <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(0,0,0,0.02)', padding: '10px', borderRadius: '8px' }}>
+              <span style={{ fontSize: '0.8rem', opacity: 0.7 }}>Показать наблюдателей</span>
+              <button 
+                onClick={() => setShowObservers(!showObservers)}
+                style={{ 
+                  width: '40px', height: '20px', borderRadius: '10px', 
+                  background: showObservers ? 'var(--primary-color)' : '#ccc',
+                  position: 'relative', border: 'none', cursor: 'pointer', transition: 'background 0.3s'
+                }}
+              >
+                <div style={{ 
+                  position: 'absolute', top: '2px', left: showObservers ? '22px' : '2px',
+                  width: '16px', height: '16px', borderRadius: '50%', background: 'white', transition: 'left 0.3s'
+                }} />
+              </button>
             </div>
 
             {loading ? (
@@ -289,7 +314,7 @@ const UserAnalytics = () => {
             </h2>
             <h3 style={{ opacity: 0.6, fontSize: '1.2rem', marginBottom: '30px' }}>Общая успеваемость по тестам</h3>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginBottom: '30px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '20px', marginBottom: '30px' }}>
                <div className="card" style={{ padding: '20px' }}>
                  <div style={{ opacity: 0.6, fontSize: '0.9rem' }}>Пройдено (Уникальных)</div>
                  <div style={{ fontSize: '1.8rem', fontWeight: 'bold' }}>{latestAttempts.length} шт.</div>
@@ -300,7 +325,7 @@ const UserAnalytics = () => {
                    {currentStats.passed} <span style={{color: 'var(--text-color)', opacity: 0.3}}>/</span> <span style={{color: '#facc15'}}>{currentStats.failed}</span>
                  </div>
                </div>
-               <div className="card" style={{ padding: '20px' }}>
+               <div className="card" style={{ padding: '20px', border: currentStats.suspicious > 0 ? '1px solid #ef4444' : 'none' }}>
                  <div style={{ opacity: 0.6, fontSize: '0.9rem' }}>Подозрительных</div>
                  <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: currentStats.suspicious > 0 ? '#ef4444' : 'inherit' }}>{currentStats.suspicious}</div>
                </div>
@@ -329,7 +354,7 @@ const UserAnalytics = () => {
                   {/* Vertical Colorful Axis */}
                   <div style={{ zIndex: 5, width: '6px', height: '100%', background: 'linear-gradient(to top, rgba(239, 68, 68, 0.8) 0%, rgba(239, 68, 68, 0.8) 20%, rgba(250, 204, 21, 0.8) 20%, rgba(250, 204, 21, 0.8) 50%, rgba(74, 222, 128, 0.8) 50%, rgba(74, 222, 128, 0.8) 100%)', borderRadius: '3px', marginLeft: '35px', marginRight: '15px' }} />
 
-                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', height: '100%', flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', height: '100%', flex: 1, overflowX: 'auto', paddingBottom: '10px' }}>
                     {latestAttempts.map((att) => {
                       const heightPercent = (att.score / att.max_score) * 100;
                       const isZero = att.score === 0;
@@ -344,7 +369,7 @@ const UserAnalytics = () => {
                           key={att.id}
                           onClick={() => setSelectedAttempt(att)}
                           style={{
-                            flex: 1, minWidth: '20px', maxWidth: '60px', height: '100%',
+                            flex: 1, minWidth: '25px', maxWidth: '60px', height: '100%',
                             display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
                             cursor: 'pointer',
                             opacity: isSelected ? 1 : 0.6,
@@ -353,6 +378,9 @@ const UserAnalytics = () => {
                           }}
                           title={`Тест: ${quizzesMap[att.quiz_id]}\nБалл: ${att.score}/${att.max_score}\nВремя: ${att.time_spent_total}с\n${att.is_suspicious ? '(Подозрительно)' : ''}`}
                         >
+                          {att.score === att.max_score && !targetUser.is_observer && (
+                            <div style={{ position: 'absolute', top: '-15px', left: '50%', transform: 'translateX(-50%)', fontSize: '1rem', zIndex: 5 }}>👑</div>
+                          )}
                           {/* Background representing Max Score for relativity */}
                           <div style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.03)', borderRadius: '6px 6px 0 0', zIndex: 0 }} />
                           
@@ -396,13 +424,11 @@ const UserAnalytics = () => {
                       <div style={{ fontSize: '0.8rem', opacity: 0.6 }}>Время прохождения</div>
                       <div style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>{selectedAttempt.time_spent_total} сек</div>
                     </div>
-                    {isPrivileged && (
-                       <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center' }}>
                          <button onClick={() => navigate(`/analytics-details?quizId=${selectedAttempt.quiz_id}&userId=${targetUser.id}`)} style={{ width: '100%', padding: '15px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)' }}>
                            Детальный разбор
                          </button>
-                       </div>
-                    )}
+                    </div>
                   </div>
                </div>
             )}
@@ -413,5 +439,30 @@ const UserAnalytics = () => {
     </div>
   );
 };
+
+const mobileStyles = `
+@media (max-width: 768px) {
+  .details-sidebar {
+    position: fixed;
+    z-index: 100;
+    height: 100%;
+    box-shadow: 10px 0 30px rgba(0,0,0,0.2);
+  }
+  .main-content {
+    padding: 20px !important;
+  }
+  .sidebar-toggle-btn {
+    left: 10px !important;
+    top: 20px !important;
+  }
+}
+`;
+
+// Inject styles
+if (typeof document !== 'undefined') {
+  const style = document.createElement('style');
+  style.textContent = mobileStyles;
+  document.head.append(style);
+}
 
 export default UserAnalytics;

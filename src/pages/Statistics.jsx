@@ -50,12 +50,17 @@ const Statistics = ({ session, profile }) => {
 
     if (pData) {
       const processed = pData.map(u => {
-        const results = u.quiz_results || [];
+        const results = [...(u.quiz_results || [])].sort((a,b) => new Date(b.completed_at) - new Date(a.completed_at));
+        const latest20 = results.slice(0, 20);
+        const failedCount = latest20.filter(r => !r.is_passed).length;
+        const isSuspicious = latest20.length > 0 && (failedCount / latest20.length) > 0.5;
+        
         return {
           ...u,
           passedQuizzes: results.filter(r => r.is_passed).length,
           totalPoints: results.reduce((acc, curr) => acc + curr.score, 0),
-          avgScore: results.length > 0 ? Math.round((results.reduce((acc, curr) => acc + curr.score, 0) / results.reduce((acc, curr) => acc + curr.total_questions, 0)) * 100) : 0
+          avgScore: results.length > 0 ? Math.round((results.reduce((acc, curr) => acc + curr.score, 0) / results.reduce((acc, curr) => acc + curr.total_questions, 0)) * 100) : 0,
+          isSuspicious
         };
       });
       setStats(processed);
@@ -239,11 +244,19 @@ const Statistics = ({ session, profile }) => {
               {filteredStats.map((u, idx) => {
                 const isMe = u.id === session.user.id;
                 return (
-                  <tr key={u.id} style={{ borderBottom: '1px solid rgba(0,0,0,0.01)', background: isMe ? 'rgba(99, 102, 241, 0.05)' : 'none' }}>
+                  <tr key={u.id} style={{ 
+                    borderBottom: '1px solid rgba(0,0,0,0.01)', 
+                    background: u.isSuspicious ? 'rgba(239, 68, 68, 0.08)' : (isMe ? 'rgba(99, 102, 241, 0.05)' : 'none') 
+                  }}>
                     <td style={{ padding: '20px' }}>
                       <div className="flex-center" style={{ width: '30px', height: '30px', borderRadius: '50%', background: idx < 3 ? 'var(--accent-color)' : 'rgba(0,0,0,0.05)', color: idx < 3 ? 'white' : 'inherit', fontSize: '0.8rem', fontWeight: '800' }}>{idx + 1}</div>
                     </td>
-                    <td style={{ padding: '20px', fontWeight: isMe ? '700' : '400' }}>{getDisplayName(u)}</td>
+                    <td style={{ padding: '20px', fontWeight: isMe ? '700' : '400', color: u.isSuspicious ? '#ef4444' : 'inherit' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {getDisplayName(u)}
+                        {u.isSuspicious && <AlertTriangle size={14} title="Низкая успеваемость" />}
+                      </div>
+                    </td>
                     <td style={{ padding: '20px', fontSize: '0.85rem', opacity: 0.7 }}>
                       <div>{cities.find(c => c.id === u.city_id)?.name || '—'}</div>
                       <div>{schools.find(s => s.id === u.school_id)?.name || '—'}</div>

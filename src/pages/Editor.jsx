@@ -6,7 +6,7 @@ import {
   Plus, Trash2, FileJson, AlertCircle, TrendingUp,
   CheckCircle, Check, Copy, X, AlertTriangle,
   ChevronUp, ChevronDown, Save, Book, Link as LinkIcon,
-  Pencil, Eye, EyeOff, Shield, Clock
+  Pencil, Eye, EyeOff, Shield, Clock, Lock
 } from 'lucide-react';
 
 const EditorSkeleton = () => (
@@ -448,23 +448,6 @@ const Editor = ({ session, profile }) => {
     else fetchData();
   };
 
-  const EditorSkeleton = () => (
-    <div className="grid-2 animate" style={{ alignItems: 'start', gap: '30px' }}>
-      {activeTab === 'create' ? (
-        <>
-          <div className="card skeleton-card skeleton" style={{ height: '400px' }} />
-          <div className="card skeleton-card skeleton" style={{ height: '400px', opacity: 0.5 }} />
-        </>
-      ) : (
-        <div style={{ gridColumn: '1 / -1' }}>
-          {[1, 2, 3].map(i => (
-            <div key={i} className="card skeleton-card skeleton" style={{ marginBottom: '30px', height: '80px' }} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-
   return (
     <>
       <div className="container animate" style={{ padding: '40px 20px' }}>
@@ -478,38 +461,7 @@ const Editor = ({ session, profile }) => {
 
         <div className="grid-2" style={{ alignItems: 'start', gap: '30px' }}>
           {loading ? (
-            activeTab === 'create' ? (
-              <div className="grid-2" style={{ gap: '30px', gridColumn: '1 / -1', width: '100%' }}>
-                <div className="card" style={{ padding: '30px' }}>
-                  <div className="skeleton" style={{ height: '30px', width: '40%', marginBottom: '25px' }} />
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                    <div className="skeleton" style={{ height: '80px', width: '100%' }} />
-                    <div style={{ display: 'flex', gap: '10px' }}>
-                      <div className="skeleton" style={{ height: '45px', flex: 1 }} />
-                      <div className="skeleton" style={{ height: '45px', flex: 1 }} />
-                    </div>
-                    <div className="skeleton" style={{ height: '150px', width: '100%' }} />
-                  </div>
-                </div>
-                <div className="card" style={{ background: 'rgba(99, 102, 241, 0.05)', padding: '30px' }}>
-                  <div className="flex-center" style={{ gap: '10px', marginBottom: '20px', justifyContent: 'flex-start' }}>
-                    <div className="skeleton" style={{ height: '24px', width: '24px', borderRadius: '50%' }} />
-                    <div className="skeleton" style={{ height: '24px', width: '60%' }} />
-                  </div>
-                  <div className="skeleton" style={{ height: '200px', width: '100%', marginBottom: '20px' }} />
-                  <div className="skeleton" style={{ height: '100px', width: '100%' }} />
-                </div>
-              </div>
-            ) : (
-              <div className="card" style={{ gridColumn: '1 / -1', padding: '0', overflow: 'hidden' }}>
-                <div className="skeleton" style={{ height: '70px', width: '100%' }} />
-                <div style={{ padding: '25px' }}>
-                  {[1, 2, 3].map(i => (
-                    <div key={i} className="skeleton" style={{ height: '100px', width: '100%', marginBottom: '15px' }} />
-                  ))}
-                </div>
-              </div>
-            )
+             <EditorSkeleton />
           ) : (
             <div className="grid-2 animate" style={{ alignItems: 'start', gap: '30px', gridColumn: '1 / -1' }}>
               {activeTab === 'create' ? (

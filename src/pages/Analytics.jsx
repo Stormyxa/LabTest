@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { ChevronLeft, User, BarChart, Calendar, CheckCircle, XCircle, Mail, Trash2, AlertTriangle, Filter, Download, Pencil, Shield, EyeOff, ArrowDown, ArrowUp, Info } from 'lucide-react';
+import { ChevronLeft, User, BarChart, Calendar, CheckCircle, XCircle, Mail, Trash2, AlertTriangle, Filter, Download, Pencil, Shield, EyeOff, ArrowDown, ArrowUp, Info, Lock } from 'lucide-react';
 
 const Analytics = () => {
   const [searchParams] = useSearchParams();
@@ -85,7 +85,7 @@ const Analytics = () => {
   const fetchQuizData = async () => {
     setLoading(true);
     // Получаем тест и роль его автора
-    const { data: q } = await supabase.from('quizzes').select('*, profiles!quizzes_author_id_fkey(role)').eq('id', quizId).single();
+    const { data: q } = await supabase.from('quizzes').select('*, profiles(role)').eq('id', quizId).single();
     if (q) {
       setQuiz(q);
       setQuizAuthorRole(q.profiles?.role);
@@ -598,7 +598,7 @@ const Analytics = () => {
                       </div>
                     </div>
                   </td>
-                  <td style={{ padding: '20px', fontWeight: 'bold' }}>
+                  <td style={{ padding: '20px', fontWeight: 'bold', color: res.isSuspiciousUser ? '#ef4444' : 'inherit' }}>
                     {res.score} / {res.total_questions}
                   </td>
                   <td style={{ padding: '20px' }}>

@@ -55,9 +55,20 @@ const QuizRedactor = () => {
   const [deleteQModal, setDeleteQModal] = useState(null);
   const [saving, setSaving] = useState(false);
   const [validErrors, setValidErrors] = useState([]);
-  const [showValidErrors, setShowValidErrors] = useState(false);
+  const [showDeleteResultsModal, setShowDeleteResultsModal] = useState(false);
+  const [deleteResultsLock, setDeleteResultsLock] = useState(3);
 
   useEffect(() => { if (quizId) fetchAll(); }, [quizId]);
+
+  useEffect(() => {
+    let timer;
+    if (showDeleteResultsModal && deleteResultsLock > 0) {
+      timer = setInterval(() => {
+        setDeleteResultsLock(prev => prev - 1);
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [showDeleteResultsModal, deleteResultsLock]);
 
   const fetchAll = async () => {
     setLoading(true);
@@ -240,6 +251,25 @@ const QuizRedactor = () => {
     }
   };
 
+  const handleDeleteResultsAndEdit = async () => {
+    if (deleteResultsLock > 0) return;
+    try {
+      setSaving(true);
+      // Delete attempts and results
+      await supabase.from('quiz_attempts').delete().eq('quiz_id', quizId);
+      await supabase.from('quiz_results').delete().eq('quiz_id', quizId);
+      
+      // Re-fetch data to unlock editor
+      setShowDeleteResultsModal(false);
+      await fetchAll();
+      setBlocked(null);
+    } catch (err) {
+      alert(`Ошибка при сбросе: ${err.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleCancelChanges = () => {
     setTitle(savedTitle);
     setQuestions(deepClone(savedQuestions));
@@ -412,6 +442,15 @@ const QuizRedactor = () => {
                 <Trash2 size={18} style={{ marginRight: '8px' }} /> Удалить тест
               </button>
             )}
+            {isPrivileged && (
+              <button 
+                onClick={() => { setDeleteResultsLock(3); setShowDeleteResultsModal(true); }} 
+                className="flex-center" 
+                style={{ padding: '12px 24px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px dashed #ef4444' }}
+              >
+                <RotateCcw size={18} style={{ marginRight: '8px' }} /> Сбросить результаты и редактировать
+              </button>
+            )}
           </div>
           {!canDelete && isAuthor && (
              <p style={{ fontSize: '0.85rem', color: '#f87171', background: 'rgba(248,113,113,0.05)', padding: '10px 20px', borderRadius: '12px', marginTop: '10px' }}>
@@ -542,6 +581,30 @@ const QuizRedactor = () => {
               <h2 style={{ marginBottom: '10px', textAlign: 'center' }}>Готово!</h2>
               <p style={{ opacity: 0.7, marginBottom: '25px', textAlign: 'center' }}>Название теста успешно обновлено.</p>
               <button onClick={() => setShowSuccessUpdateModal(false)} style={{ width: '100%', background: 'var(--primary-color)', color: 'white' }}>Отлично</button>
+            </div>
+          </div>
+        )}
+        {showDeleteResultsModal && (
+          <div className="modal-overlay" onClick={() => setShowDeleteResultsModal(false)}>
+            <div className="modal-content animate modal-content-danger" onClick={e => e.stopPropagation()} style={{ width: '450px' }}>
+              <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', margin: '0 auto 25px' }}>
+                <AlertTriangle size={32} />
+              </div>
+              <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>Сбросить всю статистику?</h2>
+              <p style={{ opacity: 0.7, marginBottom: '25px', lineHeight: '1.6', textAlign: 'center' }}>
+                Это действие <strong>полностью удалит</strong> все результаты и попытки всех учеников по данному тесту.<br />
+                Это необходимо для внесения изменений в структуру вопросов.
+              </p>
+              <div className="grid-2" style={{ gap: '15px' }}>
+                <button onClick={() => setShowDeleteResultsModal(false)} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit' }}>Отмена</button>
+                <button 
+                  onClick={handleDeleteResultsAndEdit} 
+                  disabled={deleteResultsLock > 0 || saving}
+                  style={{ background: '#ef4444', color: 'white', opacity: deleteResultsLock > 0 ? 0.5 : 1 }}
+                >
+                  {deleteResultsLock > 0 ? `Подождите (${deleteResultsLock})` : 'Подтвердить и очистить'}
+                </button>
+              </div>
             </div>
           </div>
         )}
