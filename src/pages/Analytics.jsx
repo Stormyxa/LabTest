@@ -113,7 +113,7 @@ const Analytics = () => {
 
       const combined = r.map(res => {
         const stats = statsMap[res.user_id] || { total: 0, suspicious: 0, failed: 0 };
-        const isSuspiciousUser = stats.total > 0 && (stats.suspicious / stats.total) > 0.3;
+        const isSuspiciousUser = stats.total > 0 && (stats.suspicious / stats.total) > 0.4;
         const isUnderperformingUser = stats.total > 0 && (stats.failed / stats.total) > 0.5 && !isSuspiciousUser;
 
         return {
@@ -568,7 +568,7 @@ const Analytics = () => {
               return (
                 <tr key={res.id} style={{ 
                   borderBottom: '1px solid rgba(0,0,0,0.01)',
-                  background: res.isSuspiciousUser ? 'rgba(248, 113, 113, 0.05)' : (res.isUnderperformingUser ? 'rgba(250, 204, 21, 0.05)' : 'transparent')
+                  background: res.isSuspiciousUser ? 'rgba(239, 68, 68, 0.08)' : (res.isUnderperformingUser ? 'rgba(250, 204, 21, 0.05)' : 'transparent')
                 }}>
                   <td style={{ padding: '20px' }}>
                     <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '8px' }}>

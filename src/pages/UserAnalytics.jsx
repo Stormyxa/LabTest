@@ -115,6 +115,23 @@ const UserAnalytics = () => {
     const { data: atts } = await attsQuery;
 
     if (atts && atts.length > 0) {
+      // Group by quiz to find suspicious tests
+      const quizStats = {};
+      atts.forEach(a => {
+        if (!quizStats[a.quiz_id]) quizStats[a.quiz_id] = { total: 0, suspicious: 0, failed: 0 };
+        quizStats[a.quiz_id].total++;
+        if (a.is_suspicious) quizStats[a.quiz_id].suspicious++;
+        if (!a.is_passed) quizStats[a.quiz_id].failed++;
+      });
+
+      // Mark quizes as "Red" (suspicious) or "Yellow" (underperforming)
+      const redQuizIds = new Set();
+      const failedQuizIds = new Set();
+      Object.entries(quizStats).forEach(([qId, s]) => {
+        if (s.suspicious / s.total >= 0.4) redQuizIds.add(qId);
+        else if (s.failed / s.total > 0.5) failedQuizIds.add(qId);
+      });
+
       // Find latest distinct 20 quizzes
       const distinctQuizzes = [];
       const seenQuizIds = new Set();
@@ -122,7 +139,11 @@ const UserAnalytics = () => {
       for (const att of atts) {
         if (!seenQuizIds.has(att.quiz_id)) {
           seenQuizIds.add(att.quiz_id);
-          distinctQuizzes.push(att);
+          // Attach the "red" status to the attempt object for easy rendering
+          distinctQuizzes.push({
+            ...att,
+            isQuizRed: redQuizIds.has(att.quiz_id)
+          });
           if (distinctQuizzes.length === 20) break;
         }
       }
@@ -130,6 +151,20 @@ const UserAnalytics = () => {
       // Reverse to chronological for x-axis
       distinctQuizzes.reverse();
       setLatestAttempts(distinctQuizzes);
+
+      // Aggregate overall profile status
+      const redCount = redQuizIds.size;
+      const totalQuizzes = Object.keys(quizStats).length;
+      const failedCount = failedQuizIds.size;
+
+      const profileSuspicious = totalQuizzes > 0 && (redCount / totalQuizzes) >= 0.4;
+      const profileUnderperforming = totalQuizzes > 0 && (failedCount / totalQuizzes) > 0.5 && !profileSuspicious;
+
+      setTargetUser(prev => ({ 
+        ...prev, 
+        is_suspicious_profile: profileSuspicious,
+        is_underperforming_profile: profileUnderperforming
+      }));
 
       // Fetch titles for these quizzes
       const qIds = distinctQuizzes.map(a => a.quiz_id);
@@ -176,7 +211,8 @@ const UserAnalytics = () => {
       else if (a.is_passed) passed++;
       else failed++;
     });
-    return { passed, failed, suspicious };
+    const isSuspicious = latestAttempts.length > 0 && (suspicious / latestAttempts.length) > 0.4;
+    return { passed, failed, suspicious, isSuspicious };
   };
 
   const currentStats = aggregateStats();
@@ -308,9 +344,11 @@ const UserAnalytics = () => {
           </div>
         ) : (
           <div className="animate">
-            <h2 style={{ fontSize: '2rem', marginBottom: '10px' }}>
+            <h2 style={{ fontSize: '2rem', marginBottom: '10px', color: targetUser.is_suspicious_profile ? '#ef4444' : (targetUser.is_underperforming_profile ? '#ca8a04' : 'inherit') }}>
               {targetUser.last_name} {targetUser.first_name} 
-              {targetUser.is_observer && <span style={{ marginLeft: '10px', fontSize: '0.8rem', background: 'rgba(250, 204, 21, 0.1)', color: '#ca8a04', padding: '4px 10px', borderRadius: '10px' }}>Наблюдатель</span>}
+              {targetUser.is_suspicious_profile && <span style={{ marginLeft: '10px', fontSize: '0.9rem', background: '#ef4444', color: 'white', padding: '4px 12px', borderRadius: '20px', verticalAlign: 'middle' }}>Читер</span>}
+              {!targetUser.is_suspicious_profile && targetUser.is_underperforming_profile && <span style={{ marginLeft: '10px', fontSize: '0.8rem', background: 'rgba(250, 204, 21, 0.1)', color: '#ca8a04', padding: '4px 10px', borderRadius: '10px' }}>Низкая успеваемость</span>}
+              {targetUser.is_observer && <span style={{ marginLeft: '10px', fontSize: '0.8rem', background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', padding: '4px 10px', borderRadius: '10px' }}>Наблюдатель</span>}
             </h2>
             <h3 style={{ opacity: 0.6, fontSize: '1.2rem', marginBottom: '30px' }}>Общая успеваемость по тестам</h3>
 
@@ -361,8 +399,11 @@ const UserAnalytics = () => {
                       const isSelected = selectedAttempt?.id === att.id;
                       
                       let color = '#4ade80'; // Green
-                      if (att.is_suspicious) color = '#ef4444'; // Red
+                      if (att.isQuizRed || att.is_suspicious) color = '#ef4444'; // Red
                       else if (!att.is_passed) color = '#facc15'; // Yellow
+                      
+                      // If user is suspicious overall AND this is their best result (crown holder), make it red for visual warning
+                      if (currentStats.isSuspicious && att.score === att.max_score) color = '#ef4444';
                       
                       return (
                         <div 

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Trophy, Download, Users, School, Filter, MapPin, Building, Info } from 'lucide-react';
+import { Trophy, Download, Users, School, Filter, AlertTriangle, MapPin, Building, Info } from 'lucide-react';
 import { useScrollRestoration } from '../lib/useScrollRestoration';
 
 const Statistics = ({ session, profile }) => {
@@ -46,21 +46,48 @@ const Statistics = ({ session, profile }) => {
 
     const { data: pData } = await supabase
       .from('profiles')
-      .select('*, quiz_results(score, total_questions, is_passed)');
+      .select('*, quiz_results(score, total_questions, is_passed, quiz_id), quiz_attempts(is_suspicious, is_passed, quiz_id)');
 
     if (pData) {
       const processed = pData.map(u => {
-        const results = [...(u.quiz_results || [])].sort((a,b) => new Date(b.completed_at) - new Date(a.completed_at));
-        const latest20 = results.slice(0, 20);
-        const failedCount = latest20.filter(r => !r.is_passed).length;
-        const isSuspicious = latest20.length > 0 && (failedCount / latest20.length) > 0.5;
+        const results = [...(u.quiz_results || [])].sort((a, b) => b.score - a.score);
+        const attempts = [...(u.quiz_attempts || [])];
         
+        // Group attempts by quiz_id to find per-quiz status
+        const quizStatsMap = {};
+        attempts.forEach(a => {
+          if (!quizStatsMap[a.quiz_id]) quizStatsMap[a.quiz_id] = { total: 0, suspicious: 0, failed: 0 };
+          quizStatsMap[a.quiz_id].total++;
+          if (a.is_suspicious) quizStatsMap[a.quiz_id].suspicious++;
+          if (!a.is_passed) quizStatsMap[a.quiz_id].failed++;
+        });
+
+        let redQuizzes = 0;
+        let yellowQuizzes = 0;
+        const quizIds = Object.keys(quizStatsMap);
+        
+        quizIds.forEach(qId => {
+          const s = quizStatsMap[qId];
+          if (s.suspicious / s.total >= 0.4) redQuizzes++;
+          else if (s.failed / s.total > 0.5) yellowQuizzes++;
+        });
+
+        const totalUniqueQuizzes = quizIds.length;
+        const isSuspicious = totalUniqueQuizzes > 0 && (redQuizzes / totalUniqueQuizzes) >= 0.4;
+        
+        const totalPointsScored = results.reduce((acc, curr) => acc + (curr.score || 0), 0);
+        const totalPointsPossible = results.reduce((acc, curr) => acc + (curr.total_questions || 1), 0);
+        const rawAvgScore = totalPointsPossible > 0 ? (totalPointsScored / totalPointsPossible) : 1;
+        
+        const isUnderperforming = rawAvgScore <= 0.5 && !isSuspicious;
+
         return {
           ...u,
           passedQuizzes: results.filter(r => r.is_passed).length,
           totalPoints: results.reduce((acc, curr) => acc + curr.score, 0),
-          avgScore: results.length > 0 ? Math.round((results.reduce((acc, curr) => acc + curr.score, 0) / results.reduce((acc, curr) => acc + curr.total_questions, 0)) * 100) : 0,
-          isSuspicious
+          avgScore: results.length > 0 ? Math.round(rawAvgScore * 100) : 0,
+          isSuspicious,
+          isUnderperforming
         };
       });
       setStats(processed);
@@ -244,9 +271,9 @@ const Statistics = ({ session, profile }) => {
               {filteredStats.map((u, idx) => {
                 const isMe = u.id === session.user.id;
                 return (
-                  <tr key={u.id} style={{ 
-                    borderBottom: '1px solid rgba(0,0,0,0.01)', 
-                    background: u.isSuspicious ? 'rgba(239, 68, 68, 0.08)' : (isMe ? 'rgba(99, 102, 241, 0.05)' : 'none') 
+                  <tr key={u.id} style={{
+                    borderBottom: '1px solid rgba(0,0,0,0.01)',
+                    background: u.isSuspicious ? 'rgba(239, 68, 68, 0.25)' : (u.isUnderperforming ? 'rgba(250, 204, 21, 0.3)' : (isMe ? 'rgba(99, 102, 241, 0.05)' : 'none'))
                   }}>
                     <td style={{ padding: '20px' }}>
                       <div className="flex-center" style={{ width: '30px', height: '30px', borderRadius: '50%', background: idx < 3 ? 'var(--accent-color)' : 'rgba(0,0,0,0.05)', color: idx < 3 ? 'white' : 'inherit', fontSize: '0.8rem', fontWeight: '800' }}>{idx + 1}</div>
@@ -254,7 +281,8 @@ const Statistics = ({ session, profile }) => {
                     <td style={{ padding: '20px', fontWeight: isMe ? '700' : '400', color: u.isSuspicious ? '#ef4444' : 'inherit' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         {getDisplayName(u)}
-                        {u.isSuspicious && <AlertTriangle size={14} title="Низкая успеваемость" />}
+                        {u.isSuspicious && <AlertTriangle size={14} title="Подозрение в читерстве" color="#ef4444" />}
+                        {!u.isSuspicious && u.isUnderperforming && <AlertTriangle size={14} title="Низкая успеваемость" color="#ca8a04" />}
                       </div>
                     </td>
                     <td style={{ padding: '20px', fontSize: '0.85rem', opacity: 0.7 }}>
@@ -274,7 +302,7 @@ const Statistics = ({ session, profile }) => {
                     </td>
                     <td style={{ padding: '20px' }}>
                       {(profile?.role === 'teacher' || profile?.role === 'admin' || profile?.role === 'creator') && (
-                        <button 
+                        <button
                           onClick={() => navigate(`/user-analytics?userId=${u.id}`)}
                           style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', padding: '6px', borderRadius: '8px', boxShadow: 'none' }}
                           title="Аналитика ученика"

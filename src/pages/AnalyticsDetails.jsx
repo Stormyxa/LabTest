@@ -239,8 +239,7 @@ const AnalyticsDetails = () => {
       if (a.is_passed) passed++;
       else failed++;
     });
-    const failedCount = attempts.filter(a => !a.is_passed || a.is_suspicious).length;
-    const isSuspiciousUser = attempts.length > 0 && (failedCount / attempts.length) > 0.3;
+    const isSuspiciousUser = attempts.length > 0 && (attempts.filter(a => a.is_suspicious).length / attempts.length) > 0.4;
 
     return {
       totalTime,
@@ -304,7 +303,7 @@ const AnalyticsDetails = () => {
       label: 'Максимум',
       score: stats.maxScore,
       maxPossible: qsLength,
-      color: '#3b82f6', // Blue
+      color: stats.isSuspiciousUser ? '#ef4444' : '#3b82f6', // Red if suspicious, else Blue
       data: null, // special
       type: 'max'
     });
