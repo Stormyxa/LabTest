@@ -127,7 +127,7 @@ const AnalyticsDetails = () => {
       const isTeacher = currentUserProfile?.role === 'teacher';
       // filter out observers unless admin/creator, or if teacher restrict to own school
       // filter out observers unless toggled, and restrict to own school for teachers
-      let validProfs = profs.filter(p => (showObservers || !p.is_observer) && (p.first_name?.trim() || p.last_name?.trim()));
+      let validProfs = profs.filter(p => (p.first_name?.trim() || p.last_name?.trim()));
 
       const { data: currentQuizObj } = await supabase.from('quizzes').select('author_id').eq('id', qId).single();
 
@@ -216,6 +216,7 @@ const AnalyticsDetails = () => {
   const isSectionEmpty = (sId) => !quizzes.some(q => q.section_id === sId);
 
   const filteredUsers = users.filter(u => {
+    if (!showObservers && u.is_observer) return false;
     if (filterCity !== 'all' && u.city_id !== filterCity) return false;
     if (filterSchool !== 'all' && u.school_id !== filterSchool) return false;
     if (filterClass !== 'all' && u.class_id !== filterClass) return false;
