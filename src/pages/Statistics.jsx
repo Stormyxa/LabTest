@@ -29,10 +29,16 @@ const Statistics = ({ session, profile }) => {
 
   useEffect(() => {
     fetchData();
-    // Если зашел учитель, сразу жестко ставим его школу и город в фильтры
-    if (profile?.role === 'teacher') {
-      if (profile.city_id) setFilterCity(profile.city_id);
-      if (profile.school_id) setFilterSchool(profile.school_id);
+    // Set defaults from profile if not already set by session
+    if (profile) {
+      if (!sessionStorage.getItem('f_city') && profile.city_id) setFilterCity(profile.city_id);
+      if (!sessionStorage.getItem('f_school') && profile.school_id) setFilterSchool(profile.school_id);
+
+      // Force-lock teacher filters
+      if (profile.role === 'teacher') {
+        if (profile.city_id) setFilterCity(profile.city_id);
+        if (profile.school_id) setFilterSchool(profile.school_id);
+      }
     }
   }, [profile]);
 
@@ -270,29 +276,30 @@ const Statistics = ({ session, profile }) => {
             <tbody>
               {filteredStats.map((u, idx) => {
                 const isMe = u.id === session.user.id;
+                const rowBg = u.isSuspicious ? 'rgba(239, 68, 68, 0.25)' : (u.isUnderperforming ? 'rgba(250, 204, 21, 0.3)' : (isMe ? 'rgba(99, 102, 241, 0.05)' : 'transparent'));
+                
                 return (
                   <tr key={u.id} style={{
                     borderBottom: '1px solid rgba(0,0,0,0.01)',
-                    background: u.isSuspicious ? 'rgba(239, 68, 68, 0.25)' : (u.isUnderperforming ? 'rgba(250, 204, 21, 0.3)' : (isMe ? 'rgba(99, 102, 241, 0.05)' : 'none'))
                   }}>
-                    <td style={{ padding: '20px' }}>
+                    <td style={{ padding: '20px', background: rowBg }}>
                       <div className="flex-center" style={{ width: '30px', height: '30px', borderRadius: '50%', background: idx < 3 ? 'var(--accent-color)' : 'rgba(0,0,0,0.05)', color: idx < 3 ? 'white' : 'inherit', fontSize: '0.8rem', fontWeight: '800' }}>{idx + 1}</div>
                     </td>
-                    <td style={{ padding: '20px', fontWeight: isMe ? '700' : '400', color: u.isSuspicious ? '#ef4444' : 'inherit' }}>
+                    <td style={{ padding: '20px', fontWeight: isMe ? '700' : '400', color: u.isSuspicious ? '#ef4444' : 'inherit', background: rowBg }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         {getDisplayName(u)}
                         {u.isSuspicious && <AlertTriangle size={14} title="Подозрение в читерстве" color="#ef4444" />}
                         {!u.isSuspicious && u.isUnderperforming && <AlertTriangle size={14} title="Низкая успеваемость" color="#ca8a04" />}
                       </div>
                     </td>
-                    <td style={{ padding: '20px', fontSize: '0.85rem', opacity: 0.7 }}>
+                    <td style={{ padding: '20px', fontSize: '0.85rem', opacity: 0.7, background: rowBg }}>
                       <div>{cities.find(c => c.id === u.city_id)?.name || '—'}</div>
                       <div>{schools.find(s => s.id === u.school_id)?.name || '—'}</div>
                       <div style={{ fontWeight: 'bold' }}>{classes.find(c => c.id === u.class_id)?.name || '—'}</div>
                     </td>
-                    <td style={{ padding: '20px', fontWeight: '500' }}>{u.passedQuizzes}</td>
-                    <td style={{ padding: '20px', fontWeight: '700', color: 'var(--primary-color)' }}>{u.totalPoints}</td>
-                    <td style={{ padding: '20px' }}>
+                    <td style={{ padding: '20px', fontWeight: '500', background: rowBg }}>{u.passedQuizzes}</td>
+                    <td style={{ padding: '20px', fontWeight: '700', color: 'var(--primary-color)', background: rowBg }}>{u.totalPoints}</td>
+                    <td style={{ padding: '20px', background: rowBg }}>
                       <div className="flex-center" style={{ gap: '10px', justifyContent: 'flex-start' }}>
                         <div style={{ width: '60px', height: '6px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', overflow: 'hidden' }}>
                           <div style={{ width: `${u.avgScore}%`, height: '100%', background: u.avgScore >= 50 ? '#4ade80' : '#f87171' }} />
@@ -300,7 +307,7 @@ const Statistics = ({ session, profile }) => {
                         <span style={{ fontSize: '0.8rem', opacity: 0.6 }}>{u.avgScore}%</span>
                       </div>
                     </td>
-                    <td style={{ padding: '20px' }}>
+                    <td style={{ padding: '20px', background: rowBg }}>
                       {(profile?.role === 'teacher' || profile?.role === 'admin' || profile?.role === 'creator') && (
                         <button
                           onClick={() => navigate(`/user-analytics?userId=${u.id}`)}

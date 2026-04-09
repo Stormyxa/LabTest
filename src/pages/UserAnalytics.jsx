@@ -24,8 +24,10 @@ const UserAnalytics = () => {
   const [filterClass, setFilterClass] = useState(sessionStorage.getItem('ua_u_class') || 'all');
   const [searchQuery, setSearchQuery] = useState('');
   const [showObservers, setShowObservers] = useState(sessionStorage.getItem('ua_show_observers') === 'true');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(sessionStorage.getItem('ua_sidebar_open') !== 'false');
   const scrollRef = React.useRef(null);
+
+  useEffect(() => { sessionStorage.setItem('ua_sidebar_open', sidebarOpen); }, [sidebarOpen]);
 
   useEffect(() => { sessionStorage.setItem('ua_show_observers', showObservers); }, [showObservers]);
 
@@ -63,6 +65,20 @@ const UserAnalytics = () => {
         if (c) setCities(c);
         if (s) setSchools(s);
         if (cl) setClasses(cl);
+
+        // Automated Filtering Defaults
+        if (p.role === 'teacher' || p.role === 'admin' || p.role === 'creator') {
+          const sCity = sessionStorage.getItem('ua_u_city');
+          const sSchool = sessionStorage.getItem('ua_u_school');
+          
+          if ((!sCity || sCity === 'all') && p.city_id) setFilterCity(p.city_id);
+          if ((!sSchool || sSchool === 'all') && p.school_id) setFilterSchool(p.school_id);
+
+          if (p.role === 'teacher') {
+            if (p.city_id) setFilterCity(p.city_id);
+            if (p.school_id) setFilterSchool(p.school_id);
+          }
+        }
 
         // Fetch users
         let query = supabase.from('profiles').select('*');
@@ -232,12 +248,12 @@ const UserAnalytics = () => {
           <div style={{ padding: '20px', width: '320px', display: 'flex', flexDirection: 'column', height: '100%' }}>
             <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '15px' }}>
               <h3 style={{ fontSize: '1.2rem', margin: 0 }}>Аналитика</h3>
-              <button onClick={() => setSidebarOpen(false)} style={{ background: 'transparent', color: 'inherit', boxShadow: 'none', padding: '5px' }}><ChevronLeft size={20}/></button>
+              <button onClick={() => setSidebarOpen(false)} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', boxShadow: 'none', padding: '8px', borderRadius: '10px' }}><ChevronLeft size={20}/></button>
             </div>
 
-            <div style={{ display: 'flex', background: 'rgba(0,0,0,0.05)', borderRadius: '8px', padding: '4px', marginBottom: '15px' }}>
-              <button onClick={() => navigate('/analytics-details')} style={{ flex: 1, padding: '8px', borderRadius: '6px', fontSize: '0.8rem', background: 'transparent', border: 'none', boxShadow: 'none', cursor: 'pointer', color: 'var(--text-color)', opacity: 0.7 }}>По Тестам</button>
-              <button style={{ flex: 1, padding: '8px', borderRadius: '6px', fontSize: '0.8rem', background: 'white', border: 'none', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', cursor: 'default', fontWeight: 'bold' }}>По Ученикам</button>
+            <div style={{ display: 'flex', background: 'rgba(0,0,0,0.05)', borderRadius: '12px', padding: '4px', marginBottom: '15px' }}>
+              <button onClick={() => navigate('/analytics-details')} style={{ flex: 1, padding: '10px', borderRadius: '8px', fontSize: '0.8rem', background: 'transparent', border: 'none', boxShadow: 'none', cursor: 'pointer', color: 'var(--text-color)', opacity: 0.7 }}>По Тестам</button>
+              <button style={{ flex: 1, padding: '10px', borderRadius: '8px', fontSize: '0.8rem', background: 'var(--card-bg)', border: 'none', boxShadow: 'var(--soft-shadow)', cursor: 'default', fontWeight: 'bold', color: 'var(--primary-color)' }}>По Ученикам</button>
             </div>
 
             <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(0,0,0,0.02)', padding: '10px', borderRadius: '8px' }}>
@@ -267,7 +283,7 @@ const UserAnalytics = () => {
               <>
                 <label htmlFor="ua-city" style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '10px', display: 'block' }}>Фильтры</label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '15px' }}>
-                  <select id="ua-city" value={filterCity} onChange={e => {setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all');}} style={{ padding: '6px', fontSize: '0.85rem' }}>
+                  <select id="ua-city" value={filterCity} onChange={e => {setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all');}} style={{ padding: '6px', fontSize: '0.85rem' }} disabled={profile?.role === 'teacher'}>
                     <option value="all">Все города</option>
                     {cities.map(c => <option key={c.id} value={c.id} disabled={!users.some(u => u.city_id === c.id)}>{c.name}</option>)}
                   </select>
@@ -370,73 +386,78 @@ const UserAnalytics = () => {
             </div>
 
             <div className="card" style={{ marginBottom: '30px' }}>
-              <h3 style={{ marginBottom: '20px' }}>Последние 20 активностей (Лучший из последних)</h3>
+              <h3 style={{ marginBottom: '20px' }}>Последние 20 активностей (Лучший результат по тестам)</h3>
               {latestAttempts.length === 0 ? (
                 <div style={{ padding: '40px', textAlign: 'center', opacity: 0.5 }}>Ученик ещё не проходил тесты{profile?.role === 'editor' && ' (либо не проходил ВАШИ тесты)'}</div>
               ) : (
-                <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-end', height: '240px', padding: '20px', background: 'rgba(0,0,0,0.02)', borderRadius: '15px' }}>
-                  {/* Background Guide Lines + Text Labels */}
-                  <div style={{ position: 'absolute', left: 0, top: '0%', width: '100%', borderTop: '2px dashed transparent', pointerEvents: 'none' }}>
-                     <span style={{ position: 'absolute', left: '15px', top: '-10px', fontSize: '0.7rem', opacity: 0.5, fontWeight: 'bold' }}>100%</span>
-                  </div>
-                  <div style={{ position: 'absolute', left: 0, top: '20%', width: '100%', borderTop: '2px dashed rgba(74, 222, 128, 0.3)', pointerEvents: 'none' }}>
-                     <span style={{ position: 'absolute', left: '15px', top: '-10px', fontSize: '0.7rem', color: '#4ade80', fontWeight: 'bold' }}>80%</span>
-                  </div>
-                  <div style={{ position: 'absolute', left: 0, top: '50%', width: '100%', borderTop: '2px dashed rgba(250, 204, 21, 0.3)', pointerEvents: 'none' }}>
-                     <span style={{ position: 'absolute', left: '15px', top: '-10px', fontSize: '0.7rem', color: '#ca8a04', fontWeight: 'bold' }}>50%</span>
-                  </div>
-                  <div style={{ position: 'absolute', left: 0, top: '80%', width: '100%', borderTop: '2px dashed rgba(239, 68, 68, 0.3)', pointerEvents: 'none' }}>
-                     <span style={{ position: 'absolute', left: '15px', top: '-10px', fontSize: '0.7rem', color: '#ef4444', fontWeight: 'bold' }}>20%</span>
-                  </div>
+                <div style={{ position: 'relative', display: 'flex', height: '240px', padding: '20px 20px 20px 0', background: 'rgba(0,0,0,0.02)', borderRadius: '15px' }}>
                   
-                  {/* Vertical Colorful Axis */}
-                  <div style={{ zIndex: 5, width: '6px', height: '100%', background: 'linear-gradient(to top, rgba(239, 68, 68, 0.8) 0%, rgba(239, 68, 68, 0.8) 20%, rgba(250, 204, 21, 0.8) 20%, rgba(250, 204, 21, 0.8) 50%, rgba(74, 222, 128, 0.8) 50%, rgba(74, 222, 128, 0.8) 100%)', borderRadius: '3px', marginLeft: '35px', marginRight: '15px' }} />
+                  {/* Левая панель с градиентной шкалой */}
+                  <div style={{ width: '50px', position: 'relative', display: 'flex', justifyContent: 'flex-end', paddingRight: '15px', height: '100%' }}>
+                    <div style={{ position: 'absolute', bottom: 0, width: '6px', height: '85%', background: 'linear-gradient(to top, #ef4444 0%, #ef4444 20%, #facc15 20%, #facc15 50%, #4ade80 50%, #4ade80 100%)', borderRadius: '3px', zIndex: 5 }} />
+                  </div>
 
-                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', height: '100%', flex: 1, overflowX: 'auto', paddingBottom: '10px' }}>
-                    {latestAttempts.map((att) => {
-                      const heightPercent = (att.score / att.max_score) * 100;
-                      const isZero = att.score === 0;
-                      const isSelected = selectedAttempt?.id === att.id;
-                      
-                      let color = '#4ade80'; // Green
-                      if (att.isQuizRed || att.is_suspicious) color = '#ef4444'; // Red
-                      else if (!att.is_passed) color = '#facc15'; // Yellow
-                      
-                      // If user is suspicious overall AND this is their best result (crown holder), make it red for visual warning
-                      if (currentStats.isSuspicious && att.score === att.max_score) color = '#ef4444';
-                      
-                      return (
-                        <div 
-                          key={att.id}
-                          onClick={() => setSelectedAttempt(att)}
-                          style={{
-                            flex: 1, minWidth: '25px', maxWidth: '60px', height: '100%',
-                            display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
-                            cursor: 'pointer',
-                            opacity: isSelected ? 1 : 0.6,
-                            transition: 'opacity 0.2s',
-                            position: 'relative', zIndex: 1
-                          }}
-                          title={`Тест: ${quizzesMap[att.quiz_id]}\nБалл: ${att.score}/${att.max_score}\nВремя: ${att.time_spent_total}с\n${att.is_suspicious ? '(Подозрительно)' : ''}`}
-                        >
-                          {att.score === att.max_score && !targetUser.is_observer && (
-                            <div style={{ position: 'absolute', top: '-15px', left: '50%', transform: 'translateX(-50%)', fontSize: '1rem', zIndex: 5 }}>👑</div>
-                          )}
-                          {/* Background representing Max Score for relativity */}
-                          <div style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.03)', borderRadius: '6px 6px 0 0', zIndex: 0 }} />
-                          
-                          <div style={{ textAlign: 'center', fontSize: '0.7rem', paddingBottom: '4px', fontWeight: 'bold', zIndex: 1 }}>{att.score}</div>
-                          <div style={{ 
-                            width: '100%', 
-                            height: isZero ? '5px' : `${heightPercent}%`, 
-                            background: isZero ? 'rgba(239, 68, 68, 0.3)' : color, 
-                            borderRadius: '6px 6px 0 0',
-                            borderBottom: 'none',
-                            zIndex: 1
-                          }} />
-                        </div>
-                      );
-                    })}
+                  <div style={{ position: 'relative', flex: 1, height: '100%' }}>
+                    {/* Background Guide Lines */}
+                    <div style={{ position: 'absolute', left: '-40px', bottom: '85%', width: 'calc(100% + 40px)', borderTop: '2px dashed rgba(0,0,0,0.1)', pointerEvents: 'none' }}>
+                      <span style={{ position: 'absolute', left: '-5px', bottom: '2px', fontSize: '0.7rem', opacity: 0.5, fontWeight: 'bold' }}>100%</span>
+                    </div>
+                    <div style={{ position: 'absolute', left: '-40px', bottom: `${85 * 0.8}%`, width: 'calc(100% + 40px)', borderTop: '2px dashed rgba(74, 222, 128, 0.3)', pointerEvents: 'none' }}>
+                      <span style={{ position: 'absolute', left: '-5px', bottom: '2px', fontSize: '0.7rem', color: '#4ade80', fontWeight: 'bold' }}>80%</span>
+                    </div>
+                    <div style={{ position: 'absolute', left: '-40px', bottom: `${85 * 0.5}%`, width: 'calc(100% + 40px)', borderTop: '2px dashed rgba(250, 204, 21, 0.3)', pointerEvents: 'none' }}>
+                      <span style={{ position: 'absolute', left: '-5px', bottom: '2px', fontSize: '0.7rem', color: '#ca8a04', fontWeight: 'bold' }}>50%</span>
+                    </div>
+                    <div style={{ position: 'absolute', left: '-40px', bottom: `${85 * 0.2}%`, width: 'calc(100% + 40px)', borderTop: '2px dashed rgba(239, 68, 68, 0.3)', pointerEvents: 'none' }}>
+                      <span style={{ position: 'absolute', left: '-5px', bottom: '2px', fontSize: '0.7rem', color: '#ef4444', fontWeight: 'bold' }}>20%</span>
+                    </div>
+
+                    <div style={{ position: 'absolute', left: '-15px', bottom: '0', width: 'calc(100% + 15px)', height: '2px', background: 'var(--text-color)', opacity: 0.1, zIndex: 0 }} />
+
+                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', height: '100%', position: 'relative', zIndex: 1, overflowX: 'auto', paddingBottom: '2px' }}>
+                      {latestAttempts.map((att) => {
+                        const heightPercent = (att.score / (att.max_score || 1)) * 85;
+                        const isZero = att.score === 0;
+                        const isSelected = selectedAttempt?.id === att.id;
+                        
+                        let color = '#4ade80'; 
+                        if (att.isQuizRed || att.is_suspicious) color = '#ef4444';
+                        else if (!att.is_passed) color = '#facc15';
+                        if (currentStats.isSuspicious && att.score === att.max_score) color = '#ef4444';
+                        
+                        return (
+                          <div 
+                            key={att.id}
+                            onClick={() => setSelectedAttempt(att)}
+                            style={{
+                              flex: 1, minWidth: '30px', maxWidth: '60px', height: '100%',
+                              display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
+                              cursor: 'pointer',
+                              opacity: isSelected ? 1 : 0.6,
+                              transition: 'opacity 0.2s', position: 'relative'
+                            }}
+                            title={`Тест: ${quizzesMap[att.quiz_id]}\nБалл: ${att.score}/${att.max_score}\nВремя: ${att.time_spent_total}с`}
+                          >
+                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', width: '100%', position: 'relative' }}>
+                              {/* Transparent Max Background */}
+                              <div style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: '85%', background: 'rgba(0,0,0,0.03)', borderRadius: '6px 6px 0 0', zIndex: 0 }} />
+                              
+                              {att.score === att.max_score && !targetUser.is_observer && (
+                                <div style={{ textAlign: 'center', fontSize: '1.2rem', marginBottom: '-2px', zIndex: 10 }}>👑</div>
+                              )}
+                              <div style={{ textAlign: 'center', fontSize: '0.7rem', paddingBottom: '4px', fontWeight: 'bold', zIndex: 1, whiteSpace: 'nowrap' }}>{att.score}</div>
+                              <div style={{ 
+                                width: '100%', 
+                                height: isZero ? '5px' : `${heightPercent}%`, 
+                                background: isZero ? 'rgba(239, 68, 68, 0.3)' : color, 
+                                borderRadius: '6px 6px 0 0',
+                                zIndex: 1
+                              }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               )}

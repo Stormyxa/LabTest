@@ -72,14 +72,32 @@ const Analytics = () => {
     if (user) {
       const { data: p } = await supabase.from('profiles').select('*').eq('id', user.id).single();
       setProfile(p);
+      fetchStructure(p);
     }
   };
 
-  const fetchStructure = async () => {
+  const fetchStructure = async (p = profile) => {
     const { data: c } = await supabase.from('cities').select('*').order('name');
     const { data: s } = await supabase.from('schools').select('*').order('name');
     const { data: cl } = await supabase.from('classes').select('*').order('name');
-    if (c) setCities(c); if (s) setSchools(s); if (cl) setClasses(cl);
+    if (c) setCities(c); 
+    if (s) setSchools(s); 
+    if (cl) setClasses(cl);
+
+    // Automated Filtering Defaults
+    if (p && (p.role === 'teacher' || p.role === 'admin' || p.role === 'creator')) {
+      const sCity = sessionStorage.getItem('f_city');
+      const sSchool = sessionStorage.getItem('f_school');
+      
+      if ((!sCity || sCity === 'all') && p.city_id) setFilterCity(p.city_id);
+      if ((!sSchool || sSchool === 'all') && p.school_id) setFilterSchool(p.school_id);
+      
+      // Force-lock teacher filters
+      if (p.role === 'teacher') {
+        if (p.city_id) setFilterCity(p.city_id);
+        if (p.school_id) setFilterSchool(p.school_id);
+      }
+    }
   };
 
   const fetchQuizData = async () => {

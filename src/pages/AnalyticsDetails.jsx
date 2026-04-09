@@ -37,8 +37,10 @@ const AnalyticsDetails = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showObservers, setShowObservers] = useState(sessionStorage.getItem('ad_show_observers') === 'true');
 
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(sessionStorage.getItem('ad_sidebar_open') !== 'false');
   const scrollRef = React.useRef(null);
+
+  useEffect(() => { sessionStorage.setItem('ad_sidebar_open', sidebarOpen); }, [sidebarOpen]);
 
   // Delete Modal States
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -95,9 +97,34 @@ const AnalyticsDetails = () => {
       if (s) setSchools(s);
       if (cl) setClasses(cl);
 
+      // Automated Filtering Defaults
+      if (p.role === 'teacher' || p.role === 'admin' || p.role === 'creator') {
+        const sCity = sessionStorage.getItem('ad_u_city');
+        const sSchool = sessionStorage.getItem('ad_u_school');
+        
+        if ((!sCity || sCity === 'all') && p.city_id) setFilterCity(p.city_id);
+        if ((!sSchool || sSchool === 'all') && p.school_id) setFilterSchool(p.school_id);
+
+        if (p.role === 'teacher') {
+          if (p.city_id) setFilterCity(p.city_id);
+          if (p.school_id) setFilterSchool(p.school_id);
+        }
+      }
+
       const targetQuizId = quizIdParam || sessionStorage.getItem('ad_t_quiz');
-      if (targetQuizId) {
+      if (targetQuizId && qs) {
         setFilterQuiz(targetQuizId);
+        
+        // Auto-select folder/section from active quiz
+        const found = qs.find(q => q.id === targetQuizId);
+        if (found && found.section_id && secs) {
+          const section = secs.find(s => s.id === found.section_id);
+          if (section) {
+            setFilterFolder(section.class_id);
+            setFilterSection(section.id);
+          }
+        }
+        
         fetchUsersForQuiz(targetQuizId, p);
       } else if (p.role === 'student' && !targetQuizId) {
         // If student but no quiz selected, they just see empty state
@@ -298,18 +325,35 @@ const AnalyticsDetails = () => {
 
     const qsLength = targetQuiz?.content?.questions?.length || 1;
 
-    // Max Score Bar (Always Blue)
+    // Max Score Bar (Purple/Red)
     chartBars.push({
       label: 'Максимум',
       score: stats.maxScore,
       maxPossible: qsLength,
-      color: stats.isSuspiciousUser ? '#ef4444' : '#3b82f6', // Red if suspicious, else Blue
-      data: null, // special
+      color: stats.isSuspiciousUser ? '#ef4444' : 'var(--primary-color)',
+      data: null,
       type: 'max'
     });
 
+    // First Attempt Bar (Blue/Red)
+    if (attempts.length > 0) {
+      const firstAtt = attempts[0];
+      chartBars.push({
+        label: '1-я попытка',
+        score: firstAtt.score,
+        maxPossible: firstAtt.max_score || qsLength,
+        color: firstAtt.is_suspicious ? '#ef4444' : '#3b82f6',
+        data: firstAtt,
+        type: 'first',
+        id: firstAtt.id
+      });
+    }
+
     // Attempt bars
     last10.forEach((att, idx) => {
+      // Don't duplicate first attempt if it's already in last10
+      if (attempts.length > 1 && idx === 0 && attempts.length <= 10) return;
+
       let color = '#4ade80'; // Green
       if (att.is_suspicious) color = '#ef4444'; // Red
       else if (!att.is_passed) color = '#facc15'; // Yellow
@@ -463,9 +507,9 @@ const AnalyticsDetails = () => {
             const avgQTime = avgTimePerQ[ans.originalIndex]?.count > 0 ? Math.round(avgTimePerQ[ans.originalIndex].totalTime / avgTimePerQ[ans.originalIndex].count) : 0;
 
             return (
-              <div key={i} className="card" style={{ padding: '20px', borderLeft: `4px solid ${isCorrect ? '#4ade80' : '#ef4444'}` }}>
+              <div key={i} className="card" style={{ padding: '20px', borderLeft: `4px solid ${isCorrect ? '#4ade80' : '#ef4444'}`, overflowWrap: 'anywhere' }}>
                 <h4 style={{ marginBottom: '10px' }}>Вопрос: {originQ.question}</h4>
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px' }}>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap' }}>
                   <span style={{ opacity: 0.6 }}>Ответ:</span>
                   <strong style={{ color: isCorrect ? '#4ade80' : '#ef4444' }}>
                     {ans.chosenIndex !== null ? originQ.options[ans.chosenIndex] : 'Пропущено'}
@@ -513,12 +557,12 @@ const AnalyticsDetails = () => {
           <div style={{ padding: '20px', width: '320px', display: 'flex', flexDirection: 'column', height: '100%' }}>
             <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '15px' }}>
               <h3 style={{ fontSize: '1.2rem', margin: 0 }}>Аналитика</h3>
-              <button onClick={() => setSidebarOpen(false)} style={{ background: 'transparent', color: 'inherit', boxShadow: 'none', padding: '5px' }}><ChevronLeft size={20} /></button>
+              <button onClick={() => setSidebarOpen(false)} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', boxShadow: 'none', padding: '8px', borderRadius: '10px' }}><ChevronLeft size={20} /></button>
             </div>
 
-            <div style={{ display: 'flex', background: 'rgba(0,0,0,0.05)', borderRadius: '8px', padding: '4px', marginBottom: '15px' }}>
-              <button style={{ flex: 1, padding: '8px', borderRadius: '6px', fontSize: '0.8rem', background: 'white', border: 'none', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', cursor: 'default', fontWeight: 'bold' }}>По Тестам</button>
-              <button onClick={() => navigate('/user-analytics')} style={{ flex: 1, padding: '8px', borderRadius: '6px', fontSize: '0.8rem', background: 'transparent', border: 'none', boxShadow: 'none', cursor: 'pointer', color: 'var(--text-color)', opacity: 0.7 }}>По Ученикам</button>
+            <div style={{ display: 'flex', background: 'rgba(0,0,0,0.05)', borderRadius: '12px', padding: '4px', marginBottom: '15px' }}>
+              <button style={{ flex: 1, padding: '10px', borderRadius: '8px', fontSize: '0.8rem', background: 'var(--card-bg)', border: 'none', boxShadow: 'var(--soft-shadow)', cursor: 'default', fontWeight: 'bold', color: 'var(--primary-color)' }}>По Тестам</button>
+              <button onClick={() => navigate('/user-analytics')} style={{ flex: 1, padding: '10px', borderRadius: '8px', fontSize: '0.8rem', background: 'transparent', border: 'none', boxShadow: 'none', cursor: 'pointer', color: 'var(--text-color)', opacity: 0.7 }}>По Ученикам</button>
             </div>
 
             <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(0,0,0,0.02)', padding: '10px', borderRadius: '8px' }}>
@@ -573,7 +617,7 @@ const AnalyticsDetails = () => {
                   <>
                     <label htmlFor="ad-city" style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '10px', display: 'block' }}>Фильтры Учеников</label>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '15px' }}>
-                      <select id="ad-city" value={filterCity} onChange={e => { setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all'); }} style={{ padding: '6px', fontSize: '0.85rem' }}>
+                      <select id="ad-city" value={filterCity} onChange={e => { setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all'); }} style={{ padding: '6px', fontSize: '0.85rem' }} disabled={profile?.role === 'teacher'}>
                         <option value="all">Все города</option>
                         {cities.map(c => <option key={c.id} value={c.id} disabled={!users.some(u => u.city_id === c.id)}>{c.name}</option>)}
                       </select>
@@ -637,7 +681,7 @@ const AnalyticsDetails = () => {
             <ChevronLeft size={20} /> Вернуться
           </button>
 
-          <div style={{ display: 'flex', gap: '10px' }}>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <button onClick={() => navigate(`/analytics?id=${filterQuiz}`)} title="Общая аналитика" style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', padding: '10px', borderRadius: '10px' }}><BarChart2 size={20} /></button>
             <button onClick={() => navigate(`/redactor?id=${filterQuiz}`)} title="Редактор" style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', padding: '10px', borderRadius: '10px' }}><Pencil size={20} /></button>
             {(profile?.role === 'admin' || profile?.role === 'creator') && targetUser && targetQuiz && (
@@ -664,9 +708,11 @@ const AnalyticsDetails = () => {
             <div className="skeleton" style={{ height: '240px' }} />
           </div>
         ) : (!targetQuiz || !targetUser) ? (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60%', flexDirection: 'column', opacity: 0.5 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60%', flexDirection: 'column', opacity: 0.5, textAlign: 'center' }}>
             <BarChart2 size={64} style={{ marginBottom: '20px', color: 'var(--primary-color)' }} />
-            <h2>Выберите тест и ученика для анализа</h2>
+            <h2 style={{ padding: '0 20px' }}>
+              {loading ? 'Загрузка данных...' : 'Выберите тест и ученика для анализа'}
+            </h2>
           </div>
         ) : (
           <div className="animate">
@@ -696,8 +742,9 @@ const AnalyticsDetails = () => {
             <div className="card">
               <h3 style={{ marginBottom: '20px' }}>График попыток</h3>
               {renderChart()}
-              <div className="flex-center" style={{ gap: '15px', marginTop: '15px', fontSize: '0.8rem', opacity: 0.7 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: '12px', height: '12px', background: '#3b82f6', borderRadius: '3px' }} /> Максимальный балл</div>
+              <div className="flex-center" style={{ gap: '15px', marginTop: '15px', fontSize: '0.8rem', opacity: 0.7, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: '12px', height: '12px', background: 'var(--primary-color)', borderRadius: '3px' }} /> Максимальный балл</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: '12px', height: '12px', background: '#3b82f6', borderRadius: '3px' }} /> 1-я попытка</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: '12px', height: '12px', background: '#4ade80', borderRadius: '3px' }} /> Успех</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: '12px', height: '12px', background: '#facc15', borderRadius: '3px' }} /> Провал</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: '12px', height: '12px', background: '#ef4444', borderRadius: '3px' }} /> Подозрительно</div>

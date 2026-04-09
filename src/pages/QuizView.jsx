@@ -216,7 +216,12 @@ const QuizView = ({ session, profile }) => {
           [optionsWithIndices[i], optionsWithIndices[j]] = [optionsWithIndices[j], optionsWithIndices[i]];
         }
         const newCorrectIndex = optionsWithIndices.findIndex(o => o.originalIndex === q.correctIndex);
-        return { ...q, options: optionsWithIndices.map(o => o.opt), correctIndex: newCorrectIndex };
+        return { 
+          ...q, 
+          options: optionsWithIndices.map(o => o.opt), 
+          correctIndex: newCorrectIndex,
+          optionMapping: optionsWithIndices.map(o => o.originalIndex)
+        };
       });
 
       setQuestions(fullyShuffled);
@@ -324,36 +329,67 @@ const QuizView = ({ session, profile }) => {
   };
 
   // Saves result to DB — uses refs so it's always current even in stale closures
+  const savingRef = useRef(false);
   const saveResult = async (finalAnswers) => {
+    if (savingRef.current) return;
+    savingRef.current = true;
+
     const qs = questionsRef.current; // use ref, not state (avoids stale closure)
-    if (!qs || qs.length === 0) { console.warn('saveResult: questions not loaded yet'); return; }
+    if (!qs || qs.length === 0) { 
+      console.warn('saveResult: questions not loaded yet'); 
+      savingRef.current = false;
+      return; 
+    }
     
     // Map answers back to original indices
     const originalAnswers = [];
     qs.forEach((q, idx) => {
       if (q.originalIndex !== undefined) {
-        originalAnswers[q.originalIndex] = finalAnswers[idx] === q.correctIndex;
+        const shuffledChoice = finalAnswers[idx];
+        const isCorrect = shuffledChoice === q.correctIndex;
+        originalAnswers[q.originalIndex] = isCorrect;
       }
     });
 
     const correctCount = qs.filter((q, idx) => finalAnswers[idx] === q.correctIndex).length;
+    const answeredCount = Object.keys(finalAnswers).length;
+    const skippedCount = qs.length - answeredCount;
     const isPassed = (correctCount / qs.length) >= 0.5;
     const now = new Date().toISOString();
     const answersArray = originalAnswers;
 
     const finalTimeSpent = Math.round(((finishTimeRef.current || Date.now()) - startTimeRef.current) / 1000);
     const scoreRatio = correctCount / qs.length;
-    const isSuspicious = ((finalTimeSpent / qs.length) < 3 && scoreRatio > 0.8) || (correctCount === 0 && finalTimeSpent < 30);
+    
+    // REFINED SUSPICIOUS LOGIC:
+    const avgTimePerQ = finalTimeSpent / qs.length;
+    const fastQuestionsCount = Object.values(questionTimesRef.current || {}).filter(t => t < 3).length;
+    const fastRatio = fastQuestionsCount / qs.length;
+
+    const isHighSpeedCheat = avgTimePerQ < 3 && scoreRatio > 0.8;
+    const isBlindGuessing = fastRatio >= 0.4 && scoreRatio < 0.3;
+    const isHighSkipRate = (skippedCount / qs.length) > 0.4;
+    const isRapidFail = correctCount === 0 && finalTimeSpent < 30;
+
+    const isSuspicious = isHighSpeedCheat || isBlindGuessing || isHighSkipRate || isRapidFail;
 
     // Build detailed answers map
     const detailedAnswers = qs.map((q, idx) => {
-      const chosenIndex = finalAnswers[idx] !== undefined ? finalAnswers[idx] : null;
-      const isCorrect = chosenIndex === q.correctIndex;
+      const shuffledChoice = finalAnswers[idx] !== undefined ? finalAnswers[idx] : null;
+      
+      // Map SHUFFLED index back to ORIGINAL index of the option
+      const originalChosenIndex = (shuffledChoice !== null && q.optionMapping) 
+        ? q.optionMapping[shuffledChoice] 
+        : null;
+      
+      const originalCorrectIndex = q.optionMapping ? q.optionMapping.indexOf(q.correctIndex) : q.correctIndex;
+      
+      const isCorrect = shuffledChoice === q.correctIndex;
       const timeSpentOnQ = questionTimesRef.current[idx] || 0;
       return {
         originalIndex: q.originalIndex,
-        chosenIndex: chosenIndex,
-        correctIndex: q.correctIndex,
+        chosenIndex: originalChosenIndex, // Now correctly mapped to original option order
+        correctIndex: originalCorrectIndex, // Now correctly mapped to original option order
         timeSpent: timeSpentOnQ,
         isCorrect: isCorrect
       };
