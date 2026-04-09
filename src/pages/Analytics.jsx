@@ -115,14 +115,29 @@ const Analytics = () => {
 
     if (r && r.length > 0) {
       // Fetch fresh attempts to calculate behavioral stats
-      const { data: attempts } = await supabase.from('quiz_attempts').select('user_id, is_suspicious, is_passed').eq('quiz_id', quizId);
+      const { data: attempts } = await supabase
+        .from('quiz_attempts')
+        .select('user_id, is_suspicious, is_passed, is_incomplete, score, max_score, created_at')
+        .eq('quiz_id', quizId)
+        .order('created_at', { ascending: true });
+
       const statsMap = {};
+      const latestStatusMap = {};
+      
       if (attempts) {
         attempts.forEach(att => {
           if (!statsMap[att.user_id]) statsMap[att.user_id] = { total: 0, suspicious: 0, failed: 0 };
           statsMap[att.user_id].total += 1;
           if (att.is_suspicious) statsMap[att.user_id].suspicious += 1;
           if (!att.is_passed) statsMap[att.user_id].failed += 1;
+
+          // Latest status logic
+          const scorePercent = (att.max_score || 0) > 0 ? (att.score / att.max_score) : 0;
+          latestStatusMap[att.user_id] = {
+            is_incomplete: att.is_incomplete,
+            is_suspicious: att.is_suspicious,
+            is_underperforming: scorePercent <= 0.5 && !att.is_incomplete
+          };
         });
       }
 
@@ -131,14 +146,22 @@ const Analytics = () => {
 
       const combined = r.map(res => {
         const stats = statsMap[res.user_id] || { total: 0, suspicious: 0, failed: 0 };
-        const isSuspiciousUser = stats.total > 0 && (stats.suspicious / stats.total) > 0.4;
-        const isUnderperformingUser = stats.total > 0 && (stats.failed / stats.total) > 0.5 && !isSuspiciousUser;
+        const lStatus = latestStatusMap[res.user_id] || {};
+        
+        // Aggregate suspicion logic (existing)
+        const isSuspiciousUserAvg = stats.total > 0 && (stats.suspicious / stats.total) > 0.4;
+        
+        // Final flags
+        const is_incomplete_user = !!lStatus.is_incomplete;
+        const is_suspicious_user = !!lStatus.is_suspicious || isSuspiciousUserAvg;
+        const is_underperforming_user = !!lStatus.is_underperforming;
 
         return {
           ...res,
           profiles: p?.find(pr => pr.id === res.user_id) || null,
-          isSuspiciousUser,
-          isUnderperformingUser,
+          is_incomplete_user,
+          is_suspicious_user,
+          is_underperforming_user,
           stats
         };
       });
@@ -586,7 +609,7 @@ const Analytics = () => {
               return (
                 <tr key={res.id} style={{ 
                   borderBottom: '1px solid rgba(0,0,0,0.01)',
-                  background: res.is_incomplete_user ? 'rgba(156, 163, 175, 0.15)' : (res.is_suspicious_user ? 'rgba(239, 68, 68, 0.08)' : (res.isUnderperformingUser ? 'rgba(250, 204, 21, 0.05)' : 'transparent'))
+                  background: res.is_incomplete_user ? 'rgba(156, 163, 175, 0.15)' : (res.is_suspicious_user ? 'rgba(239, 68, 68, 0.08)' : (res.is_underperforming_user ? 'rgba(250, 204, 21, 0.08)' : 'transparent'))
                 }}>
                   <td style={{ padding: '20px' }}>
                     <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '8px' }}>

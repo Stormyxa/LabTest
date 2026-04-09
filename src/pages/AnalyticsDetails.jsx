@@ -150,6 +150,25 @@ const AnalyticsDetails = () => {
     const userIds = [...new Set(results.map(r => r.user_id))];
     const { data: profs } = await supabase.from('profiles').select('*').in('id', userIds);
 
+    // 3. Fetch all attempts for these users to calculate status
+    const { data: attempts } = await supabase
+      .from('quiz_attempts')
+      .select('user_id, is_suspicious, is_incomplete, score, max_score, created_at')
+      .eq('quiz_id', qId)
+      .order('created_at', { ascending: true });
+
+    const latestStatusMap = {};
+    if (attempts) {
+      attempts.forEach(att => {
+        const scorePercent = (att.max_score || 0) > 0 ? (att.score / att.max_score) : 0;
+        latestStatusMap[att.user_id] = {
+          is_incomplete: att.is_incomplete,
+          is_suspicious: att.is_suspicious,
+          is_underperforming: scorePercent <= 0.5 && !att.is_incomplete
+        };
+      });
+    }
+
     if (profs) {
       const isTeacher = currentUserProfile?.role === 'teacher';
       // filter out observers unless admin/creator, or if teacher restrict to own school
@@ -170,9 +189,13 @@ const AnalyticsDetails = () => {
         // Suspicion logic: if red marks (failed/low score) > 30% of attempts? 
         // Or if score < some threshold. Let's use is_passed if available or score/total < 0.6
         // For now, let's just mark based on red/green ratio in their attempts (we fetch attempts later, but we can guess from results)
+        const lStatus = latestStatusMap[p.id] || {};
         return {
           ...p,
           maxScore,
+          is_incomplete_user: !!lStatus.is_incomplete,
+          is_suspicious_user: !!lStatus.is_suspicious,
+          is_underperforming_user: !!lStatus.is_underperforming
         };
       });
       userList.sort((a, b) => b.maxScore - a.maxScore);
@@ -675,9 +698,15 @@ const AnalyticsDetails = () => {
                           onClick={() => handleUserSelect(u.id)}
                           style={{
                             textAlign: 'left', padding: '10px',
-                            background: targetUser?.id === u.id ? 'var(--primary-color)' : (u.is_observer ? 'rgba(234, 179, 8, 0.05)' : 'rgba(0,0,0,0.02)'),
+                            background: targetUser?.id === u.id ? 'var(--primary-color)' : 
+                              (u.is_incomplete_user ? 'rgba(156, 163, 175, 0.15)' : 
+                              (u.is_suspicious_user ? 'rgba(239, 68, 68, 0.08)' : 
+                              (u.is_underperforming_user ? 'rgba(250, 204, 21, 0.08)' : 
+                              (u.is_observer ? 'rgba(234, 179, 8, 0.05)' : 'rgba(0,0,0,0.02)')))),
                             color: targetUser?.id === u.id ? 'white' : 'var(--text-color)',
-                            borderRadius: '8px', border: targetUser?.id === u.id ? 'none' : (u.is_observer ? '1px dashed #eab308' : 'none'),
+                            borderRadius: '8px', border: targetUser?.id === u.id ? 'none' : 
+                              (u.is_suspicious_user ? '1px solid rgba(239, 68, 68, 0.2)' : 
+                              (u.is_observer ? '1px dashed #eab308' : 'none')),
                             cursor: 'pointer',
                             fontSize: '0.85rem', width: '100%'
                           }}>
