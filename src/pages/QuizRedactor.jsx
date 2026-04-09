@@ -55,6 +55,7 @@ const QuizRedactor = () => {
   const [deleteQModal, setDeleteQModal] = useState(null);
   const [saving, setSaving] = useState(false);
   const [validErrors, setValidErrors] = useState([]);
+  const [showValidErrors, setShowValidErrors] = useState(false);
   const [showDeleteResultsModal, setShowDeleteResultsModal] = useState(false);
   const [deleteResultsLock, setDeleteResultsLock] = useState(3);
 
@@ -103,15 +104,15 @@ const QuizRedactor = () => {
     const count = res?.length || 0;
     const foreign = res?.some(r => r.user_id !== user.id);
 
-    if (count > 0) { 
-      setBlocked('has_results'); 
-      setResultCount(count); 
+    if (count > 0) {
+      setBlocked('has_results');
+      setResultCount(count);
       setHasForeignResults(foreign);
-      setLoading(false); 
+      setLoading(false);
       // При блокировке по результатам мы всё равно подгружаем заголовок для редактирования
       setTitle(q.title);
       setSavedTitle(q.title);
-      return; 
+      return;
     }
 
     const qs = deepClone(q.content?.questions || []);
@@ -181,13 +182,13 @@ const QuizRedactor = () => {
       finalTitle = normalizeTitle(title);
       setTitle(finalTitle);
     }
-    
+
     if (!validate()) { setShowValidErrors(true); setShowSaveModal(false); return; }
-    
+
     // Check for ALL CAPS or poor formatting (warn on all saves)
     const isAllCaps = finalTitle === finalTitle.toUpperCase() && finalTitle.length > 5;
     const hasDashes = finalTitle.includes(' - ') || finalTitle.includes(' — ');
-    
+
     if (!force && (isAllCaps || hasDashes)) {
       setShowFormattingWarning(true);
       setShowSaveModal(false);
@@ -258,7 +259,7 @@ const QuizRedactor = () => {
       // Delete attempts and results
       await supabase.from('quiz_attempts').delete().eq('quiz_id', quizId);
       await supabase.from('quiz_results').delete().eq('quiz_id', quizId);
-      
+
       // Re-fetch data to unlock editor
       setShowDeleteResultsModal(false);
       await fetchAll();
@@ -398,20 +399,20 @@ const QuizRedactor = () => {
         <div className="container flex-center animate" style={{ flexDirection: 'column', minHeight: '70vh', gap: '20px', padding: '40px 20px' }}>
           <div style={iconBoxStyle('#f87171')}><AlertTriangle size={36} /></div>
           <h2 style={{ textAlign: 'center' }}>Редактирование ограничено</h2>
-          
+
           {canEditOnlyTitle && (
             <div className="card" style={{ width: '100%', maxWidth: '600px', padding: '25px', marginBottom: '10px' }}>
               <div style={{ fontSize: '0.75rem', opacity: 0.4, marginBottom: '10px', letterSpacing: '1px', textTransform: 'uppercase', textAlign: 'left' }}>Изменить только заголовок</div>
               <div className="flex-center" style={{ gap: '10px' }}>
-                <input 
-                  type="text" 
-                  value={title} 
-                  onChange={e => setTitle(e.target.value)} 
+                <input
+                  type="text"
+                  value={title}
+                  onChange={e => setTitle(e.target.value)}
                   placeholder="Новое название теста..."
                   style={{ fontSize: '1.2rem', fontWeight: '600', flex: 1, padding: '12px 15px' }}
                 />
-                <button 
-                  onClick={handleUpdateOnlyTitle} 
+                <button
+                  onClick={handleUpdateOnlyTitle}
                   disabled={saving || title === savedTitle}
                   style={{ padding: '12px 20px', background: 'var(--primary-color)', color: 'white', opacity: title === savedTitle ? 0.5 : 1 }}
                 >
@@ -438,14 +439,14 @@ const QuizRedactor = () => {
               <BarChart2 size={18} style={{ marginRight: '8px' }} /> Аналитика
             </button>
             {canDelete && (
-               <button onClick={() => setShowDeleteModal(true)} className="flex-center" style={{ padding: '12px 24px', background: 'rgba(239, 68, 68, 0.08)', color: '#ef4444', boxShadow: 'none' }}>
+              <button onClick={() => setShowDeleteModal(true)} className="flex-center" style={{ padding: '12px 24px', background: 'rgba(239, 68, 68, 0.08)', color: '#ef4444', boxShadow: 'none' }}>
                 <Trash2 size={18} style={{ marginRight: '8px' }} /> Удалить тест
               </button>
             )}
             {isPrivileged && (
-              <button 
-                onClick={() => { setDeleteResultsLock(3); setShowDeleteResultsModal(true); }} 
-                className="flex-center" 
+              <button
+                onClick={() => { setDeleteResultsLock(3); setShowDeleteResultsModal(true); }}
+                className="flex-center"
                 style={{ padding: '12px 24px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px dashed #ef4444' }}
               >
                 <RotateCcw size={18} style={{ marginRight: '8px' }} /> Сбросить результаты и редактировать
@@ -453,7 +454,7 @@ const QuizRedactor = () => {
             )}
           </div>
           {!canDelete && isAuthor && (
-             <p style={{ fontSize: '0.85rem', color: '#f87171', background: 'rgba(248,113,113,0.05)', padding: '10px 20px', borderRadius: '12px', marginTop: '10px' }}>
+            <p style={{ fontSize: '0.85rem', color: '#f87171', background: 'rgba(248,113,113,0.05)', padding: '10px 20px', borderRadius: '12px', marginTop: '10px' }}>
               Для удаления теста обратитесь к администратору или создателю платформы (обнаружены результаты учеников).
             </p>
           )}
@@ -512,13 +513,13 @@ const QuizRedactor = () => {
               <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', background: 'rgba(250, 204, 21, 0.1)', color: '#ca8a04', borderRadius: '20px', margin: '0 auto 20px' }}><AlertTriangle size={30} /></div>
               <h3 style={{ marginBottom: '15px', textAlign: 'center' }}>Внимание к форматированию</h3>
               <p style={{ opacity: 0.7, fontSize: '0.95rem', marginBottom: '25px', textAlign: 'center', lineHeight: '1.6' }}>
-                Возможно, заголовок введён полностью <strong>БОЛЬШИМИ БУКВАМИ</strong> или содержит тире. <br/>
+                Возможно, заголовок введён полностью <strong>БОЛЬШИМИ БУКВАМИ</strong> или содержит тире. <br />
                 Напоминаем: при первом выкладывании система попытается нормализовать кавычки и пробелы после параграфа (например, <em>«§ 10.»</em>). Убедитесь, что всё выглядит корректно.
               </p>
               <div className="grid-2" style={{ gap: '12px' }}>
                 <button onClick={() => setShowFormattingWarning(false)} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit' }}>Вернуться к редактуре</button>
-                <button 
-                  onClick={() => handleSave(true)} 
+                <button
+                  onClick={() => handleSave(true)}
                   disabled={saving}
                   style={{ background: 'var(--primary-color)', color: 'white' }}
                 >
@@ -560,8 +561,8 @@ const QuizRedactor = () => {
               </p>
               <div className="grid-2" style={{ gap: '15px' }}>
                 <button onClick={() => setShowDeleteModal(false)} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit' }}>Отмена</button>
-                <button 
-                  onClick={handleDeleteQuiz} 
+                <button
+                  onClick={handleDeleteQuiz}
                   disabled={saving}
                   style={{ background: '#ef4444', color: 'white' }}
                 >
@@ -597,8 +598,8 @@ const QuizRedactor = () => {
               </p>
               <div className="grid-2" style={{ gap: '15px' }}>
                 <button onClick={() => setShowDeleteResultsModal(false)} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit' }}>Отмена</button>
-                <button 
-                  onClick={handleDeleteResultsAndEdit} 
+                <button
+                  onClick={handleDeleteResultsAndEdit}
                   disabled={deleteResultsLock > 0 || saving}
                   style={{ background: '#ef4444', color: 'white', opacity: deleteResultsLock > 0 ? 0.5 : 1 }}
                 >
@@ -616,243 +617,245 @@ const QuizRedactor = () => {
   return (
     <>
       <div className="container animate" style={{ padding: '40px 20px', paddingBottom: changed ? '130px' : '60px' }}>
-      {/* Header */}
-      <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '30px', flexWrap: 'wrap', gap: '12px' }}>
-        <button onClick={() => changed ? setShowCancelModal(true) : navigate(-1)} className="flex-center" style={ghostBtnStyle}>
-          <ChevronLeft size={20} /> Назад
-        </button>
-        <div className="flex-center" style={{ gap: '10px', flexWrap: 'wrap' }}>
-          <button onClick={undo} disabled={!canUndo} title="Отменить последнее действие" className="flex-center"
-            style={{ padding: '10px', background: canUndo ? 'rgba(99,102,241,0.1)' : 'rgba(0,0,0,0.05)', color: canUndo ? 'var(--primary-color)' : 'inherit', opacity: canUndo ? 1 : 0.4, boxShadow: 'none', borderRadius: '12px' }}>
-            <RotateCcw size={20} />
+        {/* Header */}
+        <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '30px', flexWrap: 'wrap', gap: '12px' }}>
+          <button onClick={() => changed ? setShowCancelModal(true) : navigate(-1)} className="flex-center" style={ghostBtnStyle}>
+            <ChevronLeft size={20} /> Назад
           </button>
-          <button onClick={downloadJson} disabled={changed} title={changed ? 'Сначала сохраните изменения' : 'Скачать JSON'} className="flex-center"
-            style={{ padding: '10px 18px', background: 'rgba(74,222,128,0.1)', color: '#4ade80', boxShadow: 'none', opacity: changed ? 0.4 : 1, borderRadius: '12px', fontSize: '0.9rem' }}>
-            <Download size={16} style={{ marginRight: '6px' }} /> JSON
-          </button>
-          <button onClick={() => navigate(`/analytics?id=${quizId}`)} className="flex-center" style={{ ...ghostBtnStyle, padding: '10px 18px' }}>
-            <BarChart2 size={16} style={{ marginRight: '6px' }} /> Аналитика
-          </button>
-          <button 
-            onClick={() => setIsHidden(!isHidden)} 
-            className="flex-center" 
-            title={isHidden ? "Показать ученикам" : "Скрыть от учеников"}
-            style={{ 
-              padding: '10px 18px', 
-              background: isHidden ? 'rgba(0,0,0,0.05)' : 'rgba(99,102,241,0.1)', 
-              color: isHidden ? 'inherit' : 'var(--primary-color)', 
-              boxShadow: 'none', 
-              borderRadius: '12px', 
-              fontSize: '0.9rem',
-              opacity: isHidden ? 0.6 : 1
-            }}
-          >
-            {isHidden ? <EyeOff size={16} style={{ marginRight: '6px' }} /> : <Eye size={16} style={{ marginRight: '6px' }} />}
-            {isHidden ? 'Скрыт' : 'Виден'}
-          </button>
-          {canDelete && (
-            <button 
-              onClick={() => setShowDeleteModal(true)} 
-              className="flex-center" 
-              style={{ 
-                background: 'rgba(239, 68, 68, 0.08)', 
-                color: '#ef4444', 
-                boxShadow: 'none', 
-                padding: '10px', 
-                borderRadius: '12px' 
-              }}
-              title="Удалить тест"
-            >
-              <Trash2 size={20} />
+          <div className="flex-center" style={{ gap: '10px', flexWrap: 'wrap' }}>
+            <button onClick={undo} disabled={!canUndo} title="Отменить последнее действие" className="flex-center"
+              style={{ padding: '10px', background: canUndo ? 'rgba(99,102,241,0.1)' : 'rgba(0,0,0,0.05)', color: canUndo ? 'var(--primary-color)' : 'inherit', opacity: canUndo ? 1 : 0.4, boxShadow: 'none', borderRadius: '12px' }}>
+              <RotateCcw size={20} />
             </button>
+            <button onClick={downloadJson} disabled={changed} title={changed ? 'Сначала сохраните изменения' : 'Скачать JSON'} className="flex-center"
+              style={{ padding: '10px 18px', background: 'rgba(74,222,128,0.1)', color: '#4ade80', boxShadow: 'none', opacity: changed ? 0.4 : 1, borderRadius: '12px', fontSize: '0.9rem' }}>
+              <Download size={16} style={{ marginRight: '6px' }} /> JSON
+            </button>
+            <button onClick={() => navigate(`/analytics?id=${quizId}`)} className="flex-center" style={{ ...ghostBtnStyle, padding: '10px 18px' }}>
+              <BarChart2 size={16} style={{ marginRight: '6px' }} /> Аналитика
+            </button>
+            <button
+              onClick={() => setIsHidden(!isHidden)}
+              className="flex-center"
+              title={isHidden ? "Показать ученикам" : "Скрыть от учеников"}
+              style={{
+                padding: '10px 18px',
+                background: isHidden ? 'rgba(0,0,0,0.05)' : 'rgba(99,102,241,0.1)',
+                color: isHidden ? 'inherit' : 'var(--primary-color)',
+                boxShadow: 'none',
+                borderRadius: '12px',
+                fontSize: '0.9rem',
+                opacity: isHidden ? 0.6 : 1
+              }}
+            >
+              {isHidden ? <EyeOff size={16} style={{ marginRight: '6px' }} /> : <Eye size={16} style={{ marginRight: '6px' }} />}
+              {isHidden ? 'Скрыт' : 'Виден'}
+            </button>
+            {canDelete && (
+              <button
+                onClick={() => setShowDeleteModal(true)}
+                className="flex-center"
+                style={{
+                  background: 'rgba(239, 68, 68, 0.08)',
+                  color: '#ef4444',
+                  boxShadow: 'none',
+                  padding: '10px',
+                  borderRadius: '12px'
+                }}
+                title="Удалить тест"
+              >
+                <Trash2 size={20} />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Quiz title */}
+        <div className="card" style={{ marginBottom: '25px', padding: '25px 30px' }}>
+          <div style={{ fontSize: '0.75rem', opacity: 0.4, marginBottom: '10px', letterSpacing: '1px', textTransform: 'uppercase' }}>Заголовок теста</div>
+          {editingTitle ? (
+            <div className="flex-center" style={{ gap: '10px' }}>
+              <input
+                id="quiz-title-edit"
+                name="quiz-title"
+                type="text"
+                value={title}
+                onChange={e => setTitle(e.target.value)}
+                autoFocus
+                style={{ fontSize: '1.5rem', fontWeight: '700', flex: 1 }}
+                onKeyDown={e => { if (e.key === 'Enter') setEditingTitle(false); }}
+              />
+              <button onClick={() => setEditingTitle(false)} style={{ padding: '8px', background: 'var(--primary-color)', color: 'white', borderRadius: '10px', boxShadow: 'none' }}><Check size={20} /></button>
+            </div>
+          ) : (
+            <div className="flex-center" style={{ gap: '15px', justifyContent: 'flex-start' }}>
+              <h2 style={{ fontSize: '1.8rem', margin: 0, fontWeight: '700', flex: 1, lineHeight: '1.3' }}>
+                {title || <span style={{ opacity: 0.3 }}>Без названия</span>}
+              </h2>
+              <button onClick={() => { pushHistory(title, questions); setEditingTitle(true); }}
+                style={{ padding: '8px', background: 'rgba(99,102,241,0.1)', color: 'var(--primary-color)', borderRadius: '10px', boxShadow: 'none', flexShrink: 0 }}>
+                <Pencil size={18} />
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Stats + validation summary */}
+        <div style={{ display: 'flex', gap: '12px', marginBottom: '25px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={statPillStyle}>{questions.length} / {MAX_QUESTIONS} вопросов</div>
+          {showValidErrors && validErrors.length > 0 && (
+            <div style={{ ...statPillStyle, background: 'rgba(248,113,113,0.1)', color: '#f87171', cursor: 'pointer' }}
+              onClick={() => setShowValidErrors(false)}>
+              <AlertCircle size={14} style={{ marginRight: '5px' }} /> {validErrors.length} ошибок — нельзя сохранить &nbsp;×
+            </div>
+          )}
+        </div>
+
+        {/* Validation errors detail */}
+        {showValidErrors && validErrors.length > 0 && (
+          <div className="card animate" style={{ marginBottom: '25px', background: 'rgba(248,113,113,0.05)', border: '1px solid rgba(248,113,113,0.25)', padding: '20px' }}>
+            <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '12px' }}>
+              <div className="flex-center" style={{ gap: '8px', color: '#f87171' }}><AlertCircle size={18} /><strong>Ошибки</strong></div>
+              <button onClick={() => setShowValidErrors(false)} style={{ padding: '4px', background: 'transparent', boxShadow: 'none', color: '#f87171' }}><X size={16} /></button>
+            </div>
+            <ul style={{ margin: 0, paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              {validErrors.map((e, i) => <li key={i} style={{ fontSize: '0.88rem', opacity: 0.85 }}>{e}</li>)}
+            </ul>
+          </div>
+        )}
+
+        {/* Questions list */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {questions.map((q, qIdx) => (
+            <div key={qIdx} className="card animate" style={{ padding: '0', overflow: 'hidden', border: '1px solid rgba(0,0,0,0.06)' }}>
+              {/* Question header */}
+              <div style={{ padding: '20px 25px', background: 'rgba(99,102,241,0.04)', borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
+                <div className="flex-center" style={{ gap: '10px', justifyContent: 'space-between' }}>
+                  <div className="flex-center" style={{ gap: '10px', flex: 1, minWidth: 0 }}>
+                    <span style={{ background: 'var(--primary-color)', color: 'white', width: '28px', height: '28px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem', fontWeight: '700', flexShrink: 0 }}>{qIdx + 1}</span>
+                    {editQIdx === qIdx ? (
+                      <div className="flex-center" style={{ gap: '8px', flex: 1 }}>
+                        <input
+                          id={`q-text-${qIdx}`}
+                          name={`question-${qIdx}`}
+                          type="text"
+                          value={q.question}
+                          autoFocus
+                          onChange={e => updateQText(qIdx, e.target.value)}
+                          style={{ flex: 1, fontWeight: '600', fontSize: '1rem' }}
+                          onKeyDown={e => { if (e.key === 'Enter') setEditQIdx(null); }}
+                          onBlur={() => setEditQIdx(null)}
+                        />
+                        <button onClick={() => setEditQIdx(null)} style={{ padding: '6px', background: 'var(--primary-color)', color: 'white', borderRadius: '8px', boxShadow: 'none', flexShrink: 0 }}><Check size={16} /></button>
+                      </div>
+                    ) : (
+                      <span style={{ fontWeight: '600', fontSize: '1rem', flex: 1 }}>{q.question || <span style={{ opacity: 0.3 }}>Текст вопроса...</span>}</span>
+                    )}
+                  </div>
+                  <div className="flex-center" style={{ gap: '6px', flexShrink: 0 }}>
+                    {editQIdx !== qIdx && (
+                      <button onClick={() => { pushHistory(title, questions); setEditQIdx(qIdx); }}
+                        style={{ padding: '7px', background: 'rgba(99,102,241,0.1)', color: 'var(--primary-color)', borderRadius: '8px', boxShadow: 'none' }}>
+                        <Pencil size={15} />
+                      </button>
+                    )}
+                    <button onClick={() => { if (q.options?.length >= 1) setDeleteQModal(qIdx); else deleteQuestion(qIdx); }}
+                      style={{ padding: '7px', background: 'rgba(255,0,0,0.07)', color: '#f87171', borderRadius: '8px', boxShadow: 'none' }}>
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                </div>
+                <div style={{ fontSize: '0.75rem', opacity: 0.4, marginTop: '8px', marginLeft: '38px' }}>
+                  {q.options?.length || 0} вариантов · {q.options?.length >= MAX_OPTIONS ? 'лимит вариантов' : `ещё ${MAX_OPTIONS - (q.options?.length || 0)}`}
+                </div>
+              </div>
+
+              {/* Options */}
+              <div style={{ padding: '15px 25px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {(q.options || []).map((opt, oIdx) => {
+                  const isCorrect = q.correctIndex === oIdx;
+                  const key = `${qIdx}-${oIdx}`;
+                  return (
+                    <div key={oIdx} className="flex-center" style={{ gap: '10px' }}>
+                      {/* Correct answer radio */}
+                      <button
+                        onClick={() => setCorrect(qIdx, oIdx)}
+                        title={isCorrect ? 'Верный ответ' : 'Сделать верным'}
+                        style={{
+                          width: '24px', height: '24px', borderRadius: '50%', flexShrink: 0, padding: 0, boxShadow: 'none',
+                          background: isCorrect ? 'var(--primary-color)' : 'transparent',
+                          border: `2px solid ${isCorrect ? 'var(--primary-color)' : 'rgba(0,0,0,0.2)'}`,
+                          transition: 'all 0.2s'
+                        }}>
+                        {isCorrect && <Check size={13} color="white" />}
+                      </button>
+
+                      {/* Option text */}
+                      <div style={{
+                        flex: 1, display: 'flex', alignItems: 'center', gap: '8px',
+                        padding: '10px 14px', borderRadius: '12px', border: `2px solid ${isCorrect ? 'rgba(99,102,241,0.25)' : 'rgba(0,0,0,0.06)'}`,
+                        background: isCorrect ? 'rgba(99,102,241,0.04)' : 'var(--card-bg)', transition: 'all 0.2s'
+                      }}>
+                        {editOptKey === key ? (
+                          <input
+                            id={`q-${qIdx}-opt-${oIdx}`}
+                            name={`option-${qIdx}-${oIdx}`}
+                            type="text"
+                            value={opt}
+                            autoFocus
+                            onChange={e => updateOpt(qIdx, oIdx, e.target.value)}
+                            onBlur={() => setEditOptKey(null)}
+                            onKeyDown={e => { if (e.key === 'Enter') setEditOptKey(null); }}
+                            style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: '0.95rem', color: 'var(--text-color)' }}
+                          />
+                        ) : (
+                          <span style={{ flex: 1, fontSize: '0.95rem' }}>{opt || <span style={{ opacity: 0.3 }}>Текст варианта...</span>}</span>
+                        )}
+                      </div>
+
+                      {/* Edit + delete option buttons */}
+                      {editOptKey !== key && (
+                        <button onClick={() => { pushHistory(title, questions); setEditOptKey(key); }}
+                          style={{ padding: '7px', background: 'rgba(99,102,241,0.08)', color: 'var(--primary-color)', borderRadius: '8px', boxShadow: 'none', flexShrink: 0 }}>
+                          <Pencil size={14} />
+                        </button>
+                      )}
+                      {q.options.length > MIN_OPTIONS && (
+                        <button onClick={() => deleteOption(qIdx, oIdx)}
+                          style={{ padding: '7px', background: 'rgba(255,0,0,0.06)', color: '#f87171', borderRadius: '8px', boxShadow: 'none', flexShrink: 0 }}>
+                          <X size={14} />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* Add option */}
+                {(q.options?.length || 0) < MAX_OPTIONS && (
+                  <button onClick={() => addOption(qIdx)} className="flex-center"
+                    style={{ padding: '10px', background: 'rgba(99,102,241,0.04)', color: 'var(--primary-color)', border: '1.5px dashed rgba(99,102,241,0.3)', borderRadius: '12px', boxShadow: 'none', width: '100%', fontSize: '0.88rem', gap: '6px', marginTop: '4px' }}>
+                    <Plus size={15} /> Добавить вариант
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+
+          {/* Add question */}
+          {questions.length < MAX_QUESTIONS ? (
+            <button onClick={addQuestion} className="flex-center"
+              style={{ padding: '18px', background: 'rgba(99,102,241,0.04)', color: 'var(--primary-color)', border: '2px dashed rgba(99,102,241,0.25)', borderRadius: '18px', boxShadow: 'none', width: '100%', fontSize: '1rem', gap: '8px', fontWeight: '600' }}>
+              <Plus size={20} /> Добавить вопрос
+            </button>
+          ) : (
+            <div style={{ padding: '18px', textAlign: 'center', opacity: 0.4, fontSize: '0.9rem', border: '2px dashed rgba(0,0,0,0.1)', borderRadius: '18px' }}>
+              Достигнут лимит в {MAX_QUESTIONS} вопросов
+            </div>
           )}
         </div>
       </div>
 
-      {/* Quiz title */}
-      <div className="card" style={{ marginBottom: '25px', padding: '25px 30px' }}>
-        <div style={{ fontSize: '0.75rem', opacity: 0.4, marginBottom: '10px', letterSpacing: '1px', textTransform: 'uppercase' }}>Заголовок теста</div>
-        {editingTitle ? (
-          <div className="flex-center" style={{ gap: '10px' }}>
-            <input 
-              id="quiz-title-edit"
-              name="quiz-title"
-              type="text" 
-              value={title} 
-              onChange={e => setTitle(e.target.value)} 
-              autoFocus
-              style={{ fontSize: '1.5rem', fontWeight: '700', flex: 1 }}
-              onKeyDown={e => { if (e.key === 'Enter') setEditingTitle(false); }} 
-            />
-            <button onClick={() => setEditingTitle(false)} style={{ padding: '8px', background: 'var(--primary-color)', color: 'white', borderRadius: '10px', boxShadow: 'none' }}><Check size={20} /></button>
-          </div>
-        ) : (
-          <div className="flex-center" style={{ gap: '15px', justifyContent: 'flex-start' }}>
-            <h2 style={{ fontSize: '1.8rem', margin: 0, fontWeight: '700', flex: 1, lineHeight: '1.3' }}>
-              {title || <span style={{ opacity: 0.3 }}>Без названия</span>}
-            </h2>
-            <button onClick={() => { pushHistory(title, questions); setEditingTitle(true); }}
-              style={{ padding: '8px', background: 'rgba(99,102,241,0.1)', color: 'var(--primary-color)', borderRadius: '10px', boxShadow: 'none', flexShrink: 0 }}>
-              <Pencil size={18} />
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Stats + validation summary */}
-      <div style={{ display: 'flex', gap: '12px', marginBottom: '25px', flexWrap: 'wrap', alignItems: 'center' }}>
-        <div style={statPillStyle}>{questions.length} / {MAX_QUESTIONS} вопросов</div>
-        {showValidErrors && validErrors.length > 0 && (
-          <div style={{ ...statPillStyle, background: 'rgba(248,113,113,0.1)', color: '#f87171', cursor: 'pointer' }}
-            onClick={() => setShowValidErrors(false)}>
-            <AlertCircle size={14} style={{ marginRight: '5px' }} /> {validErrors.length} ошибок — нельзя сохранить &nbsp;×
-          </div>
-        )}
-      </div>
-
-      {/* Validation errors detail */}
-      {showValidErrors && validErrors.length > 0 && (
-        <div className="card animate" style={{ marginBottom: '25px', background: 'rgba(248,113,113,0.05)', border: '1px solid rgba(248,113,113,0.25)', padding: '20px' }}>
-          <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '12px' }}>
-            <div className="flex-center" style={{ gap: '8px', color: '#f87171' }}><AlertCircle size={18} /><strong>Ошибки</strong></div>
-            <button onClick={() => setShowValidErrors(false)} style={{ padding: '4px', background: 'transparent', boxShadow: 'none', color: '#f87171' }}><X size={16} /></button>
-          </div>
-          <ul style={{ margin: 0, paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            {validErrors.map((e, i) => <li key={i} style={{ fontSize: '0.88rem', opacity: 0.85 }}>{e}</li>)}
-          </ul>
-        </div>
-      )}
-
-      {/* Questions list */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-        {questions.map((q, qIdx) => (
-          <div key={qIdx} className="card animate" style={{ padding: '0', overflow: 'hidden', border: '1px solid rgba(0,0,0,0.06)' }}>
-            {/* Question header */}
-            <div style={{ padding: '20px 25px', background: 'rgba(99,102,241,0.04)', borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
-              <div className="flex-center" style={{ gap: '10px', justifyContent: 'space-between' }}>
-                <div className="flex-center" style={{ gap: '10px', flex: 1, minWidth: 0 }}>
-                  <span style={{ background: 'var(--primary-color)', color: 'white', width: '28px', height: '28px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem', fontWeight: '700', flexShrink: 0 }}>{qIdx + 1}</span>
-                  {editQIdx === qIdx ? (
-                    <div className="flex-center" style={{ gap: '8px', flex: 1 }}>
-                      <input 
-                        id={`q-text-${qIdx}`}
-                        name={`question-${qIdx}`}
-                        type="text" 
-                        value={q.question} 
-                        autoFocus
-                        onChange={e => updateQText(qIdx, e.target.value)}
-                        style={{ flex: 1, fontWeight: '600', fontSize: '1rem' }}
-                        onKeyDown={e => { if (e.key === 'Enter') setEditQIdx(null); }}
-                        onBlur={() => setEditQIdx(null)} 
-                      />
-                      <button onClick={() => setEditQIdx(null)} style={{ padding: '6px', background: 'var(--primary-color)', color: 'white', borderRadius: '8px', boxShadow: 'none', flexShrink: 0 }}><Check size={16} /></button>
-                    </div>
-                  ) : (
-                    <span style={{ fontWeight: '600', fontSize: '1rem', flex: 1 }}>{q.question || <span style={{ opacity: 0.3 }}>Текст вопроса...</span>}</span>
-                  )}
-                </div>
-                <div className="flex-center" style={{ gap: '6px', flexShrink: 0 }}>
-                  {editQIdx !== qIdx && (
-                    <button onClick={() => { pushHistory(title, questions); setEditQIdx(qIdx); }}
-                      style={{ padding: '7px', background: 'rgba(99,102,241,0.1)', color: 'var(--primary-color)', borderRadius: '8px', boxShadow: 'none' }}>
-                      <Pencil size={15} />
-                    </button>
-                  )}
-                  <button onClick={() => { if (q.options?.length >= 1) setDeleteQModal(qIdx); else deleteQuestion(qIdx); }}
-                    style={{ padding: '7px', background: 'rgba(255,0,0,0.07)', color: '#f87171', borderRadius: '8px', boxShadow: 'none' }}>
-                    <Trash2 size={15} />
-                  </button>
-                </div>
-              </div>
-              <div style={{ fontSize: '0.75rem', opacity: 0.4, marginTop: '8px', marginLeft: '38px' }}>
-                {q.options?.length || 0} вариантов · {q.options?.length >= MAX_OPTIONS ? 'лимит вариантов' : `ещё ${MAX_OPTIONS - (q.options?.length || 0)}`}
-              </div>
-            </div>
-
-            {/* Options */}
-            <div style={{ padding: '15px 25px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {(q.options || []).map((opt, oIdx) => {
-                const isCorrect = q.correctIndex === oIdx;
-                const key = `${qIdx}-${oIdx}`;
-                return (
-                  <div key={oIdx} className="flex-center" style={{ gap: '10px' }}>
-                    {/* Correct answer radio */}
-                    <button
-                      onClick={() => setCorrect(qIdx, oIdx)}
-                      title={isCorrect ? 'Верный ответ' : 'Сделать верным'}
-                      style={{
-                        width: '24px', height: '24px', borderRadius: '50%', flexShrink: 0, padding: 0, boxShadow: 'none',
-                        background: isCorrect ? 'var(--primary-color)' : 'transparent',
-                        border: `2px solid ${isCorrect ? 'var(--primary-color)' : 'rgba(0,0,0,0.2)'}`,
-                        transition: 'all 0.2s'
-                      }}>
-                      {isCorrect && <Check size={13} color="white" />}
-                    </button>
-
-                    {/* Option text */}
-                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px',
-                      padding: '10px 14px', borderRadius: '12px', border: `2px solid ${isCorrect ? 'rgba(99,102,241,0.25)' : 'rgba(0,0,0,0.06)'}`,
-                      background: isCorrect ? 'rgba(99,102,241,0.04)' : 'var(--card-bg)', transition: 'all 0.2s' }}>
-                      {editOptKey === key ? (
-                        <input 
-                          id={`q-${qIdx}-opt-${oIdx}`}
-                          name={`option-${qIdx}-${oIdx}`}
-                          type="text" 
-                          value={opt} 
-                          autoFocus
-                          onChange={e => updateOpt(qIdx, oIdx, e.target.value)}
-                          onBlur={() => setEditOptKey(null)}
-                          onKeyDown={e => { if (e.key === 'Enter') setEditOptKey(null); }}
-                          style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: '0.95rem', color: 'var(--text-color)' }} 
-                        />
-                      ) : (
-                        <span style={{ flex: 1, fontSize: '0.95rem' }}>{opt || <span style={{ opacity: 0.3 }}>Текст варианта...</span>}</span>
-                      )}
-                    </div>
-
-                    {/* Edit + delete option buttons */}
-                    {editOptKey !== key && (
-                      <button onClick={() => { pushHistory(title, questions); setEditOptKey(key); }}
-                        style={{ padding: '7px', background: 'rgba(99,102,241,0.08)', color: 'var(--primary-color)', borderRadius: '8px', boxShadow: 'none', flexShrink: 0 }}>
-                        <Pencil size={14} />
-                      </button>
-                    )}
-                    {q.options.length > MIN_OPTIONS && (
-                      <button onClick={() => deleteOption(qIdx, oIdx)}
-                        style={{ padding: '7px', background: 'rgba(255,0,0,0.06)', color: '#f87171', borderRadius: '8px', boxShadow: 'none', flexShrink: 0 }}>
-                        <X size={14} />
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
-
-              {/* Add option */}
-              {(q.options?.length || 0) < MAX_OPTIONS && (
-                <button onClick={() => addOption(qIdx)} className="flex-center"
-                  style={{ padding: '10px', background: 'rgba(99,102,241,0.04)', color: 'var(--primary-color)', border: '1.5px dashed rgba(99,102,241,0.3)', borderRadius: '12px', boxShadow: 'none', width: '100%', fontSize: '0.88rem', gap: '6px', marginTop: '4px' }}>
-                  <Plus size={15} /> Добавить вариант
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
-
-        {/* Add question */}
-        {questions.length < MAX_QUESTIONS ? (
-          <button onClick={addQuestion} className="flex-center"
-            style={{ padding: '18px', background: 'rgba(99,102,241,0.04)', color: 'var(--primary-color)', border: '2px dashed rgba(99,102,241,0.25)', borderRadius: '18px', boxShadow: 'none', width: '100%', fontSize: '1rem', gap: '8px', fontWeight: '600' }}>
-            <Plus size={20} /> Добавить вопрос
-          </button>
-        ) : (
-          <div style={{ padding: '18px', textAlign: 'center', opacity: 0.4, fontSize: '0.9rem', border: '2px dashed rgba(0,0,0,0.1)', borderRadius: '18px' }}>
-            Достигнут лимит в {MAX_QUESTIONS} вопросов
-          </div>
-        )}
-      </div>
-    </div>
-
-    {/* ─── Unsaved changes bar ─── */}
+      {/* ─── Unsaved changes bar ─── */}
       {hasChanges() && (
         <div style={{ position: 'fixed', bottom: '30px', left: '50%', transform: 'translateX(-50%)', background: 'var(--card-bg)', padding: '15px 25px', borderRadius: '50px', boxShadow: '0 10px 40px rgba(0,0,0,0.15)', border: '1px solid rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', gap: '20px', zIndex: 2000, flexWrap: 'wrap', justifyContent: 'center' }}>
           <span style={{ fontWeight: '500', fontSize: '0.95rem' }}>⚠ Есть несохранённые изменения</span>
