@@ -29,15 +29,20 @@ const Statistics = ({ session, profile }) => {
 
   useEffect(() => {
     fetchData();
-    // Set defaults from profile if not already set by session
+    // Set defaults from profile if not already set in session
     if (profile) {
-      if (!sessionStorage.getItem('f_city') && profile.city_id) setFilterCity(profile.city_id);
-      if (!sessionStorage.getItem('f_school') && profile.school_id) setFilterSchool(profile.school_id);
-
-      // Force-lock teacher filters
-      if (profile.role === 'teacher') {
+      const isRestricted = profile.role === 'teacher' || profile.role === 'player';
+      const hasStoredCity = sessionStorage.getItem('f_city');
+      const hasStoredSchool = sessionStorage.getItem('f_school');
+      
+      if (isRestricted) {
+        // Force-lock for restricted roles to prevent seeing "All"
         if (profile.city_id) setFilterCity(profile.city_id);
         if (profile.school_id) setFilterSchool(profile.school_id);
+      } else {
+        // Defaults for privileged roles (Persistence within session)
+        if (!hasStoredCity && profile.city_id) setFilterCity(profile.city_id);
+        if (!hasStoredSchool && profile.school_id) setFilterSchool(profile.school_id);
       }
     }
   }, [profile]);
@@ -109,8 +114,9 @@ const Statistics = ({ session, profile }) => {
       // 1. Исключаем наблюдателей, скрытых и неподтвержденных пользователей из рейтинга
       if (u.is_observer || u.is_hidden || !u.is_profile_setup_completed) return false;
 
-      // 2. ЖЕСТКОЕ ОГРАНИЧЕНИЕ ДЛЯ УЧИТЕЛЯ (видит только учеников своей школы)
-      if (profile?.role === 'teacher' && u.school_id !== profile?.school_id) return false;
+      // 2. ЖЕСТКОЕ ОГРАНИЧЕНИЕ ДЛЯ УЧИТЕЛЕЙ И УЧЕНИКОВ (видят только свою школу)
+      const isRestricted = profile?.role === 'teacher' || profile?.role === 'player';
+      if (isRestricted && u.school_id !== profile?.school_id) return false;
 
       // 3. Стандартные фильтры
       if (filterCity !== 'all' && u.city_id !== filterCity) return false;
@@ -199,11 +205,14 @@ const Statistics = ({ session, profile }) => {
 
   if (loading) return <StatSkeleton />;
 
+  const isObserver = profile?.role === 'player' && profile?.is_observer;
+  const hasAccess = session && !isObserver;
+
   return (
     <div className="container animate" style={{ padding: '40px 20px' }}>
       <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '40px', flexWrap: 'wrap', gap: '20px' }}>
         <h2 style={{ fontSize: '2rem' }}>Статистика и Рейтинг</h2>
-        {(profile?.role === 'admin' || profile?.role === 'creator' || profile?.role === 'editor' || profile?.role === 'teacher') && (
+        {hasAccess && (profile?.role === 'admin' || profile?.role === 'creator' || profile?.role === 'editor' || profile?.role === 'teacher') && (
           <button onClick={generatePDF} style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none' }}>
             <Download size={18} style={{ marginRight: '8px' }} /> Скачать PDF
           </button>
@@ -218,7 +227,7 @@ const Statistics = ({ session, profile }) => {
           value={filterCity}
           onChange={e => { setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all'); }}
           style={{ width: 'auto', flex: 1, minWidth: '150px' }}
-          disabled={profile?.role === 'teacher'}
+          disabled={!hasAccess || profile?.role === 'teacher' || profile?.role === 'player'}
         >
           <option value="all">Все города</option>
           {cities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -230,7 +239,7 @@ const Statistics = ({ session, profile }) => {
           value={filterSchool}
           onChange={e => { setFilterSchool(e.target.value); setFilterClass('all'); }}
           style={{ width: 'auto', flex: 1, minWidth: '150px' }}
-          disabled={profile?.role === 'teacher'}
+          disabled={!hasAccess || profile?.role === 'teacher' || profile?.role === 'player'}
         >
           <option value="all">Все школы</option>
           {availableSchools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -242,93 +251,124 @@ const Statistics = ({ session, profile }) => {
           value={filterClass}
           onChange={e => setFilterClass(e.target.value)}
           style={{ width: 'auto', flex: 1, minWidth: '150px' }}
+          disabled={!hasAccess}
         >
           <option value="all">Все классы</option>
           {availableClasses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
       </div>
 
-      <div className="grid-2" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', marginBottom: '40px' }}>
-        <StatSummaryCard icon={<Users size={24} />} label="Всего учеников" value={filteredStats.length} />
-        <StatSummaryCard icon={<School size={24} />} label={profile?.role === 'teacher' ? 'Моя школа' : 'Классов'} value={profile?.role === 'teacher' ? schools.find(s => s.id === profile.school_id)?.name || '—' : availableClasses.length} />
-        <StatSummaryCard icon={<Trophy size={24} />} label="Лидер" value={filteredStats.length > 0 ? getDisplayName(filteredStats[0]) : '—'} />
-      </div>
-
-      <div className="card" style={{ padding: '0' }}>
-        <div style={{ padding: '20px', borderBottom: '1px solid rgba(0,0,0,0.05)', display: 'flex', gap: '20px' }}>
-          <button onClick={() => setSortBy('points')} style={{ padding: '8px 20px', background: sortBy === 'points' ? 'var(--primary-color)' : 'transparent', color: sortBy === 'points' ? 'white' : 'inherit', boxShadow: 'none' }}>По баллам</button>
-          <button onClick={() => setSortBy('quizzes')} style={{ padding: '8px 20px', background: sortBy === 'quizzes' ? 'var(--primary-color)' : 'transparent', color: sortBy === 'quizzes' ? 'white' : 'inherit', boxShadow: 'none' }}>По кол-ву тестов</button>
+      {!hasAccess ? (
+        <div className="card" style={{ textAlign: 'center', padding: '60px 30px', background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.02) 0%, rgba(168, 85, 247, 0.02) 100%)', border: '1px dashed rgba(99, 102, 241, 0.2)' }}>
+          <div style={{ 
+            width: '80px', height: '80px', borderRadius: '24px', 
+            background: 'rgba(99, 102, 241, 0.08)', color: 'var(--primary-color)', 
+            display: 'flex', alignItems: 'center', justifyContent: 'center', 
+            margin: '0 auto 25px', transform: 'rotate(-5deg)' 
+          }}>
+            {!session ? <Users size={40} /> : <MapPin size={40} />}
+          </div>
+          <h2 style={{ marginBottom: '15px', fontSize: '1.8rem' }}>
+            {!session ? 'Требуется авторизация' : 'Доступ ограничен'}
+          </h2>
+          <p style={{ opacity: 0.7, lineHeight: '1.6', marginBottom: '30px', maxWidth: '500px', margin: '0 auto 30px' }}>
+            {!session 
+              ? 'Статистика и мировой рейтинг доступны только авторизованным пользователям системы. Пожалуйста, войдите в свой аккаунт.' 
+              : 'Вы находитесь в режиме наблюдателя. Рейтинг и детальная статистика доступны только ученикам, привязанным к конкретному классу и школе.'}
+          </p>
+          {!session ? (
+            <button onClick={() => navigate('/auth')} style={{ padding: '12px 35px' }}>Войти в систему</button>
+          ) : (
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 20px', background: 'rgba(0,0,0,0.03)', borderRadius: '12px', fontSize: '0.9rem', opacity: 0.6 }}>
+              <AlertTriangle size={16} /> Свяжитесь с учителем для активации профиля
+            </div>
+          )}
         </div>
+      ) : (
+        <>
+          <div className="grid-2" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', marginBottom: '40px' }}>
+            <StatSummaryCard icon={<Users size={24} />} label="Всего учеников" value={filteredStats.length} />
+            <StatSummaryCard icon={<School size={24} />} label={profile?.role === 'teacher' ? 'Моя школа' : 'Классов'} value={profile?.role === 'teacher' ? schools.find(s => s.id === profile.school_id)?.name || '—' : availableClasses.length} />
+            <StatSummaryCard icon={<Trophy size={24} />} label="Лидер" value={filteredStats.length > 0 ? getDisplayName(filteredStats[0]) : '—'} />
+          </div>
 
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead style={{ background: 'rgba(0,0,0,0.02)' }}>
-              <tr>
-                <th style={{ padding: '20px' }}>Место</th>
-                <th style={{ padding: '20px' }}>Ученик</th>
-                <th style={{ padding: '20px' }}>Учебное заведение</th>
-                <th style={{ padding: '20px' }}>Пройдено</th>
-                <th style={{ padding: '20px' }}>Баллы</th>
-                <th style={{ padding: '20px' }}>Ср. %</th>
-                <th style={{ padding: '20px' }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredStats.map((u, idx) => {
-                const isMe = u.id === session.user.id;
-                const rowBg = u.isSuspicious ? 'rgba(239, 68, 68, 0.25)' : (u.isUnderperforming ? 'rgba(250, 204, 21, 0.3)' : (isMe ? 'rgba(99, 102, 241, 0.05)' : 'transparent'));
-                
-                return (
-                  <tr key={u.id} style={{
-                    borderBottom: '1px solid rgba(0,0,0,0.01)',
-                  }}>
-                    <td style={{ padding: '20px', background: rowBg, verticalAlign: 'middle' }}>
-                      <div className="flex-center" style={{ width: '30px', height: '30px', borderRadius: '50%', background: idx < 3 ? 'var(--accent-color)' : 'rgba(0,0,0,0.05)', color: idx < 3 ? 'white' : 'inherit', fontSize: '0.8rem', fontWeight: '800' }}>{idx + 1}</div>
-                    </td>
-                    <td style={{ padding: '20px', fontWeight: isMe ? '700' : '400', color: u.isSuspicious ? '#ef4444' : 'inherit', background: rowBg, verticalAlign: 'middle' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', lineHeight: '1.2' }}>
-                        {getDisplayName(u)}
-                        <div style={{ display: 'flex', alignItems: 'center', height: '14px' }}>
-                          {u.isSuspicious && <AlertTriangle size={14} title="Подозрение в читерстве" color="#ef4444" />}
-                          {!u.isSuspicious && u.isUnderperforming && <AlertTriangle size={14} title="Низкая успеваемость" color="#ca8a04" />}
-                        </div>
-                      </div>
-                    </td>
-                    <td style={{ padding: '20px', background: rowBg, verticalAlign: 'middle' }}>
-                      <div style={{ opacity: 0.7, fontSize: '0.85rem' }}>
-                        <div>{cities.find(c => c.id === u.city_id)?.name || '—'}</div>
-                        <div>{schools.find(s => s.id === u.school_id)?.name || '—'}</div>
-                        <div style={{ fontWeight: 'bold' }}>{classes.find(c => c.id === u.class_id)?.name || '—'}</div>
-                      </div>
-                    </td>
-                    <td style={{ padding: '20px', fontWeight: '500', background: rowBg }}>{u.passedQuizzes}</td>
-                    <td style={{ padding: '20px', fontWeight: '700', color: 'var(--primary-color)', background: rowBg }}>{u.totalPoints}</td>
-                    <td style={{ padding: '20px', background: rowBg, verticalAlign: 'middle' }}>
-                      <div className="flex-center" style={{ gap: '10px', justifyContent: 'flex-start', height: '100%' }}>
-                        <div style={{ width: '60px', height: '6px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', overflow: 'hidden', display: 'flex' }}>
-                          <div style={{ width: `${u.avgScore}%`, height: '100%', background: u.avgScore >= 50 ? '#4ade80' : '#f87171' }} />
-                        </div>
-                        <span style={{ fontSize: '0.8rem', opacity: 0.6, lineHeight: '1' }}>{u.avgScore}%</span>
-                      </div>
-                    </td>
-                    <td style={{ padding: '20px', background: rowBg, verticalAlign: 'middle' }}>
-                      {(profile?.role === 'teacher' || profile?.role === 'admin' || profile?.role === 'creator') && (
-                        <button
-                          onClick={() => navigate(`/user-analytics?userId=${u.id}`)}
-                          style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', padding: '6px', borderRadius: '8px', boxShadow: 'none' }}
-                          title="Аналитика ученика"
-                        >
-                          <Info size={16} />
-                        </button>
-                      )}
-                    </td>
+          <div className="card" style={{ padding: '0' }}>
+            <div style={{ padding: '20px', borderBottom: '1px solid rgba(0,0,0,0.05)', display: 'flex', gap: '20px' }}>
+              <button onClick={() => setSortBy('points')} style={{ padding: '8px 20px', background: sortBy === 'points' ? 'var(--primary-color)' : 'transparent', color: sortBy === 'points' ? 'white' : 'inherit', boxShadow: 'none' }}>По баллам</button>
+              <button onClick={() => setSortBy('quizzes')} style={{ padding: '8px 20px', background: sortBy === 'quizzes' ? 'var(--primary-color)' : 'transparent', color: sortBy === 'quizzes' ? 'white' : 'inherit', boxShadow: 'none' }}>По кол-ву тестов</button>
+            </div>
+
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <thead style={{ background: 'rgba(0,0,0,0.02)' }}>
+                  <tr>
+                    <th style={{ padding: '20px' }}>Место</th>
+                    <th style={{ padding: '20px' }}>Ученик</th>
+                    <th style={{ padding: '20px' }}>Учебное заведение</th>
+                    <th style={{ padding: '20px' }}>Пройдено</th>
+                    <th style={{ padding: '20px' }}>Баллы</th>
+                    <th style={{ padding: '20px' }}>Ср. %</th>
+                    <th style={{ padding: '20px' }}></th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                </thead>
+                <tbody>
+                  {filteredStats.map((u, idx) => {
+                    const isMe = u.id === session.user.id;
+                    const rowBg = u.isSuspicious ? 'rgba(239, 68, 68, 0.25)' : (u.isUnderperforming ? 'rgba(250, 204, 21, 0.3)' : (isMe ? 'rgba(99, 102, 241, 0.05)' : 'transparent'));
+                    
+                    return (
+                      <tr key={u.id} style={{
+                        borderBottom: '1px solid rgba(0,0,0,0.01)',
+                      }}>
+                        <td style={{ padding: '20px', background: rowBg, verticalAlign: 'middle' }}>
+                          <div className="flex-center" style={{ width: '30px', height: '30px', borderRadius: '50%', background: idx < 3 ? 'var(--accent-color)' : 'rgba(0,0,0,0.05)', color: idx < 3 ? 'white' : 'inherit', fontSize: '0.8rem', fontWeight: '800' }}>{idx + 1}</div>
+                        </td>
+                        <td style={{ padding: '20px', fontWeight: isMe ? '700' : '400', color: u.isSuspicious ? '#ef4444' : 'inherit', background: rowBg, verticalAlign: 'middle' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', lineHeight: '1.2' }}>
+                            {getDisplayName(u)}
+                            <div style={{ display: 'flex', alignItems: 'center', height: '14px' }}>
+                              {u.isSuspicious && <AlertTriangle size={14} title="Подозрение в читерстве" color="#ef4444" />}
+                              {!u.isSuspicious && u.isUnderperforming && <AlertTriangle size={14} title="Низкая успеваемость" color="#ca8a04" />}
+                            </div>
+                          </div>
+                        </td>
+                        <td style={{ padding: '20px', background: rowBg, verticalAlign: 'middle' }}>
+                          <div style={{ opacity: 0.7, fontSize: '0.85rem' }}>
+                            <div>{cities.find(c => c.id === u.city_id)?.name || '—'}</div>
+                            <div>{schools.find(s => s.id === u.school_id)?.name || '—'}</div>
+                            <div style={{ fontWeight: 'bold' }}>{classes.find(c => c.id === u.class_id)?.name || '—'}</div>
+                          </div>
+                        </td>
+                        <td style={{ padding: '20px', fontWeight: '500', background: rowBg }}>{u.passedQuizzes}</td>
+                        <td style={{ padding: '20px', fontWeight: '700', color: 'var(--primary-color)', background: rowBg }}>{u.totalPoints}</td>
+                        <td style={{ padding: '20px', background: rowBg, verticalAlign: 'middle' }}>
+                          <div className="flex-center" style={{ gap: '10px', justifyContent: 'flex-start', height: '100%' }}>
+                            <div style={{ width: '60px', height: '6px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', overflow: 'hidden', display: 'flex' }}>
+                              <div style={{ width: `${u.avgScore}%`, height: '100%', background: u.avgScore >= 50 ? '#4ade80' : '#f87171' }} />
+                            </div>
+                            <span style={{ fontSize: '0.8rem', opacity: 0.6, lineHeight: '1' }}>{u.avgScore}%</span>
+                          </div>
+                        </td>
+                        <td style={{ padding: '20px', background: rowBg, verticalAlign: 'middle' }}>
+                          {(profile?.role === 'teacher' || profile?.role === 'admin' || profile?.role === 'creator') && (
+                            <button
+                              onClick={() => navigate(`/user-analytics?userId=${u.id}`)}
+                              style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', padding: '6px', borderRadius: '8px', boxShadow: 'none' }}
+                              title="Аналитика ученика"
+                            >
+                              <Info size={16} />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };

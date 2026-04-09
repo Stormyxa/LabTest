@@ -75,7 +75,7 @@ const AnalyticsDetails = () => {
 
       const isPrivileged = p.role === 'admin' || p.role === 'creator' || p.role === 'teacher' || p.role === 'editor';
       if (!isPrivileged) {
-        setSidebarOpen(false); // Force close for students
+        setSidebarOpen(false); // Force close for players
       }
 
       const { data: qF } = await supabase.from('quiz_classes').select('id, name, sort_order').order('sort_order', { ascending: true });
@@ -126,8 +126,8 @@ const AnalyticsDetails = () => {
         }
         
         fetchUsersForQuiz(targetQuizId, p);
-      } else if (p.role === 'student' && !targetQuizId) {
-        // If student but no quiz selected, they just see empty state
+      } else if (p.role === 'player' && !targetQuizId) {
+        // If player but no quiz selected, they just see empty state
       }
     }
     setLoading(false);
@@ -182,7 +182,7 @@ const AnalyticsDetails = () => {
       if (userIdParam) {
         const tu = userList.find(u => u.id === userIdParam);
         if (tu) fetchAttempts(qId, tu.id);
-      } else if (currentUserProfile?.role === 'student' || currentUserProfile?.is_observer) {
+      } else if (currentUserProfile?.role === 'player' || currentUserProfile?.is_observer) {
         const self = userList.find(u => u.id === currentUserProfile.id);
         if (self) handleUserSelect(self.id);
       }
@@ -713,8 +713,12 @@ const AnalyticsDetails = () => {
           </button>
 
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            <button onClick={() => navigate(`/analytics?id=${filterQuiz}`)} title="Общая аналитика" style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', padding: '10px', borderRadius: '10px' }}><BarChart2 size={20} /></button>
-            <button onClick={() => navigate(`/redactor?id=${filterQuiz}`)} title="Редактор" style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', padding: '10px', borderRadius: '10px' }}><Pencil size={20} /></button>
+            {(profile?.role === 'admin' || profile?.role === 'creator' || targetQuiz?.author_id === profile?.id) && (
+              <>
+                <button onClick={() => navigate(`/analytics?id=${filterQuiz}`)} title="Общая аналитика" style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', padding: '10px', borderRadius: '10px' }}><BarChart2 size={20} /></button>
+                <button onClick={() => navigate(`/redactor?id=${filterQuiz}`)} title="Редактор" style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', padding: '10px', borderRadius: '10px' }}><Pencil size={20} /></button>
+              </>
+            )}
             {(profile?.role === 'admin' || profile?.role === 'creator') && targetUser && targetQuiz && (
               <button
                 onClick={() => handleDeleteClick('user_all')}
