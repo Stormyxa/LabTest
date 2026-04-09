@@ -109,6 +109,8 @@ const QuizView = ({ session, profile }) => {
         answers_array: originalAnswers,
         class_id: profile?.class_id || null,
         completed_at: new Date().toISOString(),
+        is_incomplete: true,
+        suspicion_reason: 'incomplete_exit'
       }));
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
@@ -150,6 +152,8 @@ const QuizView = ({ session, profile }) => {
               answers_array: originalAnswers,
               class_id: profile?.class_id || null,
               completed_at: new Date().toISOString(),
+              is_incomplete: true,
+              suspicion_reason: 'incomplete_exit'
             }));
           }
         }
@@ -330,7 +334,7 @@ const QuizView = ({ session, profile }) => {
 
   // Saves result to DB — uses refs so it's always current even in stale closures
   const savingRef = useRef(false);
-  const saveResult = async (finalAnswers) => {
+  const saveResult = async (finalAnswers, isIncomplete = false) => {
     if (savingRef.current) return;
     savingRef.current = true;
 
@@ -365,13 +369,27 @@ const QuizView = ({ session, profile }) => {
     const avgTimePerQ = finalTimeSpent / qs.length;
     const fastQuestionsCount = Object.values(questionTimesRef.current || {}).filter(t => t < 3).length;
     const fastRatio = fastQuestionsCount / qs.length;
+    const totalAllocatedTime = qs.length * 25; // Standard is 25s per Q
 
-    const isHighSpeedCheat = avgTimePerQ < 3 && scoreRatio > 0.8;
-    const isBlindGuessing = fastRatio >= 0.4 && scoreRatio < 0.3;
-    const isHighSkipRate = (skippedCount / qs.length) > 0.4;
-    const isRapidFail = correctCount === 0 && finalTimeSpent < 30;
+    let suspicion_reason = null;
+    let isSuspicious = false;
 
-    const isSuspicious = isHighSpeedCheat || isBlindGuessing || isHighSkipRate || isRapidFail;
+    if (isIncomplete) {
+      suspicion_reason = 'incomplete_exit';
+    } else if (fastRatio >= 0.4 && scoreRatio < 0.3) {
+      isSuspicious = true;
+      suspicion_reason = 'blind_guessing';
+    } else if (skippedCount / qs.length > 0.4) {
+      isSuspicious = true;
+      suspicion_reason = 'high_skip_rate';
+    } else if (finalTimeSpent < totalAllocatedTime * 0.12 && scoreRatio < 0.4) {
+      // Rapid Fail check (e.g. 1/10 in 11s)
+      isSuspicious = true;
+      suspicion_reason = 'rapid_fail';
+    } else if (correctCount === 0 && finalTimeSpent < 30) {
+      isSuspicious = true;
+      suspicion_reason = 'instant_zero';
+    }
 
     // Build detailed answers map
     const detailedAnswers = qs.map((q, idx) => {
@@ -388,8 +406,8 @@ const QuizView = ({ session, profile }) => {
       const timeSpentOnQ = questionTimesRef.current[idx] || 0;
       return {
         originalIndex: q.originalIndex,
-        chosenIndex: originalChosenIndex, // Now correctly mapped to original option order
-        correctIndex: originalCorrectIndex, // Now correctly mapped to original option order
+        chosenIndex: originalChosenIndex,
+        correctIndex: q.optionMapping[q.correctIndex], // Map shuffled correct index back to original index
         timeSpent: timeSpentOnQ,
         isCorrect: isCorrect
       };
@@ -405,6 +423,8 @@ const QuizView = ({ session, profile }) => {
         time_spent_total: finalTimeSpent,
         is_passed: isPassed,
         is_suspicious: isSuspicious,
+        is_incomplete: isIncomplete,
+        suspicion_reason: suspicion_reason,
         answers_data: detailedAnswers
       };
       await supabase.from('quiz_attempts').insert(attemptData);
@@ -423,6 +443,7 @@ const QuizView = ({ session, profile }) => {
         await supabase.from('quiz_results').update({
           score: correctCount, total_questions: qs.length,
           is_passed: isPassed, completed_at: now, answers_array: answersArray,
+          is_suspicious_user: isSuspicious, is_incomplete_user: isIncomplete
         }).eq('id', existing.id);
       } else {
         const resultData = {
@@ -431,6 +452,7 @@ const QuizView = ({ session, profile }) => {
           is_passed: isPassed, completed_at: now,
           first_score: correctCount, first_completed_at: now,
           answers_array: answersArray, first_answers_array: answersArray,
+          is_suspicious_user: isSuspicious, is_incomplete_user: isIncomplete
         };
         if (profile?.class_id) resultData.class_id = profile.class_id;
         await supabase.from('quiz_results').insert(resultData);
@@ -450,7 +472,7 @@ const QuizView = ({ session, profile }) => {
     localStorage.removeItem(`quiz_pending_${id}`);
     localStorage.removeItem(`quiz_timer_${id}`);
     localStorage.removeItem(`quiz_answers_${id}`);
-    await saveResultRef.current(finalAnswers);
+    await saveResultRef.current(finalAnswers, false);
     if (blocker.state === 'blocked') blocker.proceed();
     setShowResult(true);
   };
@@ -471,7 +493,7 @@ const QuizView = ({ session, profile }) => {
 
     if (shouldSave) {
       clearTimeout(timerRef.current);
-      await saveResultRef.current(answersRef.current); // use stable ref
+      await saveResultRef.current(answersRef.current, true); // use stable ref
     }
     
     if (blocker.state === 'blocked') blocker.proceed();

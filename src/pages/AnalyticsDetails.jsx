@@ -335,16 +335,21 @@ const AnalyticsDetails = () => {
       type: 'max'
     });
 
-    // First Attempt Bar (Blue/Red)
+    // First Attempt Bar (Blue/Red/Gray)
     if (attempts.length > 0) {
       const firstAtt = attempts[0];
+      let color = '#3b82f6'; // Blue
+      if (firstAtt.is_incomplete) color = '#9ca3af'; // Gray
+      else if (firstAtt.is_suspicious) color = '#ef4444'; // Red
+      
       chartBars.push({
         label: '1-я попытка',
         score: firstAtt.score,
         maxPossible: firstAtt.max_score || qsLength,
-        color: firstAtt.is_suspicious ? '#ef4444' : '#3b82f6',
+        color: color,
         data: firstAtt,
         type: 'first',
+        isFirst: true,
         id: firstAtt.id
       });
     }
@@ -355,7 +360,8 @@ const AnalyticsDetails = () => {
       if (attempts.length > 1 && idx === 0 && attempts.length <= 10) return;
 
       let color = '#4ade80'; // Green
-      if (att.is_suspicious) color = '#ef4444'; // Red
+      if (att.is_incomplete) color = '#9ca3af'; // Gray
+      else if (att.is_suspicious) color = '#ef4444'; // Red
       else if (!att.is_passed) color = '#facc15'; // Yellow
 
       chartBars.push({
@@ -420,24 +426,34 @@ const AnalyticsDetails = () => {
                     opacity: (selectedAttempt?.id === bar.id || isSpecial) ? 1 : 0.6,
                     transition: 'opacity 0.2s', zIndex: 1
                   }}
-                  title={isSpecial ? `Максимальный балл: ${bar.score}` : `${bar.label}\nБалл: ${bar.score}\nВремя: ${bar.data?.time_spent_total || 0}с\n${bar.data?.is_suspicious ? '(Подозрительно)' : ''}`}
+                  title={isSpecial ? `Максимальный балл: ${bar.score}` : `${bar.label}\nБалл: ${bar.score}\nВремя: ${bar.data?.time_spent_total || 0}с\n${bar.data?.is_incomplete ? '(Не завершен)' : (bar.data?.is_suspicious ? '(Подозрительно)' : '')}`}
                 >
                   {/* Благодаря flex-direction: column все элементы (корона, цифра, бар) выстраиваются друг на друге, не сбивая верстку */}
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', width: '100%' }}>
-                    {bar.score === maxP && !isSpecial && (
+                    {bar.score === maxP && (
                       <div style={{ textAlign: 'center', color: '#eab308', fontSize: '1.2rem', marginBottom: '-2px', zIndex: 10 }}>
                         👑
                       </div>
                     )}
                     <div style={{ textAlign: 'center', fontSize: '0.7rem', paddingBottom: '4px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>{bar.score}</div>
-                    <div style={{
-                      width: '100%',
-                      height: isZero ? '5px' : `${heightPercent}%`,
-                      background: isZero ? 'rgba(239, 68, 68, 0.3)' : bar.color,
-                      borderRadius: '6px 6px 0 0', borderBottom: 'none',
-                      transition: 'height 0.3s ease',
-                      flexShrink: 0
-                    }} />
+                      <div style={{
+                        width: '100%',
+                        height: isZero ? '5px' : `${heightPercent}%`,
+                        background: isZero ? (bar.data?.is_incomplete ? '#9ca3af' : 'rgba(239, 68, 68, 0.3)') : bar.color,
+                        borderRadius: '6px 6px 0 0', borderBottom: 'none',
+                        transition: 'height 0.3s ease',
+                        flexShrink: 0,
+                        position: 'relative' // Added for badge positioning
+                      }}>
+                        {bar.isFirst && !isZero && (heightPercent > 10) && (
+                          <div style={{ 
+                            position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+                            background: 'white', color: bar.color, width: '16px', height: '16px', borderRadius: '50%',
+                            fontSize: '0.65rem', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.1)', fontWeight: 'bold', pointerEvents: 'none'
+                          }}>1</div>
+                        )}
+                      </div>
                   </div>
                 </div>
               );
@@ -470,13 +486,28 @@ const AnalyticsDetails = () => {
       }
     });
 
+    const suspicionReasonMap = {
+      'blind_guessing': 'Подозрительно много быстрых ответов при низком балле',
+      'high_skip_rate': 'Пропущено более 40% вопросов',
+      'rapid_fail': 'Тест завершен аномально быстро при низком балле',
+      'instant_zero': 'Нулевой результат при быстром завершении',
+      'incomplete_exit': 'Выход из теста до его завершения'
+    };
+
     return (
       <div style={{ marginTop: '30px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
           <h3 style={{ margin: 0 }}>
             Детали прохождения от {new Date(selectedAttempt.created_at).toLocaleString()}
-            {selectedAttempt.is_suspicious && <span style={{ marginLeft: '10px', fontSize: '0.8rem', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '4px 10px', borderRadius: '10px' }}><AlertTriangle size={14} style={{ display: 'inline', marginRight: '4px' }} /> Подозрительно</span>}
+            {selectedAttempt.is_incomplete && <span style={{ marginLeft: '10px', fontSize: '0.8rem', background: 'rgba(156, 163, 175, 0.1)', color: '#9ca3af', padding: '4px 10px', borderRadius: '10px' }}>Не завершен</span>}
+            {selectedAttempt.is_suspicious && !selectedAttempt.is_incomplete && <span style={{ marginLeft: '10px', fontSize: '0.8rem', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '4px 10px', borderRadius: '10px' }}><AlertTriangle size={14} style={{ display: 'inline', marginRight: '4px' }} /> Подозрительно</span>}
           </h3>
+          {selectedAttempt.suspicion_reason && (
+            <div style={{ background: 'rgba(0,0,0,0.03)', padding: '10px 15px', borderRadius: '10px', fontSize: '0.85rem', marginBottom: '15px' }}>
+              <span style={{ opacity: 0.6 }}>Причина: </span>
+              <strong>{suspicionReasonMap[selectedAttempt.suspicion_reason] || selectedAttempt.suspicion_reason}</strong>
+            </div>
+          )}
           {(profile?.role === 'admin' || profile?.role === 'creator') && (
             <button
               onClick={() => handleDeleteClick('attempt', selectedAttempt)}

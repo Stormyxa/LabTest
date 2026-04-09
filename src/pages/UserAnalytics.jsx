@@ -38,6 +38,7 @@ const UserAnalytics = () => {
   // Main View
   const [targetUser, setTargetUser] = useState(null);
   const [latestAttempts, setLatestAttempts] = useState([]);
+  const [firstAttemptsDates, setFirstAttemptsDates] = useState({});
   const [selectedAttempt, setSelectedAttempt] = useState(null);
   const [quizzesMap, setQuizzesMap] = useState({});
 
@@ -131,6 +132,15 @@ const UserAnalytics = () => {
     const { data: atts } = await attsQuery;
 
     if (atts && atts.length > 0) {
+      // Find the first attempt date for each quiz
+      const firstMap = {};
+      atts.forEach(att => {
+        if (!firstMap[att.quiz_id] || new Date(att.created_at) < new Date(firstMap[att.quiz_id])) {
+          firstMap[att.quiz_id] = att.created_at;
+        }
+      });
+      setFirstAttemptsDates(firstMap);
+
       // Group by quiz to find suspicious tests
       const quizStats = {};
       atts.forEach(a => {
@@ -419,10 +429,12 @@ const UserAnalytics = () => {
                         const heightPercent = (att.score / (att.max_score || 1)) * 85;
                         const isZero = att.score === 0;
                         const isSelected = selectedAttempt?.id === att.id;
+                        const isFirst = firstAttemptsDates[att.quiz_id] === att.created_at;
                         
                         let color = '#4ade80'; 
-                        if (att.isQuizRed || att.is_suspicious) color = '#ef4444';
-                        else if (!att.is_passed) color = '#facc15';
+                        if (att.is_incomplete) color = '#9ca3af'; // Gray
+                        else if (att.is_suspicious) color = '#ef4444'; // Red
+                        else if (!att.is_passed) color = '#facc15'; // Yellow
                         if (currentStats.isSuspicious && att.score === att.max_score) color = '#ef4444';
                         
                         return (
@@ -436,7 +448,7 @@ const UserAnalytics = () => {
                               opacity: isSelected ? 1 : 0.6,
                               transition: 'opacity 0.2s', position: 'relative'
                             }}
-                            title={`Тест: ${quizzesMap[att.quiz_id]}\nБалл: ${att.score}/${att.max_score}\nВремя: ${att.time_spent_total}с`}
+                            title={`Тест: ${quizzesMap[att.quiz_id]}\nБалл: ${att.score}/${att.max_score}\nВремя: ${att.time_spent_total}с\n${att.is_incomplete ? '(Не завершен)' : (att.is_suspicious ? '(Подозрительно)' : '')}`}
                           >
                             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', width: '100%', position: 'relative' }}>
                               {/* Transparent Max Background */}
@@ -449,10 +461,20 @@ const UserAnalytics = () => {
                               <div style={{ 
                                 width: '100%', 
                                 height: isZero ? '5px' : `${heightPercent}%`, 
-                                background: isZero ? 'rgba(239, 68, 68, 0.3)' : color, 
+                                background: isZero ? (att.is_incomplete ? '#9ca3af' : 'rgba(239, 68, 68, 0.3)') : color, 
                                 borderRadius: '6px 6px 0 0',
-                                zIndex: 1
-                              }} />
+                                zIndex: 1,
+                                position: 'relative'
+                              }}>
+                                {isFirst && !isZero && (heightPercent > 10) && (
+                                  <div style={{ 
+                                    position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+                                    background: 'white', color: color, width: '16px', height: '16px', borderRadius: '50%',
+                                    fontSize: '0.65rem', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)', fontWeight: 'bold', pointerEvents: 'none'
+                                  }}>1</div>
+                                )}
+                              </div>
                             </div>
                           </div>
                         );
@@ -470,12 +492,30 @@ const UserAnalytics = () => {
                       <h3 style={{ marginBottom: '5px' }}>{quizzesMap[selectedAttempt.quiz_id] || 'Неизвестный тест'}</h3>
                       <div style={{ opacity: 0.6, fontSize: '0.85rem' }}>Дата: {new Date(selectedAttempt.created_at).toLocaleString()}</div>
                     </div>
-                    {selectedAttempt.is_suspicious && (
-                       <span style={{ fontSize: '0.8rem', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '4px 10px', borderRadius: '10px' }}>
-                         <AlertTriangle size={14} style={{ display: 'inline', marginRight: '4px' }}/> Подозрительная активность
-                       </span>
-                    )}
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                       {selectedAttempt.is_incomplete && <span style={{ fontSize: '0.8rem', background: 'rgba(156, 163, 175, 0.1)', color: '#9ca3af', padding: '4px 10px', borderRadius: '10px' }}>Не завершен</span>}
+                       {selectedAttempt.is_suspicious && !selectedAttempt.is_incomplete && (
+                          <span style={{ fontSize: '0.8rem', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '4px 10px', borderRadius: '10px' }}>
+                            <AlertTriangle size={14} style={{ display: 'inline', marginRight: '4px' }}/> Подозрительно
+                          </span>
+                       )}
+                    </div>
                   </div>
+
+                  {selectedAttempt.suspicion_reason && (
+                    <div style={{ background: 'rgba(0,0,0,0.03)', padding: '12px 15px', borderRadius: '12px', fontSize: '0.9rem', marginBottom: '20px', borderLeft: `4px solid ${selectedAttempt.is_incomplete ? '#9ca3af' : '#ef4444'}` }}>
+                       <span style={{ opacity: 0.6 }}>Причина подозрения: </span>
+                       <strong>{
+                        {
+                          'blind_guessing': 'Подозрительно много быстрых ответов при низком балле',
+                          'high_skip_rate': 'Пропущено более 40% вопросов',
+                          'rapid_fail': 'Тест завершен аномально быстро при низком балле',
+                          'instant_zero': 'Нулевой результат при быстром завершении',
+                          'incomplete_exit': 'Выход из теста до его завершения'
+                        }[selectedAttempt.suspicion_reason] || selectedAttempt.suspicion_reason
+                       }</strong>
+                    </div>
+                  )}
                   
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '15px' }}>
                     <div style={{ background: 'rgba(0,0,0,0.02)', padding: '15px', borderRadius: '12px' }}>

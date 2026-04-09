@@ -586,11 +586,11 @@ const Analytics = () => {
               return (
                 <tr key={res.id} style={{ 
                   borderBottom: '1px solid rgba(0,0,0,0.01)',
-                  background: res.isSuspiciousUser ? 'rgba(239, 68, 68, 0.08)' : (res.isUnderperformingUser ? 'rgba(250, 204, 21, 0.05)' : 'transparent')
+                  background: res.is_incomplete_user ? 'rgba(156, 163, 175, 0.15)' : (res.is_suspicious_user ? 'rgba(239, 68, 68, 0.08)' : (res.isUnderperformingUser ? 'rgba(250, 204, 21, 0.05)' : 'transparent'))
                 }}>
                   <td style={{ padding: '20px' }}>
                     <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '8px' }}>
-                      <div style={{ fontWeight: '600', color: res.isSuspiciousUser ? '#ef4444' : 'inherit' }}>{displayName}</div>
+                      <div style={{ fontWeight: '600', color: res.is_incomplete_user ? '#6b7280' : (res.is_suspicious_user ? '#ef4444' : 'inherit') }}>{displayName}</div>
                       {p?.is_observer && <span style={{ padding: '2px 8px', background: 'rgba(250, 204, 21, 0.1)', color: '#ca8a04', borderRadius: '50px', fontSize: '0.65rem', fontWeight: 'bold' }}>НАБЛЮДАТЕЛЬ</span>}
                       {p?.is_hidden && <span style={{ background: 'rgba(0,0,0,0.05)', color: 'rgba(0,0,0,0.5)', padding: '2px 8px', borderRadius: '50px', fontSize: '0.65rem' }} title="Скрытый пользователь"><EyeOff size={10} /></span>}
                     </div>
@@ -606,7 +606,7 @@ const Analytics = () => {
                   <td style={{ padding: '20px' }}>
                     <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px' }}>
                       <div style={{ position: 'relative', width: '60px', height: '14px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', overflow: 'hidden' }}>
-                        <div style={{ width: `${(res.score / res.total_questions) * 100}%`, height: '100%', background: res.is_passed ? '#4ade80' : '#f87171' }} />
+                        <div style={{ width: `${(res.score / res.total_questions) * 100}%`, height: '100%', background: res.is_incomplete_user ? '#9ca3af' : (res.is_passed ? '#4ade80' : '#f87171') }} />
                         <span style={{ position: 'absolute', width: '100%', left: 0, top: 0, fontSize: '0.6rem', textAlign: 'center', fontWeight: 'bold', color: 'var(--text-color)', lineHeight: '14px' }}>{res.score}/{res.total_questions}</span>
                       </div>
                       <span style={{ fontSize: '0.8rem', opacity: 0.5 }}>/</span>
@@ -616,7 +616,7 @@ const Analytics = () => {
                       </div>
                     </div>
                   </td>
-                  <td style={{ padding: '20px', fontWeight: 'bold', color: res.isSuspiciousUser ? '#ef4444' : 'inherit' }}>
+                  <td style={{ padding: '20px', fontWeight: 'bold', color: res.is_incomplete_user ? '#6b7280' : (res.is_suspicious_user ? '#ef4444' : 'inherit') }}>
                     {res.score} / {res.total_questions}
                   </td>
                   <td style={{ padding: '20px' }}>
