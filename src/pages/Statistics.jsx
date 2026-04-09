@@ -282,32 +282,36 @@ const Statistics = ({ session, profile }) => {
                   <tr key={u.id} style={{
                     borderBottom: '1px solid rgba(0,0,0,0.01)',
                   }}>
-                    <td style={{ padding: '20px', background: rowBg }}>
+                    <td style={{ padding: '20px', background: rowBg, verticalAlign: 'middle' }}>
                       <div className="flex-center" style={{ width: '30px', height: '30px', borderRadius: '50%', background: idx < 3 ? 'var(--accent-color)' : 'rgba(0,0,0,0.05)', color: idx < 3 ? 'white' : 'inherit', fontSize: '0.8rem', fontWeight: '800' }}>{idx + 1}</div>
                     </td>
-                    <td style={{ padding: '20px', fontWeight: isMe ? '700' : '400', color: u.isSuspicious ? '#ef4444' : 'inherit', background: rowBg }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <td style={{ padding: '20px', fontWeight: isMe ? '700' : '400', color: u.isSuspicious ? '#ef4444' : 'inherit', background: rowBg, verticalAlign: 'middle' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', lineHeight: '1.2' }}>
                         {getDisplayName(u)}
-                        {u.isSuspicious && <AlertTriangle size={14} title="Подозрение в читерстве" color="#ef4444" />}
-                        {!u.isSuspicious && u.isUnderperforming && <AlertTriangle size={14} title="Низкая успеваемость" color="#ca8a04" />}
+                        <div style={{ display: 'flex', alignItems: 'center', height: '14px' }}>
+                          {u.isSuspicious && <AlertTriangle size={14} title="Подозрение в читерстве" color="#ef4444" />}
+                          {!u.isSuspicious && u.isUnderperforming && <AlertTriangle size={14} title="Низкая успеваемость" color="#ca8a04" />}
+                        </div>
                       </div>
                     </td>
-                    <td style={{ padding: '20px', fontSize: '0.85rem', opacity: 0.7, background: rowBg }}>
-                      <div>{cities.find(c => c.id === u.city_id)?.name || '—'}</div>
-                      <div>{schools.find(s => s.id === u.school_id)?.name || '—'}</div>
-                      <div style={{ fontWeight: 'bold' }}>{classes.find(c => c.id === u.class_id)?.name || '—'}</div>
+                    <td style={{ padding: '20px', background: rowBg, verticalAlign: 'middle' }}>
+                      <div style={{ opacity: 0.7, fontSize: '0.85rem' }}>
+                        <div>{cities.find(c => c.id === u.city_id)?.name || '—'}</div>
+                        <div>{schools.find(s => s.id === u.school_id)?.name || '—'}</div>
+                        <div style={{ fontWeight: 'bold' }}>{classes.find(c => c.id === u.class_id)?.name || '—'}</div>
+                      </div>
                     </td>
                     <td style={{ padding: '20px', fontWeight: '500', background: rowBg }}>{u.passedQuizzes}</td>
                     <td style={{ padding: '20px', fontWeight: '700', color: 'var(--primary-color)', background: rowBg }}>{u.totalPoints}</td>
-                    <td style={{ padding: '20px', background: rowBg }}>
-                      <div className="flex-center" style={{ gap: '10px', justifyContent: 'flex-start' }}>
-                        <div style={{ width: '60px', height: '6px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', overflow: 'hidden' }}>
+                    <td style={{ padding: '20px', background: rowBg, verticalAlign: 'middle' }}>
+                      <div className="flex-center" style={{ gap: '10px', justifyContent: 'flex-start', height: '100%' }}>
+                        <div style={{ width: '60px', height: '6px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', overflow: 'hidden', display: 'flex' }}>
                           <div style={{ width: `${u.avgScore}%`, height: '100%', background: u.avgScore >= 50 ? '#4ade80' : '#f87171' }} />
                         </div>
-                        <span style={{ fontSize: '0.8rem', opacity: 0.6 }}>{u.avgScore}%</span>
+                        <span style={{ fontSize: '0.8rem', opacity: 0.6, lineHeight: '1' }}>{u.avgScore}%</span>
                       </div>
                     </td>
-                    <td style={{ padding: '20px', background: rowBg }}>
+                    <td style={{ padding: '20px', background: rowBg, verticalAlign: 'middle' }}>
                       {(profile?.role === 'teacher' || profile?.role === 'admin' || profile?.role === 'creator') && (
                         <button
                           onClick={() => navigate(`/user-analytics?userId=${u.id}`)}

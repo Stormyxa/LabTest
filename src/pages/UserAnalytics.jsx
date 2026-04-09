@@ -431,11 +431,13 @@ const UserAnalytics = () => {
                         const isSelected = selectedAttempt?.id === att.id;
                         const isFirst = firstAttemptsDates[att.quiz_id] === att.created_at;
                         
+                        const isQuizRed = att.isQuizRed; // Aggregate suspicious pattern for this quiz
+                        
                         let color = '#4ade80'; 
                         if (att.is_incomplete) color = '#9ca3af'; // Gray
-                        else if (att.is_suspicious) color = '#ef4444'; // Red
+                        else if (isQuizRed || att.is_suspicious) color = '#ef4444'; // Red if aggregate or individual hit
                         else if (!att.is_passed) color = '#facc15'; // Yellow
-                        if (currentStats.isSuspicious && att.score === att.max_score) color = '#ef4444';
+                        if (currentStats.isSuspicious && att.score === att.max_score && !isQuizRed) color = '#ef4444';
                         
                         return (
                           <div 
