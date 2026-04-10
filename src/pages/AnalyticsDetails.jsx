@@ -31,11 +31,11 @@ const AnalyticsDetails = () => {
   const [filterQuiz, setFilterQuiz] = useState(quizIdParam || sessionStorage.getItem('ad_t_quiz') || '');
 
   // User Filters
-  const [filterCity, setFilterCity] = useState(sessionStorage.getItem('ad_u_city') || 'all');
-  const [filterSchool, setFilterSchool] = useState(sessionStorage.getItem('ad_u_school') || 'all');
-  const [filterClass, setFilterClass] = useState(sessionStorage.getItem('ad_u_class') || 'all');
+  const [filterCity, setFilterCity] = useState(sessionStorage.getItem('f_city') || 'all');
+  const [filterSchool, setFilterSchool] = useState(sessionStorage.getItem('f_school') || 'all');
+  const [filterClass, setFilterClass] = useState(sessionStorage.getItem('f_class') || 'all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [showObservers, setShowObservers] = useState(sessionStorage.getItem('ad_show_observers') === 'true');
+  const [showObservers, setShowObservers] = useState(sessionStorage.getItem('an_show_observers') === 'true');
 
   const [sidebarOpen, setSidebarOpen] = useState(sessionStorage.getItem('ad_sidebar_open') !== 'false');
   const scrollRef = React.useRef(null);
@@ -47,14 +47,14 @@ const AnalyticsDetails = () => {
   const [deleteLock, setDeleteLock] = useState(3);
   const [deleteAction, setDeleteAction] = useState(null); // { type: 'user_all' | 'attempt', data: attemptObj? }
 
-  useEffect(() => { sessionStorage.setItem('ad_show_observers', showObservers); }, [showObservers]);
+  useEffect(() => { sessionStorage.setItem('an_show_observers', showObservers); }, [showObservers]);
 
   useEffect(() => { sessionStorage.setItem('ad_t_folder', filterFolder); }, [filterFolder]);
   useEffect(() => { sessionStorage.setItem('ad_t_section', filterSection); }, [filterSection]);
   useEffect(() => { sessionStorage.setItem('ad_t_quiz', filterQuiz); }, [filterQuiz]);
-  useEffect(() => { sessionStorage.setItem('ad_u_city', filterCity); }, [filterCity]);
-  useEffect(() => { sessionStorage.setItem('ad_u_school', filterSchool); }, [filterSchool]);
-  useEffect(() => { sessionStorage.setItem('ad_u_class', filterClass); }, [filterClass]);
+  useEffect(() => { sessionStorage.setItem('f_city', filterCity); }, [filterCity]);
+  useEffect(() => { sessionStorage.setItem('f_school', filterSchool); }, [filterSchool]);
+  useEffect(() => { sessionStorage.setItem('f_class', filterClass); }, [filterClass]);
 
   // Data for main content
   const [targetUser, setTargetUser] = useState(null);
@@ -99,8 +99,8 @@ const AnalyticsDetails = () => {
 
       // Automated Filtering Defaults
       if (p.role === 'teacher' || p.role === 'admin' || p.role === 'creator') {
-        const sCity = sessionStorage.getItem('ad_u_city');
-        const sSchool = sessionStorage.getItem('ad_u_school');
+        const sCity = sessionStorage.getItem('f_city');
+        const sSchool = sessionStorage.getItem('f_school');
         
         if ((!sCity || sCity === 'all') && p.city_id) setFilterCity(p.city_id);
         if ((!sSchool || sSchool === 'all') && p.school_id) setFilterSchool(p.school_id);

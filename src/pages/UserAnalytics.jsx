@@ -19,21 +19,21 @@ const UserAnalytics = () => {
   const [users, setUsers] = useState([]);
   
   // Filters
-  const [filterCity, setFilterCity] = useState(sessionStorage.getItem('ua_u_city') || 'all');
-  const [filterSchool, setFilterSchool] = useState(sessionStorage.getItem('ua_u_school') || 'all');
-  const [filterClass, setFilterClass] = useState(sessionStorage.getItem('ua_u_class') || 'all');
+  const [filterCity, setFilterCity] = useState(sessionStorage.getItem('f_city') || 'all');
+  const [filterSchool, setFilterSchool] = useState(sessionStorage.getItem('f_school') || 'all');
+  const [filterClass, setFilterClass] = useState(sessionStorage.getItem('f_class') || 'all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [showObservers, setShowObservers] = useState(sessionStorage.getItem('ua_show_observers') === 'true');
+  const [showObservers, setShowObservers] = useState(sessionStorage.getItem('an_show_observers') === 'true');
   const [sidebarOpen, setSidebarOpen] = useState(sessionStorage.getItem('ua_sidebar_open') !== 'false');
   const scrollRef = React.useRef(null);
 
   useEffect(() => { sessionStorage.setItem('ua_sidebar_open', sidebarOpen); }, [sidebarOpen]);
 
-  useEffect(() => { sessionStorage.setItem('ua_show_observers', showObservers); }, [showObservers]);
+  useEffect(() => { sessionStorage.setItem('an_show_observers', showObservers); }, [showObservers]);
 
-  useEffect(() => { sessionStorage.setItem('ua_u_city', filterCity); }, [filterCity]);
-  useEffect(() => { sessionStorage.setItem('ua_u_school', filterSchool); }, [filterSchool]);
-  useEffect(() => { sessionStorage.setItem('ua_u_class', filterClass); }, [filterClass]);
+  useEffect(() => { sessionStorage.setItem('f_city', filterCity); }, [filterCity]);
+  useEffect(() => { sessionStorage.setItem('f_school', filterSchool); }, [filterSchool]);
+  useEffect(() => { sessionStorage.setItem('f_class', filterClass); }, [filterClass]);
 
   // Main View
   const [targetUser, setTargetUser] = useState(null);
@@ -69,8 +69,8 @@ const UserAnalytics = () => {
 
         // Automated Filtering Defaults
         if (p.role === 'teacher' || p.role === 'admin' || p.role === 'creator') {
-          const sCity = sessionStorage.getItem('ua_u_city');
-          const sSchool = sessionStorage.getItem('ua_u_school');
+          const sCity = sessionStorage.getItem('f_city');
+          const sSchool = sessionStorage.getItem('f_school');
           
           if ((!sCity || sCity === 'all') && p.city_id) setFilterCity(p.city_id);
           if ((!sSchool || sSchool === 'all') && p.school_id) setFilterSchool(p.school_id);

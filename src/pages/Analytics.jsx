@@ -19,7 +19,7 @@ const Analytics = () => {
   const [profile, setProfile] = useState(null);
   const [quizAuthorRole, setQuizAuthorRole] = useState(null);
   
-  const [showObservers, setShowObservers] = useState(sessionStorage.getItem('analytics_show_observers') === 'true');
+  const [showObservers, setShowObservers] = useState(sessionStorage.getItem('an_show_observers') === 'true');
   const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
   const [sortConfig, setSortConfig] = useState('date_desc'); // default
   const [useFirstResults, setUseFirstResults] = useState(sessionStorage.getItem('analytics_use_first') === 'true');
@@ -39,7 +39,7 @@ const Analytics = () => {
   }, [expandedQuestions, quizId]);
 
   useEffect(() => {
-    sessionStorage.setItem('analytics_show_observers', showObservers);
+    sessionStorage.setItem('an_show_observers', showObservers);
   }, [showObservers]);
 
   useEffect(() => {
