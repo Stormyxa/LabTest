@@ -88,9 +88,18 @@ const UserAnalytics = () => {
         const { data: allProfs } = await query;
         if (allProfs) {
           allProfs.sort((a, b) => {
-            const nameA = `${a.last_name || ''} ${a.first_name || ''}`.trim();
-            const nameB = `${b.last_name || ''} ${b.first_name || ''}`.trim();
-            return nameA.localeCompare(nameB, 'ru');
+            const lnA = (a.last_name || '').trim();
+            const lnB = (b.last_name || '').trim();
+            const fnA = (a.first_name || '').trim();
+            const fnB = (b.first_name || '').trim();
+            
+            const primaryA = lnA || fnA;
+            const primaryB = lnB || fnB;
+            
+            const res = primaryA.localeCompare(primaryB, 'ru');
+            if (res !== 0) return res;
+            
+            return fnA.localeCompare(fnB, 'ru');
           });
           setUsers(allProfs);
         }
