@@ -540,6 +540,7 @@ const QuizView = ({ session, profile }) => {
     return (
       <div className="container flex-center animate" style={{ padding: '60px 20px', flexDirection: 'column' }}>
         <div className="card" style={{ maxWidth: '600px', width: '100%', textAlign: 'center' }}>
+          <div style={{ opacity: 0.6, fontSize: '0.9rem', marginBottom: '10px' }}>{quiz.title}</div>
           <h2 style={{ marginBottom: '20px' }}>Результаты</h2>
           <div style={{ fontSize: '4rem', fontWeight: '800', color: percent >= 50 ? 'var(--primary-color)' : 'red', marginBottom: '10px' }}>
             {percent}%

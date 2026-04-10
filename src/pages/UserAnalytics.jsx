@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { ChevronLeft, BarChart2, Search, Filter, Shield, EyeOff, AlertTriangle, Menu } from 'lucide-react';
+import { ChevronLeft, BarChart2, Search, Filter, Shield, EyeOff, AlertTriangle, Menu, X } from 'lucide-react';
 
 const UserAnalytics = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -87,8 +87,11 @@ const UserAnalytics = () => {
         
         const { data: allProfs } = await query;
         if (allProfs) {
-          // Calculate suspicion for each user based on last 20 tests
-          // (This is a simplified pass, ideally we'd have a more robust calc)
+          allProfs.sort((a, b) => {
+            const nameA = `${a.last_name || ''} ${a.first_name || ''}`.trim();
+            const nameB = `${b.last_name || ''} ${b.first_name || ''}`.trim();
+            return nameA.localeCompare(nameB, 'ru');
+          });
           setUsers(allProfs);
         }
       }
@@ -247,7 +250,9 @@ const UserAnalytics = () => {
   return (
     <div style={{ display: 'flex', height: 'calc(100vh - 70px)', overflow: 'hidden' }}>
       {isPrivileged && (
-        <div style={{ 
+        <div 
+          className="details-sidebar"
+          style={{ 
             width: sidebarOpen ? '320px' : '0', 
             background: 'var(--card-bg)', 
             borderRight: '1px solid rgba(0,0,0,0.05)', 
@@ -258,7 +263,7 @@ const UserAnalytics = () => {
           <div style={{ padding: '20px', width: '320px', display: 'flex', flexDirection: 'column', height: '100%' }}>
             <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '15px' }}>
               <h3 style={{ fontSize: '1.2rem', margin: 0 }}>Аналитика</h3>
-              <button onClick={() => setSidebarOpen(false)} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', boxShadow: 'none', padding: '8px', borderRadius: '10px' }}><ChevronLeft size={20}/></button>
+              <button onClick={() => setSidebarOpen(false)} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', boxShadow: 'none', padding: '8px', borderRadius: '10px' }}><X size={20}/></button>
             </div>
 
             <div style={{ display: 'flex', background: 'rgba(0,0,0,0.05)', borderRadius: '12px', padding: '4px', marginBottom: '15px' }}>
@@ -342,9 +347,9 @@ const UserAnalytics = () => {
       )}
 
       {/* Main Content Area */}
-      <div style={{ flex: 1, padding: '40px 60px', overflowY: 'auto', position: 'relative', height: '100%' }}>
+      <div className="main-content" style={{ flex: 1, padding: '40px 60px', overflowY: 'auto', position: 'relative', height: '100%' }}>
         {isPrivileged && !sidebarOpen && (
-          <button onClick={() => setSidebarOpen(true)} className="flex-center" style={{ position: 'absolute', left: '20px', top: '40px', background: 'var(--card-bg)', color: 'inherit', padding: '10px', borderRadius: '10px', zIndex: 10 }}>
+          <button onClick={() => setSidebarOpen(true)} className="flex-center sidebar-toggle-btn" style={{ position: 'absolute', left: '20px', top: '40px', background: 'var(--card-bg)', color: 'inherit', padding: '10px', borderRadius: '10px', zIndex: 10 }}>
             <Menu size={20} />
           </button>
         )}
@@ -424,7 +429,7 @@ const UserAnalytics = () => {
 
                     <div style={{ position: 'absolute', left: '-15px', bottom: '0', width: 'calc(100% + 15px)', height: '2px', background: 'var(--text-color)', opacity: 0.1, zIndex: 0 }} />
 
-                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', height: '100%', position: 'relative', zIndex: 1, overflowX: 'auto', paddingBottom: '2px' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', height: '100%', position: 'relative', zIndex: 1, overflowX: 'auto' }}>
                       {latestAttempts.map((att) => {
                         const heightPercent = (att.score / (att.max_score || 1)) * 85;
                         const isZero = att.score === 0;

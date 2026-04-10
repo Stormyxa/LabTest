@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { ChevronLeft, BarChart2, Clock, CheckCircle, XCircle, Search, Filter, AlertTriangle, Menu, Pencil, Trash2, Eye } from 'lucide-react';
+import { ChevronLeft, BarChart2, Clock, CheckCircle, XCircle, Search, Filter, AlertTriangle, Menu, Pencil, Trash2, Eye, X } from 'lucide-react';
 
 const AnalyticsDetails = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -198,7 +198,11 @@ const AnalyticsDetails = () => {
           is_underperforming_user: !!lStatus.is_underperforming
         };
       });
-      userList.sort((a, b) => b.maxScore - a.maxScore);
+      userList.sort((a, b) => {
+        const nameA = `${a.last_name || ''} ${a.first_name || ''}`.trim();
+        const nameB = `${b.last_name || ''} ${b.first_name || ''}`.trim();
+        return nameA.localeCompare(nameB, 'ru');
+      });
       setUsers(userList);
 
       // Auto-select logic for standard users or if specifically requested
@@ -599,6 +603,7 @@ const AnalyticsDetails = () => {
       {/* Sidebar */}
       {isPrivileged && (
         <div
+          className="details-sidebar"
           style={{
             width: sidebarOpen ? '320px' : '0',
             background: 'var(--card-bg)',
@@ -611,7 +616,7 @@ const AnalyticsDetails = () => {
           <div style={{ padding: '20px', width: '320px', display: 'flex', flexDirection: 'column', height: '100%' }}>
             <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '15px' }}>
               <h3 style={{ fontSize: '1.2rem', margin: 0 }}>Аналитика</h3>
-              <button onClick={() => setSidebarOpen(false)} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', boxShadow: 'none', padding: '8px', borderRadius: '10px' }}><ChevronLeft size={20} /></button>
+              <button onClick={() => setSidebarOpen(false)} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', boxShadow: 'none', padding: '8px', borderRadius: '10px' }}><X size={20} /></button>
             </div>
 
             <div style={{ display: 'flex', background: 'rgba(0,0,0,0.05)', borderRadius: '12px', padding: '4px', marginBottom: '15px' }}>
@@ -730,9 +735,9 @@ const AnalyticsDetails = () => {
       )}
 
       {/* Main Content Area */}
-      <div style={{ flex: 1, padding: '40px 60px', overflowY: 'auto', position: 'relative', height: '100%' }}>
+      <div className="main-content" style={{ flex: 1, padding: '40px 60px', overflowY: 'auto', position: 'relative', height: '100%' }}>
         {isPrivileged && !sidebarOpen && (
-          <button onClick={() => setSidebarOpen(true)} className="flex-center" style={{ position: 'absolute', left: '20px', top: '40px', background: 'var(--card-bg)', color: 'inherit', padding: '10px', borderRadius: '10px', zIndex: 10 }}>
+          <button onClick={() => setSidebarOpen(true)} className="flex-center sidebar-toggle-btn" style={{ position: 'absolute', left: '20px', top: '40px', background: 'var(--card-bg)', color: 'inherit', padding: '10px', borderRadius: '10px', zIndex: 10 }}>
             <Menu size={20} />
           </button>
         )}
@@ -742,7 +747,7 @@ const AnalyticsDetails = () => {
           </button>
 
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            {(profile?.role === 'admin' || profile?.role === 'creator' || targetQuiz?.author_id === profile?.id) && (
+            {(profile?.role === 'admin' || profile?.role === 'creator' || profile?.role === 'teacher' || targetQuiz?.author_id === profile?.id) && (
               <>
                 <button onClick={() => navigate(`/analytics?id=${filterQuiz}`)} title="Общая аналитика" style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', padding: '10px', borderRadius: '10px' }}><BarChart2 size={20} /></button>
                 <button onClick={() => navigate(`/redactor?id=${filterQuiz}`)} title="Редактор" style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', padding: '10px', borderRadius: '10px' }}><Pencil size={20} /></button>
@@ -854,5 +859,30 @@ const AnalyticsDetails = () => {
     </div>
   );
 };
+
+const mobileStyles = `
+@media (max-width: 768px) {
+  .details-sidebar {
+    position: fixed;
+    z-index: 100;
+    height: 100%;
+    box-shadow: 10px 0 30px rgba(0,0,0,0.2);
+  }
+  .main-content {
+    padding: 20px !important;
+  }
+  .sidebar-toggle-btn {
+    left: 10px !important;
+    top: 20px !important;
+  }
+}
+`;
+
+// Inject styles
+if (typeof document !== 'undefined') {
+  const style = document.createElement('style');
+  style.textContent = mobileStyles;
+  document.head.append(style);
+}
 
 export default AnalyticsDetails;
