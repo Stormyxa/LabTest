@@ -476,7 +476,7 @@ const Editor = ({ session, profile }) => {
                         {(profile?.role === 'admin' || profile?.role === 'creator') ? (
                           <textarea id="quiz-title" name="quiz-title" placeholder="Например:&#10;§ 17. Антропогенез и этногенез" value={titles} onChange={(e) => setTitles(e.target.value)} style={{ height: '80px', resize: 'vertical' }} required={!jsonInput.trim()} />
                         ) : (
-                          <input id="quiz-title" name="quiz-title" type="text" placeholder="Напр: История Древнего мира" value={titles} onChange={(e) => setTitles(e.target.value)} required={!jsonInput.trim()} />
+                          <input id="quiz-title" name="quiz-title" type="text" placeholder="§ 17. Антропогенез и этногенез" value={titles} onChange={(e) => setTitles(e.target.value)} required={!jsonInput.trim()} />
                         )}
                       </div>
 
