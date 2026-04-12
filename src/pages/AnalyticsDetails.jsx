@@ -40,6 +40,8 @@ const AnalyticsDetails = () => {
   const [sidebarOpen, setSidebarOpen] = useState(sessionStorage.getItem('ad_sidebar_open') !== 'false');
   const scrollRef = React.useRef(null);
 
+  const [detailedImageModal, setDetailedImageModal] = useState({ isOpen: false, images: [], currentImgIdx: 0, question: '', userAnswer: '', correctAnswer: '', isCorrect: false, timeSpent: 0, avgQTime: 0 });
+
   useEffect(() => { sessionStorage.setItem('ad_sidebar_open', sidebarOpen); }, [sidebarOpen]);
 
   // Delete Modal States
@@ -584,7 +586,13 @@ const AnalyticsDetails = () => {
                         key={imgIdx} 
                         src={imgUrl} 
                         alt={`QImg ${imgIdx+1}`} 
-                        style={{ height: '120px', borderRadius: '8px', objectFit: 'contain', border: '1px solid rgba(0,0,0,0.1)', background: 'var(--card-bg)' }}
+                        onClick={() => setDetailedImageModal({
+                          isOpen: true, images: originQ.images, currentImgIdx: imgIdx,
+                          question: originQ.question, userAnswer: ans.chosenIndex !== null ? originQ.options[ans.chosenIndex] : 'Пропущено',
+                          correctAnswer: originQ.options[ans.correctIndex !== undefined ? ans.correctIndex : originQ.correctIndex], isCorrect: ans.isCorrect,
+                          timeSpent: ans.timeSpent || 0, avgQTime
+                        })}
+                        style={{ height: '120px', borderRadius: '8px', objectFit: 'contain', border: '1px solid rgba(0,0,0,0.1)', background: 'var(--card-bg)', cursor: 'pointer' }}
                       />
                     ))}
                   </div>
@@ -875,6 +883,79 @@ const AnalyticsDetails = () => {
               >
                 {deleteLock > 0 ? `Подождите (${deleteLock})` : 'Удалить'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DETAILED IMAGE MODAL (GALLERY) */}
+      {detailedImageModal.isOpen && detailedImageModal.images && detailedImageModal.images.length > 0 && (
+        <div className="modal-overlay" style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 99999, padding: '20px' }} onClick={() => setDetailedImageModal({ isOpen: false, images: [], currentImgIdx: 0 })}>
+          <div className="animate" style={{ position: 'relative', width: '100%', maxWidth: '900px', maxHeight: 'max-content', display: 'flex', flexDirection: 'column', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
+            <button 
+              onClick={() => setDetailedImageModal({ isOpen: false, images: [], currentImgIdx: 0 })}
+              style={{ position: 'absolute', top: '10px', right: '10px', background: 'rgba(0,0,0,0.5)', color: 'white', padding: '10px', borderRadius: '50%', boxShadow: '0 4px 10px rgba(0,0,0,0.3)', zIndex: 50, cursor: 'pointer', border: 'none' }}
+              className="flex-center"
+            >
+              <X size={24} />
+            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+              <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center', maxHeight: '55vh', padding: '0px' }}>
+                <img src={detailedImageModal.images[detailedImageModal.currentImgIdx]} alt="Preview" style={{ maxWidth: '100%', maxHeight: '55vh', objectFit: 'contain', borderRadius: '12px', border: '2px solid rgba(255,255,255,0.1)' }} />
+                {detailedImageModal.images.length > 1 && (
+                  <>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); setDetailedImageModal(p => ({ ...p, currentImgIdx: p.currentImgIdx === 0 ? p.images.length - 1 : p.currentImgIdx - 1 })); }}
+                      style={{ position: 'absolute', left: '-10px', top: '50%', transform: 'translateY(-50%)', background: 'rgba(0,0,0,0.6)', color: 'white', border: 'none', borderRadius: '50%', padding: '15px', cursor: 'pointer', boxShadow: 'none' }}
+                      className="flex-center"
+                    >
+                      <ChevronLeft size={24} />
+                    </button>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); setDetailedImageModal(p => ({ ...p, currentImgIdx: p.currentImgIdx === p.images.length - 1 ? 0 : p.currentImgIdx + 1 })); }}
+                      style={{ position: 'absolute', right: '-10px', top: '50%', transform: 'translateY(-50%)', background: 'rgba(0,0,0,0.6)', color: 'white', border: 'none', borderRadius: '50%', padding: '15px', cursor: 'pointer', boxShadow: 'none' }}
+                      className="flex-center"
+                    >
+                      <ChevronRight size={24} />
+                    </button>
+                  </>
+                )}
+                {detailedImageModal.images.length > 1 && (
+                  <div style={{ position: 'absolute', bottom: '10px', color: 'rgba(255,255,255,0.9)', fontSize: '1rem', fontWeight: 'bold', background: 'rgba(0,0,0,0.5)', padding: '5px 15px', borderRadius: '20px' }}>
+                    {detailedImageModal.currentImgIdx + 1} / {detailedImageModal.images.length}
+                  </div>
+                )}
+              </div>
+              <div style={{ background: 'var(--card-bg)', color: 'var(--text-color)', padding: '25px', borderRadius: '20px', marginTop: '15px', width: '100%', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+                  <h4 style={{ margin: '0 0 15px 0', fontSize: '1.2rem', lineHeight: '1.4' }}>{detailedImageModal.question}</h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ opacity: 0.6 }}>Ответ:</span>
+                      <strong style={{ color: detailedImageModal.isCorrect ? '#4ade80' : '#f87171' }}>
+                        {detailedImageModal.userAnswer}
+                      </strong>
+                      {detailedImageModal.isCorrect ? <CheckCircle size={18} color="#4ade80" /> : <XCircle size={18} color="#f87171" />}
+                    </div>
+                    {!detailedImageModal.isCorrect && detailedImageModal.correctAnswer && (
+                      <div style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: 'rgba(74, 222, 128, 0.05)', borderRadius: '10px', marginTop: '5px' }}>
+                        <span style={{ opacity: 0.6 }}>Правильный:</span>
+                        <strong style={{ color: '#4ade80' }}>
+                          {detailedImageModal.correctAnswer}
+                        </strong>
+                      </div>
+                    )}
+                    
+                    <div style={{ display: 'flex', gap: '20px', fontSize: '0.9rem', opacity: 0.8, background: 'rgba(0,0,0,0.02)', padding: '10px 15px', borderRadius: '8px', marginTop: '10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Clock size={16} /> Эта попытка: <strong style={{ color: detailedImageModal.timeSpent > detailedImageModal.avgQTime * 1.5 ? '#facc15' : 'inherit' }}>{detailedImageModal.timeSpent}с</strong>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <BarChart2 size={16} /> Среднее: <strong>{detailedImageModal.avgQTime}с</strong>
+                      </div>
+                    </div>
+                    
+                  </div>
+              </div>
             </div>
           </div>
         </div>
