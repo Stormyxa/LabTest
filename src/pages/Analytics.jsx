@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { ChevronLeft, User, BarChart, Calendar, CheckCircle, XCircle, Mail, Trash2, AlertTriangle, Filter, Download, Pencil, Shield, EyeOff, ArrowDown, ArrowUp, Info, Lock } from 'lucide-react';
+import { ChevronLeft, User, BarChart, Calendar, CheckCircle, XCircle, Mail, Trash2, AlertTriangle, Filter, Download, Pencil, Shield, EyeOff, ArrowDown, ArrowUp, Info, Lock, Image as ImageIcon, ChevronRight, X } from 'lucide-react';
 
 const Analytics = () => {
   const [searchParams] = useSearchParams();
@@ -29,6 +29,7 @@ const Analytics = () => {
   }, [useFirstResults]);
 
   // Expanded questions state - persistent for this quiz in session
+  const [imagePreviewModal, setImagePreviewModal] = useState({ isOpen: false, images: [], currentIdx: 0 });
   const [expandedQuestions, setExpandedQuestions] = useState(() => {
     const saved = sessionStorage.getItem(`expanded_q_${quizId}`);
     return saved ? JSON.parse(saved) : {};
@@ -522,21 +523,37 @@ const Analytics = () => {
                 <div key={idx}>
                   <div 
                     className="flex-center" 
-                    style={{ justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.9rem', gap: '15px', cursor: 'pointer' }}
-                    onClick={() => setExpandedQuestions(p => ({ ...p, [idx]: !p[idx] }))}
+                    style={{ justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.9rem', gap: '15px' }}
                   >
-                    <span style={{ 
-                      opacity: 0.8, 
-                      flex: 1, 
-                      minWidth: 0, 
-                      overflow: 'hidden', 
-                      textOverflow: isExpanded ? 'unset' : 'ellipsis', 
-                      whiteSpace: isExpanded ? 'normal' : 'nowrap', 
-                      display: 'block',
-                      lineHeight: '1.4'
-                    }}>
-                      {idx + 1}. {q.question}
-                    </span>
+                    <div className="flex-center" style={{ gap: '10px', flex: 1, minWidth: 0 }}>
+                      <span 
+                        className="animate"
+                        style={{ 
+                          opacity: 0.8, 
+                          overflow: 'hidden', 
+                          textOverflow: isExpanded ? 'unset' : 'ellipsis', 
+                          whiteSpace: isExpanded ? 'normal' : 'nowrap', 
+                          display: 'block',
+                          lineHeight: '1.4',
+                          cursor: 'pointer',
+                          flex: 1
+                        }}
+                        onClick={() => setExpandedQuestions(p => ({ ...p, [idx]: !p[idx] }))}
+                      >
+                        {idx + 1}. {q.question}
+                      </span>
+                      {q.images && q.images.length > 0 && (
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); setImagePreviewModal({ isOpen: true, images: q.images, currentIdx: 0 }); }}
+                          className="flex-center"
+                          style={{ padding: '4px 8px', background: 'rgba(99,102,241,0.1)', color: 'var(--primary-color)', borderRadius: '6px', boxShadow: 'none', flexShrink: 0, gap: '4px' }}
+                          title="Посмотреть картинку"
+                        >
+                          <ImageIcon size={14} />
+                          <span style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>{q.images.length}</span>
+                        </button>
+                      )}
+                    </div>
                     <span style={{ fontWeight: '700', whiteSpace: 'nowrap', color: percent > 70 ? '#4ade80' : (percent > 40 ? '#facc15' : '#f87171') }}>
                       {percent}% ({correctAnswers}/{filteredResults.length})
                     </span>
@@ -732,6 +749,45 @@ const Analytics = () => {
             <div style={{ display: 'flex', justifyContent: 'center' }}>
               <button onClick={() => setShowEditBlockedModal(false)} style={{ background: 'var(--primary-color)', color: 'white', padding: '12px 30px' }}>Понятно</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модальное окно: Просмотр изображений */}
+      {imagePreviewModal.isOpen && imagePreviewModal.images.length > 0 && (
+        <div className="modal-overlay" style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 99999 }} onClick={() => setImagePreviewModal({ isOpen: false, images: [], currentIdx: 0 })}>
+          <div className="animate" style={{ position: 'relative', maxWidth: '90vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
+            <button 
+              onClick={() => setImagePreviewModal({ isOpen: false, images: [], currentIdx: 0 })}
+              style={{ position: 'absolute', top: '-40px', right: '-40px', background: 'rgba(255,255,255,0.1)', color: 'white', padding: '10px', borderRadius: '50%', boxShadow: 'none', zIndex: 10 }}
+            >
+              <X size={24} />
+            </button>
+            <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%' }}>
+              <img src={imagePreviewModal.images[imagePreviewModal.currentIdx]} alt="Preview" style={{ maxWidth: '100%', maxHeight: '85vh', objectFit: 'contain', borderRadius: '12px', border: '2px solid rgba(255,255,255,0.1)' }} />
+              
+              {imagePreviewModal.images.length > 1 && (
+                <>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); setImagePreviewModal(p => ({ ...p, currentIdx: p.currentIdx === 0 ? p.images.length - 1 : p.currentIdx - 1 })); }}
+                    style={{ position: 'absolute', left: '-50px', background: 'rgba(255,255,255,0.1)', color: 'white', border: 'none', borderRadius: '50%', padding: '12px', cursor: 'pointer', boxShadow: 'none' }}
+                  >
+                    <ChevronLeft size={24} />
+                  </button>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); setImagePreviewModal(p => ({ ...p, currentIdx: p.currentIdx === p.images.length - 1 ? 0 : p.currentIdx + 1 })); }}
+                    style={{ position: 'absolute', right: '-50px', background: 'rgba(255,255,255,0.1)', color: 'white', border: 'none', borderRadius: '50%', padding: '12px', cursor: 'pointer', boxShadow: 'none' }}
+                  >
+                    <ChevronRight size={24} />
+                  </button>
+                </>
+              )}
+            </div>
+            {imagePreviewModal.images.length > 1 && (
+              <div style={{ position: 'absolute', bottom: '-40px', color: 'rgba(255,255,255,0.7)', fontSize: '1rem', fontWeight: 'bold' }}>
+                {imagePreviewModal.currentIdx + 1} / {imagePreviewModal.images.length}
+              </div>
+            )}
           </div>
         </div>
       )}

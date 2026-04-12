@@ -576,6 +576,20 @@ const AnalyticsDetails = () => {
             return (
               <div key={i} className="card" style={{ padding: '20px', borderLeft: `4px solid ${isCorrect ? '#4ade80' : '#ef4444'}`, overflowWrap: 'anywhere' }}>
                 <h4 style={{ marginBottom: '10px' }}>Вопрос: {originQ.question}</h4>
+                
+                {originQ.images && originQ.images.length > 0 && (
+                  <div style={{ display: 'flex', gap: '10px', marginBottom: '15px', overflowX: 'auto', paddingBottom: '10px' }}>
+                    {originQ.images.map((imgUrl, imgIdx) => (
+                      <img 
+                        key={imgIdx} 
+                        src={imgUrl} 
+                        alt={`QImg ${imgIdx+1}`} 
+                        style={{ height: '120px', borderRadius: '8px', objectFit: 'contain', border: '1px solid rgba(0,0,0,0.1)', background: 'var(--card-bg)' }}
+                      />
+                    ))}
+                  </div>
+                )}
+                
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap' }}>
                   <span style={{ opacity: 0.6 }}>Ответ:</span>
                   <strong style={{ color: isCorrect ? '#4ade80' : '#ef4444' }}>

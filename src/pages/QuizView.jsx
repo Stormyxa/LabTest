@@ -30,6 +30,13 @@ const QuizView = ({ session, profile }) => {
   // Timer
   const [isFirstAttempt, setIsFirstAttempt] = useState(false);
   const [timeLeft, setTimeLeft] = useState(null);
+  
+  const [currentImageIdx, setCurrentImageIdx] = useState(0);
+  
+  useEffect(() => {
+    setCurrentImageIdx(0);
+  }, [currentIdx]);
+
   const timerRef = useRef(null);
   const finishedRef = useRef(false);
   const answersRef = useRef({});   // mirrors answers state
@@ -529,6 +536,9 @@ const QuizView = ({ session, profile }) => {
     );
   }
 
+  const currentQ = questions[currentIdx];
+  const chosen = answers[currentIdx];
+
   // RESULTS SCREEN
   if (showResult) {
     const correctCount = questions.filter((q, idx) => answers[idx] === q.correctIndex).length;
@@ -603,8 +613,6 @@ const QuizView = ({ session, profile }) => {
     );
   }
 
-  const currentQ = questions[currentIdx];
-  const chosen = answers[currentIdx];
   const elapsed = Math.round((Date.now() - startTimeRef.current) / 1000);
   const answeredCount = Object.keys(answers).length;
   const pastGrace = elapsed >= EXIT_GRACE_SECONDS || (!isFirstAttempt && answeredCount > 2);
@@ -728,7 +736,43 @@ const QuizView = ({ session, profile }) => {
         </div>
 
         <div className="card animate" key={currentIdx} style={{ minHeight: '450px', display: 'flex', flexDirection: 'column' }}>
-          <h2 style={{ marginBottom: '40px', fontSize: '1.7rem', lineHeight: '1.4' }}>{currentQ.question}</h2>
+          {currentQ.images && currentQ.images.length > 0 && (
+            <div style={{ marginBottom: '25px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <div style={{ position: 'relative', width: '100%', display: 'flex', justifyContent: 'center' }}>
+                <img 
+                  src={currentQ.images[currentImageIdx]} 
+                  style={{ maxWidth: '100%', maxHeight: '40vh', objectFit: 'contain', borderRadius: '12px' }} 
+                  alt={`Изображение ${currentImageIdx+1}`} 
+                />
+                
+                {currentQ.images.length > 1 && (
+                  <>
+                    <button 
+                      onClick={() => setCurrentImageIdx(p => p === 0 ? currentQ.images.length - 1 : p - 1)}
+                      style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', background: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', padding: '8px', cursor: 'pointer', boxShadow: 'none' }}
+                      className="flex-center"
+                    >
+                      <ChevronLeft size={20} />
+                    </button>
+                    <button 
+                      onClick={() => setCurrentImageIdx(p => p === currentQ.images.length - 1 ? 0 : p + 1)}
+                      style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', padding: '8px', cursor: 'pointer', boxShadow: 'none' }}
+                      className="flex-center"
+                    >
+                      <ChevronRight size={20} />
+                    </button>
+                  </>
+                )}
+              </div>
+              {currentQ.images.length > 1 && (
+                <div style={{ marginTop: '10px', fontSize: '0.85rem', opacity: 0.6, fontWeight: 'bold' }}>
+                  {currentImageIdx + 1} / {currentQ.images.length}
+                </div>
+              )}
+            </div>
+          )}
+          
+          <h2 style={{ marginBottom: '40px', fontSize: (currentQ.images && currentQ.images.length > 0) ? '1.4rem' : '1.7rem', lineHeight: '1.4' }}>{currentQ.question}</h2>
 
           <div style={{
             display: 'grid', gap: '12px', marginTop: 'auto',

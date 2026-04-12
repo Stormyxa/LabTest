@@ -5,8 +5,11 @@ import { useScrollRestoration } from '../lib/useScrollRestoration';
 import {
   ChevronLeft, Pencil, Check, X, Plus, Trash2, RotateCcw,
   AlertTriangle, Download, AlertCircle, Lock, BarChart2,
-  GripVertical, Eye, EyeOff
+  GripVertical, Eye, EyeOff, Image as ImageIcon, Link,
+  Upload, ChevronRight
 } from 'lucide-react';
+import { transliterate } from '../lib/transliterate';
+import { syncGithubRenames, updateQuizzesWithNewUrls } from '../lib/githubSync';
 
 const MAX_QUESTIONS = 30;
 const MAX_OPTIONS = 6;
@@ -59,6 +62,10 @@ const QuizRedactor = () => {
   const [showDeleteResultsModal, setShowDeleteResultsModal] = useState(false);
   const [deleteResultsLock, setDeleteResultsLock] = useState(3);
 
+  // Images
+  const [imageInputModal, setImageInputModal] = useState({ isOpen: false, qIdx: null, mode: 'upload', url: '', file: null, uploading: false });
+  const [imagePreviewModal, setImagePreviewModal] = useState({ isOpen: false, url: '', qIdx: null, imgIdx: null });
+
   useEffect(() => { if (quizId) fetchAll(); }, [quizId]);
 
   useEffect(() => {
@@ -81,7 +88,7 @@ const QuizRedactor = () => {
 
     const { data: q } = await supabase
       .from('quizzes')
-      .select('*, profiles!quizzes_author_id_fkey(role)')
+      .select('*, quiz_sections(name, class_id), profiles!quizzes_author_id_fkey(role)')
       .eq('id', quizId)
       .single();
 
@@ -205,6 +212,9 @@ const QuizRedactor = () => {
         is_hidden: isHidden
       }).eq('id', quizId);
       if (error) throw error;
+      const oldTitle = savedTitle;
+      const isTitleChanged = oldTitle && oldTitle !== trimmedTitle;
+
       setSavedTitle(trimmedTitle);
       setTitle(trimmedTitle);
       setSavedIsHidden(isHidden);
@@ -214,6 +224,25 @@ const QuizRedactor = () => {
       setShowSaveModal(false);
       setShowValidErrors(false);
       setValidErrors([]);
+
+      // Trigger background GitHub rename sync if title changed
+      if (isTitleChanged) {
+        const sName = quiz?.quiz_sections?.name;
+        const cId = quiz?.quiz_sections?.class_id;
+        if (sName && cId) {
+          syncGithubRenames(cId, sName, sName, oldTitle, trimmedTitle)
+            .then(renamedMap => {
+              if (renamedMap && Object.keys(renamedMap).length > 0) {
+                 // The quiz logic fetched earlier has the questions, but we need the latest.
+                 // We can just fetch it again or rely on the function which fetches it internally (wait, the function takes a list of quizzes).
+                 updateQuizzesWithNewUrls([{ id: quizId, content: { questions } }], renamedMap)
+                   .then(() => fetchAll()); // Re-fetch to get updated images in UI
+              }
+            })
+            .catch(e => console.error('Failed to sync github assets:', e));
+        }
+      }
+
     } catch (err) {
       alert(`Ошибка: ${err.message}`);
     } finally {
@@ -225,14 +254,35 @@ const QuizRedactor = () => {
     if (!title.trim()) return;
     setSaving(true);
     try {
+      const trimmedTitle = title.trim();
+      const oldTitle = savedTitle;
+      const isTitleChanged = oldTitle && oldTitle !== trimmedTitle;
+
       const { error } = await supabase.from('quizzes').update({
-        title: title.trim()
+        title: trimmedTitle
       }).eq('id', quizId);
       if (error) throw error;
-      setSavedTitle(title.trim());
-      setQuiz(p => ({ ...p, title: title.trim() }));
+      setSavedTitle(trimmedTitle);
+      setQuiz(p => ({ ...p, title: trimmedTitle }));
       setEditingTitle(false);
       setShowSuccessUpdateModal(true);
+
+      // Trigger background GitHub rename sync if title changed
+      if (isTitleChanged) {
+        const sName = quiz?.quiz_sections?.name;
+        const cId = quiz?.quiz_sections?.class_id;
+        if (sName && cId) {
+          syncGithubRenames(cId, sName, sName, oldTitle, trimmedTitle)
+            .then(renamedMap => {
+              if (renamedMap && Object.keys(renamedMap).length > 0) {
+                 updateQuizzesWithNewUrls([{ id: quizId, content: { questions: savedQuestions } }], renamedMap)
+                   .then(() => fetchAll()); // Re-fetch to get updated images in UI
+              }
+            })
+            .catch(e => console.error('Failed to sync github assets on title update:', e));
+        }
+      }
+
     } catch (err) {
       alert(`Ошибка: ${err.message}`);
     } finally {
@@ -297,7 +347,7 @@ const QuizRedactor = () => {
   const addQuestion = () => {
     if (questions.length >= MAX_QUESTIONS) return;
     pushHistory(title, questions);
-    setQuestions(p => [...p, { question: 'Новый вопрос', options: ['Вариант 1', 'Вариант 2'], correctIndex: null }]);
+    setQuestions(p => [...p, { question: 'Новый вопрос', options: ['Вариант 1', 'Вариант 2'], correctIndex: null, images: [] }]);
   };
 
   const deleteQuestion = (idx) => {
@@ -340,6 +390,112 @@ const QuizRedactor = () => {
   const setCorrect = (qIdx, oIdx) => {
     pushHistory(title, questions);
     setQuestions(p => p.map((q, i) => i === qIdx ? { ...q, correctIndex: oIdx } : q));
+  };
+
+  const addImageUrl = (qIdx, rawUrl) => {
+    let url = rawUrl;
+    // Auto-convert Google Drive viewing links to direct image links
+    if (url.includes('drive.google.com/file/d/')) {
+      const match = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+      if (match && match[1]) {
+        url = `https://drive.google.com/thumbnail?id=${match[1]}&sz=w1000`;
+      }
+    }
+    
+    pushHistory(title, questions);
+    setQuestions(p => p.map((q, i) => {
+      if (i !== qIdx) return q;
+      const imgs = q.images || [];
+      if (imgs.length >= 4) return q;
+      return { ...q, images: [...imgs, url] };
+    }));
+  };
+
+  const removeImage = (qIdx, imgIdx) => {
+    pushHistory(title, questions);
+    setQuestions(p => p.map((q, i) => {
+      if (i !== qIdx) return q;
+      const imgs = q.images || [];
+      return { ...q, images: imgs.filter((_, idx) => idx !== imgIdx) };
+    }));
+  };
+
+  const moveImageLeft = (qIdx, imgIdx) => {
+    if (imgIdx === 0) return;
+    pushHistory(title, questions);
+    setQuestions(p => p.map((q, i) => {
+      if (i !== qIdx) return q;
+      const imgs = [...(q.images || [])];
+      [imgs[imgIdx - 1], imgs[imgIdx]] = [imgs[imgIdx], imgs[imgIdx - 1]];
+      return { ...q, images: imgs };
+    }));
+  };
+
+  const moveImageRight = (qIdx, imgIdx) => {
+    pushHistory(title, questions);
+    setQuestions(p => p.map((q, i) => {
+      if (i !== qIdx) return q;
+      const imgs = [...(q.images || [])];
+      if (imgIdx >= imgs.length - 1) return q;
+      [imgs[imgIdx], imgs[imgIdx + 1]] = [imgs[imgIdx + 1], imgs[imgIdx]];
+      return { ...q, images: imgs };
+    }));
+  };
+
+  const compressImage = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target.result;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          const max = 1500;
+          if (width > height && width > max) { height = Math.round(height *= max / width); width = max; }
+          else if (height > width && height > max) { width = Math.round(width *= max / height); height = max; }
+          canvas.width = width; canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', 0.85));
+        };
+        img.onerror = (e) => reject(e);
+      };
+      reader.onerror = (e) => reject(e);
+    });
+  };
+
+  const handleFileUpload = async () => {
+    if (!imageInputModal.file) return;
+    setImageInputModal(p => ({ ...p, uploading: true }));
+    try {
+      const base64Data = await compressImage(imageInputModal.file);
+      const uuid = crypto.randomUUID().split('-')[0];
+      const classNum = quiz.quiz_sections?.class_id || 'unknown';
+      const sectionName = quiz.quiz_sections?.name || 'unknown';
+      const quizName = title || 'unknown';
+      
+      const safeSection = transliterate(sectionName);
+      const safeQuiz = transliterate(quizName);
+      const fileName = `${safeSection}-${safeQuiz}-${uuid}.jpg`;
+      const path = `images/${classNum}-class`;
+
+      const res = await fetch('/api/github-upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ base64Data, fileName, path })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Server error');
+
+      addImageUrl(imageInputModal.qIdx, data.url);
+      setImageInputModal({ isOpen: false, qIdx: null, mode: 'upload', url: '', file: null, uploading: false });
+    } catch (e) {
+      alert('Ошибка при загрузке: ' + e.message);
+      setImageInputModal(p => ({ ...p, uploading: false }));
+    }
   };
 
   // ─── BLOCKED STATES ───────────────────────────────────────────
@@ -609,6 +765,107 @@ const QuizRedactor = () => {
             </div>
           </div>
         )}
+        {imageInputModal.isOpen && (
+          <div className="modal-overlay" onClick={() => setImageInputModal({ isOpen: false, qIdx: null, mode: 'upload', url: '', file: null, uploading: false })}>
+            <div className="modal-content animate" style={{ width: '500px' }} onClick={e => e.stopPropagation()}>
+              <div style={{ display: 'flex', borderBottom: '1px solid rgba(0,0,0,0.1)', marginBottom: '20px' }}>
+                <button 
+                  onClick={() => setImageInputModal(p => ({ ...p, mode: 'upload' }))}
+                  style={{ flex: 1, padding: '15px', background: 'transparent', color: imageInputModal.mode === 'upload' ? 'var(--primary-color)' : 'inherit', borderBottom: imageInputModal.mode === 'upload' ? '2px solid var(--primary-color)' : '2px solid transparent', borderRadius: 0, opacity: imageInputModal.mode === 'upload' ? 1 : 0.5 }}
+                >
+                  <Upload size={18} style={{ marginRight: '8px' }}/> Загрузить файл
+                </button>
+                <button 
+                  onClick={() => setImageInputModal(p => ({ ...p, mode: 'url' }))}
+                  style={{ flex: 1, padding: '15px', background: 'transparent', color: imageInputModal.mode === 'url' ? 'var(--primary-color)' : 'inherit', borderBottom: imageInputModal.mode === 'url' ? '2px solid var(--primary-color)' : '2px solid transparent', borderRadius: 0, opacity: imageInputModal.mode === 'url' ? 1 : 0.5 }}
+                >
+                  <Link size={18} style={{ marginRight: '8px' }}/> По ссылке
+                </button>
+              </div>
+
+              {imageInputModal.mode === 'url' ? (
+                <>
+                  <p style={{ opacity: 0.7, fontSize: '0.9rem', marginBottom: '20px', textAlign: 'center' }}>
+                    Укажите прямую ссылку (URL) на картинку. Она будет привязана к выбранному вопросу.
+                  </p>
+                  <input 
+                    type="url" 
+                    placeholder="https://example.com/image.jpg"
+                    value={imageInputModal.url}
+                    onChange={e => setImageInputModal(p => ({ ...p, url: e.target.value }))}
+                    style={{ width: '100%', padding: '12px 15px', marginBottom: '20px', fontSize: '1rem' }}
+                    autoFocus
+                  />
+                </>
+              ) : (
+                <>
+                  <p style={{ opacity: 0.7, fontSize: '0.9rem', marginBottom: '20px', textAlign: 'center' }}>
+                    Выберите файл для загрузки в облако.
+                  </p>
+                  <div 
+                    style={{ border: '2px dashed rgba(0,0,0,0.2)', borderRadius: '15px', padding: '40px 20px', textAlign: 'center', marginBottom: '20px', background: 'rgba(0,0,0,0.02)', position: 'relative' }}
+                  >
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      onChange={e => { if (e.target.files && e.target.files[0]) setImageInputModal(p => ({...p, file: e.target.files[0]})); }}
+                      style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }}
+                    />
+                    <Upload size={32} style={{ opacity: 0.5, marginBottom: '10px' }} />
+                    <div style={{ fontWeight: 'bold' }}>{imageInputModal.file ? imageInputModal.file.name : 'Нажмите или перетащите файл'}</div>
+                    <div style={{ fontSize: '0.8rem', opacity: 0.5, marginTop: '5px' }}>JPG, PNG, WEBP (до 5 МБ)</div>
+                  </div>
+                </>
+              )}
+
+              <div className="grid-2" style={{ gap: '15px' }}>
+                <button onClick={() => setImageInputModal({ isOpen: false, qIdx: null, mode: 'upload', url: '', file: null, uploading: false })} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit' }}>Отмена</button>
+                
+                {imageInputModal.mode === 'url' ? (
+                  <button 
+                    onClick={() => {
+                      if (imageInputModal.url.trim()) {
+                        addImageUrl(imageInputModal.qIdx, imageInputModal.url.trim());
+                        setImageInputModal({ isOpen: false, qIdx: null, mode: 'upload', url: '', file: null, uploading: false });
+                      }
+                    }}
+                    disabled={!imageInputModal.url.trim()}
+                    style={{ background: 'var(--primary-color)', color: 'white', opacity: !imageInputModal.url.trim() ? 0.5 : 1 }}
+                  >
+                    Добавить по URL
+                  </button>
+                ) : (
+                  <button 
+                    onClick={handleFileUpload}
+                    disabled={!imageInputModal.file || imageInputModal.uploading}
+                    style={{ background: 'var(--primary-color)', color: 'white', opacity: (!imageInputModal.file || imageInputModal.uploading) ? 0.5 : 1 }}
+                  >
+                    {imageInputModal.uploading ? 'Загрузка...' : 'Загрузить файл'}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {imagePreviewModal.isOpen && (
+          <div className="modal-overlay" style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)' }} onClick={() => setImagePreviewModal({ isOpen: false, url: '', qIdx: null, imgIdx: null })}>
+            <div className="animate" style={{ position: 'relative', maxWidth: '90vw', maxHeight: '90vh' }} onClick={e => e.stopPropagation()}>
+              <button 
+                onClick={() => setImagePreviewModal({ isOpen: false, url: '', qIdx: null, imgIdx: null })}
+                style={{ position: 'absolute', top: '-40px', right: '-40px', background: 'rgba(255,255,255,0.1)', color: 'white', padding: '10px', borderRadius: '50%', boxShadow: 'none' }}
+              >
+                <X size={24} />
+              </button>
+              <img src={imagePreviewModal.url} alt="Preview" style={{ maxWidth: '100%', maxHeight: '85vh', objectFit: 'contain', borderRadius: '12px', border: '2px solid rgba(255,255,255,0.1)' }} />
+              {imagePreviewModal.qIdx !== null && (
+                <div style={{ position: 'absolute', bottom: '-40px', left: '0', width: '100%', textAlign: 'center', color: 'rgba(255,255,255,0.7)', fontSize: '0.9rem' }}>
+                  Вопрос {imagePreviewModal.qIdx + 1} • Изображение {imagePreviewModal.imgIdx + 1}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </>
     );
   }
@@ -837,6 +1094,65 @@ const QuizRedactor = () => {
                     <Plus size={15} /> Добавить вариант
                   </button>
                 )}
+                
+                {/* Images Section */}
+                <div style={{ marginTop: '10px', borderTop: '1px solid rgba(0,0,0,0.05)', paddingTop: '15px' }}>
+                  <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '10px' }}>
+                    <span style={{ fontSize: '0.85rem', opacity: 0.6, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '1px' }}>Изображения ({(q.images || []).length}/4)</span>
+                    {(q.images || []).length < 4 && (
+                      <button 
+                        onClick={() => setImageInputModal({ isOpen: true, qIdx, url: '' })}
+                        className="flex-center" 
+                        style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(99,102,241,0.08)', color: 'var(--primary-color)', borderRadius: '8px', boxShadow: 'none' }}
+                      >
+                        <ImageIcon size={14} style={{ marginRight: '6px' }} /> Добавить по ссылке
+                      </button>
+                    )}
+                  </div>
+                  
+                  {q.images && q.images.length > 0 && (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: '10px' }}>
+                      {q.images.map((imgUrl, imgIdx) => (
+                        <div key={imgIdx} style={{ position: 'relative', borderRadius: '10px', overflow: 'hidden', border: '1px solid rgba(0,0,0,0.1)', height: '100px', cursor: 'pointer', group: 'img-group' }}
+                             onClick={() => setImagePreviewModal({ isOpen: true, url: imgUrl, qIdx, imgIdx })}>
+                          <img src={imgUrl} alt={`Q${qIdx} / Img${imgIdx}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); removeImage(qIdx, imgIdx); }}
+                            className="flex-center animate-fade-in"
+                            style={{ position: 'absolute', top: '4px', right: '4px', width: '24px', height: '24px', padding: 0, borderRadius: '50%', background: 'rgba(239, 68, 68, 0.8)', color: 'white', border: 'none', zIndex: 2 }}
+                            title="Удалить"
+                          >
+                            <X size={14} />
+                          </button>
+                          
+                          {/* Image controls overlay */}
+                          <div style={{ position: 'absolute', bottom: '4px', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: '4px', zIndex: 2 }}>
+                            {imgIdx > 0 && (
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); moveImageLeft(qIdx, imgIdx); }}
+                                className="flex-center"
+                                style={{ width: '24px', height: '24px', padding: 0, borderRadius: '6px', background: 'rgba(0,0,0,0.6)', color: 'white', border: 'none' }}
+                                title="Влево"
+                              >
+                                <ChevronLeft size={14} />
+                              </button>
+                            )}
+                            {imgIdx < (q.images.length - 1) && (
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); moveImageRight(qIdx, imgIdx); }}
+                                className="flex-center"
+                                style={{ width: '24px', height: '24px', padding: 0, borderRadius: '6px', background: 'rgba(0,0,0,0.6)', color: 'white', border: 'none' }}
+                                title="Вправо"
+                              >
+                                <ChevronRight size={14} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           ))}

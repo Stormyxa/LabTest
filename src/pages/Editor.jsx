@@ -8,6 +8,7 @@ import {
   ChevronUp, ChevronDown, Save, Book, Link as LinkIcon,
   Pencil, Eye, EyeOff, Shield, Clock, Lock
 } from 'lucide-react';
+import { syncGithubRenames, updateQuizzesWithNewUrls } from '../lib/githubSync';
 
 const EditorSkeleton = () => (
   <div style={{ width: '100%' }}>
@@ -276,20 +277,46 @@ const Editor = ({ session, profile }) => {
       const { error } = await supabase.from('quizzes').update(updateData).eq('id', renamingItem.id);
       if (error) alert('Ошибка переименования: ' + error.message);
       else {
+        const oldName = renamingItem.name;
+        const finalNewName = newName;
         setRenamingItem(null);
         setNewName('');
-        fetchData();
+        await fetchData();
+
+        if (!isDivider && oldName !== finalNewName) {
+          const sName = quizToRename.quiz_sections?.name;
+          const cId = quizToRename.quiz_sections?.class_id;
+          if (sName && cId) {
+            syncGithubRenames(cId, sName, sName, oldName, finalNewName)
+              .then(renamedMap => updateQuizzesWithNewUrls([quizToRename], renamedMap))
+              .catch(e => console.error('Failed to sync github assets:', e));
+          }
+        }
       }
       return;
     }
 
     const table = renamingItem.type === 'class' ? 'quiz_classes' : 'quiz_sections';
+    const oldName = renamingItem.name;
+    const finalNewName = newName;
     const { error } = await supabase.from(table).update({ name: newName }).eq('id', renamingItem.id);
     if (error) alert('Ошибка переименования: ' + error.message);
     else {
       setRenamingItem(null);
       setNewName('');
-      fetchData();
+      await fetchData();
+
+      if (renamingItem.type === 'section' && oldName !== finalNewName) {
+        const sToRename = sections.find(s => s.id === renamingItem.id);
+        const cId = sToRename?.class_id;
+        const quizzesToUpdate = myQuizzes.filter(q => q.section_id === renamingItem.id);
+        
+        if (cId) {
+          syncGithubRenames(cId, oldName, finalNewName, null, null)
+            .then(renamedMap => updateQuizzesWithNewUrls(quizzesToUpdate, renamedMap))
+            .catch(e => console.error('Failed to sync section github assets:', e));
+        }
+      }
     }
   };
 
