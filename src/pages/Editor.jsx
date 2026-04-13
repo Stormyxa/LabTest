@@ -559,7 +559,7 @@ const Editor = ({ session, profile }) => {
                         </select>
                         <select id="quiz-section" name="section" value={sectionId} onChange={(e) => setSectionId(e.target.value)} required disabled={!selectedClassId} style={{ flex: 1 }}>
                           <option value="">Выберите предмет...</option>
-                          {sections.filter(s => s.class_id === selectedClassId).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                          {sections.filter(s => s.class_id === selectedClassId && !s.is_divider).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                         </select>
                       </div>
 
@@ -743,6 +743,25 @@ const Editor = ({ session, profile }) => {
                         {expandedClasses[cls.id] && clsSections.map((section, sIndex) => {
                           const qs = myQuizzes.filter(q => q.section_id === section.id);
                           if (qs.length === 0 && (profile?.role === 'editor' || profile?.role === 'teacher')) return null;
+
+                          if (section.is_divider) {
+                            return (
+                              <div key={section.id} className="animate" style={{ padding: '15px 25px', borderTop: '1px solid rgba(0,0,0,0.03)', background: 'rgba(0,0,0,0.01)', display: 'flex', alignItems: 'center', gap: '15px' }}>
+                                <div style={{ height: '3px', background: 'var(--primary-color)', width: '20px', borderRadius: '1.5px', opacity: 0.6 }} />
+                                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '800', color: 'var(--text-color)', flex: 1 }}>{section.name}</h3>
+                                {profile?.role === 'creator' && (
+                                  <div className="flex-center" style={{ gap: '8px' }}>
+                                    <div className="flex-center" style={{ gap: '3px' }}>
+                                      <button onClick={() => swapSections(cls.id, sIndex, -1)} disabled={sIndex === 0} style={{ padding: '4px', background: 'rgba(0,0,0,0.03)', color: 'var(--primary-color)', borderRadius: '6px', boxShadow: 'none' }}><ChevronUp size={14} /></button>
+                                      <button onClick={() => swapSections(cls.id, sIndex, 1)} disabled={sIndex === clsSections.length - 1} style={{ padding: '4px', background: 'rgba(0,0,0,0.03)', color: 'var(--primary-color)', borderRadius: '6px', boxShadow: 'none' }}><ChevronDown size={14} /></button>
+                                    </div>
+                                    <button onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: section.id, name: section.name, type: 'section' }); setNewName(section.name); }} style={{ padding: '4px', background: 'rgba(99, 102, 241, 0.08)', color: 'var(--primary-color)', borderRadius: '6px', boxShadow: 'none' }}><Pencil size={14} /></button>
+                                    <button onClick={() => setDeleteSectionId(section.id)} style={{ padding: '4px', background: 'rgba(239, 68, 68, 0.08)', color: '#ef4444', borderRadius: '6px', boxShadow: 'none' }} title="Удалить разделитель предмета"><Trash2 size={14} /></button>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          }
 
                           return (
                             <div key={section.id} className="editor-section-container" style={{ padding: '25px', borderTop: '1px solid rgba(0,0,0,0.05)' }}>

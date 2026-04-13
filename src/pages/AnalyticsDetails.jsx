@@ -81,7 +81,7 @@ const AnalyticsDetails = () => {
       }
 
       const { data: qF } = await supabase.from('quiz_classes').select('id, name, sort_order, is_divider').order('sort_order', { ascending: true });
-      const { data: secs } = await supabase.from('quiz_sections').select('id, class_id, name, sort_order').order('sort_order', { ascending: true });
+      const { data: secs } = await supabase.from('quiz_sections').select('id, class_id, name, sort_order, is_divider').order('sort_order', { ascending: true });
 
       let quizQuery = supabase.from('quizzes').select('id, title, section_id, author_id, is_archived, sort_order, content').eq('is_archived', false).order('sort_order', { ascending: true });
       if (p.role === 'editor') quizQuery = quizQuery.eq('author_id', p.id);
@@ -693,7 +693,11 @@ const AnalyticsDetails = () => {
                   </select>
                   <select id="ad-section" value={filterSection} onChange={e => setFilterSection(e.target.value)} style={{ width: '100%', marginBottom: '10px', padding: '8px' }} aria-label="Предмет">
                     <option value="all">Все предметы</option>
-                    {validSections.map(s => <option key={s.id} value={s.id} disabled={isSectionEmpty(s.id)}>{s.name} {isSectionEmpty(s.id) ? '(пусто)' : ''}</option>)}
+                    {validSections.map(s => (
+                      <option key={s.id} value={s.id} disabled={s.is_divider || isSectionEmpty(s.id)}>
+                        {s.is_divider ? `--- ${s.name} ---` : s.name} {isSectionEmpty(s.id) && !s.is_divider ? '(пусто)' : ''}
+                      </option>
+                    ))}
                   </select>
                   <select id="ad-quiz" value={filterQuiz} onChange={e => handleQuizSelect(e.target.value)} style={{ width: '100%', padding: '8px' }} aria-label="Тест">
                     <option value="" disabled>-- Выберите тест --</option>

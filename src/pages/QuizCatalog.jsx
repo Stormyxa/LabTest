@@ -386,6 +386,21 @@ const QuizCatalog = ({ profile }) => {
     } catch (err) { alert(`Ошибка: ${err.message}`); }
   };
 
+  const handleCreateSectionDivider = async (classId) => {
+    try {
+      const { data: lastSec } = await supabase.from('quiz_sections').select('sort_order').eq('class_id', classId).order('sort_order', { ascending: false }).limit(1);
+      const maxOrder = lastSec && lastSec.length > 0 ? lastSec[0].sort_order : -1;
+      const { error } = await supabase.from('quiz_sections').insert({
+        name: 'Новый разделитель предмета',
+        class_id: classId,
+        is_divider: true,
+        sort_order: maxOrder + 1
+      });
+      if (error) throw error;
+      fetchData();
+    } catch (err) { alert(`Ошибка: ${err.message}`); }
+  };
+
   const handleRename = async () => {
     if (!renamingItem || !newName.trim()) return;
     if (renamingItem.type === 'quiz') {
@@ -530,13 +545,22 @@ const QuizCatalog = ({ profile }) => {
                       </span>
                     )}
                     {profile?.role === 'creator' && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: cls.id, name: cls.name, type: 'class' }); setNewName(cls.name); }}
-                        style={{ background: 'transparent', color: 'var(--primary-color)', opacity: 0.5, boxShadow: 'none', padding: '5px' }}
-                        title="Переименовать класс"
-                      >
-                        <Pencil size={18} />
-                      </button>
+                      <div className="flex-center" style={{ gap: '10px' }}>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: cls.id, name: cls.name, type: 'class' }); setNewName(cls.name); }}
+                          style={{ background: 'transparent', color: 'var(--primary-color)', opacity: 0.5, boxShadow: 'none', padding: '5px' }}
+                          title="Переименовать класс"
+                        >
+                          <Pencil size={18} />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleCreateSectionDivider(cls.id); }}
+                          className="flex-center animate"
+                          style={{ padding: '8px 15px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', borderRadius: '12px', boxShadow: 'none', fontWeight: 'bold', fontSize: '0.8rem', gap: '6px' }}
+                        >
+                          <Plus size={16} /> Разделитель предмета
+                        </button>
+                      </div>
                     )}
                   </div>
                   {(!isEmptyClass || profile?.role === 'creator') && (expandedClasses[cls.id] ? <ChevronUp size={24} /> : <ChevronDown size={24} />)}
@@ -545,6 +569,26 @@ const QuizCatalog = ({ profile }) => {
                 {expandedClasses[cls.id] && (!isEmptyClass || profile?.role === 'creator') && (
                   <div className="animate catalog-class-content" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px', background: 'rgba(0,0,0,0.02)' }}>
                     {cls.sections.map((section, sIndex) => {
+                      if (section.is_divider) {
+                        return (
+                          <div key={section.id} className="animate" style={{ padding: '15px 0', borderBottom: '1px solid rgba(0,0,0,0.03)', display: 'flex', alignItems: 'center', gap: '15px', opacity: 0.8 }}>
+                            <div style={{ height: '3px', background: 'var(--primary-color)', width: '25px', borderRadius: '2px', opacity: 0.6 }} />
+                            <h4 style={{ fontSize: '1.4rem', fontWeight: '800', margin: 0, color: 'var(--text-color)' }}>{section.name}</h4>
+                            <div style={{ height: '1px', background: 'rgba(0,0,0,0.06)', flex: 1 }} />
+                            {profile?.role === 'creator' && !debouncedSearchQuery && (
+                              <div className="flex-center" style={{ gap: '8px' }}>
+                                <div className="flex-center" style={{ gap: '3px' }}>
+                                  <button onClick={(e) => startTransition(() => swapSections(cls.id, sIndex, -1, e))} disabled={sIndex === 0} style={{ padding: '4px', background: 'rgba(0,0,0,0.02)', color: 'var(--primary-color)', borderRadius: '8px', boxShadow: 'none' }}><ChevronUp size={16} /></button>
+                                  <button onClick={(e) => startTransition(() => swapSections(cls.id, sIndex, 1, e))} disabled={sIndex === cls.sections.length - 1} style={{ padding: '4px', background: 'rgba(0,0,0,0.02)', color: 'var(--primary-color)', borderRadius: '8px', boxShadow: 'none' }}><ChevronDown size={16} /></button>
+                                </div>
+                                <button onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: section.id, name: section.name, type: 'section' }); setNewName(section.name); }} style={{ padding: '5px', background: 'rgba(99, 102, 241, 0.08)', color: 'var(--primary-color)', borderRadius: '8px', boxShadow: 'none' }}><Pencil size={16} /></button>
+                                <button onClick={async (e) => { e.stopPropagation(); if (window.confirm('Удалить этот разделитель предметов?')) { await supabase.from('quiz_sections').delete().eq('id', section.id); fetchData(); } }} style={{ padding: '5px', background: 'rgba(239, 68, 68, 0.08)', color: '#ef4444', borderRadius: '8px', boxShadow: 'none' }}><Trash2 size={16} /></button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
+
                       const isEmptySection = section.basicQuizzes.filter(q => !q.content?.is_divider).length === 0;
                       return (
                         <div key={section.id} className="catalog-container" style={{
