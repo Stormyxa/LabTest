@@ -458,8 +458,20 @@ const QuizRedactor = () => {
           else if (height > width && height > max) { width = Math.round(width *= max / height); height = max; }
           canvas.width = width; canvas.height = height;
           const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/jpeg', 0.85));
+
+          const isPng = file.type === 'image/png';
+          if (isPng) {
+            // Preserve transparency — export as PNG
+            ctx.clearRect(0, 0, width, height);
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/png'));
+          } else {
+            // For JPEG fill white background (JPEG has no alpha channel)
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, width, height);
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', 0.85));
+          }
         };
         img.onerror = (e) => reject(e);
       };
@@ -479,7 +491,9 @@ const QuizRedactor = () => {
       
       const safeSection = transliterate(sectionName);
       const safeQuiz = transliterate(quizName);
-      const fileName = `${safeSection}-${safeQuiz}-${uuid}.jpg`;
+      const isPng = imageInputModal.file.type === 'image/png';
+      const ext = isPng ? 'png' : 'jpg';
+      const fileName = `${safeSection}-${safeQuiz}-${uuid}.${ext}`;
       const path = `images/${classNum}-class`;
 
       const res = await fetch('/api/github-upload', {
