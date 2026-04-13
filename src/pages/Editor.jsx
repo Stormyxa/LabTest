@@ -555,7 +555,7 @@ const Editor = ({ session, profile }) => {
                       <div style={{ display: 'flex', gap: '10px' }}>
                         <select id="quiz-class" name="class" value={selectedClassId} onChange={(e) => { setSelectedClassId(e.target.value); setSectionId(''); }} required style={{ flex: 1 }}>
                           <option value="">Выберите класс...</option>
-                          {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          {classes.filter(c => !c.is_divider).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                         </select>
                         <select id="quiz-section" name="section" value={sectionId} onChange={(e) => setSectionId(e.target.value)} required disabled={!selectedClassId} style={{ flex: 1 }}>
                           <option value="">Выберите предмет...</option>
@@ -625,7 +625,7 @@ const Editor = ({ session, profile }) => {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                           <select id="new-section-class" name="new-section-class" value={newSectionClassId} onChange={(e) => setNewSectionClassId(e.target.value)}>
                             <option value="">Укажите класс...</option>
-                            {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                            {classes.filter(c => !c.is_divider).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                           </select>
 
                           <div style={{ display: 'flex', gap: '10px' }}>
@@ -682,10 +682,29 @@ const Editor = ({ session, profile }) => {
                   </div>
                 ) : (
                 <div style={{ gridColumn: '1 / -1' }}>
-                {classes.map((cls, cIndex) => {
+                  {classes.map((cls, cIndex) => {
                     const clsSections = sections.filter(s => s.class_id === cls.id);
                     if ((profile?.role === 'editor' || profile?.role === 'teacher') && myQuizzes.filter(q => clsSections.some(s => s.id === q.section_id)).length === 0) {
                       return null;
+                    }
+
+                    if (cls.is_divider) {
+                      return (
+                        <div key={cls.id} className="animate" style={{ padding: '20px 25px', marginBottom: '15px', background: 'rgba(0,0,0,0.02)', border: '2px dashed rgba(99, 102, 241, 0.2)', borderRadius: '24px', display: 'flex', alignItems: 'center', gap: '20px' }}>
+                          <div style={{ height: '4px', background: 'var(--primary-color)', width: '30px', borderRadius: '2px' }} />
+                          <h3 style={{ fontSize: '1.4rem', fontWeight: '900', margin: 0, textTransform: 'uppercase', color: 'var(--text-color)', flex: 1 }}>{cls.name}</h3>
+                          {profile?.role === 'creator' && (
+                            <div className="flex-center" style={{ gap: '10px' }}>
+                              <div className="flex-center" style={{ gap: '5px' }}>
+                                <button onClick={() => swapClasses(cIndex, -1)} disabled={cIndex === 0} style={{ padding: '5px', background: 'rgba(0,0,0,0.03)', color: 'var(--primary-color)', borderRadius: '8px', boxShadow: 'none' }}><ChevronUp size={16} /></button>
+                                <button onClick={() => swapClasses(cIndex, 1)} disabled={cIndex === classes.length - 1} style={{ padding: '5px', background: 'rgba(0,0,0,0.03)', color: 'var(--primary-color)', borderRadius: '8px', boxShadow: 'none' }}><ChevronDown size={16} /></button>
+                              </div>
+                              <button onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: cls.id, name: cls.name, type: 'class' }); setNewName(cls.name); }} style={{ padding: '5px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', borderRadius: '8px', boxShadow: 'none' }}><Pencil size={18} /></button>
+                              <button onClick={() => setDeleteClassId(cls.id)} style={{ padding: '5px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', borderRadius: '8px', boxShadow: 'none' }} title="Удалить разделитель"><Trash2 size={18} /></button>
+                            </div>
+                          )}
+                        </div>
+                      );
                     }
 
                     return (

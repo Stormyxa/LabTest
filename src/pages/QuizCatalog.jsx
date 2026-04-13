@@ -372,6 +372,20 @@ const QuizCatalog = ({ profile }) => {
     } catch (err) { alert(`Ошибка: ${err.message}`); }
   };
 
+  const handleCreateClassDivider = async () => {
+    try {
+      const { data: lastCls } = await supabase.from('quiz_classes').select('sort_order').order('sort_order', { ascending: false }).limit(1);
+      const maxOrder = lastCls && lastCls.length > 0 ? lastCls[0].sort_order : -1;
+      const { error } = await supabase.from('quiz_classes').insert({
+        name: 'Новый разделитель',
+        is_divider: true,
+        sort_order: maxOrder + 1
+      });
+      if (error) throw error;
+      fetchData();
+    } catch (err) { alert(`Ошибка: ${err.message}`); }
+  };
+
   const handleRename = async () => {
     if (!renamingItem || !newName.trim()) return;
     if (renamingItem.type === 'quiz') {
@@ -428,17 +442,28 @@ const QuizCatalog = ({ profile }) => {
           <h2 style={{ fontSize: '2rem', fontWeight: '800', letterSpacing: '-1px', margin: 0 }}>Каталог тестов</h2>
           <p style={{ opacity: 0.6, marginTop: '5px' }}>Выберите предмет и начните обучение</p>
         </div>
-        <div style={{ position: 'relative', maxWidth: '400px', width: '100%' }}>
-          <Search style={{ position: 'absolute', left: '15px', top: '50%', transform: 'translateY(-50%)', opacity: 0.4 }} size={20} />
-          <input
-            id="catalog-search"
-            name="search"
-            type="text"
-            placeholder="Поиск по названию или предмету..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{ paddingLeft: '45px' }}
-          />
+        <div style={{ position: 'relative', maxWidth: '400px', width: '100%', display: 'flex', gap: '15px' }}>
+          <div style={{ position: 'relative', flex: 1 }}>
+            <Search style={{ position: 'absolute', left: '15px', top: '50%', transform: 'translateY(-50%)', opacity: 0.4 }} size={20} />
+            <input
+              id="catalog-search"
+              name="search"
+              type="text"
+              placeholder="Поиск по названию или предмету..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{ paddingLeft: '45px' }}
+            />
+          </div>
+          {profile?.role === 'creator' && (
+            <button
+              onClick={handleCreateClassDivider}
+              className="flex-center animate"
+              style={{ padding: '0 20px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', whiteSpace: 'nowrap', borderRadius: '15px', boxShadow: 'none', fontWeight: 'bold', gap: '8px' }}
+            >
+              <Plus size={20} /> Разделитель
+            </button>
+          )}
         </div>
       </div>
 
@@ -447,6 +472,27 @@ const QuizCatalog = ({ profile }) => {
           <CatalogSkeleton />
         ) : (
           filteredClasses.map((cls, cIndex) => {
+            if (cls.is_divider) {
+              if (debouncedSearchQuery) return null;
+              return (
+                <div key={cls.id} className="animate" style={{ padding: '20px 0', borderBottom: '1px solid rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', gap: '20px' }}>
+                  <div style={{ height: '4px', background: 'var(--primary-color)', width: '40px', borderRadius: '2px' }} />
+                  <h3 style={{ fontSize: '1.8rem', fontWeight: '900', margin: 0, textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--text-color)' }}>{cls.name}</h3>
+                  <div style={{ height: '1px', background: 'rgba(0,0,0,0.1)', flex: 1 }} />
+                  {profile?.role === 'creator' && !debouncedSearchQuery && (
+                    <div className="flex-center" style={{ gap: '10px' }}>
+                      <div className="flex-center" style={{ gap: '5px' }}>
+                        <button onClick={(e) => startTransition(() => swapClasses(cIndex, -1, e))} disabled={cIndex === 0} style={{ padding: '8px', background: 'rgba(0,0,0,0.03)', color: 'var(--primary-color)', borderRadius: '10px', boxShadow: 'none' }}><ChevronUp size={20} /></button>
+                        <button onClick={(e) => startTransition(() => swapClasses(cIndex, 1, e))} disabled={cIndex === classes.length - 1} style={{ padding: '8px', background: 'rgba(0,0,0,0.03)', color: 'var(--primary-color)', borderRadius: '10px', boxShadow: 'none' }}><ChevronDown size={20} /></button>
+                      </div>
+                      <button onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: cls.id, name: cls.name, type: 'class' }); setNewName(cls.name); }} style={{ padding: '8px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', borderRadius: '10px', boxShadow: 'none' }}><Pencil size={18} /></button>
+                      <button onClick={async (e) => { e.stopPropagation(); if (window.confirm('Удалить этот разделитель?')) { await supabase.from('quiz_classes').delete().eq('id', cls.id); fetchData(); } }} style={{ padding: '8px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', borderRadius: '10px', boxShadow: 'none' }}><Trash2 size={18} /></button>
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
             const isEmptyClass = cls.sections.length === 0 || cls.sections.every(sec =>
               sec.basicQuizzes.filter(q => !q.content?.is_divider).length === 0
             );

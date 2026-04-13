@@ -80,7 +80,7 @@ const AnalyticsDetails = () => {
         setSidebarOpen(false); // Force close for players
       }
 
-      const { data: qF } = await supabase.from('quiz_classes').select('id, name, sort_order').order('sort_order', { ascending: true });
+      const { data: qF } = await supabase.from('quiz_classes').select('id, name, sort_order, is_divider').order('sort_order', { ascending: true });
       const { data: secs } = await supabase.from('quiz_sections').select('id, class_id, name, sort_order').order('sort_order', { ascending: true });
 
       let quizQuery = supabase.from('quizzes').select('id, title, section_id, author_id, is_archived, sort_order, content').eq('is_archived', false).order('sort_order', { ascending: true });
@@ -685,7 +685,11 @@ const AnalyticsDetails = () => {
                   <label htmlFor="ad-folder" style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '5px', display: 'block' }}>Выбор Теста</label>
                   <select id="ad-folder" value={filterFolder} onChange={e => { setFilterFolder(e.target.value); setFilterSection('all'); }} style={{ width: '100%', marginBottom: '10px', padding: '8px' }}>
                     <option value="all">Все папки</option>
-                    {quizFolders.map(f => <option key={f.id} value={f.id} disabled={isFolderEmpty(f.id)}>{f.name} {isFolderEmpty(f.id) ? '(пусто)' : ''}</option>)}
+                    {quizFolders.map(f => (
+                      <option key={f.id} value={f.id} disabled={f.is_divider || isFolderEmpty(f.id)}>
+                        {f.is_divider ? `--- ${f.name} ---` : f.name} {isFolderEmpty(f.id) && !f.is_divider ? '(пусто)' : ''}
+                      </option>
+                    ))}
                   </select>
                   <select id="ad-section" value={filterSection} onChange={e => setFilterSection(e.target.value)} style={{ width: '100%', marginBottom: '10px', padding: '8px' }} aria-label="Предмет">
                     <option value="all">Все предметы</option>
