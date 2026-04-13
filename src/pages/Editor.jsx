@@ -108,11 +108,12 @@ const Editor = ({ session, profile }) => {
 
   const fetchData = async () => {
     setLoading(true);
+    try {
     const { data: c } = await supabase.from('quiz_classes').select('*').order('sort_order', { ascending: true });
-    const { data: s } = await supabase.from('quiz_sections').select('*').order('sort_order', { ascending: true });
+    const { data: secs } = await supabase.from('quiz_sections').select('*').order('sort_order', { ascending: true });
 
     if (c) setClasses(c);
-    if (s) setSections(s);
+    if (secs) setSections(secs);
 
     let query = supabase.from('quizzes').select('*, quiz_sections(name, class_id, book_url), profiles(role, first_name, last_name)');
 
@@ -164,7 +165,11 @@ const Editor = ({ session, profile }) => {
       }));
       setMyQuizzes(quizzesWithStats);
     }
-    setLoading(false);
+    } catch (err) {
+      console.error('Editor fetchData error:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
 
