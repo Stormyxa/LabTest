@@ -13,14 +13,12 @@ const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, 
 
   const fetchSectionData = useCallback(async () => {
     setLoading(true);
-    const isPrivileged = profile?.role === 'admin' || profile?.role === 'creator';
-    let query = supabase.from('quizzes')
+    const query = supabase.from('quizzes')
       .select('id, title, section_id, is_hidden, is_verified, sort_order, content, author_id, profiles(first_name, last_name, role)')
       .eq('section_id', section.id)
       .eq('is_archived', false)
+      .eq('is_hidden', false)
       .order('sort_order', { ascending: true });
-
-    if (!isPrivileged) query = query.eq('is_hidden', false);
 
     const { data: qData } = await query;
     if (!qData) {

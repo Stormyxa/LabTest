@@ -114,10 +114,8 @@ const Editor = ({ session, profile }) => {
     if (c) setClasses(c);
     if (s) setSections(s);
 
-    // Добавляем получение роли автора profiles(role) чтобы Админы знали, можно ли удалять
     let query = supabase.from('quizzes').select('*, quiz_sections(name, class_id, book_url), profiles(role, first_name, last_name)');
 
-    // Редактор и Учитель видят только свои тесты в редакторе
     if (profile?.role === 'editor' || profile?.role === 'teacher') {
       query = query.eq('author_id', session.user.id);
     } else if (!showHidden) {
@@ -127,16 +125,42 @@ const Editor = ({ session, profile }) => {
     const { data: q } = await query.order('sort_order', { ascending: true }).order('created_at', { ascending: false });
 
     if (q) {
-      const quizzesWithStats = await Promise.all(q.map(async (quiz) => {
-        const { data: res } = await supabase.from('quiz_results').select('score, total_questions, user_id').eq('quiz_id', quiz.id);
-        const participants = res?.length || 0;
-        const hasForeignResults = res?.some(r => r.user_id !== quiz.author_id);
-        const avgTotalScore = res?.reduce((acc, curr) => acc + curr.score, 0) || 0;
-        const avgNumQuestions = res?.reduce((acc, curr) => acc + curr.total_questions, 0) || 0;
-        const avgScore = participants > 0
-          ? Math.round((avgTotalScore / avgNumQuestions) * 100)
-          : 0;
-        return { ...quiz, participants, avgScore, hasForeignResults };
+      const allQuizIds = q.map(quiz => quiz.id);
+
+      // Batch RPC for avg_score and participants
+      let statsMap = {};
+      if (allQuizIds.length > 0) {
+        try {
+          const { data: statsData } = await supabase.rpc('get_quiz_stats_batch', { p_quiz_ids: allQuizIds });
+          if (statsData) {
+            statsData.forEach(s => { statsMap[s.quiz_id] = { avgScore: s.avg_score, participants: s.participants }; });
+          }
+        } catch (err) {
+          console.error('RPC stats error:', err);
+        }
+      }
+
+      // Single query to determine which quizzes have results from other users
+      let foreignResultsSet = new Set();
+      if (allQuizIds.length > 0) {
+        const { data: allResults } = await supabase
+          .from('quiz_results')
+          .select('quiz_id, user_id')
+          .in('quiz_id', allQuizIds);
+        if (allResults) {
+          q.forEach(quiz => {
+            if (allResults.some(r => r.quiz_id === quiz.id && r.user_id !== quiz.author_id)) {
+              foreignResultsSet.add(quiz.id);
+            }
+          });
+        }
+      }
+
+      const quizzesWithStats = q.map(quiz => ({
+        ...quiz,
+        avgScore: statsMap[quiz.id]?.avgScore || 0,
+        participants: statsMap[quiz.id]?.participants || 0,
+        hasForeignResults: foreignResultsSet.has(quiz.id)
       }));
       setMyQuizzes(quizzesWithStats);
     }
@@ -600,8 +624,32 @@ const Editor = ({ session, profile }) => {
                   </div>
                 </>
               ) : (
-                <div style={{ gridColumn: '1 / -1' }}>
-                  {classes.map((cls, cIndex) => {
+                <>
+                <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
+                  <p style={{ opacity: 0.5, fontSize: '0.9rem', margin: 0 }}>Управление структурой тестов, сортировкой и видимостью</p>
+                  {(profile?.role === 'admin' || profile?.role === 'creator') && (
+                    <button
+                      onClick={() => setShowHidden(prev => !prev)}
+                      style={{
+                        padding: '8px 18px',
+                        background: showHidden ? 'rgba(202, 138, 4, 0.15)' : 'rgba(0,0,0,0.05)',
+                        color: showHidden ? '#ca8a04' : 'inherit',
+                        border: showHidden ? '1px solid rgba(202,138,4,0.4)' : '1px solid transparent',
+                        boxShadow: 'none',
+                        borderRadius: '20px',
+                        fontWeight: '600',
+                        fontSize: '0.85rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}
+                    >
+                      {showHidden ? <Eye size={16} /> : <EyeOff size={16} />}
+                      {showHidden ? 'Скрытые: видны' : 'Скрытые: скрыты'}
+                    </button>
+                  )}
+                </div>
+                {classes.map((cls, cIndex) => {
                     const clsSections = sections.filter(s => s.class_id === cls.id);
                     if ((profile?.role === 'editor' || profile?.role === 'teacher') && myQuizzes.filter(q => clsSections.some(s => s.id === q.section_id)).length === 0) {
                       return null;
@@ -727,7 +775,14 @@ const Editor = ({ session, profile }) => {
                                       }
 
                                       return (
-                                        <div key={quiz.id} className="card" style={{ padding: '20px', background: 'var(--card-bg)', border: '1px solid rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column', height: '100%' }}>
+                                        <div key={quiz.id} className="card" style={{
+                                          padding: '20px',
+                                          background: 'var(--card-bg)',
+                                          border: quiz.is_hidden ? '1px dashed #ca8a04' : '1px solid rgba(0,0,0,0.05)',
+                                          display: 'flex',
+                                          flexDirection: 'column',
+                                          height: '100%'
+                                        }}>
                                           <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '15px', gap: '10px' }}>
                                             <div className="flex-center" style={{ gap: '10px', flex: 1, minWidth: 0 }}>
                                               {(profile?.role === 'creator' || profile?.role === 'admin' || quiz.author_id === profile?.id) && (
@@ -786,7 +841,7 @@ const Editor = ({ session, profile }) => {
                       <p style={{ opacity: 0.5 }}>У вас пока нет классов/папок. Создайте их в панели справа.</p>
                     </div>
                   )}
-                </div>
+                </>
               )}
             </div>
           )}
