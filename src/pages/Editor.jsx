@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useScrollRestoration } from '../lib/useScrollRestoration';
@@ -50,6 +50,10 @@ const EditorSkeleton = () => (
   </div>
 );
 
+// Module-level cache persists across component remounts within the same browser session
+let _editorTreeCache = null;
+let _editorTreeCacheShowHidden = undefined;
+
 const Editor = ({ session, profile }) => {
   const navigate = useNavigate();
   const [classes, setClasses] = useState([]);
@@ -84,6 +88,8 @@ const Editor = ({ session, profile }) => {
   const [copyFeedbackBulk, setCopyFeedbackBulk] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
+  const [treeLoading, setTreeLoading] = useState(false);
+  const activeTabRef = useRef('create');
 
   const [expandedClasses, setExpandedClasses] = useState(() => {
     const saved = localStorage.getItem('editor_expanded_classes');
@@ -102,77 +108,87 @@ const Editor = ({ session, profile }) => {
     localStorage.setItem('editor_expanded_sections', JSON.stringify(expandedSections));
   }, [expandedSections]);
 
-  useEffect(() => {
-    fetchData();
-  }, [showHidden]);
+  // On mount: load only structure (classes + sections) — fast, needed for create form dropdowns
+  useEffect(() => { fetchStructure(); }, []);
 
-  const fetchData = async () => {
+  // showHidden toggle: invalidate tree cache, reload tree if already open
+  useEffect(() => {
+    _editorTreeCache = null;
+    _editorTreeCacheShowHidden = showHidden;
+    if (activeTabRef.current === 'manage') fetchTreeData(true);
+  }, [showHidden]); // eslint-disable-line
+
+  // Load only classes + sections (instant)
+  const fetchStructure = async () => {
     setLoading(true);
     try {
-    const { data: c } = await supabase.from('quiz_classes').select('*').order('sort_order', { ascending: true });
-    const { data: secs } = await supabase.from('quiz_sections').select('*').order('sort_order', { ascending: true });
-
-    if (c) setClasses(c);
-    if (secs) setSections(secs);
-
-    let query = supabase.from('quizzes').select('*, quiz_sections(name, class_id, book_url), profiles(role, first_name, last_name)');
-
-    if (profile?.role === 'editor' || profile?.role === 'teacher') {
-      query = query.eq('author_id', session.user.id);
-    } else if (!showHidden) {
-      query = query.eq('is_hidden', false);
-    }
-
-    const { data: q } = await query.order('sort_order', { ascending: true }).order('created_at', { ascending: false });
-
-    if (q) {
-      const allQuizIds = q.map(quiz => quiz.id);
-
-      // Batch RPC for avg_score and participants
-      let statsMap = {};
-      if (allQuizIds.length > 0) {
-        try {
-          const { data: statsData } = await supabase.rpc('get_quiz_stats_batch', { p_quiz_ids: allQuizIds });
-          if (statsData) {
-            statsData.forEach(s => { statsMap[s.quiz_id] = { avgScore: s.avg_score, participants: s.participants }; });
-          }
-        } catch (err) {
-          console.error('RPC stats error:', err);
-        }
-      }
-
-      // Single query to determine which quizzes have results from other users
-      let foreignResultsSet = new Set();
-      if (allQuizIds.length > 0) {
-        const { data: allResults } = await supabase
-          .from('quiz_results')
-          .select('quiz_id, user_id')
-          .in('quiz_id', allQuizIds);
-        if (allResults) {
-          q.forEach(quiz => {
-            if (allResults.some(r => r.quiz_id === quiz.id && r.user_id !== quiz.author_id)) {
-              foreignResultsSet.add(quiz.id);
-            }
-          });
-        }
-      }
-
-      const quizzesWithStats = q.map(quiz => ({
-        ...quiz,
-        avgScore: statsMap[quiz.id]?.avgScore || 0,
-        participants: statsMap[quiz.id]?.participants || 0,
-        hasForeignResults: foreignResultsSet.has(quiz.id)
-      }));
-      setMyQuizzes(quizzesWithStats);
-    }
+      const { data: c } = await supabase.from('quiz_classes').select('*').order('sort_order', { ascending: true });
+      const { data: secs } = await supabase.from('quiz_sections').select('*').order('sort_order', { ascending: true });
+      if (c) setClasses(c);
+      if (secs) setSections(secs);
     } catch (err) {
-      console.error('Editor fetchData error:', err);
+      console.error('Structure fetch error:', err);
     } finally {
       setLoading(false);
     }
   };
 
+  // Load quizzes + stats — lazy, uses module-level cache
+  const fetchTreeData = async (force = false) => {
+    if (!force && _editorTreeCache !== null && _editorTreeCacheShowHidden === showHidden) {
+      setMyQuizzes(_editorTreeCache);
+      return;
+    }
+    setTreeLoading(true);
+    try {
+      let query = supabase.from('quizzes').select('*, quiz_sections(name, class_id, book_url), profiles(role, first_name, last_name)');
+      if (profile?.role === 'editor' || profile?.role === 'teacher') {
+        query = query.eq('author_id', session.user.id);
+      } else if (!showHidden) {
+        query = query.eq('is_hidden', false);
+      }
+      const { data: q } = await query.order('sort_order', { ascending: true }).order('created_at', { ascending: false });
+      if (q) {
+        const allQuizIds = q.map(quiz => quiz.id);
+        let statsMap = {};
+        if (allQuizIds.length > 0) {
+          const { data: statsData } = await supabase.rpc('get_quiz_stats_batch', { p_quiz_ids: allQuizIds });
+          if (statsData) statsData.forEach(stat => { statsMap[stat.quiz_id] = { avgScore: stat.avg_score, participants: stat.participants }; });
+        }
+        let foreignResultsSet = new Set();
+        if (allQuizIds.length > 0) {
+          const { data: allResults } = await supabase.from('quiz_results').select('quiz_id, user_id').in('quiz_id', allQuizIds);
+          if (allResults) q.forEach(quiz => { if (allResults.some(r => r.quiz_id === quiz.id && r.user_id !== quiz.author_id)) foreignResultsSet.add(quiz.id); });
+        }
+        const quizzesWithStats = q.map(quiz => ({
+          ...quiz,
+          avgScore: statsMap[quiz.id]?.avgScore || 0,
+          participants: statsMap[quiz.id]?.participants || 0,
+          hasForeignResults: foreignResultsSet.has(quiz.id)
+        }));
+        _editorTreeCache = quizzesWithStats;
+        _editorTreeCacheShowHidden = showHidden;
+        setMyQuizzes(quizzesWithStats);
+      }
+    } catch (err) {
+      console.error('Tree fetch error:', err);
+    } finally {
+      setTreeLoading(false);
+    }
+  };
 
+  // Full refresh after any mutation — clears cache, reloads structure + tree if open
+  const fetchData = async () => {
+    _editorTreeCache = null;
+    await fetchStructure();
+    if (activeTabRef.current === 'manage') await fetchTreeData(true);
+  };
+
+  const handleTabChange = (tab) => {
+    activeTabRef.current = tab;
+    setActiveTab(tab);
+    if (tab === 'manage') fetchTreeData();
+  };
 
   const handleCreateQuiz = async (e) => {
     if (e) e.preventDefault();
@@ -510,8 +526,8 @@ const Editor = ({ session, profile }) => {
         <div className="flex-center animate" style={{ justifyContent: 'space-between', marginBottom: '40px', flexWrap: 'wrap', gap: '20px' }}>
           <h2 style={{ fontSize: '2rem', fontWeight: '800', letterSpacing: '-1px', margin: 0 }}>Управление тестами</h2>
           <div style={{ background: 'rgba(0,0,0,0.05)', padding: '5px', borderRadius: '15px', display: 'flex' }}>
-            <button onClick={() => setActiveTab('create')} style={{ background: activeTab === 'create' ? 'var(--primary-color)' : 'transparent', color: activeTab === 'create' ? 'white' : 'inherit', boxShadow: 'none' }}>Создать тест</button>
-            <button onClick={() => setActiveTab('manage')} style={{ background: activeTab === 'manage' ? 'var(--primary-color)' : 'transparent', color: activeTab === 'manage' ? 'white' : 'inherit', boxShadow: 'none' }}>Дерево тестов</button>
+            <button onClick={() => handleTabChange('create')} style={{ background: activeTab === 'create' ? 'var(--primary-color)' : 'transparent', color: activeTab === 'create' ? 'white' : 'inherit', boxShadow: 'none' }}>Создать тест</button>
+            <button onClick={() => handleTabChange('manage')} style={{ background: activeTab === 'manage' ? 'var(--primary-color)' : 'transparent', color: activeTab === 'manage' ? 'white' : 'inherit', boxShadow: 'none' }}>Дерево тестов</button>
           </div>
         </div>
 
@@ -654,6 +670,18 @@ const Editor = ({ session, profile }) => {
                     </button>
                   )}
                 </div>
+                {treeLoading ? (
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <div className="flex-center" style={{ marginBottom: '25px', opacity: 0.5, gap: '10px', justifyContent: 'flex-start' }}>
+                      <Clock size={18} className="skeleton-pulse" />
+                      <span className="skeleton-text" style={{ width: '220px', height: '14px', margin: 0 }}>Загрузка дерева тестов...</span>
+                    </div>
+                    {[1, 2, 3].map(i => (
+                      <div key={i} className="skeleton" style={{ height: '80px', width: '100%', borderRadius: '16px', marginBottom: '15px', opacity: 0.5 }} />
+                    ))}
+                  </div>
+                ) : (
+                <div style={{ gridColumn: '1 / -1' }}>
                 {classes.map((cls, cIndex) => {
                     const clsSections = sections.filter(s => s.class_id === cls.id);
                     if ((profile?.role === 'editor' || profile?.role === 'teacher') && myQuizzes.filter(q => clsSections.some(s => s.id === q.section_id)).length === 0) {
@@ -846,6 +874,8 @@ const Editor = ({ session, profile }) => {
                       <p style={{ opacity: 0.5 }}>У вас пока нет классов/папок. Создайте их в панели справа.</p>
                     </div>
                   )}
+                </div>
+                )}
                 </>
               )}
             </div>
