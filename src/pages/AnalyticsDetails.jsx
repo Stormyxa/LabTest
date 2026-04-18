@@ -1,7 +1,341 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { ChevronLeft, BarChart2, Clock, CheckCircle, XCircle, Search, Filter, AlertTriangle, Menu, Pencil, Trash2, Eye, X, ChevronRight } from 'lucide-react';
+
+const SidebarUserList = React.memo(({
+  loading, quizFolders, sections, quizzes, users, filteredUsers, targetUser,
+  filterFolder, setFilterFolder, filterSection, setFilterSection, filterQuiz, handleQuizSelect,
+  filterCity, setFilterCity, filterSchool, setFilterSchool, filterClass, setFilterClass,
+  searchQuery, setSearchQuery, showObservers, setShowObservers, handleUserSelect, handleScroll,
+  scrollRef, validSections, validQuizzes, isFolderEmpty, isSectionEmpty,
+  profile, cities, schools, classes, navigate
+}) => {
+  return (
+    <div style={{ padding: '20px', width: '320px', display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '15px' }}>
+        <h3 style={{ fontSize: '1.2rem', margin: 0 }}>Аналитика</h3>
+        <button onClick={() => setShowObservers(false)} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', boxShadow: 'none', padding: '8px', borderRadius: '10px' }}><X size={20} /></button>
+      </div>
+
+      <div style={{ display: 'flex', background: 'rgba(0,0,0,0.05)', borderRadius: '12px', padding: '4px', marginBottom: '15px' }}>
+        <button style={{ flex: 1, padding: '10px', borderRadius: '8px', fontSize: '0.8rem', background: 'var(--card-bg)', border: 'none', boxShadow: 'var(--soft-shadow)', cursor: 'default', fontWeight: 'bold', color: 'var(--primary-color)' }}>По Тестам</button>
+        <button onClick={() => navigate('/user-analytics')} style={{ flex: 1, padding: '10px', borderRadius: '8px', fontSize: '0.8rem', background: 'transparent', border: 'none', boxShadow: 'none', cursor: 'pointer', color: 'var(--text-color)', opacity: 0.7 }}>По Ученикам</button>
+      </div>
+
+      <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(0,0,0,0.02)', padding: '10px', borderRadius: '8px' }}>
+        <span style={{ fontSize: '0.8rem', opacity: 0.7 }}>Показать наблюдателей</span>
+        <button
+          onClick={() => setShowObservers(!showObservers)}
+          style={{
+            width: '40px', height: '20px', borderRadius: '10px',
+            background: showObservers ? 'var(--primary-color)' : '#ccc',
+            position: 'relative', border: 'none', cursor: 'pointer', transition: 'background 0.3s'
+          }}
+        >
+          <div style={{
+            position: 'absolute', top: '2px', left: showObservers ? '22px' : '2px',
+            width: '16px', height: '16px', borderRadius: '50%', background: 'white', transition: 'left 0.3s'
+          }} />
+        </button>
+      </div>
+
+      {loading ? (
+        <div style={{ flex: 1 }}>
+          <div className="skeleton" style={{ height: '30px', marginBottom: '10px' }} />
+          <div className="skeleton" style={{ height: '30px', marginBottom: '10px' }} />
+          <div className="skeleton" style={{ height: '30px', marginBottom: '20px' }} />
+          <div className="skeleton" style={{ height: '100px' }} />
+        </div>
+      ) : (
+        <>
+          <div style={{ marginBottom: '20px' }}>
+            <label htmlFor="ad-folder" style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '5px', display: 'block' }}>Выбор Теста</label>
+            <select id="ad-folder" value={filterFolder} onChange={e => { setFilterFolder(e.target.value); setFilterSection('all'); }} style={{ width: '100%', marginBottom: '10px', padding: '8px' }}>
+              <option value="all">Все папки</option>
+              {quizFolders.map(f => (
+                <option key={f.id} value={f.id} disabled={f.is_divider || isFolderEmpty(f.id)}>
+                  {f.is_divider ? `--- ${f.name} ---` : f.name} {isFolderEmpty(f.id) && !f.is_divider ? '(пусто)' : ''}
+                </option>
+              ))}
+            </select>
+            <select id="ad-section" value={filterSection} onChange={e => setFilterSection(e.target.value)} style={{ width: '100%', marginBottom: '10px', padding: '8px' }} aria-label="Предмет">
+              <option value="all">Все предметы</option>
+              {validSections.map(s => (
+                <option key={s.id} value={s.id} disabled={s.is_divider || isSectionEmpty(s.id)}>
+                  {s.is_divider ? `--- ${s.name} ---` : s.name} {isSectionEmpty(s.id) && !s.is_divider ? '(пусто)' : ''}
+                </option>
+              ))}
+            </select>
+            <select id="ad-quiz" value={filterQuiz} onChange={e => handleQuizSelect(e.target.value)} style={{ width: '100%', padding: '8px' }} aria-label="Тест">
+              <option value="" disabled>-- Выберите тест --</option>
+              {validQuizzes.map(q => (
+                <option key={q.id} value={q.id} disabled={q.content?.is_divider}>
+                  {q.content?.is_divider ? `--- ${q.content.divider_text || 'Разделитель'} ---` : q.title}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ height: '1px', background: 'rgba(0,0,0,0.05)', margin: '15px 0' }} />
+
+          {filterQuiz ? (
+            <>
+              <label htmlFor="ad-city" style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '10px', display: 'block' }}>Фильтры Учеников</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '15px' }}>
+                <select id="ad-city" value={filterCity} onChange={e => { setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all'); }} style={{ padding: '6px', fontSize: '0.85rem' }} disabled={profile?.role === 'teacher'}>
+                  <option value="all">Все города</option>
+                  {cities.map(c => <option key={c.id} value={c.id} disabled={!users.some(u => u.city_id === c.id)}>{c.name}</option>)}
+                </select>
+                <select id="ad-school" value={filterSchool} onChange={e => { setFilterSchool(e.target.value); setFilterClass('all'); }} disabled={profile?.role === 'teacher'} style={{ padding: '6px', fontSize: '0.85rem' }} aria-label="Школа">
+                  <option value="all">Все школы</option>
+                  {schools.filter(s => filterCity === 'all' || s.city_id === filterCity).map(s => <option key={s.id} value={s.id} disabled={!users.some(u => u.school_id === s.id)}>{s.name}</option>)}
+                </select>
+                <select id="ad-class" value={filterClass} onChange={e => setFilterClass(e.target.value)} style={{ padding: '6px', fontSize: '0.85rem' }} aria-label="Класс">
+                  <option value="all">Все классы</option>
+                  {classes.filter(c => filterSchool === 'all' || c.school_id === filterSchool).map(c => <option key={c.id} value={c.id} disabled={!users.some(u => u.class_id === c.id)}>{c.name}</option>)}
+                </select>
+                <div style={{ position: 'relative' }}>
+                  <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', opacity: 0.5 }} />
+                  <label htmlFor="ad-search" style={{ display: 'none' }}>Поиск</label>
+                  <input id="ad-search" type="text" placeholder="Поиск..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ width: '100%', padding: '6px 10px 6px 30px', fontSize: '0.85rem' }} />
+                </div>
+              </div>
+
+              <label style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '10px', display: 'block' }}>Ученики ({filteredUsers.length})</label>
+              <div ref={scrollRef} onScroll={handleScroll} style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '5px', paddingRight: '5px' }}>
+                {filteredUsers.map(u => (
+                  <button
+                    key={u.id}
+                    onClick={() => handleUserSelect(u.id)}
+                    style={{
+                      textAlign: 'left', padding: '10px',
+                      background: targetUser?.id === u.id ? 'var(--primary-color)' : 
+                        (u.is_incomplete_user ? 'rgba(156, 163, 175, 0.15)' : 
+                        (u.is_suspicious_user ? 'rgba(239, 68, 68, 0.08)' : 
+                        (u.is_underperforming_user ? 'rgba(250, 204, 21, 0.08)' : 
+                        (u.is_observer ? 'rgba(234, 179, 8, 0.05)' : 'rgba(0,0,0,0.02)')))),
+                      color: targetUser?.id === u.id ? 'white' : 'var(--text-color)',
+                      borderRadius: '8px', border: targetUser?.id === u.id ? 'none' : 
+                        (u.is_suspicious_user ? '1px solid rgba(239, 68, 68, 0.2)' : 
+                        (u.is_observer ? '1px dashed #eab308' : 'none')),
+                      cursor: 'pointer',
+                      fontSize: '0.85rem', width: '100%'
+                    }}>
+                    <div style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      {u.last_name} {u.first_name}
+                      {u.is_observer && <Eye size={12} title="Наблюдатель" />}
+                    </div>
+                    <div style={{ opacity: 0.8, fontSize: '0.75rem' }}>Max: {u.maxScore} баллов</div>
+                  </button>
+                ))}
+                {filteredUsers.length === 0 && <div style={{ fontSize: '0.8rem', opacity: 0.5, textAlign: 'center', marginTop: '10px' }}>Нет учеников по фильтру</div>}
+              </div>
+            </>
+          ) : (
+            <div style={{ opacity: 0.5, fontSize: '0.9rem', textAlign: 'center', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Сначала выберите тест<br />для просмотра учеников.</div>
+          )}
+        </>
+      )}
+    </div>
+  );
+});
+
+const AttemptChart = React.memo(({
+  attempts,
+  selectedAttempt,
+  setSelectedAttempt,
+  targetQuiz,
+  stats
+}) => {
+  if (attempts.length === 0) return <div style={{ padding: '40px', textAlign: 'center', opacity: 0.5 }}>Нет данных о прохождениях</div>;
+
+  const last10 = attempts.slice(-10);
+  const chartBars = [];
+
+  const qsLength = targetQuiz?.content?.questions?.length || 1;
+
+  // Max Score Bar
+  chartBars.push({
+    label: 'Максимум',
+    score: stats.maxScore,
+    maxPossible: qsLength,
+    color: stats.isSuspiciousUser ? '#ef4444' : 'var(--primary-color)',
+    data: null,
+    type: 'max'
+  });
+
+  // First Attempt Bar
+  if (attempts.length > 0) {
+    const firstAtt = attempts[0];
+    let color = firstAtt.is_incomplete ? '#9ca3af' : (firstAtt.is_suspicious ? '#ef4444' : '#3b82f6');
+    
+    chartBars.push({
+      label: '1-я попытка',
+      score: firstAtt.score,
+      maxPossible: firstAtt.max_score || qsLength,
+      color: color,
+      data: firstAtt,
+      type: 'first',
+      isFirst: true,
+      id: firstAtt.id
+    });
+  }
+
+  // Attempt bars
+  last10.forEach((att, idx) => {
+    if (attempts.length > 1 && idx === 0 && attempts.length <= 10) return;
+
+    let color = att.is_incomplete ? '#9ca3af' : (att.is_suspicious ? '#ef4444' : (!att.is_passed ? '#facc15' : '#4ade80'));
+
+    chartBars.push({
+      label: `Попытка ${attempts.length - last10.length + idx + 1}`,
+      score: att.score,
+      maxPossible: att.max_score || qsLength,
+      color: color,
+      data: att,
+      type: 'attempt',
+      id: att.id
+    });
+  });
+
+  const MAX_BAR_HEIGHT = 85;
+
+  return (
+    <div style={{ position: 'relative', display: 'flex', height: '240px', padding: '20px 20px 20px 0', background: 'rgba(0,0,0,0.02)', borderRadius: '15px' }}>
+      <div style={{ width: '50px', position: 'relative', display: 'flex', justifyContent: 'flex-end', paddingRight: '15px', height: '100%' }}>
+        <div style={{ position: 'absolute', bottom: 0, width: '6px', height: `${MAX_BAR_HEIGHT}%`, background: 'linear-gradient(to top, #ef4444 0%, #ef4444 20%, #facc15 20%, #facc15 50%, #4ade80 50%, #4ade80 100%)', borderRadius: '3px', zIndex: 5 }} />
+      </div>
+
+      <div style={{ position: 'relative', flex: 1, height: '100%' }}>
+        <div style={{ position: 'absolute', left: '-40px', bottom: `${MAX_BAR_HEIGHT}%`, width: 'calc(100% + 40px)', borderTop: '2px dashed rgba(0,0,0,0.1)', pointerEvents: 'none' }}>
+          <span style={{ position: 'absolute', left: '-5px', bottom: '2px', fontSize: '0.7rem', opacity: 0.5, fontWeight: 'bold' }}>100%</span>
+        </div>
+        <div style={{ position: 'absolute', left: '-40px', bottom: `${MAX_BAR_HEIGHT * 0.8}%`, width: 'calc(100% + 40px)', borderTop: '2px dashed rgba(74, 222, 128, 0.3)', pointerEvents: 'none' }}>
+          <span style={{ position: 'absolute', left: '-5px', bottom: '2px', fontSize: '0.7rem', color: '#4ade80', fontWeight: 'bold' }}>80%</span>
+        </div>
+        <div style={{ position: 'absolute', left: '-40px', bottom: `${MAX_BAR_HEIGHT * 0.5}%`, width: 'calc(100% + 40px)', borderTop: '2px dashed rgba(250, 204, 21, 0.3)', pointerEvents: 'none' }}>
+          <span style={{ position: 'absolute', left: '-5px', bottom: '2px', fontSize: '0.7rem', color: '#ca8a04', fontWeight: 'bold' }}>50%</span>
+        </div>
+        <div style={{ position: 'absolute', left: '-40px', bottom: `${MAX_BAR_HEIGHT * 0.2}%`, width: 'calc(100% + 40px)', borderTop: '2px dashed rgba(239, 68, 68, 0.3)', pointerEvents: 'none' }}>
+          <span style={{ position: 'absolute', left: '-5px', bottom: '2px', fontSize: '0.7rem', color: '#ef4444', fontWeight: 'bold' }}>20%</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', height: '100%', position: 'relative', zIndex: 1 }}>
+          {chartBars.map((bar, i) => {
+            const maxP = bar.maxPossible || 1;
+            const heightPercent = (bar.score / maxP) * MAX_BAR_HEIGHT;
+            const isSpecial = bar.type === 'max';
+            const isZero = bar.score === 0;
+
+            return (
+              <div
+                key={i}
+                onClick={() => !isSpecial && setSelectedAttempt(bar.data)}
+                style={{
+                  flex: 1, minWidth: '20px', maxWidth: '60px', height: '100%',
+                  display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
+                  cursor: isSpecial ? 'default' : 'pointer',
+                  opacity: (selectedAttempt?.id === bar.id || isSpecial) ? 1 : 0.6,
+                  transition: 'opacity 0.2s', zIndex: 1
+                }}
+              >
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', width: '100%' }}>
+                  {bar.score === maxP && bar.score > 0 && (
+                    <div style={{ textAlign: 'center', color: '#eab308', fontSize: '1.2rem', marginBottom: '-2px', zIndex: 10 }}>👑</div>
+                  )}
+                  <div style={{ textAlign: 'center', fontSize: '0.7rem', paddingBottom: '4px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>{bar.score}</div>
+                  <div style={{
+                    width: '100%',
+                    height: isZero ? '5px' : `${heightPercent}%`,
+                    background: isZero ? 'rgba(239, 68, 68, 0.3)' : bar.color,
+                    borderRadius: '6px 6px 0 0', flexShrink: 0, position: 'relative'
+                  }}>
+                    {bar.isFirst && !isZero && (heightPercent > 10) && (
+                      <div style={{ 
+                        position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+                        background: 'white', color: bar.color, width: '16px', height: '16px', borderRadius: '50%',
+                        fontSize: '0.65rem', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.1)', fontWeight: 'bold'
+                      }}>1</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+});
+
+const AttemptDetailsView = React.memo(({
+  selectedAttempt,
+  targetQuiz,
+  attempts,
+  profile,
+  handleDeleteClick,
+  setDetailedImageModal
+}) => {
+  if (!selectedAttempt || !targetQuiz) return <div style={{ padding: '20px', opacity: 0.5 }}>Выберите попытку на графике</div>;
+
+  const qs = targetQuiz.content.questions;
+  let ansData = [];
+  try {
+    ansData = typeof selectedAttempt.answers_data === 'string' ? JSON.parse(selectedAttempt.answers_data) : selectedAttempt.answers_data;
+  } catch (e) { }
+
+  const avgTimePerQ = {};
+  attempts.forEach(att => {
+    let d = typeof att.answers_data === 'string' ? JSON.parse(att.answers_data) : att.answers_data;
+    if (Array.isArray(d)) {
+      d.forEach(ans => {
+        if (!avgTimePerQ[ans.originalIndex]) avgTimePerQ[ans.originalIndex] = { totalTime: 0, count: 0 };
+        avgTimePerQ[ans.originalIndex].totalTime += (ans.timeSpent || 0);
+        avgTimePerQ[ans.originalIndex].count++;
+      });
+    }
+  });
+
+  return (
+    <div style={{ marginTop: '30px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+        <h3 style={{ margin: 0 }}>
+          Детали прохождения от {new Date(selectedAttempt.created_at).toLocaleString('ru-RU', { timeZone: 'Asia/Almaty' })} (KZ)
+          {selectedAttempt.is_suspicious && <span style={{ marginLeft: '10px', fontSize: '0.8rem', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '4px 10px', borderRadius: '10px' }}>Подозрительно</span>}
+        </h3>
+        {(profile?.role === 'admin' || profile?.role === 'creator') && (
+          <button
+            onClick={() => handleDeleteClick('attempt', selectedAttempt)}
+            style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: 'none', padding: '8px 15px', borderRadius: '8px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+          >
+            <Trash2 size={16} /> Удалить попытку
+          </button>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+        {ansData.map((ans, i) => {
+          const originQ = qs.find(q => (q.originalIndex || qs.indexOf(q)) === ans.originalIndex);
+          if (!originQ) return null;
+
+          return (
+            <div key={i} className="card" style={{ padding: '20px', borderLeft: `4px solid ${ans.isCorrect ? '#4ade80' : '#ef4444'}`, overflowWrap: 'anywhere' }}>
+              <h4 style={{ marginBottom: '10px' }}>Вопрос: {originQ.question}</h4>
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap' }}>
+                <span style={{ opacity: 0.6 }}>Ответ:</span>
+                <strong style={{ color: ans.isCorrect ? '#4ade80' : '#ef4444' }}>
+                  {ans.chosenIndex !== null ? originQ.options[ans.chosenIndex] : 'Пропущено'}
+                </strong>
+                {ans.isCorrect ? <CheckCircle size={16} color="#4ade80" /> : <XCircle size={16} color="#ef4444" />}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+});
 
 const AnalyticsDetails = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -140,94 +474,7 @@ const AnalyticsDetails = () => {
     }, 100);
   };
 
-  const fetchUsersForQuiz = async (qId, currentUserProfile) => {
-    // 1. Get all results for this quiz to find users
-    const { data: results } = await supabase.from('quiz_results').select('user_id, score, total_questions').eq('quiz_id', qId);
-    if (!results) {
-      setUsers([]);
-      return;
-    }
-
-    // 2. Fetch those user profiles
-    const userIds = [...new Set(results.map(r => r.user_id))];
-    const { data: profs } = await supabase.from('profiles').select('*').in('id', userIds);
-
-    // 3. Fetch all attempts for these users to calculate status
-    const { data: attempts } = await supabase
-      .from('quiz_attempts')
-      .select('user_id, is_suspicious, is_incomplete, score, max_score, created_at')
-      .eq('quiz_id', qId)
-      .order('created_at', { ascending: true });
-
-    const latestStatusMap = {};
-    if (attempts) {
-      attempts.forEach(att => {
-        const scorePercent = (att.max_score || 0) > 0 ? (att.score / att.max_score) : 0;
-        latestStatusMap[att.user_id] = {
-          is_incomplete: att.is_incomplete,
-          is_suspicious: att.is_suspicious,
-          is_underperforming: scorePercent <= 0.5 && !att.is_incomplete
-        };
-      });
-    }
-
-    if (profs) {
-      const isTeacher = currentUserProfile?.role === 'teacher';
-      // filter out observers unless admin/creator, or if teacher restrict to own school
-      // filter out observers unless toggled, and restrict to own school for teachers
-      let validProfs = profs.filter(p => (p.first_name?.trim() || p.last_name?.trim()));
-
-      const { data: currentQuizObj } = await supabase.from('quizzes').select('author_id').eq('id', qId).single();
-
-      if (isTeacher && currentQuizObj?.author_id !== currentUserProfile?.id) {
-        validProfs = validProfs.filter(p => p.school_id === currentUserProfile.school_id);
-      }
-
-      // Map statistics for suspicion detection
-      const userList = validProfs.map(p => {
-        const userResults = results.filter(r => r.user_id === p.id);
-        const maxScore = userResults.length > 0 ? Math.max(...userResults.map(r => r.score)) : 0;
-
-        // Suspicion logic: if red marks (failed/low score) > 30% of attempts? 
-        // Or if score < some threshold. Let's use is_passed if available or score/total < 0.6
-        // For now, let's just mark based on red/green ratio in their attempts ( we fetch attempts later, but we can guess from results)
-        const lStatus = latestStatusMap[p.id] || {};
-        return {
-          ...p,
-          maxScore,
-          is_incomplete_user: !!lStatus.is_incomplete,
-          is_suspicious_user: !!lStatus.is_suspicious,
-          is_underperforming_user: !!lStatus.is_underperforming
-        };
-      });
-      userList.sort((a, b) => {
-        const lnA = (a.last_name || '').trim();
-        const lnB = (b.last_name || '').trim();
-        const fnA = (a.first_name || '').trim();
-        const fnB = (b.first_name || '').trim();
-
-        const primaryA = lnA || fnA;
-        const primaryB = lnB || fnB;
-
-        const res = primaryA.localeCompare(primaryB, 'ru');
-        if (res !== 0) return res;
-
-        return fnA.localeCompare(fnB, 'ru');
-      });
-      setUsers(userList);
-
-      // Auto-select logic for standard users or if specifically requested
-      if (userIdParam) {
-        const tu = userList.find(u => u.id === userIdParam);
-        if (tu) fetchAttempts(qId, tu.id);
-      } else if (currentUserProfile?.role === 'player' || currentUserProfile?.is_observer) {
-        const self = userList.find(u => u.id === currentUserProfile.id);
-        if (self) handleUserSelect(self.id);
-      }
-    }
-  };
-
-  const fetchAttempts = async (qId, uId) => {
+  const fetchAttempts = useCallback(async (qId, uId) => {
     setContentLoading(true);
     const { data: q } = await supabase.from('quizzes').select('*').eq('id', qId).single();
     const { data: u } = await supabase.from('profiles').select('*').eq('id', uId).single();
@@ -240,47 +487,114 @@ const AnalyticsDetails = () => {
       .select('*')
       .eq('quiz_id', qId)
       .eq('user_id', uId)
-      .order('created_at', { ascending: true }); // chronological order
+      .order('created_at', { ascending: true });
 
     if (!error && atts) {
       setAttempts(atts);
-      // Automatically select latest
       if (atts.length > 0) setSelectedAttempt(atts[atts.length - 1]);
     } else {
       setAttempts([]);
       setSelectedAttempt(null);
     }
     setContentLoading(false);
-  };
+  }, []);
 
-  const handleQuizSelect = (qId) => {
+  const handleUserSelect = useCallback((uId) => {
+    setSearchParams({ quizId: filterQuiz, userId: uId });
+    fetchAttempts(filterQuiz, uId);
+  }, [filterQuiz, fetchAttempts, setSearchParams]);
+
+  const fetchUsersForQuiz = useCallback(async (qId, currentUserProfile) => {
+    const { data: results } = await supabase.from('quiz_results').select('user_id, score, total_questions').eq('quiz_id', qId);
+    if (!results) {
+      setUsers([]);
+      return;
+    }
+
+    const userIds = [...new Set(results.map(r => r.user_id))];
+    const { data: profs } = await supabase.from('profiles').select('*').in('id', userIds);
+
+    const { data: attemptsData } = await supabase
+      .from('quiz_attempts')
+      .select('user_id, is_suspicious, is_incomplete, score, max_score, created_at')
+      .eq('quiz_id', qId)
+      .order('created_at', { ascending: true });
+
+    const latestStatusMap = {};
+    if (attemptsData) {
+      attemptsData.forEach(att => {
+        const scorePercent = (att.max_score || 0) > 0 ? (att.score / att.max_score) : 0;
+        latestStatusMap[att.user_id] = {
+          is_incomplete: att.is_incomplete,
+          is_suspicious: att.is_suspicious,
+          is_underperforming: scorePercent <= 0.5 && !att.is_incomplete
+        };
+      });
+    }
+
+    if (profs) {
+      const isTeacher = currentUserProfile?.role === 'teacher';
+      let validProfs = profs.filter(p => (p.first_name?.trim() || p.last_name?.trim()));
+      const { data: currentQuizObj } = await supabase.from('quizzes').select('author_id').eq('id', qId).single();
+
+      if (isTeacher && currentQuizObj?.author_id !== currentUserProfile?.id) {
+        validProfs = validProfs.filter(p => p.school_id === currentUserProfile.school_id);
+      }
+
+      const userList = validProfs.map(p => {
+        const userResults = results.filter(r => r.user_id === p.id);
+        const maxScore = userResults.length > 0 ? Math.max(...userResults.map(r => r.score)) : 0;
+        const lStatus = latestStatusMap[p.id] || {};
+        return {
+          ...p,
+          maxScore,
+          is_incomplete_user: !!lStatus.is_incomplete,
+          is_suspicious_user: !!lStatus.is_suspicious,
+          is_underperforming_user: !!lStatus.is_underperforming
+        };
+      });
+      userList.sort((a, b) => {
+        const lnA = (a.last_name || '').trim();
+        const lnB = (b.last_name || '').trim();
+        const primaryA = lnA || (a.first_name || '').trim();
+        const primaryB = lnB || (b.first_name || '').trim();
+        const res = primaryA.localeCompare(primaryB, 'ru');
+        if (res !== 0) return res;
+        return (a.first_name || '').trim().localeCompare((b.first_name || '').trim(), 'ru');
+      });
+      setUsers(userList);
+
+      if (userIdParam) {
+        const tu = userList.find(u => u.id === userIdParam);
+        if (tu) fetchAttempts(qId, tu.id);
+      } else if (currentUserProfile?.role === 'player' || currentUserProfile?.is_observer) {
+        const self = userList.find(u => u.id === currentUserProfile.id);
+        if (self) handleUserSelect(self.id);
+      }
+    }
+  }, [userIdParam, fetchAttempts, handleUserSelect]);
+
+  const handleQuizSelect = useCallback((qId) => {
     setFilterQuiz(qId);
     setSearchParams({ quizId: qId });
     setTargetUser(null);
     setAttempts([]);
     fetchUsersForQuiz(qId, profile);
-  };
+  }, [profile, fetchUsersForQuiz, setSearchParams]);
 
-  const handleUserSelect = (uId) => {
-    setSearchParams({ quizId: filterQuiz, userId: uId });
-    fetchAttempts(filterQuiz, uId);
-  };
-
-  const handleScroll = (e) => {
+  const handleScroll = useCallback((e) => {
     sessionStorage.setItem('ad_list_scroll', e.target.scrollTop);
-  };
+  }, []);
 
-  // derived lists for test filters
-  const validSections = filterFolder === 'all' ? sections : sections.filter(s => s.class_id === filterFolder);
-  const validQuizzes = filterSection === 'all'
+  const validSections = useMemo(() => filterFolder === 'all' ? sections : sections.filter(s => s.class_id === filterFolder), [filterFolder, sections]);
+  const validQuizzes = useMemo(() => filterSection === 'all'
     ? quizzes.filter(q => filterFolder === 'all' || validSections.some(vs => vs.id === q.section_id))
-    : quizzes.filter(q => q.section_id === filterSection);
+    : quizzes.filter(q => q.section_id === filterSection), [filterSection, filterFolder, quizzes, validSections]);
 
-  // For locking specific options: if a folder has no quizzes AT ALL, it should be disabled
-  const isFolderEmpty = (fId) => !quizzes.some(q => sections.some(s => s.class_id === fId && q.section_id === s.id));
-  const isSectionEmpty = (sId) => !quizzes.some(q => q.section_id === sId);
+  const isFolderEmpty = useCallback((fId) => !quizzes.some(q => sections.some(s => s.class_id === fId && q.section_id === s.id)), [quizzes, sections]);
+  const isSectionEmpty = useCallback((sId) => !quizzes.some(q => q.section_id === sId), [quizzes]);
 
-  const filteredUsers = users.filter(u => {
+  const filteredUsers = useMemo(() => users.filter(u => {
     if (!showObservers && u.is_observer) return false;
     if (filterCity !== 'all' && u.city_id !== filterCity) return false;
     if (filterSchool !== 'all' && u.school_id !== filterSchool) return false;
@@ -290,36 +604,25 @@ const AnalyticsDetails = () => {
       if (!name.includes(searchQuery.toLowerCase())) return false;
     }
     return true;
-  });
+  }), [users, showObservers, filterCity, filterSchool, filterClass, searchQuery]);
 
-  const aggregateStats = () => {
-    if (attempts.length === 0) return { totalTime: 0, avgTime: 0, maxScore: 0, passed: 0, failed: 0 };
-    let totalTime = 0;
-    let maxS = 0;
-    let passed = 0;
-    let failed = 0;
+  const stats = useMemo(() => {
+    if (attempts.length === 0) return { totalTime: 0, avgTime: 0, maxScore: 0, passed: 0, failed: 0, isSuspiciousUser: false };
+    let totalTime = 0; let maxS = 0; let passed = 0; let failed = 0;
     attempts.forEach(a => {
       totalTime += a.time_spent_total;
       if (a.score > maxS) maxS = a.score;
-      if (a.is_passed) passed++;
-      else failed++;
+      if (a.is_passed) passed++; else failed++;
     });
-    const isSuspiciousUser = attempts.length > 0 && (attempts.filter(a => a.is_suspicious).length / attempts.length) > 0.4;
+    const isSuspiciousUser = (attempts.filter(a => a.is_suspicious).length / attempts.length) > 0.4;
+    return { totalTime, avgTime: Math.round(totalTime / attempts.length), maxScore: maxS, passed, failed, isSuspiciousUser };
+  }, [attempts]);
 
-    return {
-      totalTime,
-      avgTime: Math.round(totalTime / attempts.length),
-      maxScore: maxS,
-      passed, failed,
-      isSuspiciousUser
-    };
-  };
-
-  const handleDeleteClick = (type, data = null) => {
+  const handleDeleteClick = useCallback((type, data = null) => {
     setDeleteAction({ type, data });
     setDeleteLock(3);
     setShowDeleteModal(true);
-  };
+  }, []);
 
   useEffect(() => {
     let timer;
@@ -344,7 +647,6 @@ const AnalyticsDetails = () => {
       } else if (deleteAction.type === 'attempt') {
         const { error } = await supabase.from('quiz_attempts').delete().eq('id', deleteAction.data.id);
         if (error) throw error;
-        // Re-fetch attempts for this user/quiz
         fetchAttempts(filterQuiz, targetUser.id);
         fetchUsersForQuiz(filterQuiz, profile);
       }
@@ -354,289 +656,14 @@ const AnalyticsDetails = () => {
     }
   };
 
-  const renderChart = () => {
-    if (attempts.length === 0) return <div style={{ padding: '40px', textAlign: 'center', opacity: 0.5 }}>Нет данных о прохождениях</div>;
-
-    const stats = aggregateStats();
-    const last10 = attempts.slice(-10);
-    const chartBars = [];
-
-    const qsLength = targetQuiz?.content?.questions?.length || 1;
-
-    // Max Score Bar (Purple/Red)
-    chartBars.push({
-      label: 'Максимум',
-      score: stats.maxScore,
-      maxPossible: qsLength,
-      color: stats.isSuspiciousUser ? '#ef4444' : 'var(--primary-color)',
-      data: null,
-      type: 'max'
-    });
-
-    // First Attempt Bar (Blue/Red/Gray)
-    if (attempts.length > 0) {
-      const firstAtt = attempts[0];
-      let color = '#3b82f6'; // Blue
-      if (firstAtt.is_incomplete) color = '#9ca3af'; // Gray
-      else if (firstAtt.is_suspicious) color = '#ef4444'; // Red
-      
-      chartBars.push({
-        label: '1-я попытка',
-        score: firstAtt.score,
-        maxPossible: firstAtt.max_score || qsLength,
-        color: color,
-        data: firstAtt,
-        type: 'first',
-        isFirst: true,
-        id: firstAtt.id
-      });
-    }
-
-    // Attempt bars
-    last10.forEach((att, idx) => {
-      // Don't duplicate first attempt if it's already in last10
-      if (attempts.length > 1 && idx === 0 && attempts.length <= 10) return;
-
-      let color = '#4ade80'; // Green
-      if (att.is_incomplete) color = '#9ca3af'; // Gray
-      else if (att.is_suspicious) color = '#ef4444'; // Red
-      else if (!att.is_passed) color = '#facc15'; // Yellow
-
-      chartBars.push({
-        label: `Попытка ${attempts.length - last10.length + idx + 1}`,
-        score: att.score,
-        maxPossible: att.max_score || qsLength,
-        color: color,
-        data: att,
-        type: 'attempt',
-        id: att.id
-      });
-    });
-
-    // Максимальная высота бара (100% результат) будет занимать 85% высоты внутреннего контейнера
-    // чтобы оставить место сверху для текста и короны.
-    const MAX_BAR_HEIGHT = 85;
-
-    return (
-      <div style={{ position: 'relative', display: 'flex', height: '240px', padding: '20px 20px 20px 0', background: 'rgba(0,0,0,0.02)', borderRadius: '15px' }}>
-
-        {/* Левая панель с градиентной шкалой */}
-        <div style={{ width: '50px', position: 'relative', display: 'flex', justifyContent: 'flex-end', paddingRight: '15px', height: '100%' }}>
-          <div style={{ position: 'absolute', bottom: 0, width: '6px', height: `${MAX_BAR_HEIGHT}%`, background: 'linear-gradient(to top, #ef4444 0%, #ef4444 20%, #facc15 20%, #facc15 50%, #4ade80 50%, #4ade80 100%)', borderRadius: '3px', zIndex: 5 }} />
-        </div>
-
-        {/* Область графика */}
-        <div style={{ position: 'relative', flex: 1, height: '100%' }}>
-
-          {/* Пунктирные фоновые линии - теперь они строятся снизу, так же как и столбики */}
-          <div style={{ position: 'absolute', left: '-40px', bottom: `${MAX_BAR_HEIGHT}%`, width: 'calc(100% + 40px)', borderTop: '2px dashed rgba(0,0,0,0.1)', pointerEvents: 'none' }}>
-            <span style={{ position: 'absolute', left: '-5px', bottom: '2px', fontSize: '0.7rem', opacity: 0.5, fontWeight: 'bold' }}>100%</span>
-          </div>
-          <div style={{ position: 'absolute', left: '-40px', bottom: `${MAX_BAR_HEIGHT * 0.8}%`, width: 'calc(100% + 40px)', borderTop: '2px dashed rgba(74, 222, 128, 0.3)', pointerEvents: 'none' }}>
-            <span style={{ position: 'absolute', left: '-5px', bottom: '2px', fontSize: '0.7rem', color: '#4ade80', fontWeight: 'bold' }}>80%</span>
-          </div>
-          <div style={{ position: 'absolute', left: '-40px', bottom: `${MAX_BAR_HEIGHT * 0.5}%`, width: 'calc(100% + 40px)', borderTop: '2px dashed rgba(250, 204, 21, 0.3)', pointerEvents: 'none' }}>
-            <span style={{ position: 'absolute', left: '-5px', bottom: '2px', fontSize: '0.7rem', color: '#ca8a04', fontWeight: 'bold' }}>50%</span>
-          </div>
-          <div style={{ position: 'absolute', left: '-40px', bottom: `${MAX_BAR_HEIGHT * 0.2}%`, width: 'calc(100% + 40px)', borderTop: '2px dashed rgba(239, 68, 68, 0.3)', pointerEvents: 'none' }}>
-            <span style={{ position: 'absolute', left: '-5px', bottom: '2px', fontSize: '0.7rem', color: '#ef4444', fontWeight: 'bold' }}>20%</span>
-          </div>
-
-          {/* Горизонтальная базовая линия */}
-          <div style={{ position: 'absolute', left: '-15px', bottom: '0', width: 'calc(100% + 15px)', height: '2px', background: 'var(--text-color)', opacity: 0.1, zIndex: 0 }} />
-
-          {/* Столбики */}
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', height: '100%', position: 'relative', zIndex: 1 }}>
-            {chartBars.map((bar, i) => {
-              const maxP = bar.maxPossible || 1;
-              const heightPercent = (bar.score / maxP) * MAX_BAR_HEIGHT;
-              const isSpecial = bar.type === 'max';
-              const isZero = bar.score === 0;
-
-              return (
-                <div
-                  key={i}
-                  onClick={() => !isSpecial && setSelectedAttempt(bar.data)}
-                  style={{
-                    flex: 1, minWidth: '20px', maxWidth: '60px', height: '100%',
-                    display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
-                    cursor: isSpecial ? 'default' : 'pointer',
-                    opacity: (selectedAttempt?.id === bar.id || isSpecial) ? 1 : 0.6,
-                    transition: 'opacity 0.2s', zIndex: 1
-                  }}
-                  title={isSpecial ? `Максимальный балл: ${bar.score}` : `${bar.label}\nБалл: ${bar.score}\nВремя: ${bar.data?.time_spent_total || 0}с\n${bar.data?.is_incomplete ? '(Не завершен)' : (bar.data?.is_suspicious ? '(Подозрительно)' : '')}`}
-                >
-                  {/* Благодаря flex-direction: column все элементы (корона, цифра, бар) выстраиваются друг на друге, не сбивая верстку */}
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', width: '100%' }}>
-                    {bar.score === maxP && (
-                      <div style={{ textAlign: 'center', color: '#eab308', fontSize: '1.2rem', marginBottom: '-2px', zIndex: 10 }}>
-                        👑
-                      </div>
-                    )}
-                    <div style={{ textAlign: 'center', fontSize: '0.7rem', paddingBottom: '4px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>{bar.score}</div>
-                      <div style={{
-                        width: '100%',
-                        height: isZero ? '5px' : `${heightPercent}%`,
-                        background: isZero ? (bar.data?.is_incomplete ? '#9ca3af' : 'rgba(239, 68, 68, 0.3)') : bar.color,
-                        borderRadius: '6px 6px 0 0', borderBottom: 'none',
-                        transition: 'height 0.3s ease',
-                        flexShrink: 0,
-                        position: 'relative' // Added for badge positioning
-                      }}>
-                        {bar.isFirst && !isZero && (heightPercent > 10) && (
-                          <div style={{ 
-                            position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-                            background: 'white', color: bar.color, width: '16px', height: '16px', borderRadius: '50%',
-                            fontSize: '0.65rem', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            boxShadow: '0 2px 4px rgba(0,0,0,0.1)', fontWeight: 'bold', pointerEvents: 'none'
-                          }}>1</div>
-                        )}
-                      </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const renderAttemptDetails = () => {
-    if (!selectedAttempt || !targetQuiz) return <div style={{ padding: '20px', opacity: 0.5 }}>Выберите попытку на графике</div>;
-
-    const qs = targetQuiz.content.questions;
-    let ansData = [];
-    try {
-      ansData = typeof selectedAttempt.answers_data === 'string' ? JSON.parse(selectedAttempt.answers_data) : selectedAttempt.answers_data;
-    } catch (e) { }
-
-    // compute average time per question for THIS user
-    const avgTimePerQ = {};
-    attempts.forEach(att => {
-      let d = typeof att.answers_data === 'string' ? JSON.parse(att.answers_data) : att.answers_data;
-      if (Array.isArray(d)) {
-        d.forEach(ans => {
-          if (!avgTimePerQ[ans.originalIndex]) avgTimePerQ[ans.originalIndex] = { totalTime: 0, count: 0 };
-          avgTimePerQ[ans.originalIndex].totalTime += (ans.timeSpent || 0);
-          avgTimePerQ[ans.originalIndex].count++;
-        });
-      }
-    });
-
-    const suspicionReasonMap = {
-      'blind_guessing': 'Подозрительно много быстрых ответов при низком балле',
-      'high_skip_rate': 'Пропущено более 40% вопросов',
-      'rapid_fail': 'Тест завершен аномально быстро при низком балле',
-      'instant_zero': 'Нулевой результат при быстром завершении',
-      'incomplete_exit': 'Выход из теста до его завершения'
-    };
-
-    return (
-      <div style={{ marginTop: '30px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h3 style={{ margin: 0 }}>
-            Детали прохождения от {new Date(selectedAttempt.created_at).toLocaleString('ru-RU', { timeZone: 'Asia/Almaty' })} (KZ)
-            {selectedAttempt.is_incomplete && <span style={{ marginLeft: '10px', fontSize: '0.8rem', background: 'rgba(156, 163, 175, 0.1)', color: '#9ca3af', padding: '4px 10px', borderRadius: '10px' }}>Не завершен</span>}
-            {selectedAttempt.is_suspicious && !selectedAttempt.is_incomplete && <span style={{ marginLeft: '10px', fontSize: '0.8rem', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '4px 10px', borderRadius: '10px' }}><AlertTriangle size={14} style={{ display: 'inline', marginRight: '4px' }} /> Подозрительно</span>}
-          </h3>
-          {selectedAttempt.suspicion_reason && (
-            <div style={{ background: 'rgba(0,0,0,0.03)', padding: '10px 15px', borderRadius: '10px', fontSize: '0.85rem', marginBottom: '15px' }}>
-              <span style={{ opacity: 0.6 }}>Причина: </span>
-              <strong>{suspicionReasonMap[selectedAttempt.suspicion_reason] || selectedAttempt.suspicion_reason}</strong>
-            </div>
-          )}
-          {(profile?.role === 'admin' || profile?.role === 'creator') && (
-            <button
-              onClick={() => handleDeleteClick('attempt', selectedAttempt)}
-              style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: 'none', padding: '8px 15px', borderRadius: '8px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}
-            >
-              <Trash2 size={16} /> Удалить попытку
-            </button>
-          )}
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginBottom: '30px' }}>
-          <div className="card" style={{ padding: '15px' }}>
-            <div style={{ fontSize: '0.8rem', opacity: 0.6 }}>Балл</div>
-            <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{selectedAttempt.score} / {selectedAttempt.max_score}</div>
-          </div>
-          <div className="card" style={{ padding: '15px' }}>
-            <div style={{ fontSize: '0.8rem', opacity: 0.6 }}>Затрачено времени</div>
-            <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{selectedAttempt.time_spent_total} сек</div>
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-          {ansData.map((ans, i) => {
-            const originQ = qs.find(q => (q.originalIndex || qs.indexOf(q)) === ans.originalIndex);
-            if (!originQ) return null;
-
-            const isCorrect = ans.isCorrect;
-            const avgQTime = avgTimePerQ[ans.originalIndex]?.count > 0 ? Math.round(avgTimePerQ[ans.originalIndex].totalTime / avgTimePerQ[ans.originalIndex].count) : 0;
-
-            return (
-              <div key={i} className="card" style={{ padding: '20px', borderLeft: `4px solid ${isCorrect ? '#4ade80' : '#ef4444'}`, overflowWrap: 'anywhere' }}>
-                <h4 style={{ marginBottom: '10px' }}>Вопрос: {originQ.question}</h4>
-                
-                {originQ.images && originQ.images.length > 0 && (
-                  <div style={{ display: 'flex', gap: '10px', marginBottom: '15px', overflowX: 'auto', paddingBottom: '10px' }}>
-                    {originQ.images.map((imgUrl, imgIdx) => (
-                      <img 
-                        key={imgIdx} 
-                        src={imgUrl} 
-                        alt={`QImg ${imgIdx+1}`} 
-                        onClick={() => setDetailedImageModal({
-                          isOpen: true, images: originQ.images, currentImgIdx: imgIdx,
-                          question: originQ.question, userAnswer: ans.chosenIndex !== null ? originQ.options[ans.chosenIndex] : 'Пропущено',
-                          correctAnswer: originQ.options[ans.correctIndex !== undefined ? ans.correctIndex : originQ.correctIndex], isCorrect: ans.isCorrect,
-                          timeSpent: ans.timeSpent || 0, avgQTime
-                        })}
-                        style={{ height: '120px', borderRadius: '8px', objectFit: 'contain', border: '1px solid rgba(0,0,0,0.1)', background: 'var(--card-bg)', cursor: 'pointer' }}
-                      />
-                    ))}
-                  </div>
-                )}
-                
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap' }}>
-                  <span style={{ opacity: 0.6 }}>Ответ:</span>
-                  <strong style={{ color: isCorrect ? '#4ade80' : '#ef4444' }}>
-                    {ans.chosenIndex !== null ? originQ.options[ans.chosenIndex] : 'Пропущено'}
-                  </strong>
-                  {isCorrect ? <CheckCircle size={16} color="#4ade80" /> : <XCircle size={16} color="#ef4444" />}
-                </div>
-                {!isCorrect && ans.correctIndex !== undefined && (
-                  <div style={{ marginBottom: '10px', fontSize: '0.9rem' }}>
-                    <span style={{ opacity: 0.6 }}>Верный ответ: </span>
-                    <strong>{originQ.options[ans.correctIndex]}</strong>
-                  </div>
-                )}
-                <div style={{ display: 'flex', gap: '20px', fontSize: '0.85rem', opacity: 0.7, background: 'rgba(0,0,0,0.02)', padding: '10px', borderRadius: '8px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <Clock size={14} /> Время на вопрос: {ans.timeSpent}с
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <BarChart2 size={14} /> Среднее (за все попытки): {avgQTime}с
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  };
-
   const isPrivileged = profile?.role === 'admin' || profile?.role === 'creator' || profile?.role === 'teacher' || profile?.role === 'editor';
 
   return (
     <div style={{ display: 'flex', height: 'calc(100vh - 70px)', overflow: 'hidden' }}>
-      {/* Sidebar Overlay for Mobile */}
       <div 
         className={`sidebar-overlay ${sidebarOpen ? 'active' : ''}`}
         onClick={() => setSidebarOpen(false)}
       />
-      {/* Sidebar */}
       {isPrivileged && (
         <div
           className={`details-sidebar ${sidebarOpen ? 'open' : ''}`}
@@ -650,139 +677,32 @@ const AnalyticsDetails = () => {
             flexShrink: 0
           }}
         >
-          <div style={{ padding: '20px', width: '320px', display: 'flex', flexDirection: 'column', height: '100%' }}>
-            <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '15px' }}>
-              <h3 style={{ fontSize: '1.2rem', margin: 0 }}>Аналитика</h3>
-              <button onClick={() => setSidebarOpen(false)} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', boxShadow: 'none', padding: '8px', borderRadius: '10px' }}><X size={20} /></button>
-            </div>
-
-            <div style={{ display: 'flex', background: 'rgba(0,0,0,0.05)', borderRadius: '12px', padding: '4px', marginBottom: '15px' }}>
-              <button style={{ flex: 1, padding: '10px', borderRadius: '8px', fontSize: '0.8rem', background: 'var(--card-bg)', border: 'none', boxShadow: 'var(--soft-shadow)', cursor: 'default', fontWeight: 'bold', color: 'var(--primary-color)' }}>По Тестам</button>
-              <button onClick={() => navigate('/user-analytics')} style={{ flex: 1, padding: '10px', borderRadius: '8px', fontSize: '0.8rem', background: 'transparent', border: 'none', boxShadow: 'none', cursor: 'pointer', color: 'var(--text-color)', opacity: 0.7 }}>По Ученикам</button>
-            </div>
-
-            <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(0,0,0,0.02)', padding: '10px', borderRadius: '8px' }}>
-              <span style={{ fontSize: '0.8rem', opacity: 0.7 }}>Показать наблюдателей</span>
-              <button
-                onClick={() => setShowObservers(!showObservers)}
-                style={{
-                  width: '40px', height: '20px', borderRadius: '10px',
-                  background: showObservers ? 'var(--primary-color)' : '#ccc',
-                  position: 'relative', border: 'none', cursor: 'pointer', transition: 'background 0.3s'
-                }}
-              >
-                <div style={{
-                  position: 'absolute', top: '2px', left: showObservers ? '22px' : '2px',
-                  width: '16px', height: '16px', borderRadius: '50%', background: 'white', transition: 'left 0.3s'
-                }} />
-              </button>
-            </div>
-
-            {loading ? (
-              <div style={{ flex: 1 }}>
-                <div className="skeleton" style={{ height: '30px', marginBottom: '10px' }} />
-                <div className="skeleton" style={{ height: '30px', marginBottom: '10px' }} />
-                <div className="skeleton" style={{ height: '30px', marginBottom: '20px' }} />
-                <div className="skeleton" style={{ height: '100px' }} />
-              </div>
-            ) : (
-              <>
-                <div style={{ marginBottom: '20px' }}>
-                  <label htmlFor="ad-folder" style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '5px', display: 'block' }}>Выбор Теста</label>
-                  <select id="ad-folder" value={filterFolder} onChange={e => { setFilterFolder(e.target.value); setFilterSection('all'); }} style={{ width: '100%', marginBottom: '10px', padding: '8px' }}>
-                    <option value="all">Все папки</option>
-                    {quizFolders.map(f => (
-                      <option key={f.id} value={f.id} disabled={f.is_divider || isFolderEmpty(f.id)}>
-                        {f.is_divider ? `--- ${f.name} ---` : f.name} {isFolderEmpty(f.id) && !f.is_divider ? '(пусто)' : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <select id="ad-section" value={filterSection} onChange={e => setFilterSection(e.target.value)} style={{ width: '100%', marginBottom: '10px', padding: '8px' }} aria-label="Предмет">
-                    <option value="all">Все предметы</option>
-                    {validSections.map(s => (
-                      <option key={s.id} value={s.id} disabled={s.is_divider || isSectionEmpty(s.id)}>
-                        {s.is_divider ? `--- ${s.name} ---` : s.name} {isSectionEmpty(s.id) && !s.is_divider ? '(пусто)' : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <select id="ad-quiz" value={filterQuiz} onChange={e => handleQuizSelect(e.target.value)} style={{ width: '100%', padding: '8px' }} aria-label="Тест">
-                    <option value="" disabled>-- Выберите тест --</option>
-                    {validQuizzes.map(q => (
-                      <option key={q.id} value={q.id} disabled={q.content?.is_divider}>
-                        {q.content?.is_divider ? `--- ${q.content.divider_text || 'Разделитель'} ---` : q.title}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div style={{ height: '1px', background: 'rgba(0,0,0,0.05)', margin: '15px 0' }} />
-
-                {filterQuiz ? (
-                  <>
-                    <label htmlFor="ad-city" style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '10px', display: 'block' }}>Фильтры Учеников</label>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '15px' }}>
-                      <select id="ad-city" value={filterCity} onChange={e => { setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all'); }} style={{ padding: '6px', fontSize: '0.85rem' }} disabled={profile?.role === 'teacher'}>
-                        <option value="all">Все города</option>
-                        {cities.map(c => <option key={c.id} value={c.id} disabled={!users.some(u => u.city_id === c.id)}>{c.name}</option>)}
-                      </select>
-                      <select id="ad-school" value={filterSchool} onChange={e => { setFilterSchool(e.target.value); setFilterClass('all'); }} disabled={profile?.role === 'teacher'} style={{ padding: '6px', fontSize: '0.85rem' }} aria-label="Школа">
-                        <option value="all">Все школы</option>
-                        {schools.filter(s => filterCity === 'all' || s.city_id === filterCity).map(s => <option key={s.id} value={s.id} disabled={!users.some(u => u.school_id === s.id)}>{s.name}</option>)}
-                      </select>
-                      <select id="ad-class" value={filterClass} onChange={e => setFilterClass(e.target.value)} style={{ padding: '6px', fontSize: '0.85rem' }} aria-label="Класс">
-                        <option value="all">Все классы</option>
-                        {classes.filter(c => filterSchool === 'all' || c.school_id === filterSchool).map(c => <option key={c.id} value={c.id} disabled={!users.some(u => u.class_id === c.id)}>{c.name}</option>)}
-                      </select>
-                      <div style={{ position: 'relative' }}>
-                        <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', opacity: 0.5 }} />
-                        <label htmlFor="ad-search" style={{ display: 'none' }}>Поиск</label>
-                        <input id="ad-search" type="text" placeholder="Поиск..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ width: '100%', padding: '6px 10px 6px 30px', fontSize: '0.85rem' }} />
-                      </div>
-                    </div>
-
-                    <label style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '10px', display: 'block' }}>Ученики ({filteredUsers.length})</label>
-                    <div ref={scrollRef} onScroll={handleScroll} style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '5px', paddingRight: '5px' }}>
-                      {filteredUsers.map(u => (
-                        <button
-                          key={u.id}
-                          onClick={() => handleUserSelect(u.id)}
-                          style={{
-                            textAlign: 'left', padding: '10px',
-                            background: targetUser?.id === u.id ? 'var(--primary-color)' : 
-                              (u.is_incomplete_user ? 'rgba(156, 163, 175, 0.15)' : 
-                              (u.is_suspicious_user ? 'rgba(239, 68, 68, 0.08)' : 
-                              (u.is_underperforming_user ? 'rgba(250, 204, 21, 0.08)' : 
-                              (u.is_observer ? 'rgba(234, 179, 8, 0.05)' : 'rgba(0,0,0,0.02)')))),
-                            color: targetUser?.id === u.id ? 'white' : 'var(--text-color)',
-                            borderRadius: '8px', border: targetUser?.id === u.id ? 'none' : 
-                              (u.is_suspicious_user ? '1px solid rgba(239, 68, 68, 0.2)' : 
-                              (u.is_observer ? '1px dashed #eab308' : 'none')),
-                            cursor: 'pointer',
-                            fontSize: '0.85rem', width: '100%'
-                          }}>
-                          <div style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                            {u.last_name} {u.first_name}
-                            {u.is_observer && <Eye size={12} title="Наблюдатель" />}
-                          </div>
-                          <div style={{ opacity: 0.8, fontSize: '0.75rem' }}>Max: {u.maxScore} баллов</div>
-                        </button>
-                      ))}
-                      {filteredUsers.length === 0 && <div style={{ fontSize: '0.8rem', opacity: 0.5, textAlign: 'center', marginTop: '10px' }}>Нет учеников по фильтру</div>}
-                    </div>
-                  </>
-                ) : (
-                  <div style={{ opacity: 0.5, fontSize: '0.9rem', textAlign: 'center', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Сначала выберите тест<br />для просмотра учеников.</div>
-                )}
-              </>
-            )}
-          </div>
+          <SidebarUserList
+            loading={loading} quizFolders={quizFolders} sections={sections} quizzes={quizzes}
+            users={users} filteredUsers={filteredUsers} targetUser={targetUser}
+            filterFolder={filterFolder} setFilterFolder={setFilterFolder}
+            filterSection={filterSection} setFilterSection={setFilterSection}
+            filterQuiz={filterQuiz} handleQuizSelect={handleQuizSelect}
+            filterCity={filterCity} setFilterCity={setFilterCity}
+            filterSchool={filterSchool} setFilterSchool={setFilterSchool}
+            filterClass={filterClass} setFilterClass={setFilterClass}
+            searchQuery={searchQuery} setSearchQuery={setSearchQuery}
+            showObservers={showObservers} setShowObservers={setShowObservers}
+            handleUserSelect={handleUserSelect} handleScroll={handleScroll}
+            scrollRef={scrollRef} validSections={validSections} validQuizzes={validQuizzes}
+            isFolderEmpty={isFolderEmpty} isSectionEmpty={isSectionEmpty}
+            profile={profile} cities={cities} schools={schools} classes={classes} navigate={navigate}
+          />
         </div>
       )}
 
-      {/* Main Content Area */}
       <div className="main-content" style={{ flex: 1, padding: '40px 60px', overflowY: 'auto', position: 'relative', height: '100%' }}>
         {isPrivileged && !sidebarOpen && (
-          <button onClick={() => setSidebarOpen(true)} className="flex-center sidebar-toggle-btn" style={{ position: 'absolute', left: '20px', top: '40px', background: 'var(--card-bg)', color: 'inherit', padding: '10px', borderRadius: '10px', zIndex: 10 }}>
+          <button 
+            onClick={() => setSidebarOpen(true)} 
+            className="flex-center sidebar-toggle-btn"
+            style={{ position: 'absolute', left: '20px', top: '40px', background: 'var(--card-bg)', color: 'inherit', padding: '10px', borderRadius: '10px', zIndex: 10 }}
+          >
             <Menu size={20} />
           </button>
         )}
@@ -794,8 +714,20 @@ const AnalyticsDetails = () => {
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             {(profile?.role === 'admin' || profile?.role === 'creator' || profile?.role === 'teacher' || targetQuiz?.author_id === profile?.id) && (
               <>
-                <button onClick={() => navigate(`/analytics?id=${filterQuiz}`)} title="Общая аналитика" style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', padding: '10px', borderRadius: '10px' }}><BarChart2 size={20} /></button>
-                <button onClick={() => navigate(`/redactor?id=${filterQuiz}`)} title="Редактор" style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', padding: '10px', borderRadius: '10px' }}><Pencil size={20} /></button>
+                <button 
+                  onClick={() => navigate(`/analytics?id=${filterQuiz}`)} 
+                  title="Общая аналитика"
+                  style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', padding: '10px', borderRadius: '10px' }}
+                >
+                  <BarChart2 size={20} />
+                </button>
+                <button 
+                  onClick={() => navigate(`/redactor?id=${filterQuiz}`)} 
+                  title="Редактор"
+                  style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', padding: '10px', borderRadius: '10px' }}
+                >
+                  <Pencil size={20} />
+                </button>
               </>
             )}
             {(profile?.role === 'admin' || profile?.role === 'creator') && targetUser && targetQuiz && (
@@ -830,9 +762,9 @@ const AnalyticsDetails = () => {
           </div>
         ) : (
           <div className="animate">
-            <h2 style={{ fontSize: '2rem', marginBottom: '10px', color: aggregateStats().isSuspiciousUser ? '#ef4444' : 'inherit' }}>
+            <h2 style={{ fontSize: '2rem', marginBottom: '10px', color: stats.isSuspiciousUser ? '#ef4444' : 'inherit' }}>
               {targetUser.last_name} {targetUser.first_name}
-              {aggregateStats().isSuspiciousUser && <span style={{ marginLeft: '10px', fontSize: '0.9rem', background: '#ef4444', color: 'white', padding: '4px 12px', borderRadius: '20px', verticalAlign: 'middle' }}>Низкая успеваемость</span>}
+              {stats.isSuspiciousUser && <span style={{ marginLeft: '10px', fontSize: '0.9rem', background: '#ef4444', color: 'white', padding: '4px 12px', borderRadius: '20px', verticalAlign: 'middle' }}>Низкая успеваемость</span>}
             </h2>
             <h3 style={{ opacity: 0.6, fontSize: '1.2rem', marginBottom: '30px' }}>Тест: {targetQuiz.title}</h3>
 
@@ -844,18 +776,24 @@ const AnalyticsDetails = () => {
               <div className="card" style={{ padding: '20px' }}>
                 <div style={{ opacity: 0.6, fontSize: '0.9rem' }}>Успешных / Провальных</div>
                 <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#4ade80' }}>
-                  {aggregateStats().passed} <span style={{ color: 'var(--text-color)', opacity: 0.3 }}>/</span> <span style={{ color: '#facc15' }}>{aggregateStats().failed}</span>
+                  {stats.passed} <span style={{ color: 'var(--text-color)', opacity: 0.3 }}>/</span> <span style={{ color: '#facc15' }}>{stats.failed}</span>
                 </div>
               </div>
               <div className="card" style={{ padding: '20px' }}>
                 <div style={{ opacity: 0.6, fontSize: '0.9rem' }}>Среднее время</div>
-                <div style={{ fontSize: '1.8rem', fontWeight: 'bold' }}>{aggregateStats().avgTime} сек</div>
+                <div style={{ fontSize: '1.8rem', fontWeight: 'bold' }}>{stats.avgTime} сек</div>
               </div>
             </div>
 
             <div className="card">
               <h3 style={{ marginBottom: '20px' }}>График попыток</h3>
-              {renderChart()}
+              <AttemptChart
+                attempts={attempts}
+                selectedAttempt={selectedAttempt}
+                setSelectedAttempt={setSelectedAttempt}
+                targetQuiz={targetQuiz}
+                stats={stats}
+              />
               <div className="flex-center" style={{ gap: '15px', marginTop: '15px', fontSize: '0.8rem', opacity: 0.7, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: '12px', height: '12px', background: 'var(--primary-color)', borderRadius: '3px' }} /> Максимальный балл</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: '12px', height: '12px', background: '#3b82f6', borderRadius: '3px' }} /> 1-я попытка</div>
@@ -865,7 +803,14 @@ const AnalyticsDetails = () => {
               </div>
             </div>
 
-            {renderAttemptDetails()}
+            <AttemptDetailsView
+              selectedAttempt={selectedAttempt}
+              targetQuiz={targetQuiz}
+              attempts={attempts}
+              profile={profile}
+              handleDeleteClick={handleDeleteClick}
+              setDetailedImageModal={setDetailedImageModal}
+            />
           </div>
         )}
       </div>

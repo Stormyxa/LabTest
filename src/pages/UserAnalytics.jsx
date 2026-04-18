@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { ChevronLeft, BarChart2, Search, Filter, Shield, EyeOff, AlertTriangle, Menu, X, Clock, Calendar } from 'lucide-react';
@@ -241,7 +241,7 @@ const UserAnalytics = () => {
     }, 100);
   };
 
-  const fetchUserAnalytics = async (uId, currentUserProfile = profile) => {
+  const fetchUserAnalytics = useCallback(async (uId, currentUserProfile = profile) => {
     setContentLoading(true);
     const { data: u } = await supabase.from('profiles').select('*').eq('id', uId).single();
     if (u) setTargetUser(u);
@@ -331,16 +331,16 @@ const UserAnalytics = () => {
       setSelectedDay(null);
     }
     setContentLoading(false);
-  };
+  }, [profile]);
 
-  const handleScroll = (e) => {
+  const handleScroll = useCallback((e) => {
     sessionStorage.setItem('ua_list_scroll', e.target.scrollTop);
-  };
+  }, []);
 
-  const handleUserSelect = (uId) => {
+  const handleUserSelect = useCallback((uId) => {
     setSearchParams({ userId: uId });
     fetchUserAnalytics(uId);
-  };
+  }, [fetchUserAnalytics, setSearchParams]);
 
   const filteredUsers = useMemo(() => {
     return users.filter(u => {
