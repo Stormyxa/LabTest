@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { fetchWithCache } from '../lib/cache';
 import { ChevronLeft, BarChart2, Clock, CheckCircle, XCircle, Search, Filter, AlertTriangle, Menu, Pencil, Trash2, Eye, X, ChevronRight } from 'lucide-react';
 
 const SidebarUserList = React.memo(({
@@ -9,13 +10,13 @@ const SidebarUserList = React.memo(({
   filterCity, setFilterCity, filterSchool, setFilterSchool, filterClass, setFilterClass,
   searchQuery, setSearchQuery, showObservers, setShowObservers, handleUserSelect, handleScroll,
   scrollRef, validSections, validQuizzes, isFolderEmpty, isSectionEmpty,
-  profile, cities, schools, classes, navigate
+  profile, cities, schools, classes, navigate, setSidebarOpen
 }) => {
   return (
     <div style={{ padding: '20px', width: '320px', display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '15px' }}>
         <h3 style={{ fontSize: '1.2rem', margin: 0 }}>Аналитика</h3>
-        <button onClick={() => setShowObservers(false)} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', boxShadow: 'none', padding: '8px', borderRadius: '10px' }}><X size={20} /></button>
+        <button onClick={() => setSidebarOpen(false)} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', boxShadow: 'none', padding: '8px', borderRadius: '10px' }}><X size={20} /></button>
       </div>
 
       <div style={{ display: 'flex', background: 'rgba(0,0,0,0.05)', borderRadius: '12px', padding: '4px', marginBottom: '15px' }}>
@@ -70,8 +71,8 @@ const SidebarUserList = React.memo(({
             <select id="ad-quiz" value={filterQuiz} onChange={e => handleQuizSelect(e.target.value)} style={{ width: '100%', padding: '8px' }} aria-label="Тест">
               <option value="" disabled>-- Выберите тест --</option>
               {validQuizzes.map(q => (
-                <option key={q.id} value={q.id} disabled={q.content?.is_divider}>
-                  {q.content?.is_divider ? `--- ${q.content.divider_text || 'Разделитель'} ---` : q.title}
+                <option key={q.id} value={q.id} disabled={q.is_divider}>
+                  {q.is_divider ? `--- ${q.divider_text || 'Разделитель'} ---` : q.title}
                 </option>
               ))}
             </select>
@@ -297,12 +298,39 @@ const AttemptDetailsView = React.memo(({
     }
   });
 
+  const totalQs = qs.length || 1;
+  const skippedCount = ansData.filter(a => a.chosenIndex === null).length;
+  const skippedPerc = skippedCount / totalQs;
+  const isSkippedHeavy = skippedPerc > 0.4;
+
+  const limitTime = totalQs * 25;
+  const timeSpent = selectedAttempt.time_spent || 0;
+  const scorePercent = (selectedAttempt.score / (selectedAttempt.total_questions || totalQs)) || 0;
+  const isShortTimeFail = timeSpent < limitTime * 0.12 && scorePercent < 0.4;
+
   return (
     <div style={{ marginTop: '30px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h3 style={{ margin: 0 }}>
           Детали прохождения от {new Date(selectedAttempt.created_at).toLocaleString('ru-RU', { timeZone: 'Asia/Almaty' })} (KZ)
-          {selectedAttempt.is_suspicious && <span style={{ marginLeft: '10px', fontSize: '0.8rem', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '4px 10px', borderRadius: '10px' }}>Подозрительно</span>}
+          {selectedAttempt.is_suspicious && (
+            <span style={{ marginLeft: '10px', fontSize: '0.8rem', background: 'rgba(239, 68, 68, 1)', color: 'white', padding: '4px 10px', borderRadius: '10px' }}>Подозрительно</span>
+          )}
+          {isSkippedHeavy && (
+            <span style={{ marginLeft: '10px', fontSize: '0.8rem', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '4px 10px', borderRadius: '10px', border: '1px solid #ef4444' }}>
+              Пропущено более 40% вопросов
+            </span>
+          )}
+          {isShortTimeFail && (
+            <span style={{ marginLeft: '10px', fontSize: '0.8rem', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '4px 10px', borderRadius: '10px', border: '1px solid #ef4444' }}>
+              Низкий результат за слишком короткое время
+            </span>
+          )}
+          {selectedAttempt.is_incomplete && (
+            <span style={{ marginLeft: '10px', fontSize: '0.8rem', background: 'rgba(0, 0, 0, 0.05)', color: 'var(--text-color)', opacity: 0.6, padding: '4px 10px', borderRadius: '10px', border: '1px solid rgba(0,0,0,0.1)' }}>
+              Вышел до завершения
+            </span>
+          )}
         </h3>
         {(profile?.role === 'admin' || profile?.role === 'creator') && (
           <button
@@ -319,15 +347,76 @@ const AttemptDetailsView = React.memo(({
           const originQ = qs.find(q => (q.originalIndex || qs.indexOf(q)) === ans.originalIndex);
           if (!originQ) return null;
 
+          const qImages = originQ.images || (originQ.image ? [originQ.image] : []);
+          const stat = avgTimePerQ[ans.originalIndex] || { totalTime: 0, count: 1 };
+          const avgQ = Math.round(stat.totalTime / stat.count);
+
+          const openModal = () => {
+            if (qImages.length > 0) {
+              setDetailedImageModal({
+                isOpen: true,
+                images: qImages,
+                currentImgIdx: 0,
+                question: originQ.question,
+                userAnswer: ans.chosenIndex !== null ? originQ.options[ans.chosenIndex] : 'Пропущено',
+                correctAnswer: originQ.options[originQ.correctIndex],
+                isCorrect: ans.isCorrect,
+                timeSpent: ans.timeSpent || 0,
+                avgQTime: avgQ
+              });
+            }
+          };
+
           return (
             <div key={i} className="card" style={{ padding: '20px', borderLeft: `4px solid ${ans.isCorrect ? '#4ade80' : '#ef4444'}`, overflowWrap: 'anywhere' }}>
-              <h4 style={{ marginBottom: '10px' }}>Вопрос: {originQ.question}</h4>
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap' }}>
-                <span style={{ opacity: 0.6 }}>Ответ:</span>
-                <strong style={{ color: ans.isCorrect ? '#4ade80' : '#ef4444' }}>
-                  {ans.chosenIndex !== null ? originQ.options[ans.chosenIndex] : 'Пропущено'}
-                </strong>
-                {ans.isCorrect ? <CheckCircle size={16} color="#4ade80" /> : <XCircle size={16} color="#ef4444" />}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '20px', flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: '200px' }}>
+                  <h4 style={{ marginBottom: '10px', fontSize: '1.1rem' }}>{i + 1}. {originQ.question}</h4>
+                  
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '5px' }}>
+                    <span style={{ opacity: 0.6, fontSize: '0.9rem' }}>Ваш ответ:</span>
+                    <strong style={{ color: ans.isCorrect ? '#4ade80' : '#ef4444', fontSize: '0.95rem' }}>
+                      {ans.chosenIndex !== null ? originQ.options[ans.chosenIndex] : 'Пропущено'}
+                    </strong>
+                    {ans.isCorrect ? <CheckCircle size={16} color="#4ade80" /> : <XCircle size={16} color="#ef4444" />}
+                  </div>
+
+                  {!ans.isCorrect && (
+                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px', color: '#4ade80', fontSize: '0.9rem' }}>
+                      <span style={{ opacity: 0.8 }}>Верный:</span>
+                      <strong>{originQ.options[originQ.correctIndex]}</strong>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', gap: '15px', marginTop: '10px', fontSize: '0.85rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', opacity: 0.7 }}>
+                      <Clock size={14} /> <span>{ans.timeSpent || 0} сек</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', opacity: 0.5 }}>
+                      <BarChart2 size={14} /> <span>Среднее: {avgQ} сек</span>
+                    </div>
+                  </div>
+                </div>
+
+                {qImages.length > 0 && (
+                  <div 
+                    onClick={openModal}
+                    style={{ 
+                      width: '100px', height: '100px', borderRadius: '12px', overflow: 'hidden', 
+                      cursor: 'pointer', border: '1px solid rgba(0,0,0,0.1)', position: 'relative' 
+                    }}
+                  >
+                    <img src={qImages[0]} alt="Question" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0, transition: 'opacity 0.2s' }} onMouseEnter={e => e.currentTarget.style.opacity = 1} onMouseLeave={e => e.currentTarget.style.opacity = 0}>
+                       <Eye size={20} color="white" />
+                    </div>
+                    {qImages.length > 1 && (
+                      <div style={{ position: 'absolute', bottom: '5px', right: '5px', background: 'rgba(0,0,0,0.6)', color: 'white', padding: '2px 6px', borderRadius: '4px', fontSize: '0.7rem' }}>
+                        +{qImages.length - 1}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           );
@@ -414,16 +503,16 @@ const AnalyticsDetails = () => {
         setSidebarOpen(false); // Force close for players
       }
 
-      const { data: qF } = await supabase.from('quiz_classes').select('id, name, sort_order, is_divider').order('sort_order', { ascending: true });
-      const { data: secs } = await supabase.from('quiz_sections').select('id, class_id, name, sort_order, is_divider').order('sort_order', { ascending: true });
+      const qF = await fetchWithCache('quiz_classes', () => supabase.from('quiz_classes').select('id, name, sort_order, is_divider').order('sort_order', { ascending: true }).then(res => res.data));
+      const secs = await fetchWithCache('quiz_sections', () => supabase.from('quiz_sections').select('id, class_id, name, sort_order, is_divider').order('sort_order', { ascending: true }).then(res => res.data));
 
-      let quizQuery = supabase.from('quizzes').select('id, title, section_id, author_id, is_archived, sort_order, content').eq('is_archived', false).order('sort_order', { ascending: true });
+      let quizQuery = supabase.from('quizzes').select('id, title, section_id, author_id, is_archived, sort_order, is_divider:content->is_divider, divider_text:content->divider_text').eq('is_archived', false).order('sort_order', { ascending: true });
       if (p.role === 'editor') quizQuery = quizQuery.eq('author_id', p.id);
       const { data: qs } = await quizQuery;
 
-      const { data: c } = await supabase.from('cities').select('*').order('name');
-      const { data: s } = await supabase.from('schools').select('*').order('name');
-      const { data: cl } = await supabase.from('classes').select('*').order('name');
+      const c = await fetchWithCache('cities', () => supabase.from('cities').select('*').order('name').then(res => res.data));
+      const s = await fetchWithCache('schools', () => supabase.from('schools').select('*').order('name').then(res => res.data));
+      const cl = await fetchWithCache('classes', () => supabase.from('classes').select('*').order('name').then(res => res.data));
 
       if (qF) setQuizFolders(qF);
       if (secs) setSections(secs);
@@ -512,7 +601,7 @@ const AnalyticsDetails = () => {
     }
 
     const userIds = [...new Set(results.map(r => r.user_id))];
-    const { data: profs } = await supabase.from('profiles').select('*').in('id', userIds);
+    const { data: profs } = await supabase.from('profiles').select('id, first_name, last_name, city_id, school_id, class_id, is_observer').in('id', userIds);
 
     const { data: attemptsData } = await supabase
       .from('quiz_attempts')
@@ -692,6 +781,7 @@ const AnalyticsDetails = () => {
             scrollRef={scrollRef} validSections={validSections} validQuizzes={validQuizzes}
             isFolderEmpty={isFolderEmpty} isSectionEmpty={isSectionEmpty}
             profile={profile} cities={cities} schools={schools} classes={classes} navigate={navigate}
+            setSidebarOpen={setSidebarOpen}
           />
         </div>
       )}

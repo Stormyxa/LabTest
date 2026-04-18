@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { fetchWithCache } from '../lib/cache';
 import { ChevronLeft, BarChart2, Search, Filter, Shield, EyeOff, AlertTriangle, Menu, X, Clock, Calendar } from 'lucide-react';
 
 const SidebarUserList = React.memo(({ 
@@ -178,10 +179,10 @@ const UserAnalytics = () => {
       }
 
       if (isPrivileged) {
-        // Fetch structure for filters
-        const { data: c } = await supabase.from('cities').select('*').order('name');
-        const { data: s } = await supabase.from('schools').select('*').order('name');
-        const { data: cl } = await supabase.from('classes').select('*').order('name');
+        // Fetch structure for filters with caching
+        const c = await fetchWithCache('cities', () => supabase.from('cities').select('*').order('name').then(res => res.data));
+        const s = await fetchWithCache('schools', () => supabase.from('schools').select('*').order('name').then(res => res.data));
+        const cl = await fetchWithCache('classes', () => supabase.from('classes').select('*').order('name').then(res => res.data));
         if (c) setCities(c);
         if (s) setSchools(s);
         if (cl) setClasses(cl);
@@ -200,8 +201,8 @@ const UserAnalytics = () => {
           }
         }
 
-        // Fetch users
-        let query = supabase.from('profiles').select('*');
+        // Fetch users (only required fields for sidebar)
+        let query = supabase.from('profiles').select('id, first_name, last_name, city_id, school_id, class_id, is_observer');
         if (p.role === 'teacher') query = query.eq('school_id', p.school_id);
         
         const { data: allProfs } = await query;
