@@ -1,7 +1,121 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { ChevronLeft, BarChart2, Search, Filter, Shield, EyeOff, AlertTriangle, Menu, X } from 'lucide-react';
+import { ChevronLeft, BarChart2, Search, Filter, Shield, EyeOff, AlertTriangle, Menu, X, Clock, Calendar } from 'lucide-react';
+
+const SidebarUserList = React.memo(({ 
+  users, 
+  filteredUsers, 
+  targetUser, 
+  handleUserSelect, 
+  scrollRef, 
+  handleScroll, 
+  loading 
+}) => {
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {loading ? (
+        <div style={{ flex: 1 }}>
+          <div className="skeleton" style={{ height: '30px', marginBottom: '10px' }} />
+          <div className="skeleton" style={{ height: '30px', marginBottom: '20px' }} />
+          <div className="skeleton" style={{ height: '100px' }} />
+        </div>
+      ) : (
+        <>
+          <label style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '10px', display: 'block' }}>Ученики ({filteredUsers.length})</label>
+          <div ref={scrollRef} onScroll={handleScroll} style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '5px', paddingRight: '5px' }}>
+            {filteredUsers.map(u => (
+              <button 
+                key={u.id} 
+                onClick={() => handleUserSelect(u.id)}
+                className="user-sidebar-item"
+                style={{ 
+                  textAlign: 'left', padding: '10px', 
+                  background: targetUser?.id === u.id ? 'var(--primary-color)' : 'rgba(0,0,0,0.02)',
+                  color: targetUser?.id === u.id ? 'white' : 'var(--text-color)',
+                  borderRadius: '8px', border: 'none', cursor: 'pointer',
+                  fontSize: '0.85rem', width: '100%',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  transition: 'background 0.2s, transform 0.2s'
+                }}>
+                <div>
+                  <div style={{ fontWeight: 'bold' }}>{u.last_name} {u.first_name}</div>
+                  <div style={{ opacity: 0.7, fontSize: '0.75rem' }}>{u.email}</div>
+                </div>
+                {u.is_observer && <Shield size={14} title="Наблюдатель" />}
+              </button>
+            ))}
+            {filteredUsers.length === 0 && <div style={{ fontSize: '0.8rem', opacity: 0.5, textAlign: 'center', marginTop: '10px' }}>Нет учеников по фильтру</div>}
+          </div>
+        </>
+      )}
+    </div>
+  );
+});
+
+const ActivityHeatMap = React.memo(({ weeks, selectedDay, setSelectedDay }) => {
+  const monthNames = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
+  const rowLabels = ['Пн', '', 'Ср', '', 'Пт', '', 'Вс'];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', width: 'max-content', maxWidth: '100%' }}>
+      <div style={{ display: 'flex', gap: '4px', marginBottom: '5px' }}>
+        <div style={{ width: '30px' }} />
+        <div style={{ display: 'flex', flex: 1, gap: '4px', position: 'relative', fontSize: '0.7rem', opacity: 0.5, height: '15px' }}>
+          {weeks.map((week, wIdx) => week.monthLabel ? (
+            <div key={wIdx} style={{ position: 'absolute', left: `${wIdx * 16}px`, whiteSpace: 'nowrap' }}>
+              {monthNames[week.monthLabel - 1]}
+            </div>
+          ) : null)}
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: '10px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.7rem', opacity: 0.5, paddingTop: '2px' }}>
+          {rowLabels.map((l, i) => <div key={i} style={{ height: '12px' }}>{l}</div>)}
+        </div>
+        <div style={{ display: 'flex', gap: '4px', overflowX: 'auto', paddingBottom: '10px', flex: 1 }}>
+          {weeks.map((week, wIdx) => (
+            <div key={wIdx} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              {week.days.map((day, dIdx) => (
+                <div 
+                  key={dIdx}
+                  title={`${day.dateStr}: ${day.stats.total} тестов`}
+                  onClick={() => setSelectedDay(day.dateStr)}
+                  className={`heatmap-day ${selectedDay === day.dateStr ? 'selected' : ''}`}
+                  style={{ 
+                    width: '12px', height: '12px', 
+                    background: day.color, 
+                    borderRadius: '2px',
+                    cursor: 'pointer',
+                    border: selectedDay === day.dateStr ? '1px solid var(--primary-color)' : '1px solid transparent',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="flex-center" style={{ justifyContent: 'space-between', gap: '10px', fontSize: '0.75rem', opacity: 0.6, marginTop: '10px', width: '100%' }}>
+        <div className="flex-center" style={{ gap: '15px' }}>
+          <div className="flex-center" style={{ gap: '5px' }}><div style={{ width: '10px', height: '10px', background: 'rgba(74, 222, 128, 0.9)', borderRadius: '2px' }} /> <span>Успешно</span></div>
+          <div className="flex-center" style={{ gap: '5px' }}><div style={{ width: '10px', height: '10px', background: 'rgba(250, 204, 21, 0.9)', borderRadius: '2px' }} /> <span>Провалено</span></div>
+          <div className="flex-center" style={{ gap: '5px' }}><div style={{ width: '10px', height: '10px', background: 'rgba(239, 68, 68, 0.9)', borderRadius: '2px' }} /> <span>Подозрительно</span></div>
+        </div>
+        <div className="flex-center" style={{ gap: '8px' }}>
+          <span>Меньше</span>
+          <div style={{ display: 'flex', gap: '3px' }}>
+            <div style={{ width: '10px', height: '10px', background: 'rgba(0,0,0,0.05)', borderRadius: '2px' }} />
+            <div style={{ width: '10px', height: '10px', background: 'rgba(74, 222, 128, 0.3)', borderRadius: '2px' }} />
+            <div style={{ width: '10px', height: '10px', background: 'rgba(74, 222, 128, 0.6)', borderRadius: '2px' }} />
+            <div style={{ width: '10px', height: '10px', background: 'rgba(74, 222, 128, 0.9)', borderRadius: '2px' }} />
+          </div>
+          <span>Больше</span>
+        </div>
+      </div>
+    </div>
+  );
+});
 
 const UserAnalytics = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -25,6 +139,11 @@ const UserAnalytics = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showObservers, setShowObservers] = useState(sessionStorage.getItem('an_show_observers') === 'true');
   const [sidebarOpen, setSidebarOpen] = useState(sessionStorage.getItem('ua_sidebar_open') !== 'false');
+  const [viewMode, setViewMode] = useState('heatmap'); // 'heatmap' | 'histogram'
+  const [heatmapRange, setHeatmapRange] = useState('last12'); // 'last12' | '2026' | '2025'
+  const [totalUniqueQuizzes, setTotalUniqueQuizzes] = useState(0);
+  const [allUserAttempts, setAllUserAttempts] = useState([]);
+  const [quizzesMap, setQuizzesMap] = useState({});
   const scrollRef = React.useRef(null);
 
   useEffect(() => { sessionStorage.setItem('ua_sidebar_open', sidebarOpen); }, [sidebarOpen]);
@@ -40,7 +159,7 @@ const UserAnalytics = () => {
   const [latestAttempts, setLatestAttempts] = useState([]);
   const [firstAttemptsDates, setFirstAttemptsDates] = useState({});
   const [selectedAttempt, setSelectedAttempt] = useState(null);
-  const [quizzesMap, setQuizzesMap] = useState({});
+  const [selectedDay, setSelectedDay] = useState(null);
 
   useEffect(() => {
     fetchInitialData();
@@ -190,31 +309,26 @@ const UserAnalytics = () => {
       distinctQuizzes.reverse();
       setLatestAttempts(distinctQuizzes);
 
-      // Aggregate overall profile status
-      const redCount = redQuizIds.size;
-      const totalQuizzes = Object.keys(quizStats).length;
-      const failedCount = failedQuizIds.size;
-
-      const profileSuspicious = totalQuizzes > 0 && (redCount / totalQuizzes) >= 0.4;
-      const profileUnderperforming = totalQuizzes > 0 && (failedCount / totalQuizzes) > 0.5 && !profileSuspicious;
-
-      setTargetUser(prev => ({ 
-        ...prev, 
-        is_suspicious_profile: profileSuspicious,
-        is_underperforming_profile: profileUnderperforming
-      }));
+      // Calculate total unique quizzes correctly before capping
+      const totalUnique = new Set(atts.map(a => a.quiz_id)).size;
+      setTotalUniqueQuizzes(totalUnique);
+      setAllUserAttempts(atts);
 
       // Fetch titles for these quizzes
-      const qIds = distinctQuizzes.map(a => a.quiz_id);
+      const qIds = Array.from(new Set(atts.map(a => a.quiz_id)));
       const { data: qz } = await supabase.from('quizzes').select('id, title').in('id', qIds);
       const qMap = {};
       if (qz) qz.forEach(q => qMap[q.id] = q.title);
       setQuizzesMap(qMap);
 
       if (distinctQuizzes.length > 0) setSelectedAttempt(distinctQuizzes[distinctQuizzes.length - 1]);
+      setSelectedDay(null);
     } else {
       setLatestAttempts([]);
+      setTotalUniqueQuizzes(0);
+      setAllUserAttempts([]);
       setSelectedAttempt(null);
+      setSelectedDay(null);
     }
     setContentLoading(false);
   };
@@ -228,131 +342,198 @@ const UserAnalytics = () => {
     fetchUserAnalytics(uId);
   };
 
-  const filteredUsers = users.filter(u => {
-    if (!u.first_name?.trim() && !u.last_name?.trim()) return false;
-    if (!showObservers && u.is_observer) return false;
-    if (filterCity !== 'all' && u.city_id !== filterCity) return false;
-    if (filterSchool !== 'all' && u.school_id !== filterSchool) return false;
-    if (filterClass !== 'all' && u.class_id !== filterClass) return false;
-    if (searchQuery) {
-      const name = `${u.last_name || ''} ${u.first_name || ''}`.toLowerCase();
-      if (!name.includes(searchQuery.toLowerCase())) return false;
-    }
-    return true;
-  });
+  const filteredUsers = useMemo(() => {
+    return users.filter(u => {
+      if (!u.first_name?.trim() && !u.last_name?.trim()) return false;
+      if (!showObservers && u.is_observer) return false;
+      if (filterCity !== 'all' && u.city_id !== filterCity) return false;
+      if (filterSchool !== 'all' && u.school_id !== filterSchool) return false;
+      if (filterClass !== 'all' && u.class_id !== filterClass) return false;
+      if (searchQuery) {
+        const name = `${u.last_name || ''} ${u.first_name || ''}`.toLowerCase();
+        if (!name.includes(searchQuery.toLowerCase())) return false;
+      }
+      return true;
+    });
+  }, [users, showObservers, filterCity, filterSchool, filterClass, searchQuery]);
 
-  const aggregateStats = () => {
-    if (latestAttempts.length === 0) return { passed: 0, failed: 0, suspicious: 0 };
+  const selectedDayAttempts = useMemo(() => {
+    if (!selectedDay || !allUserAttempts.length) return [];
+    return allUserAttempts.filter(a => {
+      const d = new Date(a.created_at);
+      d.setHours(d.getHours() + 5);
+      return d.toISOString().slice(0, 10) === selectedDay;
+    });
+  }, [allUserAttempts, selectedDay]);
+
+  const currentStats = useMemo(() => {
+    const dataToUse = allUserAttempts.length > 0 ? allUserAttempts : latestAttempts;
+    if (dataToUse.length === 0) return { passed: 0, failed: 0, suspicious: 0 };
     let passed = 0; let failed = 0; let suspicious = 0;
-    latestAttempts.forEach(a => {
+    dataToUse.forEach(a => {
       if (a.is_suspicious) suspicious++;
       else if (a.is_passed) passed++;
       else failed++;
     });
-    const isSuspicious = latestAttempts.length > 0 && (suspicious / latestAttempts.length) > 0.4;
+    const isSuspicious = dataToUse.length > 0 && (suspicious / dataToUse.length) > 0.4;
     return { passed, failed, suspicious, isSuspicious };
-  };
+  }, [allUserAttempts, latestAttempts]);
 
-  const currentStats = aggregateStats();
-  const isPrivileged = profile?.role === 'admin' || profile?.role === 'creator' || profile?.role === 'teacher' || profile?.role === 'editor';
+  const heatmapData = useMemo(() => {
+    if (!targetUser || viewMode !== 'heatmap') return null;
+
+    const getKZDay = (dateInput) => {
+      const d = new Date(dateInput);
+      d.setHours(d.getHours() + 5);
+      return d.toISOString().slice(0, 10);
+    };
+
+    const today = new Date();
+    const daysToShow = [];
+    
+    if (heatmapRange === 'last12') {
+      for (let i = 364; i >= 0; i--) {
+        const d = new Date(today);
+        d.setDate(today.getDate() - i);
+        daysToShow.push(getKZDay(d));
+      }
+    } else {
+      const year = parseInt(heatmapRange);
+      const start = new Date(year, 0, 1);
+      const end = new Date(year, 11, 31);
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        daysToShow.push(getKZDay(d));
+      }
+    }
+
+    const statsByDay = {};
+    allUserAttempts.forEach(a => {
+      const dStr = getKZDay(a.created_at);
+      if (!statsByDay[dStr]) statsByDay[dStr] = { total: 0, suspicious: 0, failed: 0 };
+      statsByDay[dStr].total++;
+      if (a.is_suspicious) statsByDay[dStr].suspicious++;
+      if (!a.is_passed) statsByDay[dStr].failed++;
+    });
+
+    const maxInDay = Math.max(...Object.values(statsByDay).map(s => s.total), 1);
+    const weeks = [];
+    let currentWeek = [];
+    
+    daysToShow.forEach((dateStr, idx) => {
+      const stats = statsByDay[dateStr] || { total: 0, suspicious: 0, failed: 0 };
+      let color = 'rgba(0,0,0,0.05)';
+      if (stats.total > 0) {
+        const intensity = 0.3 + (stats.total / maxInDay) * 0.7;
+        if (stats.suspicious / stats.total >= 0.4) color = `rgba(239, 68, 68, ${intensity})`;
+        else if (stats.failed / stats.total >= 0.4) color = `rgba(250, 204, 21, ${intensity})`;
+        else color = `rgba(74, 222, 128, ${intensity})`;
+      }
+      currentWeek.push({ dateStr, stats, color });
+      if (currentWeek.length === 7 || idx === daysToShow.length - 1) {
+        // Detect month transitions for labels
+        const [y, m, d] = currentWeek[0].dateStr.split('-').map(Number);
+        const monthLabel = d <= 7 ? m : null;
+        weeks.push({ days: currentWeek, monthLabel });
+        currentWeek = [];
+      }
+    });
+
+    return weeks;
+  }, [allUserAttempts, heatmapRange, viewMode, targetUser]);
+  const isPrivileged = useMemo(() => profile?.role === 'admin' || profile?.role === 'creator' || profile?.role === 'teacher' || profile?.role === 'editor', [profile]);
 
   return (
     <div style={{ display: 'flex', height: 'calc(100vh - 70px)', overflow: 'hidden' }}>
       {isPrivileged && (
-        <div 
-          className="details-sidebar"
-          style={{ 
-            width: sidebarOpen ? '320px' : '0', 
-            background: 'var(--card-bg)', 
-            borderRight: '1px solid rgba(0,0,0,0.05)', 
-            transition: 'width 0.3s', 
-            overflow: 'hidden',
-            display: 'flex', flexDirection: 'column'
-          }}>
-          <div style={{ padding: '20px', width: '320px', display: 'flex', flexDirection: 'column', height: '100%' }}>
-            <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '15px' }}>
-              <h3 style={{ fontSize: '1.2rem', margin: 0 }}>Аналитика</h3>
-              <button onClick={() => setSidebarOpen(false)} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', boxShadow: 'none', padding: '8px', borderRadius: '10px' }}><X size={20}/></button>
-            </div>
-
-            <div style={{ display: 'flex', background: 'rgba(0,0,0,0.05)', borderRadius: '12px', padding: '4px', marginBottom: '15px' }}>
-              <button onClick={() => navigate('/analytics-details')} style={{ flex: 1, padding: '10px', borderRadius: '8px', fontSize: '0.8rem', background: 'transparent', border: 'none', boxShadow: 'none', cursor: 'pointer', color: 'var(--text-color)', opacity: 0.7 }}>По Тестам</button>
-              <button style={{ flex: 1, padding: '10px', borderRadius: '8px', fontSize: '0.8rem', background: 'var(--card-bg)', border: 'none', boxShadow: 'var(--soft-shadow)', cursor: 'default', fontWeight: 'bold', color: 'var(--primary-color)' }}>По Ученикам</button>
-            </div>
-
-            <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(0,0,0,0.02)', padding: '10px', borderRadius: '8px' }}>
-              <span style={{ fontSize: '0.8rem', opacity: 0.7 }}>Показать наблюдателей</span>
-              <button 
-                onClick={() => setShowObservers(!showObservers)}
-                style={{ 
-                  width: '40px', height: '20px', borderRadius: '10px', 
-                  background: showObservers ? 'var(--primary-color)' : '#ccc',
-                  position: 'relative', border: 'none', cursor: 'pointer', transition: 'background 0.3s'
-                }}
-              >
-                <div style={{ 
-                  position: 'absolute', top: '2px', left: showObservers ? '22px' : '2px',
-                  width: '16px', height: '16px', borderRadius: '50%', background: 'white', transition: 'left 0.3s'
-                }} />
-              </button>
-            </div>
-
-            {loading ? (
-              <div style={{ flex: 1 }}>
-                <div className="skeleton" style={{ height: '30px', marginBottom: '10px' }} />
-                <div className="skeleton" style={{ height: '30px', marginBottom: '20px' }} />
-                <div className="skeleton" style={{ height: '100px' }} />
+        <>
+          <div 
+            className={`sidebar-overlay ${sidebarOpen ? 'active' : ''}`}
+            onClick={() => setSidebarOpen(false)}
+          />
+          <div 
+            className={`details-sidebar ${sidebarOpen ? 'open' : ''}`}
+            style={{ 
+              background: 'var(--card-bg)', 
+              borderRight: '1px solid rgba(0,0,0,0.05)', 
+              display: 'flex', flexDirection: 'column',
+              width: sidebarOpen ? '320px' : '0',
+              opacity: sidebarOpen ? 1 : 0,
+              visibility: sidebarOpen ? 'visible' : 'hidden',
+              transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s, visibility 0.3s',
+              overflow: 'hidden',
+              flexShrink: 0
+            }}>
+            <div style={{ padding: '20px', width: '320px', display: 'flex', flexDirection: 'column', height: '100%' }}>
+              <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '15px' }}>
+                <h3 style={{ fontSize: '1.2rem', margin: 0 }}>Аналитика</h3>
+                <button onClick={() => setSidebarOpen(false)} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', boxShadow: 'none', padding: '8px', borderRadius: '10px' }}><X size={20}/></button>
               </div>
-            ) : (
-              <>
-                <label htmlFor="ua-city" style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '10px', display: 'block' }}>Фильтры</label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '15px' }}>
-                  <select id="ua-city" value={filterCity} onChange={e => {setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all');}} style={{ padding: '6px', fontSize: '0.85rem' }} disabled={profile?.role === 'teacher'}>
-                    <option value="all">Все города</option>
-                    {cities.map(c => <option key={c.id} value={c.id} disabled={!users.some(u => u.city_id === c.id)}>{c.name}</option>)}
-                  </select>
-                  <select id="ua-school" value={filterSchool} onChange={e => {setFilterSchool(e.target.value); setFilterClass('all');}} disabled={profile?.role === 'teacher'} style={{ padding: '6px', fontSize: '0.85rem' }} aria-label="Школа">
-                    <option value="all">Все школы</option>
-                    {schools.filter(s => filterCity==='all' || s.city_id === filterCity).map(s => <option key={s.id} value={s.id} disabled={!users.some(u => u.school_id === s.id)}>{s.name}</option>)}
-                  </select>
-                  <select id="ua-class" value={filterClass} onChange={e => setFilterClass(e.target.value)} style={{ padding: '6px', fontSize: '0.85rem' }} aria-label="Класс">
-                    <option value="all">Все классы</option>
-                    {classes.filter(c => filterSchool==='all' || c.school_id === filterSchool).map(c => <option key={c.id} value={c.id} disabled={!users.some(u => u.class_id === c.id)}>{c.name}</option>)}
-                  </select>
-                  <div style={{ position: 'relative' }}>
-                    <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', opacity: 0.5 }} />
-                    <label htmlFor="ua-search" style={{ display: 'none' }}>Поиск</label>
-                    <input id="ua-search" type="text" placeholder="Поиск по имени..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ width: '100%', padding: '6px 10px 6px 30px', fontSize: '0.85rem' }} />
-                  </div>
-                </div>
 
-                <label style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '10px', display: 'block' }}>Ученики ({filteredUsers.length})</label>
-                <div ref={scrollRef} onScroll={handleScroll} style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '5px', paddingRight: '5px' }}>
-                  {filteredUsers.map(u => (
-                    <button 
-                      key={u.id} 
-                      onClick={() => handleUserSelect(u.id)}
-                      style={{ 
-                        textAlign: 'left', padding: '10px', 
-                        background: targetUser?.id === u.id ? 'var(--primary-color)' : 'rgba(0,0,0,0.02)',
-                        color: targetUser?.id === u.id ? 'white' : 'var(--text-color)',
-                        borderRadius: '8px', border: 'none', cursor: 'pointer',
-                        fontSize: '0.85rem', width: '100%',
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between'
-                      }}>
-                      <div>
-                        <div style={{ fontWeight: 'bold' }}>{u.last_name} {u.first_name}</div>
-                        <div style={{ opacity: 0.7, fontSize: '0.75rem' }}>{u.email}</div>
-                      </div>
-                      {u.is_observer && <Shield size={14} title="Наблюдатель" />}
-                    </button>
-                  ))}
-                  {filteredUsers.length === 0 && <div style={{ fontSize: '0.8rem', opacity: 0.5, textAlign: 'center', marginTop: '10px' }}>Нет учеников по фильтру</div>}
+              <div style={{ display: 'flex', background: 'rgba(0,0,0,0.05)', borderRadius: '12px', padding: '4px', marginBottom: '15px' }}>
+                <button onClick={() => navigate('/analytics-details')} style={{ flex: 1, padding: '10px', borderRadius: '8px', fontSize: '0.8rem', background: 'transparent', border: 'none', boxShadow: 'none', cursor: 'pointer', color: 'var(--text-color)', opacity: 0.7 }}>По Тестам</button>
+                <button style={{ flex: 1, padding: '10px', borderRadius: '8px', fontSize: '0.8rem', background: 'var(--card-bg)', border: 'none', boxShadow: 'var(--soft-shadow)', cursor: 'default', fontWeight: 'bold', color: 'var(--primary-color)' }}>По Ученикам</button>
+              </div>
+
+              <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(0,0,0,0.02)', padding: '10px', borderRadius: '8px' }}>
+                <span style={{ fontSize: '0.8rem', opacity: 0.7 }}>Показать наблюдателей</span>
+                <button 
+                  onClick={() => setShowObservers(!showObservers)}
+                  style={{ 
+                    width: '40px', height: '20px', borderRadius: '10px', 
+                    background: showObservers ? 'var(--primary-color)' : '#ccc',
+                    position: 'relative', border: 'none', cursor: 'pointer', transition: 'background 0.3s'
+                  }}
+                >
+                  <div style={{ 
+                    position: 'absolute', top: '2px', left: showObservers ? '22px' : '2px',
+                    width: '16px', height: '16px', borderRadius: '50%', background: 'white', transition: 'left 0.3s'
+                  }} />
+                </button>
+              </div>
+
+              {loading ? (
+                <div style={{ flex: 1 }}>
+                  <div className="skeleton" style={{ height: '30px', marginBottom: '10px' }} />
+                  <div className="skeleton" style={{ height: '30px', marginBottom: '20px' }} />
+                  <div className="skeleton" style={{ height: '100px' }} />
                 </div>
-              </>
-            )}
+              ) : (
+                <>
+                  <label htmlFor="ua-city" style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '10px', display: 'block' }}>Фильтры</label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '15px' }}>
+                    <select id="ua-city" value={filterCity} onChange={e => {setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all');}} style={{ padding: '6px', fontSize: '0.85rem' }} disabled={profile?.role === 'teacher'}>
+                      <option value="all">Все города</option>
+                      {cities.map(c => <option key={c.id} value={c.id} disabled={!users.some(u => u.city_id === c.id)}>{c.name}</option>)}
+                    </select>
+                    <select id="ua-school" value={filterSchool} onChange={e => {setFilterSchool(e.target.value); setFilterClass('all');}} disabled={profile?.role === 'teacher'} style={{ padding: '6px', fontSize: '0.85rem' }} aria-label="Школа">
+                      <option value="all">Все школы</option>
+                      {schools.filter(s => filterCity==='all' || s.city_id === filterCity).map(s => <option key={s.id} value={s.id} disabled={!users.some(u => u.school_id === s.id)}>{s.name}</option>)}
+                    </select>
+                    <select id="ua-class" value={filterClass} onChange={e => setFilterClass(e.target.value)} style={{ padding: '6px', fontSize: '0.85rem' }} aria-label="Класс">
+                      <option value="all">Все классы</option>
+                      {classes.filter(c => filterSchool==='all' || c.school_id === filterSchool).map(c => <option key={c.id} value={c.id} disabled={!users.some(u => u.class_id === c.id)}>{c.name}</option>)}
+                    </select>
+                    <div style={{ position: 'relative' }}>
+                      <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', opacity: 0.5 }} />
+                      <label htmlFor="ua-search" style={{ display: 'none' }}>Поиск</label>
+                      <input id="ua-search" type="text" placeholder="Поиск по имени..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ width: '100%', padding: '6px 10px 6px 30px', fontSize: '0.85rem' }} />
+                    </div>
+                  </div>
+
+                  <SidebarUserList 
+                    users={users}
+                    filteredUsers={filteredUsers}
+                    targetUser={targetUser}
+                    handleUserSelect={handleUserSelect}
+                    scrollRef={scrollRef}
+                    handleScroll={handleScroll}
+                    loading={loading}
+                  />
+                </>
+              )}
+            </div>
           </div>
-        </div>
+        </>
       )}
 
       {/* Main Content Area */}
@@ -395,7 +576,7 @@ const UserAnalytics = () => {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '20px', marginBottom: '30px' }}>
                <div className="card" style={{ padding: '20px' }}>
                  <div style={{ opacity: 0.6, fontSize: '0.9rem' }}>Пройдено (Уникальных)</div>
-                 <div style={{ fontSize: '1.8rem', fontWeight: 'bold' }}>{latestAttempts.length} шт.</div>
+                 <div style={{ fontSize: '1.8rem', fontWeight: 'bold' }}>{totalUniqueQuizzes} шт.</div>
                </div>
                <div className="card" style={{ padding: '20px' }}>
                  <div style={{ opacity: 0.6, fontSize: '0.9rem' }}>Успешных / Провальных</div>
@@ -410,103 +591,214 @@ const UserAnalytics = () => {
             </div>
 
             <div className="card" style={{ marginBottom: '30px' }}>
-              <h3 style={{ marginBottom: '20px' }}>Последние 20 активностей (Лучший результат по тестам)</h3>
-              {latestAttempts.length === 0 ? (
-                <div style={{ padding: '40px', textAlign: 'center', opacity: 0.5 }}>Ученик ещё не проходил тесты{profile?.role === 'editor' && ' (либо не проходил ВАШИ тесты)'}</div>
-              ) : (
-                <div style={{ position: 'relative', display: 'flex', height: '240px', padding: '20px 20px 20px 0', background: 'rgba(0,0,0,0.02)', borderRadius: '15px' }}>
-                  
-                  {/* Левая панель с градиентной шкалой */}
-                  <div style={{ width: '50px', position: 'relative', display: 'flex', justifyContent: 'flex-end', paddingRight: '15px', height: '100%' }}>
-                    <div style={{ position: 'absolute', bottom: 0, width: '6px', height: '85%', background: 'linear-gradient(to top, #ef4444 0%, #ef4444 20%, #facc15 20%, #facc15 50%, #4ade80 50%, #4ade80 100%)', borderRadius: '3px', zIndex: 5 }} />
-                  </div>
-
-                  <div style={{ position: 'relative', flex: 1, height: '100%' }}>
-                    {/* Background Guide Lines */}
-                    <div style={{ position: 'absolute', left: '-40px', bottom: '85%', width: 'calc(100% + 40px)', borderTop: '2px dashed rgba(0,0,0,0.1)', pointerEvents: 'none' }}>
-                      <span style={{ position: 'absolute', left: '-5px', bottom: '2px', fontSize: '0.7rem', opacity: 0.5, fontWeight: 'bold' }}>100%</span>
-                    </div>
-                    <div style={{ position: 'absolute', left: '-40px', bottom: `${85 * 0.8}%`, width: 'calc(100% + 40px)', borderTop: '2px dashed rgba(74, 222, 128, 0.3)', pointerEvents: 'none' }}>
-                      <span style={{ position: 'absolute', left: '-5px', bottom: '2px', fontSize: '0.7rem', color: '#4ade80', fontWeight: 'bold' }}>80%</span>
-                    </div>
-                    <div style={{ position: 'absolute', left: '-40px', bottom: `${85 * 0.5}%`, width: 'calc(100% + 40px)', borderTop: '2px dashed rgba(250, 204, 21, 0.3)', pointerEvents: 'none' }}>
-                      <span style={{ position: 'absolute', left: '-5px', bottom: '2px', fontSize: '0.7rem', color: '#ca8a04', fontWeight: 'bold' }}>50%</span>
-                    </div>
-                    <div style={{ position: 'absolute', left: '-40px', bottom: `${85 * 0.2}%`, width: 'calc(100% + 40px)', borderTop: '2px dashed rgba(239, 68, 68, 0.3)', pointerEvents: 'none' }}>
-                      <span style={{ position: 'absolute', left: '-5px', bottom: '2px', fontSize: '0.7rem', color: '#ef4444', fontWeight: 'bold' }}>20%</span>
-                    </div>
-
-                    <div style={{ position: 'absolute', left: '-15px', bottom: '0', width: 'calc(100% + 15px)', height: '2px', background: 'var(--text-color)', opacity: 0.1, zIndex: 0 }} />
-
-                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', height: '100%', position: 'relative', zIndex: 1, overflowX: 'auto' }}>
-                      {latestAttempts.map((att) => {
-                        const heightPercent = (att.score / (att.max_score || 1)) * 85;
-                        const isZero = att.score === 0;
-                        const isSelected = selectedAttempt?.id === att.id;
-                        const isFirst = firstAttemptsDates[att.quiz_id] === att.created_at;
-                        
-                        const isQuizRed = att.isQuizRed; // Aggregate suspicious pattern for this quiz
-                        
-                        let color = '#4ade80'; 
-                        if (att.is_incomplete) color = '#9ca3af'; // Gray
-                        else if (isQuizRed || att.is_suspicious) color = '#ef4444'; // Red if aggregate or individual hit
-                        else if (!att.is_passed) color = '#facc15'; // Yellow
-                        if (currentStats.isSuspicious && att.score === att.max_score && !isQuizRed) color = '#ef4444';
-                        
-                        return (
-                          <div 
-                            key={att.id}
-                            onClick={() => setSelectedAttempt(att)}
-                            style={{
-                              flex: 1, minWidth: '30px', maxWidth: '60px', height: '100%',
-                              display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
-                              cursor: 'pointer',
-                              opacity: isSelected ? 1 : 0.6,
-                              transition: 'opacity 0.2s', position: 'relative'
-                            }}
-                            title={`Тест: ${quizzesMap[att.quiz_id]}\nБалл: ${att.score}/${att.max_score}\nВремя: ${att.time_spent_total}с\n${att.is_incomplete ? '(Не завершен)' : (att.is_suspicious ? '(Подозрительно)' : '')}`}
-                          >
-                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', width: '100%', position: 'relative' }}>
-                              {/* Transparent Max Background */}
-                              <div style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: '85%', background: 'rgba(0,0,0,0.03)', borderRadius: '6px 6px 0 0', zIndex: 0 }} />
-                              
-                              {att.score === att.max_score && !targetUser.is_observer && (
-                                <div style={{ textAlign: 'center', fontSize: '1.2rem', marginBottom: '-2px', zIndex: 10 }}>👑</div>
-                              )}
-                              <div style={{ textAlign: 'center', fontSize: '0.7rem', paddingBottom: '4px', fontWeight: 'bold', zIndex: 1, whiteSpace: 'nowrap' }}>{att.score}</div>
-                              <div style={{ 
-                                width: '100%', 
-                                height: isZero ? '5px' : `${heightPercent}%`, 
-                                background: isZero ? (att.is_incomplete ? '#9ca3af' : 'rgba(239, 68, 68, 0.3)') : color, 
-                                borderRadius: '6px 6px 0 0',
-                                zIndex: 1,
-                                position: 'relative'
-                              }}>
-                                {isFirst && !isZero && (heightPercent > 10) && (
-                                  <div style={{ 
-                                    position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-                                    background: 'white', color: color, width: '16px', height: '16px', borderRadius: '50%',
-                                    fontSize: '0.65rem', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)', fontWeight: 'bold', pointerEvents: 'none'
-                                  }}>1</div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+              <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '15px' }}>
+                <h3 style={{ margin: 0 }}>История активности</h3>
+                <div className="flex-center" style={{ gap: '10px' }}>
+                  {viewMode === 'heatmap' && (
+                    <select 
+                      value={heatmapRange} 
+                      onChange={(e) => setHeatmapRange(e.target.value)}
+                      style={{ padding: '5px 10px', borderRadius: '8px', fontSize: '0.85rem' }}
+                    >
+                      <option value="last12">За последние 12 мес.</option>
+                      <option value="2026">2026 год</option>
+                      <option value="2025">2025 год</option>
+                    </select>
+                  )}
+                  <div style={{ display: 'flex', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', padding: '2px' }}>
+                    <button 
+                      onClick={() => setViewMode('heatmap')}
+                      style={{ padding: '6px 12px', fontSize: '0.75rem', borderRadius: '8px', border: 'none', background: viewMode === 'heatmap' ? 'var(--card-bg)' : 'transparent', boxShadow: viewMode === 'heatmap' ? 'var(--soft-shadow)' : 'none', color: viewMode === 'heatmap' ? 'var(--primary-color)' : 'inherit', fontWeight: viewMode === 'heatmap' ? 'bold' : 'normal', cursor: 'pointer' }}
+                    >
+                      HeatMap
+                    </button>
+                    <button 
+                      onClick={() => setViewMode('histogram')}
+                      style={{ padding: '6px 12px', fontSize: '0.75rem', borderRadius: '8px', border: 'none', background: viewMode === 'histogram' ? 'var(--card-bg)' : 'transparent', boxShadow: viewMode === 'histogram' ? 'var(--soft-shadow)' : 'none', color: viewMode === 'histogram' ? 'var(--primary-color)' : 'inherit', fontWeight: viewMode === 'histogram' ? 'bold' : 'normal', cursor: 'pointer' }}
+                    >
+                      Последние 20
+                    </button>
                   </div>
                 </div>
+              </div>
+
+
+
+              {viewMode === 'heatmap' ? (
+                <div style={{ padding: '10px 0', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  {heatmapData && (
+                    <ActivityHeatMap 
+                      weeks={heatmapData} 
+                      selectedDay={selectedDay} 
+                      setSelectedDay={setSelectedDay} 
+                    />
+                  )}
+                </div>
+              ) : (
+                <>
+                  <h3 style={{ marginBottom: '20px', fontSize: '1rem', opacity: 0.7 }}>Последние 20 активностей (Лучший результат по тестам)</h3>
+                  {latestAttempts.length === 0 ? (
+                    <div style={{ padding: '40px', textAlign: 'center', opacity: 0.5 }}>Ученик ещё не проходил тесты{profile?.role === 'editor' && ' (либо не проходил ВАШИ тесты)'}</div>
+                  ) : (
+                    <div style={{ position: 'relative', display: 'flex', height: '240px', padding: '20px 20px 20px 0', background: 'rgba(0,0,0,0.02)', borderRadius: '15px' }}>
+                      
+                      <div style={{ width: '50px', position: 'relative', display: 'flex', justifyContent: 'flex-end', paddingRight: '15px', height: '100%' }}>
+                        <div style={{ position: 'absolute', bottom: 0, width: '6px', height: '85%', background: 'linear-gradient(to top, #ef4444 0%, #ef4444 20%, #facc15 20%, #facc15 50%, #4ade80 50%, #4ade80 100%)', borderRadius: '3px', zIndex: 5 }} />
+                      </div>
+
+                      <div style={{ position: 'relative', flex: 1, height: '100%' }}>
+                        <div style={{ position: 'absolute', left: '-40px', bottom: '85%', width: 'calc(100% + 40px)', borderTop: '2px dashed rgba(0,0,0,0.1)', pointerEvents: 'none' }}>
+                          <span style={{ position: 'absolute', left: '-5px', bottom: '2px', fontSize: '0.7rem', opacity: 0.5, fontWeight: 'bold' }}>100%</span>
+                        </div>
+                        <div style={{ position: 'absolute', left: '-40px', bottom: `${85 * 0.8}%`, width: 'calc(100% + 40px)', borderTop: '2px dashed rgba(74, 222, 128, 0.3)', pointerEvents: 'none' }}>
+                          <span style={{ position: 'absolute', left: '-5px', bottom: '2px', fontSize: '0.7rem', color: '#4ade80', fontWeight: 'bold' }}>80%</span>
+                        </div>
+                        <div style={{ position: 'absolute', left: '-40px', bottom: `${85 * 0.5}%`, width: 'calc(100% + 40px)', borderTop: '2px dashed rgba(250, 204, 21, 0.3)', pointerEvents: 'none' }}>
+                          <span style={{ position: 'absolute', left: '-5px', bottom: '2px', fontSize: '0.7rem', color: '#ca8a04', fontWeight: 'bold' }}>50%</span>
+                        </div>
+                        <div style={{ position: 'absolute', left: '-40px', bottom: `${85 * 0.2}%`, width: 'calc(100% + 40px)', borderTop: '2px dashed rgba(239, 68, 68, 0.3)', pointerEvents: 'none' }}>
+                          <span style={{ position: 'absolute', left: '-5px', bottom: '2px', fontSize: '0.7rem', color: '#ef4444', fontWeight: 'bold' }}>20%</span>
+                        </div>
+
+                        <div style={{ position: 'absolute', left: '-15px', bottom: '0', width: 'calc(100% + 15px)', height: '2px', background: 'var(--text-color)', opacity: 0.1, zIndex: 0 }} />
+
+                        <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', height: '100%', position: 'relative', zIndex: 1, overflowX: 'auto' }}>
+                          {latestAttempts.map((att) => {
+                            const heightPercent = (att.score / (att.max_score || 1)) * 85;
+                            const isZero = att.score === 0;
+                            const isSelected = selectedAttempt?.id === att.id;
+                            const isFirst = firstAttemptsDates[att.quiz_id] === att.created_at;
+                            
+                            const isQuizRed = att.isQuizRed;
+                            
+                            let color = '#4ade80'; 
+                            if (att.is_incomplete) color = '#9ca3af'; 
+                            else if (isQuizRed || att.is_suspicious) color = '#ef4444'; 
+                            else if (!att.is_passed) color = '#facc15'; 
+                            if (currentStats.isSuspicious && att.score === att.max_score && !isQuizRed) color = '#ef4444';
+                            
+                            return (
+                              <div 
+                                key={att.id}
+                                onClick={() => setSelectedAttempt(att)}
+                                style={{
+                                  flex: 1, minWidth: '30px', maxWidth: '60px', height: '100%',
+                                  display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
+                                  cursor: 'pointer',
+                                  opacity: isSelected ? 1 : 0.6,
+                                  transition: 'opacity 0.2s', position: 'relative'
+                                }}
+                                title={`Тест: ${quizzesMap[att.quiz_id]}\nБалл: ${att.score}/${att.max_score}\nВремя: ${att.time_spent_total}с\n${att.is_incomplete ? '(Не завершен)' : (att.is_suspicious ? '(Подозрительно)' : '')}`}
+                              >
+                                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', width: '100%', position: 'relative' }}>
+                                  <div style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: '85%', background: 'rgba(0,0,0,0.03)', borderRadius: '6px 6px 0 0', zIndex: 0 }} />
+                                  
+                                  {att.score === att.max_score && !targetUser.is_observer && (
+                                    <div style={{ textAlign: 'center', fontSize: '1.2rem', marginBottom: '-2px', zIndex: 10 }}>👑</div>
+                                  )}
+                                  <div style={{ textAlign: 'center', fontSize: '0.7rem', paddingBottom: '4px', fontWeight: 'bold', zIndex: 1, whiteSpace: 'nowrap' }}>{att.score}</div>
+                                  <div style={{ 
+                                    width: '100%', 
+                                    height: isZero ? '5px' : `${heightPercent}%`, 
+                                    background: isZero ? (att.is_incomplete ? '#9ca3af' : 'rgba(239, 68, 68, 0.3)') : color, 
+                                    borderRadius: '6px 6px 0 0',
+                                    zIndex: 1,
+                                    position: 'relative'
+                                  }}>
+                                    {isFirst && !isZero && (heightPercent > 10) && (
+                                      <div style={{ 
+                                        position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+                                        background: 'white', color: color, width: '16px', height: '16px', borderRadius: '50%',
+                                        fontSize: '0.65rem', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        boxShadow: '0 2px 4px rgba(0,0,0,0.1)', fontWeight: 'bold', pointerEvents: 'none'
+                                      }}>1</div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
-            {selectedAttempt && (
+            {viewMode === 'heatmap' && selectedDay && (() => {
+              const dayUnique = new Set(selectedDayAttempts.map(a => a.quiz_id)).size;
+              const dayPassed = selectedDayAttempts.filter(a => a.is_passed).length;
+              const dayFailed = selectedDayAttempts.filter(a => !a.is_passed).length;
+              const daySuspicious = selectedDayAttempts.filter(a => a.is_suspicious).length;
+
+              return (
+                <div className="card animate" style={{ padding: '30px', marginBottom: '30px' }}>
+                  <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '20px', alignItems: 'flex-start' }}>
+                    <div>
+                      <h3 style={{ margin: 0 }}>Тесты за {new Date(selectedDay).toLocaleDateString('ru-RU')}</h3>
+                      <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', marginTop: '10px' }}>
+                        <div style={{ fontSize: '0.85rem', opacity: 0.8 }}>
+                          Всего: <span style={{ fontWeight: 'bold' }}>{selectedDayAttempts.length} шт.</span> {dayUnique !== selectedDayAttempts.length && <span style={{opacity: 0.5}}>({dayUnique} уник.)</span>}
+                        </div>
+                        <div style={{ fontSize: '0.85rem', color: '#4ade80' }}>
+                          Успешно: <span style={{ fontWeight: 'bold' }}>{dayPassed}</span>
+                        </div>
+                        <div style={{ fontSize: '0.85rem', color: '#facc15' }}>
+                          Провалено: <span style={{ fontWeight: 'bold' }}>{dayFailed}</span>
+                        </div>
+                        {daySuspicious > 0 && (
+                          <div style={{ fontSize: '0.85rem', color: '#ef4444' }}>
+                            Подозрительно: <span style={{ fontWeight: 'bold' }}>{daySuspicious}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <button onClick={() => setSelectedDay(null)} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', boxShadow: 'none', padding: '8px 15px', borderRadius: '10px' }}>Закрыть список</button>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {[...selectedDayAttempts]
+                      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+                      .map(att => (
+                        <div 
+                          key={att.id} 
+                          className="card flex-center animate" 
+                          onClick={() => navigate(`/analytics-details?quizId=${att.quiz_id}&userId=${targetUser.id}`)}
+                          style={{ 
+                            padding: '15px 20px', justifyContent: 'space-between', cursor: 'pointer', 
+                            background: 'rgba(0,0,0,0.02)',
+                            transition: 'transform 0.2s, background 0.2s'
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(99, 102, 241, 0.05)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(0,0,0,0.02)'; e.currentTarget.style.transform = 'translateY(0)'; }}
+                        >
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                            <span style={{ fontWeight: 'bold', fontSize: '1rem' }}>{quizzesMap[att.quiz_id] || 'Загрузка...'}</span>
+                            <span style={{ fontSize: '0.8rem', opacity: 0.6 }}>{new Date(att.created_at).toLocaleTimeString('ru-RU', { timeZone: 'Asia/Almaty' })} (KZ)</span>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+                             <div style={{ textAlign: 'right' }}>
+                               <div style={{ fontWeight: 'bold', fontSize: '1.1rem', color: att.is_passed ? '#4ade80' : '#facc15' }}>{att.score} / {att.max_score}</div>
+                               <div style={{ fontSize: '0.8rem', opacity: 0.5 }}>{att.time_spent_total} сек</div>
+                             </div>
+                             <div style={{ width: '40px', display: 'flex', justifyContent: 'center' }}>
+                               {att.is_suspicious ? <AlertTriangle size={18} color="#ef4444" /> : <ChevronLeft size={20} style={{ transform: 'rotate(180deg)', opacity: 0.3 }} />}
+                             </div>
+                          </div>
+                        </div>
+                      ))
+                    }
+                  </div>
+                </div>
+              );
+            })()}
+
+            {viewMode === 'histogram' && selectedAttempt && (
                <div className="card animate" style={{ padding: '30px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
                     <div>
                       <h3 style={{ marginBottom: '5px' }}>{quizzesMap[selectedAttempt.quiz_id] || 'Неизвестный тест'}</h3>
-                      <div style={{ opacity: 0.6, fontSize: '0.85rem' }}>Дата: {new Date(selectedAttempt.created_at).toLocaleString()}</div>
+                      <div style={{ opacity: 0.6, fontSize: '0.85rem' }}>Дата: {new Date(selectedAttempt.created_at).toLocaleString('ru-RU', { timeZone: 'Asia/Almaty' })} (KZ)</div>
                     </div>
                     <div style={{ display: 'flex', gap: '8px' }}>
                        {selectedAttempt.is_incomplete && <span style={{ fontSize: '0.8rem', background: 'rgba(156, 163, 175, 0.1)', color: '#9ca3af', padding: '4px 10px', borderRadius: '10px' }}>Не завершен</span>}
@@ -562,9 +854,33 @@ const mobileStyles = `
 @media (max-width: 768px) {
   .details-sidebar {
     position: fixed;
-    z-index: 100;
-    height: 100%;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 300px;
+    max-width: 85%;
+    height: 100vh !important;
+    z-index: 1000;
     box-shadow: 10px 0 30px rgba(0,0,0,0.2);
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .details-sidebar.open {
+    transform: translateX(0);
+  }
+  .sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    backdrop-filter: blur(2px);
+    z-index: 999;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s;
+  }
+  .sidebar-overlay.active {
+    opacity: 1;
+    visibility: visible;
   }
   .main-content {
     padding: 20px !important;
@@ -573,6 +889,29 @@ const mobileStyles = `
     left: 10px !important;
     top: 20px !important;
   }
+}
+
+/* Performance optimizations for HeatMap and large lists */
+.heatmap-day {
+  transition: transform 0.1s ease-out;
+}
+.heatmap-day:hover {
+  transform: scale(1.3);
+  z-index: 10;
+}
+.heatmap-day.selected {
+  transform: scale(1.2);
+}
+
+.user-sidebar-item {
+  transition: background 0.2s, transform 0.1s !important;
+}
+.user-sidebar-item:hover {
+  transform: translateX(4px);
+  background: rgba(99, 102, 241, 0.05) !important;
+}
+.user-sidebar-item:active {
+  transform: scale(0.98);
 }
 `;
 

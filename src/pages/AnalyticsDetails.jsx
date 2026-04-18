@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { ChevronLeft, BarChart2, Clock, CheckCircle, XCircle, Search, Filter, AlertTriangle, Menu, Pencil, Trash2, Eye, X } from 'lucide-react';
+import { ChevronLeft, BarChart2, Clock, CheckCircle, XCircle, Search, Filter, AlertTriangle, Menu, Pencil, Trash2, Eye, X, ChevronRight } from 'lucide-react';
 
 const AnalyticsDetails = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -190,7 +190,7 @@ const AnalyticsDetails = () => {
 
         // Suspicion logic: if red marks (failed/low score) > 30% of attempts? 
         // Or if score < some threshold. Let's use is_passed if available or score/total < 0.6
-        // For now, let's just mark based on red/green ratio in their attempts (we fetch attempts later, but we can guess from results)
+        // For now, let's just mark based on red/green ratio in their attempts ( we fetch attempts later, but we can guess from results)
         const lStatus = latestStatusMap[p.id] || {};
         return {
           ...p,
@@ -536,7 +536,7 @@ const AnalyticsDetails = () => {
       <div style={{ marginTop: '30px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
           <h3 style={{ margin: 0 }}>
-            Детали прохождения от {new Date(selectedAttempt.created_at).toLocaleString()}
+            Детали прохождения от {new Date(selectedAttempt.created_at).toLocaleString('ru-RU', { timeZone: 'Asia/Almaty' })} (KZ)
             {selectedAttempt.is_incomplete && <span style={{ marginLeft: '10px', fontSize: '0.8rem', background: 'rgba(156, 163, 175, 0.1)', color: '#9ca3af', padding: '4px 10px', borderRadius: '10px' }}>Не завершен</span>}
             {selectedAttempt.is_suspicious && !selectedAttempt.is_incomplete && <span style={{ marginLeft: '10px', fontSize: '0.8rem', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '4px 10px', borderRadius: '10px' }}><AlertTriangle size={14} style={{ display: 'inline', marginRight: '4px' }} /> Подозрительно</span>}
           </h3>
@@ -631,17 +631,23 @@ const AnalyticsDetails = () => {
 
   return (
     <div style={{ display: 'flex', height: 'calc(100vh - 70px)', overflow: 'hidden' }}>
+      {/* Sidebar Overlay for Mobile */}
+      <div 
+        className={`sidebar-overlay ${sidebarOpen ? 'active' : ''}`}
+        onClick={() => setSidebarOpen(false)}
+      />
       {/* Sidebar */}
       {isPrivileged && (
         <div
-          className="details-sidebar"
+          className={`details-sidebar ${sidebarOpen ? 'open' : ''}`}
           style={{
             width: sidebarOpen ? '320px' : '0',
             background: 'var(--card-bg)',
             borderRight: '1px solid rgba(0,0,0,0.05)',
-            transition: 'width 0.3s',
+            transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
             overflow: 'hidden',
-            display: 'flex', flexDirection: 'column'
+            display: 'flex', flexDirection: 'column',
+            flexShrink: 0
           }}
         >
           <div style={{ padding: '20px', width: '320px', display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -976,9 +982,33 @@ const mobileStyles = `
 @media (max-width: 768px) {
   .details-sidebar {
     position: fixed;
-    z-index: 100;
-    height: 100%;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 300px;
+    max-width: 85%;
+    height: 100vh !important;
+    z-index: 1000;
     box-shadow: 10px 0 30px rgba(0,0,0,0.2);
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .details-sidebar.open {
+    transform: translateX(0);
+  }
+  .sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    backdrop-filter: blur(2px);
+    z-index: 999;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s;
+  }
+  .sidebar-overlay.active {
+    opacity: 1;
+    visibility: visible;
   }
   .main-content {
     padding: 20px !important;
