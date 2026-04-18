@@ -78,9 +78,11 @@ const Analytics = () => {
   };
 
   const fetchStructure = async (p = profile) => {
-    const { data: c } = await supabase.from('cities').select('*').order('name');
-    const { data: s } = await supabase.from('schools').select('*').order('name');
-    const { data: cl } = await supabase.from('classes').select('*').order('name');
+    const [ { data: c }, { data: s }, { data: cl } ] = await Promise.all([
+      supabase.from('cities').select('*').order('name'),
+      supabase.from('schools').select('*').order('name'),
+      supabase.from('classes').select('*').order('name')
+    ]);
     if (c) setCities(c); 
     if (s) setSchools(s); 
     if (cl) setClasses(cl);
@@ -103,15 +105,17 @@ const Analytics = () => {
 
   const fetchQuizData = async () => {
     setLoading(true);
-    // Получаем тест и роль его автора
-    const { data: q } = await supabase.from('quizzes').select('*, profiles(role)').eq('id', quizId).single();
+    // Parallel fetch: quiz details and main results
+    const [ { data: q }, { data: r, error } ] = await Promise.all([
+      supabase.from('quizzes').select('*, profiles(role)').eq('id', quizId).single(),
+      supabase.from('quiz_results').select('*').eq('quiz_id', quizId).order('completed_at', { ascending: false })
+    ]);
+
     if (q) {
       setQuiz(q);
       setQuizAuthorRole(q.profiles?.role);
     }
-
-    const { data: r, error } = await supabase.from('quiz_results').select('*').eq('quiz_id', quizId).order('completed_at', { ascending: false });
-
+    
     if (error) console.error("Ошибка при загрузке результатов:", error);
 
     if (r && r.length > 0) {

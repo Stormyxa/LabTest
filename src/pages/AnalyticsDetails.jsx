@@ -503,21 +503,22 @@ const AnalyticsDetails = () => {
         setSidebarOpen(false); // Force close for players
       }
 
-      const qF = await fetchWithCache('quiz_classes', () => supabase.from('quiz_classes').select('id, name, sort_order, is_divider').order('sort_order', { ascending: true }).then(res => res.data));
-      const secs = await fetchWithCache('quiz_sections', () => supabase.from('quiz_sections').select('id, class_id, name, sort_order, is_divider').order('sort_order', { ascending: true }).then(res => res.data));
-
-      let quizQuery = supabase.from('quizzes').select('id, title, section_id, author_id, is_archived, sort_order, is_divider:content->is_divider, divider_text:content->divider_text').eq('is_archived', false).order('sort_order', { ascending: true });
-      if (p.role === 'editor') quizQuery = quizQuery.eq('author_id', p.id);
-      const { data: qs } = await quizQuery;
-
-      const c = await fetchWithCache('cities', () => supabase.from('cities').select('*').order('name').then(res => res.data));
-      const s = await fetchWithCache('schools', () => supabase.from('schools').select('*').order('name').then(res => res.data));
-      const cl = await fetchWithCache('classes', () => supabase.from('classes').select('*').order('name').then(res => res.data));
+      const [qF, secs, { data: qs }, c, s, cl] = await Promise.all([
+        fetchWithCache('quiz_classes', () => supabase.from('quiz_classes').select('id, name, sort_order, is_divider').order('sort_order', { ascending: true }).then(res => res.data)),
+        fetchWithCache('quiz_sections', () => supabase.from('quiz_sections').select('id, class_id, name, sort_order, is_divider').order('sort_order', { ascending: true }).then(res => res.data)),
+        (async () => {
+          let quizQuery = supabase.from('quizzes').select('id, title, section_id, author_id, is_archived, sort_order, is_divider:content->is_divider, divider_text:content->divider_text').eq('is_archived', false).order('sort_order', { ascending: true });
+          if (p.role === 'editor') quizQuery = quizQuery.eq('author_id', p.id);
+          return await quizQuery;
+        })(),
+        fetchWithCache('cities', () => supabase.from('cities').select('*').order('name').then(res => res.data)),
+        fetchWithCache('schools', () => supabase.from('schools').select('*').order('name').then(res => res.data)),
+        fetchWithCache('classes', () => supabase.from('classes').select('*').order('name').then(res => res.data))
+      ]);
 
       if (qF) setQuizFolders(qF);
       if (secs) setSections(secs);
       if (qs) setQuizzes(qs);
-
       if (c) setCities(c);
       if (s) setSchools(s);
       if (cl) setClasses(cl);
@@ -565,8 +566,10 @@ const AnalyticsDetails = () => {
 
   const fetchAttempts = useCallback(async (qId, uId) => {
     setContentLoading(true);
-    const { data: q } = await supabase.from('quizzes').select('*').eq('id', qId).single();
-    const { data: u } = await supabase.from('profiles').select('*').eq('id', uId).single();
+    const [{ data: q }, { data: u }] = await Promise.all([
+      supabase.from('quizzes').select('*').eq('id', qId).single(),
+      supabase.from('profiles').select('*').eq('id', uId).single()
+    ]);
 
     if (q) setTargetQuiz(q);
     if (u) setTargetUser(u);
@@ -594,20 +597,21 @@ const AnalyticsDetails = () => {
   }, [filterQuiz, fetchAttempts, setSearchParams]);
 
   const fetchUsersForQuiz = useCallback(async (qId, currentUserProfile) => {
-    const { data: results } = await supabase.from('quiz_results').select('user_id, score, total_questions').eq('quiz_id', qId);
+    const [{ data: results }, { data: currentQuizObj }] = await Promise.all([
+      supabase.from('quiz_results').select('user_id, score, total_questions').eq('quiz_id', qId),
+      supabase.from('quizzes').select('author_id').eq('id', qId).single()
+    ]);
+
     if (!results) {
       setUsers([]);
       return;
     }
 
     const userIds = [...new Set(results.map(r => r.user_id))];
-    const { data: profs } = await supabase.from('profiles').select('id, first_name, last_name, city_id, school_id, class_id, is_observer').in('id', userIds);
-
-    const { data: attemptsData } = await supabase
-      .from('quiz_attempts')
-      .select('user_id, is_suspicious, is_incomplete, score, max_score, created_at')
-      .eq('quiz_id', qId)
-      .order('created_at', { ascending: true });
+    const [ { data: profs }, { data: attemptsData } ] = await Promise.all([
+      supabase.from('profiles').select('id, first_name, last_name, city_id, school_id, class_id, is_observer').in('id', userIds),
+      supabase.from('quiz_attempts').select('user_id, is_suspicious, is_passed, is_incomplete, score, max_score, created_at').eq('quiz_id', qId).order('created_at', { ascending: true })
+    ]);
 
     const latestStatusMap = {};
     if (attemptsData) {

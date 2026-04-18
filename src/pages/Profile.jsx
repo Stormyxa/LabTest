@@ -60,9 +60,11 @@ const Profile = ({ session, profile, refreshProfile }) => {
   }, [profile]);
 
   const fetchStructure = async () => {
-    const { data: c } = await supabase.from('cities').select('*').order('name');
-    const { data: s } = await supabase.from('schools').select('*').order('name');
-    const { data: cl } = await supabase.from('classes').select('*').order('name');
+    const [ { data: c }, { data: s }, { data: cl } ] = await Promise.all([
+      supabase.from('cities').select('*').order('name'),
+      supabase.from('schools').select('*').order('name'),
+      supabase.from('classes').select('*').order('name')
+    ]);
 
     if (c) setCities(c);
     if (s) setSchools(s);
@@ -70,8 +72,10 @@ const Profile = ({ session, profile, refreshProfile }) => {
   };
 
   const fetchStats = async () => {
-    const { data: results } = await supabase.from('quiz_results').select('score, total_questions, is_passed').eq('user_id', session.user.id);
-    const { count: createdCount } = await supabase.from('quizzes').select('*', { count: 'exact', head: true }).eq('author_id', session.user.id);
+    const [ { data: results }, { count: createdCount } ] = await Promise.all([
+      supabase.from('quiz_results').select('score, total_questions, is_passed').eq('user_id', session.user.id),
+      supabase.from('quizzes').select('*', { count: 'exact', head: true }).eq('author_id', session.user.id)
+    ]);
 
     if (results) {
       setStats({

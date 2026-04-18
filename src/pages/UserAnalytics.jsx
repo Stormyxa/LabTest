@@ -179,10 +179,12 @@ const UserAnalytics = () => {
       }
 
       if (isPrivileged) {
-        // Fetch structure for filters with caching
-        const c = await fetchWithCache('cities', () => supabase.from('cities').select('*').order('name').then(res => res.data));
-        const s = await fetchWithCache('schools', () => supabase.from('schools').select('*').order('name').then(res => res.data));
-        const cl = await fetchWithCache('classes', () => supabase.from('classes').select('*').order('name').then(res => res.data));
+        // Fetch structure for filters with caching in parallel
+        const [c, s, cl] = await Promise.all([
+          fetchWithCache('cities', () => supabase.from('cities').select('*').order('name').then(res => res.data)),
+          fetchWithCache('schools', () => supabase.from('schools').select('*').order('name').then(res => res.data)),
+          fetchWithCache('classes', () => supabase.from('classes').select('*').order('name').then(res => res.data))
+        ]);
         if (c) setCities(c);
         if (s) setSchools(s);
         if (cl) setClasses(cl);
@@ -244,20 +246,28 @@ const UserAnalytics = () => {
 
   const fetchUserAnalytics = useCallback(async (uId, currentUserProfile = profile) => {
     setContentLoading(true);
-    const { data: u } = await supabase.from('profiles').select('*').eq('id', uId).single();
+
+    // Parallel profile and initial attempts query check
+    const [{ data: u }, { data: myQuizzes }] = await Promise.all([
+      supabase.from('profiles').select('*').eq('id', uId).single(),
+      (async () => {
+        if (currentUserProfile?.role === 'editor') {
+          return await supabase.from('quizzes').select('id').eq('author_id', currentUserProfile.id);
+        }
+        return { data: null };
+      })()
+    ]);
+
     if (u) setTargetUser(u);
 
-    // Fetch all attempts for user, ordered by date desc
+    // Build the attempts query based on the fetched quiz list (if editor)
     let attsQuery = supabase.from('quiz_attempts').select('*').eq('user_id', uId).order('created_at', { ascending: false });
     
-    // If editor, we need to only fetch attempts for quizzes they authored
     if (currentUserProfile?.role === 'editor') {
-      const { data: myQuizzes } = await supabase.from('quizzes').select('id').eq('author_id', currentUserProfile.id);
       if (myQuizzes && myQuizzes.length > 0) {
         attsQuery = attsQuery.in('quiz_id', myQuizzes.map(q => q.id));
       } else {
-        // Editor has no quizzes, return 0 attempts
-        attsQuery = supabase.from('quiz_attempts').select('*').eq('id', 'uuid-that-does-not-exist'); // hacky way to force empty
+        attsQuery = supabase.from('quiz_attempts').select('*').eq('id', '00000000-0000-0000-0000-000000000000'); // empty
       }
     }
 

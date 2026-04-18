@@ -50,14 +50,16 @@ const Statistics = ({ session, profile }) => {
   const fetchData = async () => {
     setLoading(true);
 
-    const { data: c } = await supabase.from('cities').select('*').order('name');
-    const { data: s } = await supabase.from('schools').select('*').order('name');
-    const { data: cl } = await supabase.from('classes').select('*').order('name');
-    if (c) setCities(c); if (s) setSchools(s); if (cl) setClasses(cl);
+    const [ { data: c }, { data: s }, { data: cl }, { data: pData } ] = await Promise.all([
+      supabase.from('cities').select('*').order('name'),
+      supabase.from('schools').select('*').order('name'),
+      supabase.from('classes').select('*').order('name'),
+      supabase
+        .from('profiles')
+        .select('*, quiz_results(score, total_questions, is_passed, quiz_id), quiz_attempts(is_suspicious, is_passed, quiz_id)')
+    ]);
 
-    const { data: pData } = await supabase
-      .from('profiles')
-      .select('*, quiz_results(score, total_questions, is_passed, quiz_id), quiz_attempts(is_suspicious, is_passed, quiz_id)');
+    if (c) setCities(c); if (s) setSchools(s); if (cl) setClasses(cl);
 
     if (pData) {
       const processed = pData.map(u => {

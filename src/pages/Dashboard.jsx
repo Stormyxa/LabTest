@@ -85,9 +85,11 @@ const Dashboard = ({ session, profile }) => {
   }, [profile]);
 
   const fetchStructure = async () => {
-    const { data: c } = await supabase.from('cities').select('*').order('name');
-    const { data: s } = await supabase.from('schools').select('*').order('name');
-    const { data: cl } = await supabase.from('classes').select('*').order('name');
+    const [ { data: c }, { data: s }, { data: cl } ] = await Promise.all([
+      supabase.from('cities').select('*').order('name'),
+      supabase.from('schools').select('*').order('name'),
+      supabase.from('classes').select('*').order('name')
+    ]);
     if (c) setCities(c); if (s) setSchools(s); if (cl) setClassesList(cl);
   };
 
