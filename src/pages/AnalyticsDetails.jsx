@@ -305,6 +305,8 @@ const AttemptDetailsView = React.memo(({
 
   const limitTime = totalQs * 25;
   const timeSpent = selectedAttempt.time_spent || 0;
+  const minutes = Math.floor(timeSpent / 60);
+  const seconds = timeSpent % 60;
   const scorePercent = (selectedAttempt.score / (selectedAttempt.total_questions || totalQs)) || 0;
   const isShortTimeFail = timeSpent < limitTime * 0.12 && scorePercent < 0.4;
 
@@ -313,24 +315,29 @@ const AttemptDetailsView = React.memo(({
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h3 style={{ margin: 0 }}>
           Детали прохождения от {new Date(selectedAttempt.created_at).toLocaleString('ru-RU', { timeZone: 'Asia/Almaty' })} (KZ)
-          {selectedAttempt.is_suspicious && (
-            <span style={{ marginLeft: '10px', fontSize: '0.8rem', background: 'rgba(239, 68, 68, 1)', color: 'white', padding: '4px 10px', borderRadius: '10px' }}>Подозрительно</span>
-          )}
-          {isSkippedHeavy && (
-            <span style={{ marginLeft: '10px', fontSize: '0.8rem', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '4px 10px', borderRadius: '10px', border: '1px solid #ef4444' }}>
-              Пропущено более 40% вопросов
-            </span>
-          )}
-          {isShortTimeFail && (
-            <span style={{ marginLeft: '10px', fontSize: '0.8rem', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '4px 10px', borderRadius: '10px', border: '1px solid #ef4444' }}>
-              Низкий результат за слишком короткое время
-            </span>
-          )}
-          {selectedAttempt.is_incomplete && (
-            <span style={{ marginLeft: '10px', fontSize: '0.8rem', background: 'rgba(0, 0, 0, 0.05)', color: 'var(--text-color)', opacity: 0.6, padding: '4px 10px', borderRadius: '10px', border: '1px solid rgba(0,0,0,0.1)' }}>
-              Вышел до завершения
-            </span>
-          )}
+          <div style={{ marginTop: '5px', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '5px', opacity: 0.7 }}>
+            <Clock size={16} /> <span>Времени затрачено: <strong>{minutes}м {seconds}с</strong></span>
+          </div>
+          <div style={{ display: 'flex', gap: '10px', marginTop: '10px', flexWrap: 'wrap' }}>
+            {selectedAttempt.is_suspicious && (
+              <span style={{ fontSize: '0.8rem', background: 'rgba(239, 68, 68, 1)', color: 'white', padding: '4px 10px', borderRadius: '10px' }}>Подозрительно</span>
+            )}
+            {isSkippedHeavy && (
+              <span style={{ fontSize: '0.8rem', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '4px 10px', borderRadius: '10px', border: '1px solid #ef4444' }}>
+                Пропущено более 40% вопросов
+              </span>
+            )}
+            {isShortTimeFail && (
+              <span style={{ fontSize: '0.8rem', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '4px 10px', borderRadius: '10px', border: '1px solid #ef4444' }}>
+                Низкий результат за слишком короткое время
+              </span>
+            )}
+            {selectedAttempt.is_incomplete && (
+              <span style={{ fontSize: '0.8rem', background: 'rgba(0, 0, 0, 0.05)', color: 'var(--text-color)', opacity: 0.6, padding: '4px 10px', borderRadius: '10px', border: '1px solid rgba(0,0,0,0.1)' }}>
+                Вышел до завершения
+              </span>
+            )}
+          </div>
         </h3>
         {(profile?.role === 'admin' || profile?.role === 'creator') && (
           <button

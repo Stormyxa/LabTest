@@ -4,87 +4,244 @@ import { supabase } from '../lib/supabase';
 import { Search, Play, CheckCircle, ChevronDown, ChevronUp, Award, Save, BarChart2, Book, Pencil, Eye, AlertTriangle, Plus, Shield, EyeOff, Trash2, Dices, Clock, TrendingUp, Info, Loader2 } from 'lucide-react';
 import { useScrollRestoration } from '../lib/useScrollRestoration';
 
+const DividerItem = React.memo(({ quiz, qIndex, userRole, searchQuery, swapQuizzes, setRenamingItem, fetchQuizzes, quizzesLength }) => (
+  <div className="grid-full animate" style={{ gridColumn: '1 / -1', margin: '10px 0', padding: '10px 0', display: 'flex', alignItems: 'center', gap: '15px' }}>
+    <div className="flex-center" style={{ gap: '15px' }}>
+      {userRole === 'creator' && !searchQuery && (
+        <div className="flex-center" style={{ flexDirection: 'column', gap: '2px' }}>
+          <button onClick={(e) => swapQuizzes(qIndex, -1, e, quiz)} disabled={qIndex === 0} style={{ padding: '0', background: 'transparent', color: 'var(--primary-color)', boxShadow: 'none' }}><ChevronUp size={14} /></button>
+          <button onClick={(e) => swapQuizzes(qIndex, 1, e, quiz)} disabled={qIndex === quizzesLength - 1} style={{ padding: '0', background: 'transparent', color: 'var(--primary-color)', boxShadow: 'none' }}><ChevronDown size={14} /></button>
+        </div>
+      )}
+      <div style={{ height: '1px', background: 'rgba(99, 102, 241, 0.2)', width: '20px' }} />
+    </div>
+    <span style={{ fontWeight: 'bold', fontSize: '0.85rem', color: 'var(--primary-color)', opacity: quiz.is_hidden ? 0.5 : 1 }}>
+      {quiz.content.divider_text || ''}
+      {quiz.is_hidden && <Shield size={14} style={{ marginLeft: '8px', verticalAlign: 'middle' }} />}
+    </span>
+    <div style={{ height: '1px', background: 'rgba(99, 102, 241, 0.2)', flex: 1 }} />
+    {userRole === 'creator' && (
+      <div className="flex-center" style={{ gap: '5px' }}>
+        <button onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: quiz.id, name: quiz.title, type: 'quiz' }); }} style={{ background: 'transparent', color: 'var(--primary-color)', opacity: 0.4, padding: '5px', boxShadow: 'none' }}><Pencil size={14} /></button>
+        <button onClick={async (e) => { e.stopPropagation(); await supabase.from('quizzes').update({ is_hidden: !quiz.is_hidden }).eq('id', quiz.id); fetchQuizzes(); }} style={{ background: 'transparent', color: quiz.is_hidden ? '#ca8a04' : 'inherit', opacity: 0.4, padding: '5px', boxShadow: 'none' }}>
+          {quiz.is_hidden ? <Shield size={14} /> : <EyeOff size={14} />}
+        </button>
+        <button onClick={async (e) => { e.stopPropagation(); if (window.confirm('Удалить разделитель?')) { await supabase.from('quizzes').delete().eq('id', quiz.id); fetchQuizzes(); } }} style={{ background: 'transparent', color: 'red', opacity: 0.4, padding: '5px', boxShadow: 'none' }}><Trash2 size={14} /></button>
+      </div>
+    )}
+  </div>
+));
+
+const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, passState, statsLoading, canEditQuiz, canMoveQuiz, swapQuizzes, navigate, setSelectedQuiz, setHideModal, isDimmed, quizzesLength }) => (
+  <div className="card animate" style={{ padding: '20px', background: 'var(--card-bg)', boxShadow: 'var(--soft-shadow)', display: 'flex', flexDirection: 'column', height: '100%', opacity: isDimmed ? 0.5 : 1, border: isDimmed ? '1px dashed #ca8a04' : '1px solid rgba(99, 102, 241, 0.1)', position: 'relative' }}>
+    {canMoveQuiz(quiz) && !searchQuery && (
+      <div style={{ position: 'absolute', top: '15px', right: '15px', display: 'flex', gap: '5px', zIndex: 10 }}>
+        <button onClick={(e) => swapQuizzes(qIndex, -1, e, quiz)} disabled={qIndex === 0} style={{ padding: '4px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none', borderRadius: '8px' }} title="Переместить левее"><ChevronUp size={16} /></button>
+        <button onClick={(e) => swapQuizzes(qIndex, 1, e, quiz)} disabled={qIndex === quizzesLength - 1} style={{ padding: '4px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none', borderRadius: '8px' }} title="Переместить правее"><ChevronDown size={16} /></button>
+      </div>
+    )}
+    <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '15px' }}>
+      <div style={{ flex: 1, minWidth: 0, paddingRight: '50px' }}>
+        <h4 style={{ fontSize: '1.1rem', margin: 0, lineHeight: '1.4' }}>{quiz.title}{quiz.is_verified && <CheckCircle size={16} color="var(--primary-color)" style={{ marginLeft: '5px', display: 'inline' }} />}</h4>
+        <p style={{ fontSize: '0.8rem', opacity: 0.5, margin: '4px 0 0 0' }}>Автор: {quiz.profiles?.last_name} {quiz.profiles?.first_name}</p>
+      </div>
+    </div>
+
+    <div style={{ marginTop: 'auto', paddingTop: '15px' }}>
+      <div className="flex-center" style={{ justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <div className="flex-center" style={{ gap: '10px', flexDirection: 'column', alignItems: 'flex-start' }}>
+          {statsLoading && !passState ? (
+            <div className="skeleton-pulse" style={{ width: '80px', height: '24px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px' }} />
+          ) : (
+            passState !== undefined && (
+              <div className="flex-center" style={{ gap: '6px', fontSize: '0.8rem', background: passState.is_passed ? 'rgba(74, 222, 128, 0.1)' : 'rgba(248, 113, 113, 0.1)', color: passState.is_passed ? '#4ade80' : '#f87171', borderRadius: '10px', padding: '6px 12px', fontWeight: 'bold' }}>
+                {passState.score}/{passState.total} ({Math.round((passState.score / passState.total) * 100)}%)
+              </div>
+            )
+          )}
+          
+          {quiz.avg_success_rate !== undefined && quiz.avg_success_rate > 0 && (
+            <div className="flex-center" style={{ gap: '6px', fontSize: '0.8rem', color: 'var(--primary-color)', fontWeight: 'bold', background: 'rgba(99, 102, 241, 0.05)', padding: '6px 12px', borderRadius: '10px' }} title="Общая успеваемость учеников (без учета наблюдателей)">
+              <TrendingUp size={14} /> {quiz.avg_success_rate}% успех
+            </div>
+          )}
+        </div>
+        <div className="flex-center" style={{ gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end', flex: 1 }}>
+          <button
+            onClick={(e) => { e.stopPropagation(); if (passState) navigate(`/analytics-details?quizId=${quiz.id}&userId=${userId}`); }}
+            disabled={!passState}
+            style={{ padding: '8px', background: passState ? 'rgba(99, 102, 241, 0.1)' : 'rgba(0,0,0,0.03)', color: passState ? 'var(--primary-color)' : 'grey', boxShadow: 'none', borderRadius: '10px', opacity: passState ? 1 : 0.5, cursor: passState ? 'pointer' : 'not-allowed' }}
+            title={passState ? "Моя детальная аналитика" : "Доступно после прохождения"}
+          >
+            <Info size={15} />
+          </button>
+          {canEditQuiz(quiz) && <button onClick={() => navigate(`/redactor?id=${quiz.id}`)} style={{ padding: '8px', background: 'rgba(99,102,241,0.08)', color: 'var(--primary-color)', boxShadow: 'none', borderRadius: '10px' }} title="Редактировать"><Pencil size={15} /></button>}
+          {canEditQuiz(quiz) && <button onClick={() => setHideModal(quiz)} style={{ padding: '8px', background: 'rgba(250,204,21,0.08)', color: '#ca8a04', boxShadow: 'none', borderRadius: '10px' }} title="Скрыть"><Eye size={15} /></button>}
+          {(userRole === 'admin' || userRole === 'creator' || userId === quiz.author_id) && <button onClick={() => navigate(`/analytics?id=${quiz.id}`)} style={{ padding: '8px', background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none', borderRadius: '10px' }} title="Аналитика"><BarChart2 size={15} /></button>}
+          <button onClick={() => setSelectedQuiz(quiz)} style={{ padding: '8px 20px', display: 'flex', alignItems: 'center', gap: '8px', borderRadius: '10px' }}><Play size={15} fill="currentColor" /> Начать</button>
+        </div>
+      </div>
+    </div>
+  </div>
+));
+
 const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, onQuizzesChange, setHideModal, setRenamingItem, setSelectedQuiz, setRandomQuizModal }) => {
   const navigate = useNavigate();
-  const [quizzes, setQuizzes] = useState([]);
   const [passedQuizzes, setPassedQuizzes] = useState({});
   const [quizStats, setQuizStats] = useState({});
-  const [loading, setLoading] = useState(true);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(25); // Incremental rendering start
 
-  const fetchSectionData = useCallback(async () => {
+  // Keep a ref for swapping calculations to avoid dependency-related mass re-renders
+  const quizzesRef = React.useRef([]);
+
+  // 5-minute quiz caching logic
+  const QUIZ_CACHE_TTL = 5 * 60 * 1000;
+  const getCachedQuizzes = useCallback(() => {
+    try {
+      const cached = localStorage.getItem(`catalog_quizzes_${section.id}`);
+      if (cached) {
+        const { data, timestamp } = JSON.parse(cached);
+        if (Date.now() - timestamp < QUIZ_CACHE_TTL) return data;
+      }
+    } catch (e) { }
+    return null;
+  }, [section.id]);
+
+  const setCachedQuizzes = useCallback((data) => {
+    try {
+      localStorage.setItem(`catalog_quizzes_${section.id}`, JSON.stringify({ data, timestamp: Date.now() }));
+    } catch (e) { }
+  }, [section.id]);
+
+  const [quizzes, setQuizzes] = useState(() => {
+    const cached = getCachedQuizzes();
+    if (cached) quizzesRef.current = cached;
+    return cached || [];
+  });
+  const [loading, setLoading] = useState(() => !getCachedQuizzes());
+
+  // 10-minute stats caching logic
+  const STATS_CACHE_TTL = 10 * 60 * 1000;
+  const getCachedStats = useCallback(() => {
+    try {
+      const cached = localStorage.getItem(`catalog_stats_${section.id}`);
+      if (cached) {
+        const { data, timestamp } = JSON.parse(cached);
+        if (Date.now() - timestamp < STATS_CACHE_TTL) return data;
+      }
+    } catch (e) { }
+    return null;
+  }, [section.id]);
+
+  const setCachedStats = useCallback((data) => {
+    try {
+      localStorage.setItem(`catalog_stats_${section.id}`, JSON.stringify({ data, timestamp: Date.now() }));
+    } catch (e) { }
+  }, [section.id]);
+
+  const fetchQuizzes = useCallback(async () => {
     setLoading(true);
-    const query = supabase.from('quizzes')
-      .select('id, title, section_id, is_hidden, is_verified, sort_order, content, author_id, profiles(first_name, last_name, role)')
+    const { data: qData } = await supabase.from('quizzes')
+      .select('id, title, section_id, is_hidden, is_verified, sort_order, content, author_id, avg_success_rate, profiles(first_name, last_name, role)')
       .eq('section_id', section.id)
       .eq('is_archived', false)
       .eq('is_hidden', false)
       .order('sort_order', { ascending: true });
 
-    const { data: qData } = await query;
-    if (!qData) {
-      setLoading(false);
+    if (qData) {
+      const mapped = qData.map(q => ({ ...q, is_dirty: false }));
+      setQuizzes(mapped);
+      quizzesRef.current = mapped;
+      setCachedQuizzes(mapped);
+    }
+    setLoading(false);
+  }, [section.id, setCachedQuizzes]);
+
+  const fetchDetailedStats = useCallback(async (currentQuizzes) => {
+    const cached = getCachedStats();
+    if (cached) {
+      setPassedQuizzes(cached.passed);
+      setQuizStats(cached.stats);
       return;
     }
 
-    setQuizzes(qData.map(q => ({ ...q, is_dirty: false })));
+    const quizIds = currentQuizzes.map(q => q.id);
+    if (quizIds.length === 0) return;
 
-    const quizIds = qData.map(q => q.id);
-    if (quizIds.length > 0) {
-      if (profile?.id) {
-        const { data: results } = await supabase.from('quiz_results')
+    setStatsLoading(true);
+    try {
+      const [resultsRes, statsRes] = await Promise.all([
+        profile?.id ? supabase.from('quiz_results')
           .select('quiz_id, is_passed, score, total_questions')
           .eq('user_id', profile.id)
-          .in('quiz_id', quizIds);
+          .in('quiz_id', quizIds) : Promise.resolve({ data: null }),
+        // We still use RPC as a fallback or if the column isn't fully ready, 
+        // but we'll prioritize the avg_success_rate from the main query later.
+        // For now, let's just get the user's specific results in the background.
+        Promise.resolve({ data: null }) 
+      ]);
 
-        if (results) {
-          const passMap = {};
-          results.forEach(r => { passMap[r.quiz_id] = { is_passed: r.is_passed, score: r.score, total: r.total_questions }; });
-          setPassedQuizzes(passMap);
-        }
+      const passMap = {};
+      if (resultsRes.data) {
+        resultsRes.data.forEach(r => { passMap[r.quiz_id] = { is_passed: r.is_passed, score: r.score, total: r.total_questions }; });
       }
 
-      // Используем новую RPC для получения легковесной статистики по тестам в секции
-      try {
-        const { data: statsData } = await supabase.rpc('get_quiz_stats_batch', { p_quiz_ids: quizIds });
-        if (statsData) {
-          const sMap = {};
-          statsData.forEach(s => { sMap[s.quiz_id] = { avgScore: s.avg_score, participants: s.participants }; });
-          setQuizStats(sMap);
-        }
-      } catch (err) {
-        console.error('RPC Error:', err);
-      }
+      setPassedQuizzes(passMap);
+      // Average score is now handled by avg_success_rate in the main quiz query,
+      // but if we need deeper stats (like participants), we can fetch here.
+      setCachedStats({ passed: passMap, stats: {} });
+    } catch (err) {
+      console.error('Stats fetch error:', err);
+    } finally {
+      setStatsLoading(false);
     }
-    setLoading(false);
-  }, [section.id, profile]);
+  }, [section.id, profile, getCachedStats, setCachedStats]);
 
   useEffect(() => {
     if (isExpanded && quizzes.length === 0 && loading) {
-      fetchSectionData();
+      fetchQuizzes();
     }
-  }, [isExpanded, fetchSectionData, quizzes.length, loading]);
+  }, [isExpanded, fetchQuizzes, quizzes.length, loading]);
 
-  const canEditQuiz = (quiz) => {
+  useEffect(() => {
+    if (quizzes.length > 0 && Object.keys(passedQuizzes).length === 0 && !statsLoading) {
+      fetchDetailedStats(quizzes);
+    }
+  }, [quizzes.length, passedQuizzes, statsLoading, fetchDetailedStats]);
+
+  // Incremental rendering loop to avoid blocking UI
+  useEffect(() => {
+    if (isExpanded && visibleCount < quizzes.length) {
+      const timer = setTimeout(() => {
+        setVisibleCount(prev => Math.min(prev + 25, quizzes.length));
+      }, 50); // Small delay to let browser breathe
+      return () => clearTimeout(timer);
+    }
+  }, [isExpanded, visibleCount, quizzes.length]);
+
+  const canEditQuiz = useCallback((quiz) => {
     if (!profile) return false;
     if (profile.role === 'creator') return true;
     if (profile.role === 'admin' && quiz.profiles?.role !== 'creator') return true;
     if ((profile.role === 'teacher' || profile.role === 'editor') && quiz.author_id === profile.id) return true;
     return false;
-  };
+  }, [profile]);
 
-  const canMoveQuiz = (quiz) => canEditQuiz(quiz);
+  const canMoveQuiz = useCallback((quiz) => canEditQuiz(quiz), [canEditQuiz]);
 
-  const swapQuizzes = (index, direction, e, quiz) => {
+  const swapQuizzes = useCallback((index, direction, e, quiz) => {
     e.stopPropagation();
     if (!canMoveQuiz(quiz)) return;
-    const arr = [...quizzes];
+    const arr = [...quizzesRef.current];
     if (index + direction < 0 || index + direction >= arr.length) return;
     const temp = arr[index]; arr[index] = arr[index + direction]; arr[index + direction] = temp;
 
     const dirtied = arr.map((q, i) => ({ ...q, sort_order: i, is_dirty: true }));
     setQuizzes(dirtied);
+    quizzesRef.current = dirtied;
     onQuizzesChange(section.id, dirtied);
-  };
+  }, [canMoveQuiz, onQuizzesChange, section.id]);
 
   const handleStartRandomQuiz = (e) => {
     e?.stopPropagation?.();
@@ -123,89 +280,44 @@ const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, 
       <div className="grid-2" style={{ gap: '15px' }}>
         {(() => {
           let currentDividerHidden = false;
-          return filteredQuizzes.map((quiz, qIndex) => {
+          return filteredQuizzes.slice(0, visibleCount).map((quiz, qIndex) => {
             if (quiz.content?.is_divider) {
               currentDividerHidden = quiz.is_hidden;
-              // Скрываем разделители если идет поиск
               if (searchQuery) return null;
-
               return (
-                <div key={quiz.id} className="grid-full animate" style={{ gridColumn: '1 / -1', margin: '10px 0', padding: '10px 0', display: 'flex', alignItems: 'center', gap: '15px' }}>
-                  <div className="flex-center" style={{ gap: '15px' }}>
-                    {profile?.role === 'creator' && !searchQuery && (
-                      <div className="flex-center" style={{ flexDirection: 'column', gap: '2px' }}>
-                        <button onClick={(e) => swapQuizzes(qIndex, -1, e, quiz)} disabled={qIndex === 0} style={{ padding: '0', background: 'transparent', color: 'var(--primary-color)', boxShadow: 'none' }}><ChevronUp size={14} /></button>
-                        <button onClick={(e) => swapQuizzes(qIndex, 1, e, quiz)} disabled={qIndex === quizzes.length - 1} style={{ padding: '0', background: 'transparent', color: 'var(--primary-color)', boxShadow: 'none' }}><ChevronDown size={14} /></button>
-                      </div>
-                    )}
-                    <div style={{ height: '1px', background: 'rgba(99, 102, 241, 0.2)', width: '20px' }} />
-                  </div>
-                  <span style={{ fontWeight: 'bold', fontSize: '0.85rem', color: 'var(--primary-color)', opacity: quiz.is_hidden ? 0.5 : 1 }}>
-                    {quiz.content.divider_text || ''}
-                    {quiz.is_hidden && <Shield size={14} style={{ marginLeft: '8px', verticalAlign: 'middle' }} />}
-                  </span>
-                  <div style={{ height: '1px', background: 'rgba(99, 102, 241, 0.2)', flex: 1 }} />
-                  {profile?.role === 'creator' && (
-                    <div className="flex-center" style={{ gap: '5px' }}>
-                      <button onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: quiz.id, name: quiz.title, type: 'quiz' }); }} style={{ background: 'transparent', color: 'var(--primary-color)', opacity: 0.4, padding: '5px', boxShadow: 'none' }}><Pencil size={14} /></button>
-                      <button onClick={async (e) => { e.stopPropagation(); await supabase.from('quizzes').update({ is_hidden: !quiz.is_hidden }).eq('id', quiz.id); fetchSectionData(); }} style={{ background: 'transparent', color: quiz.is_hidden ? '#ca8a04' : 'inherit', opacity: 0.4, padding: '5px', boxShadow: 'none' }}>
-                        {quiz.is_hidden ? <Shield size={14} /> : <EyeOff size={14} />}
-                      </button>
-                      <button onClick={async (e) => { e.stopPropagation(); if (window.confirm('Удалить разделитель?')) { await supabase.from('quizzes').delete().eq('id', quiz.id); fetchSectionData(); } }} style={{ background: 'transparent', color: 'red', opacity: 0.4, padding: '5px', boxShadow: 'none' }}><Trash2 size={14} /></button>
-                    </div>
-                  )}
-                </div>
+                <DividerItem 
+                  key={quiz.id}
+                  quiz={quiz}
+                  qIndex={qIndex}
+                  userRole={profile?.role}
+                  searchQuery={searchQuery}
+                  swapQuizzes={swapQuizzes}
+                  setRenamingItem={setRenamingItem}
+                  fetchQuizzes={fetchQuizzes}
+                  quizzesLength={quizzes.length}
+                />
               );
             }
             if (currentDividerHidden && profile?.role !== 'creator' && profile?.role !== 'admin') return null;
-            const passState = passedQuizzes[quiz.id];
-
             return (
-              <div key={quiz.id} className="card animate" style={{ padding: '20px', background: 'var(--card-bg)', boxShadow: 'var(--soft-shadow)', display: 'flex', flexDirection: 'column', height: '100%', opacity: currentDividerHidden ? 0.5 : 1, border: currentDividerHidden ? '1px dashed #ca8a04' : '1px solid rgba(99, 102, 241, 0.1)', position: 'relative' }}>
-                {canMoveQuiz(quiz) && !searchQuery && (
-                  <div style={{ position: 'absolute', top: '15px', right: '15px', display: 'flex', gap: '5px', zIndex: 10 }}>
-                    <button onClick={(e) => swapQuizzes(qIndex, -1, e, quiz)} disabled={qIndex === 0} style={{ padding: '4px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none', borderRadius: '8px' }} title="Переместить левее"><ChevronUp size={16} /></button>
-                    <button onClick={(e) => swapQuizzes(qIndex, 1, e, quiz)} disabled={qIndex === quizzes.length - 1} style={{ padding: '4px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none', borderRadius: '8px' }} title="Переместить правее"><ChevronDown size={16} /></button>
-                  </div>
-                )}
-                <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '15px' }}>
-                  <div style={{ flex: 1, minWidth: 0, paddingRight: '50px' }}>
-                    <h4 style={{ fontSize: '1.1rem', margin: 0, lineHeight: '1.4' }}>{quiz.title}{quiz.is_verified && <CheckCircle size={16} color="var(--primary-color)" style={{ marginLeft: '5px', display: 'inline' }} />}</h4>
-                    <p style={{ fontSize: '0.8rem', opacity: 0.5, margin: '4px 0 0 0' }}>Автор: {quiz.profiles?.last_name} {quiz.profiles?.first_name}</p>
-                  </div>
-                </div>
-
-                <div style={{ marginTop: 'auto', paddingTop: '15px' }}>
-                  <div className="flex-center" style={{ justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                    <div className="flex-center" style={{ gap: '10px', flexDirection: 'column', alignItems: 'flex-start' }}>
-                      {passState !== undefined && (
-                        <div className="flex-center" style={{ gap: '6px', fontSize: '0.8rem', background: passState.is_passed ? 'rgba(74, 222, 128, 0.1)' : 'rgba(248, 113, 113, 0.1)', color: passState.is_passed ? '#4ade80' : '#f87171', borderRadius: '10px', padding: '6px 12px', fontWeight: 'bold' }}>
-                          {passState.score}/{passState.total} ({Math.round((passState.score / passState.total) * 100)}%)
-                        </div>
-                      )}
-                      {quizStats[quiz.id] && (
-                        <div className="flex-center" style={{ gap: '6px', fontSize: '0.8rem', color: 'var(--primary-color)', fontWeight: 'bold', background: 'rgba(99, 102, 241, 0.05)', padding: '6px 12px', borderRadius: '10px' }} title="Общая успеваемость учеников (без учета наблюдателей)">
-                          <TrendingUp size={14} /> {quizStats[quiz.id].avgScore}% успех
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex-center" style={{ gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end', flex: 1 }}>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); if (passState) navigate(`/analytics-details?quizId=${quiz.id}&userId=${profile.id}`); }}
-                        disabled={!passState}
-                        style={{ padding: '8px', background: passState ? 'rgba(99, 102, 241, 0.1)' : 'rgba(0,0,0,0.03)', color: passState ? 'var(--primary-color)' : 'grey', boxShadow: 'none', borderRadius: '10px', opacity: passState ? 1 : 0.5, cursor: passState ? 'pointer' : 'not-allowed' }}
-                        title={passState ? "Моя детальная аналитика" : "Доступно после прохождения"}
-                      >
-                        <Info size={15} />
-                      </button>
-                      {canEditQuiz(quiz) && <button onClick={() => navigate(`/redactor?id=${quiz.id}`)} style={{ padding: '8px', background: 'rgba(99,102,241,0.08)', color: 'var(--primary-color)', boxShadow: 'none', borderRadius: '10px' }} title="Редактировать"><Pencil size={15} /></button>}
-                      {canEditQuiz(quiz) && <button onClick={() => setHideModal(quiz)} style={{ padding: '8px', background: 'rgba(250,204,21,0.08)', color: '#ca8a04', boxShadow: 'none', borderRadius: '10px' }} title="Скрыть"><Eye size={15} /></button>}
-                      {(profile?.role === 'admin' || profile?.role === 'creator' || profile?.role === 'teacher' || profile?.id === quiz.author_id) && <button onClick={() => navigate(`/analytics?id=${quiz.id}`)} style={{ padding: '8px', background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none', borderRadius: '10px' }} title="Аналитика"><BarChart2 size={15} /></button>}
-                      <button onClick={() => setSelectedQuiz(quiz)} style={{ padding: '8px 20px', display: 'flex', alignItems: 'center', gap: '8px', borderRadius: '10px' }}><Play size={15} fill="currentColor" /> Начать</button>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <QuizCard 
+                key={quiz.id}
+                quiz={quiz}
+                qIndex={qIndex}
+                userId={profile?.id}
+                userRole={profile?.role}
+                searchQuery={searchQuery}
+                passState={passedQuizzes[quiz.id]}
+                statsLoading={statsLoading}
+                canEditQuiz={canEditQuiz}
+                canMoveQuiz={canMoveQuiz}
+                swapQuizzes={swapQuizzes}
+                navigate={navigate}
+                setSelectedQuiz={setSelectedQuiz}
+                setHideModal={setHideModal}
+                isDimmed={currentDividerHidden}
+                quizzesLength={quizzes.length}
+              />
             );
           });
         })()}
@@ -246,14 +358,19 @@ const QuizCatalog = ({ profile }) => {
     localStorage.setItem('catalog_expanded_sections_v2', JSON.stringify(expandedSections));
   }, [expandedSections]);
 
-  const [selectedQuiz, setSelectedQuiz] = useState(null);
+  const [selectedQuiz, setSelectedQuizState] = useState(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [dirtySections, setDirtySections] = useState({});
 
-  const [hideModal, setHideModal] = useState(null);
+  const [hideModal, setHideModalState] = useState(null);
   const [renamingItem, setRenamingItem] = useState(null);
   const [newName, setNewName] = useState('');
-  const [randomQuizModal, setRandomQuizModal] = useState(null);
+  const [randomQuizModal, setRandomQuizModalState] = useState(null);
+
+  // Stable setters for children
+  const setSelectedQuiz = useCallback((v) => setSelectedQuizState(v), []);
+  const setHideModal = useCallback((v) => setHideModalState(v), []);
+  const setRandomQuizModal = useCallback((v) => setRandomQuizModalState(v), []);
 
   useEffect(() => {
     fetchData();
@@ -497,8 +614,8 @@ const QuizCatalog = ({ profile }) => {
                   {profile?.role === 'creator' && !debouncedSearchQuery && (
                     <div className="flex-center" style={{ gap: '10px' }}>
                       <div className="flex-center" style={{ gap: '5px' }}>
-                        <button onClick={(e) => startTransition(() => swapClasses(cIndex, -1, e))} disabled={cIndex === 0} style={{ padding: '8px', background: 'rgba(0,0,0,0.03)', color: 'var(--primary-color)', borderRadius: '10px', boxShadow: 'none' }}><ChevronUp size={20} /></button>
-                        <button onClick={(e) => startTransition(() => swapClasses(cIndex, 1, e))} disabled={cIndex === classes.length - 1} style={{ padding: '8px', background: 'rgba(0,0,0,0.03)', color: 'var(--primary-color)', borderRadius: '10px', boxShadow: 'none' }}><ChevronDown size={20} /></button>
+                        <button onClick={(e) => swapClasses(cIndex, -1, e)} disabled={cIndex === 0} style={{ padding: '8px', background: 'rgba(0,0,0,0.03)', color: 'var(--primary-color)', borderRadius: '10px', boxShadow: 'none' }}><ChevronUp size={20} /></button>
+                        <button onClick={(e) => swapClasses(cIndex, 1, e)} disabled={cIndex === classes.length - 1} style={{ padding: '8px', background: 'rgba(0,0,0,0.03)', color: 'var(--primary-color)', borderRadius: '10px', boxShadow: 'none' }}><ChevronDown size={20} /></button>
                       </div>
                       <button onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: cls.id, name: cls.name, type: 'class' }); setNewName(cls.name); }} style={{ padding: '8px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', borderRadius: '10px', boxShadow: 'none' }}><Pencil size={18} /></button>
                       <button onClick={async (e) => { e.stopPropagation(); if (window.confirm('Удалить этот разделитель?')) { await supabase.from('quiz_classes').delete().eq('id', cls.id); fetchData(); } }} style={{ padding: '8px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', borderRadius: '10px', boxShadow: 'none' }}><Trash2 size={18} /></button>
@@ -509,7 +626,7 @@ const QuizCatalog = ({ profile }) => {
             }
 
             const isEmptyClass = cls.sections.length === 0 || cls.sections.every(sec =>
-              sec.basicQuizzes.filter(q => !q.content?.is_divider).length === 0
+              (sec.basicQuizzes || []).filter(q => !q.content?.is_divider).length === 0
             );
             return (
               <div key={cls.id} className="catalog-container" style={{
@@ -520,7 +637,7 @@ const QuizCatalog = ({ profile }) => {
                 opacity: isEmptyClass ? 0.6 : 1
               }}>
                 <div
-                  onClick={() => (!isEmptyClass || profile?.role === 'creator') && startTransition(() => setExpandedClasses(prev => ({ ...prev, [cls.id]: !prev[cls.id] })))}
+                  onClick={() => (!isEmptyClass || profile?.role === 'creator') && setExpandedClasses(prev => ({ ...prev, [cls.id]: !prev[cls.id] }))}
                   style={{
                     padding: '20px 30px',
                     background: isEmptyClass ? 'rgba(0,0,0,0.02)' : 'rgba(99, 102, 241, 0.08)',
@@ -534,8 +651,8 @@ const QuizCatalog = ({ profile }) => {
                   <div className="flex-center" style={{ gap: '15px' }}>
                     {profile?.role === 'creator' && !debouncedSearchQuery && (
                       <div className="flex-center" style={{ gap: '5px' }}>
-                        <button onClick={(e) => startTransition(() => swapClasses(cIndex, -1, e))} disabled={cIndex === 0} style={{ padding: '5px', background: 'transparent', color: 'var(--primary-color)', boxShadow: 'none' }}><ChevronUp size={20} /></button>
-                        <button onClick={(e) => startTransition(() => swapClasses(cIndex, 1, e))} disabled={cIndex === classes.length - 1} style={{ padding: '5px', background: 'transparent', color: 'var(--primary-color)', boxShadow: 'none' }}><ChevronDown size={20} /></button>
+                        <button onClick={(e) => swapClasses(cIndex, -1, e)} disabled={cIndex === 0} style={{ padding: '5px', background: 'transparent', color: 'var(--primary-color)', boxShadow: 'none' }}><ChevronUp size={20} /></button>
+                        <button onClick={(e) => swapClasses(cIndex, 1, e)} disabled={cIndex === classes.length - 1} style={{ padding: '5px', background: 'transparent', color: 'var(--primary-color)', boxShadow: 'none' }}><ChevronDown size={20} /></button>
                       </div>
                     )}
                     <h3 style={{ fontSize: '1.5rem', margin: 0, fontWeight: 'bold' }}>{cls.name} <span style={{ fontSize: '0.9rem', opacity: 0.5, marginLeft: '10px' }}>({cls.sections.length} предметов)</span></h3>
@@ -578,8 +695,8 @@ const QuizCatalog = ({ profile }) => {
                             {profile?.role === 'creator' && !debouncedSearchQuery && (
                               <div className="flex-center" style={{ gap: '8px' }}>
                                 <div className="flex-center" style={{ gap: '3px' }}>
-                                  <button onClick={(e) => startTransition(() => swapSections(cls.id, sIndex, -1, e))} disabled={sIndex === 0} style={{ padding: '4px', background: 'rgba(0,0,0,0.02)', color: 'var(--primary-color)', borderRadius: '8px', boxShadow: 'none' }}><ChevronUp size={16} /></button>
-                                  <button onClick={(e) => startTransition(() => swapSections(cls.id, sIndex, 1, e))} disabled={sIndex === cls.sections.length - 1} style={{ padding: '4px', background: 'rgba(0,0,0,0.02)', color: 'var(--primary-color)', borderRadius: '8px', boxShadow: 'none' }}><ChevronDown size={16} /></button>
+                                  <button onClick={(e) => swapSections(cls.id, sIndex, -1, e)} disabled={sIndex === 0} style={{ padding: '4px', background: 'rgba(0,0,0,0.02)', color: 'var(--primary-color)', borderRadius: '8px', boxShadow: 'none' }}><ChevronUp size={16} /></button>
+                                  <button onClick={(e) => swapSections(cls.id, sIndex, 1, e)} disabled={sIndex === cls.sections.length - 1} style={{ padding: '4px', background: 'rgba(0,0,0,0.02)', color: 'var(--primary-color)', borderRadius: '8px', boxShadow: 'none' }}><ChevronDown size={16} /></button>
                                 </div>
                                 <button onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: section.id, name: section.name, type: 'section' }); setNewName(section.name); }} style={{ padding: '5px', background: 'rgba(99, 102, 241, 0.08)', color: 'var(--primary-color)', borderRadius: '8px', boxShadow: 'none' }}><Pencil size={16} /></button>
                                 <button onClick={async (e) => { e.stopPropagation(); if (window.confirm('Удалить этот разделитель предметов?')) { await supabase.from('quiz_sections').delete().eq('id', section.id); fetchData(); } }} style={{ padding: '5px', background: 'rgba(239, 68, 68, 0.08)', color: '#ef4444', borderRadius: '8px', boxShadow: 'none' }}><Trash2 size={16} /></button>
@@ -589,7 +706,7 @@ const QuizCatalog = ({ profile }) => {
                         );
                       }
 
-                      const isEmptySection = section.basicQuizzes.filter(q => !q.content?.is_divider).length === 0;
+                      const isEmptySection = (section.basicQuizzes || []).filter(q => !q.content?.is_divider).length === 0;
                       return (
                         <div key={section.id} className="catalog-container" style={{
                           padding: '0',
@@ -599,7 +716,7 @@ const QuizCatalog = ({ profile }) => {
                           opacity: isEmptySection ? 0.5 : 1
                         }}>
                           <div
-                            onClick={() => (!isEmptySection || profile?.role === 'creator') && startTransition(() => setExpandedSections(prev => ({ ...prev, [section.id]: !prev[section.id] })))}
+                            onClick={() => (!isEmptySection || profile?.role === 'creator') && setExpandedSections(prev => ({ ...prev, [section.id]: !prev[section.id] }))}
                             className="flex-center catalog-section-head"
                             style={{
                               padding: '15px 25px',
@@ -612,8 +729,8 @@ const QuizCatalog = ({ profile }) => {
                             <div className="flex-center" style={{ gap: '15px' }}>
                               {(profile?.role === 'admin' || profile?.role === 'creator') && !debouncedSearchQuery && (
                                 <div className="flex-center" style={{ gap: '5px' }}>
-                                  <button onClick={(e) => startTransition(() => swapSections(cls.id, sIndex, -1, e))} disabled={sIndex === 0} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronUp size={16} /></button>
-                                  <button onClick={(e) => startTransition(() => swapSections(cls.id, sIndex, 1, e))} disabled={sIndex === cls.sections.length - 1} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronDown size={16} /></button>
+                                  <button onClick={(e) => swapSections(cls.id, sIndex, -1, e)} disabled={sIndex === 0} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronUp size={16} /></button>
+                                  <button onClick={(e) => swapSections(cls.id, sIndex, 1, e)} disabled={sIndex === cls.sections.length - 1} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronDown size={16} /></button>
                                 </div>
                               )}
                               {section.book_url && (
