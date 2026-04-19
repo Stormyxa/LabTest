@@ -82,8 +82,8 @@ const Editor = ({ session, profile }) => {
   const [newSectionBookUrl, setNewSectionBookUrl] = useState('');
 
   const [pendingEmptyQuiz, setPendingEmptyQuiz] = useState(null); // { titleList, canBulk, sectionId }
-  const [successLoadedQuiz, setSuccessLoadedQuiz] = useState(null); // 'Test Title'
-
+  const [successLoadedQuiz, setSuccessLoadedQuiz] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [copyFeedbackJson, setCopyFeedbackJson] = useState(false);
   const [copyFeedbackBulk, setCopyFeedbackBulk] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -203,6 +203,8 @@ const Editor = ({ session, profile }) => {
 
   const handleCreateQuiz = async (e) => {
     if (e) e.preventDefault();
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     try {
       if (jsonInput.trim()) {
         const parsedJson = JSON.parse(jsonInput);
@@ -254,11 +256,14 @@ const Editor = ({ session, profile }) => {
       }
     } catch (err) {
       alert(`Ошибка: ${err.message}`);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const confirmEmptyQuizCreation = async () => {
-    if (!pendingEmptyQuiz) return;
+    if (!pendingEmptyQuiz || isSubmitting) return;
+    setIsSubmitting(true);
     try {
       const { titleList, canBulk, sectionId: sId } = pendingEmptyQuiz;
 
@@ -291,6 +296,8 @@ const Editor = ({ session, profile }) => {
       }
     } catch (err) {
       alert(`Ошибка: ${err.message}`);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 

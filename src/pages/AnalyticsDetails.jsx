@@ -779,11 +779,8 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
     
     // 1. Save to memory ONLY if manual selection and we have a valid context
     if (!isAutomated && currentSId !== 'all' && qId) {
-      setSectionMemory(prev => {
-        const next = { ...prev, [currentSId]: qId };
-        sessionStorage.setItem('ad_section_to_quiz', JSON.stringify(next));
-        return next;
-      });
+      sectionMemory.current[currentSId] = qId;
+      sessionStorage.setItem('ad_section_to_quiz', JSON.stringify(sectionMemory.current));
     }
 
     setFilterQuiz(qId);
