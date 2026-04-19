@@ -1,8 +1,35 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { fetchWithCache } from '../lib/cache';
+import { fetchWithCache, useCacheSync } from '../lib/cache';
 import { ChevronLeft, BarChart2, Clock, CheckCircle, XCircle, Search, Filter, AlertTriangle, Menu, Pencil, Trash2, Eye, X, ChevronRight } from 'lucide-react';
+
+const UserListItem = React.memo(({ u, isSelected, onSelect }) => {
+  return (
+    <button
+      onClick={() => onSelect(u.id)}
+      style={{
+        textAlign: 'left', padding: '10px',
+        background: isSelected ? 'var(--primary-color)' : 
+          (u.is_incomplete_user ? 'rgba(156, 163, 175, 0.15)' : 
+          (u.is_suspicious_user ? 'rgba(239, 68, 68, 0.08)' : 
+          (u.is_underperforming_user ? 'rgba(250, 204, 21, 0.08)' : 
+          (u.is_observer ? 'rgba(234, 179, 8, 0.05)' : 'rgba(0,0,0,0.02)')))),
+        color: isSelected ? 'white' : 'var(--text-color)',
+        borderRadius: '8px', border: isSelected ? 'none' : 
+          (u.is_suspicious_user ? '1px solid rgba(239, 68, 68, 0.2)' : 
+          (u.is_observer ? '1px dashed #eab308' : 'none')),
+        cursor: 'pointer',
+        fontSize: '0.85rem', width: '100%'
+      }}>
+      <div style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px' }}>
+        {u.last_name} {u.first_name}
+        {u.is_observer && <Eye size={12} title="Наблюдатель" />}
+      </div>
+      <div style={{ opacity: 0.8, fontSize: '0.75rem' }}>Max: {u.maxScore} баллов</div>
+    </button>
+  );
+});
 
 const SidebarUserList = React.memo(({
   loading, quizFolders, sections, quizzes, users, filteredUsers, targetUser,
@@ -106,29 +133,12 @@ const SidebarUserList = React.memo(({
               <label style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '10px', display: 'block' }}>Ученики ({filteredUsers.length})</label>
               <div ref={scrollRef} onScroll={handleScroll} style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '5px', paddingRight: '5px' }}>
                 {filteredUsers.map(u => (
-                  <button
-                    key={u.id}
-                    onClick={() => handleUserSelect(u.id)}
-                    style={{
-                      textAlign: 'left', padding: '10px',
-                      background: targetUser?.id === u.id ? 'var(--primary-color)' : 
-                        (u.is_incomplete_user ? 'rgba(156, 163, 175, 0.15)' : 
-                        (u.is_suspicious_user ? 'rgba(239, 68, 68, 0.08)' : 
-                        (u.is_underperforming_user ? 'rgba(250, 204, 21, 0.08)' : 
-                        (u.is_observer ? 'rgba(234, 179, 8, 0.05)' : 'rgba(0,0,0,0.02)')))),
-                      color: targetUser?.id === u.id ? 'white' : 'var(--text-color)',
-                      borderRadius: '8px', border: targetUser?.id === u.id ? 'none' : 
-                        (u.is_suspicious_user ? '1px solid rgba(239, 68, 68, 0.2)' : 
-                        (u.is_observer ? '1px dashed #eab308' : 'none')),
-                      cursor: 'pointer',
-                      fontSize: '0.85rem', width: '100%'
-                    }}>
-                    <div style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                      {u.last_name} {u.first_name}
-                      {u.is_observer && <Eye size={12} title="Наблюдатель" />}
-                    </div>
-                    <div style={{ opacity: 0.8, fontSize: '0.75rem' }}>Max: {u.maxScore} баллов</div>
-                  </button>
+                  <UserListItem 
+                    key={u.id} 
+                    u={u} 
+                    isSelected={targetUser?.id === u.id} 
+                    onSelect={handleUserSelect} 
+                  />
                 ))}
                 {filteredUsers.length === 0 && <div style={{ fontSize: '0.8rem', opacity: 0.5, textAlign: 'center', marginTop: '10px' }}>Нет учеников по фильтру</div>}
               </div>
@@ -281,34 +291,37 @@ const AttemptDetailsView = React.memo(({
   if (!selectedAttempt || !targetQuiz) return <div style={{ padding: '20px', opacity: 0.5 }}>Выберите попытку на графике</div>;
 
   const qs = targetQuiz.content.questions;
-  let ansData = [];
-  try {
-    ansData = typeof selectedAttempt.answers_data === 'string' ? JSON.parse(selectedAttempt.answers_data) : selectedAttempt.answers_data;
-  } catch (e) { }
+  const ansData = selectedAttempt.answers_data || [];
 
-  const avgTimePerQ = {};
-  attempts.forEach(att => {
-    let d = typeof att.answers_data === 'string' ? JSON.parse(att.answers_data) : att.answers_data;
-    if (Array.isArray(d)) {
-      d.forEach(ans => {
-        if (!avgTimePerQ[ans.originalIndex]) avgTimePerQ[ans.originalIndex] = { totalTime: 0, count: 0 };
-        avgTimePerQ[ans.originalIndex].totalTime += (ans.timeSpent || 0);
-        avgTimePerQ[ans.originalIndex].count++;
-      });
-    }
-  });
+  const { avgTimePerQ, isSkippedHeavy, isShortTimeFail, minutes, seconds, scorePercent } = useMemo(() => {
+    const avg = {};
+    attempts.forEach(att => {
+      const d = att.answers_data;
+      if (Array.isArray(d)) {
+        d.forEach(ans => {
+          if (!avg[ans.originalIndex]) avg[ans.originalIndex] = { totalTime: 0, count: 0 };
+          avg[ans.originalIndex].totalTime += (ans.timeSpent || 0);
+          avg[ans.originalIndex].count++;
+        });
+      }
+    });
 
-  const totalQs = qs.length || 1;
-  const skippedCount = ansData.filter(a => a.chosenIndex === null).length;
-  const skippedPerc = skippedCount / totalQs;
-  const isSkippedHeavy = skippedPerc > 0.4;
+    const totalQs = qs.length || 1;
+    const skippedCount = ansData.filter(a => a.chosenIndex === null).length;
+    const skippedPerc = skippedCount / totalQs;
+    const limitTime = totalQs * 25;
+    const timeSpent = selectedAttempt.time_spent_total || 0;
+    const sPercent = (selectedAttempt.score / (selectedAttempt.total_questions || totalQs)) || 0;
 
-  const limitTime = totalQs * 25;
-  const timeSpent = selectedAttempt.time_spent_total || 0;
-  const minutes = Math.floor(timeSpent / 60);
-  const seconds = timeSpent % 60;
-  const scorePercent = (selectedAttempt.score / (selectedAttempt.total_questions || totalQs)) || 0;
-  const isShortTimeFail = timeSpent < limitTime * 0.12 && scorePercent < 0.4;
+    return {
+      avgTimePerQ: avg,
+      isSkippedHeavy: skippedPerc > 0.4,
+      isShortTimeFail: timeSpent < limitTime * 0.12 && sPercent < 0.4,
+      minutes: Math.floor(timeSpent / 60),
+      seconds: timeSpent % 60,
+      scorePercent: sPercent
+    };
+  }, [attempts, selectedAttempt, qs, ansData]);
 
   return (
     <div style={{ marginTop: '30px' }}>
@@ -433,7 +446,7 @@ const AttemptDetailsView = React.memo(({
   );
 });
 
-const AnalyticsDetails = () => {
+const AnalyticsDetails = ({ session, profile: initialProfile }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const quizIdParam = searchParams.get('quizId');
@@ -441,7 +454,7 @@ const AnalyticsDetails = () => {
 
   const [loading, setLoading] = useState(true);
   const [contentLoading, setContentLoading] = useState(false);
-  const [profile, setProfile] = useState(null);
+  const [profile, setProfile] = useState(initialProfile);
 
   // Data for sidebar
   const [quizFolders, setQuizFolders] = useState([]);
@@ -472,10 +485,10 @@ const AnalyticsDetails = () => {
 
   const [detailedImageModal, setDetailedImageModal] = useState({ isOpen: false, images: [], currentImgIdx: 0, question: '', userAnswer: '', correctAnswer: '', isCorrect: false, timeSpent: 0, avgQTime: 0 });
 
-  // category-specific memory for "smart" persistence
-  const [folderMemory, setFolderMemory] = useState(() => JSON.parse(sessionStorage.getItem('ad_folder_to_section') || '{}'));
-  const [sectionMemory, setSectionMemory] = useState(() => JSON.parse(sessionStorage.getItem('ad_section_to_quiz') || '{}'));
-  const [quizMemory, setQuizMemory] = useState(() => JSON.parse(sessionStorage.getItem('ad_quiz_to_user') || '{}'));
+  // category-specific memory for "smart" persistence - using Refs for callback stability
+  const folderMemory = useRef(JSON.parse(sessionStorage.getItem('ad_folder_to_section') || '{}'));
+  const sectionMemory = useRef(JSON.parse(sessionStorage.getItem('ad_section_to_quiz') || '{}'));
+  const quizMemory = useRef(JSON.parse(sessionStorage.getItem('ad_quiz_to_user') || '{}'));
 
   useEffect(() => { sessionStorage.setItem('ad_sidebar_open', sidebarOpen); }, [sidebarOpen]);
 
@@ -500,14 +513,15 @@ const AnalyticsDetails = () => {
   const [selectedAttempt, setSelectedAttempt] = useState(null);
 
   useEffect(() => {
-    fetchInitialData();
-  }, []);
+    if (initialProfile) {
+      fetchInitialData();
+    }
+  }, [initialProfile]);
 
   const fetchInitialData = async () => {
     setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      const { data: p } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+    const p = initialProfile;
+    if (p) {
       setProfile(p);
 
       const isPrivileged = p.role === 'admin' || p.role === 'creator' || p.role === 'teacher' || p.role === 'editor';
@@ -515,14 +529,14 @@ const AnalyticsDetails = () => {
         setSidebarOpen(false); // Force close for players
       }
 
-      const [qF, secs, { data: qs }, c, s, cl] = await Promise.all([
+      const [qF, secs, qs, c, s, cl] = await Promise.all([
         fetchWithCache('quiz_classes', () => supabase.from('quiz_classes').select('id, name, sort_order, is_divider').order('sort_order', { ascending: true }).then(res => res.data)),
         fetchWithCache('quiz_sections', () => supabase.from('quiz_sections').select('id, class_id, name, sort_order, is_divider').order('sort_order', { ascending: true }).then(res => res.data)),
-        (async () => {
+        fetchWithCache(`catalog_struct_quizzes_analytics_${p.role === 'editor' ? p.id : 'all'}`, () => {
           let quizQuery = supabase.from('quizzes').select('id, title, section_id, author_id, is_archived, sort_order, is_divider:content->is_divider, divider_text:content->divider_text').eq('is_archived', false).order('sort_order', { ascending: true });
           if (p.role === 'editor') quizQuery = quizQuery.eq('author_id', p.id);
-          return await quizQuery;
-        })(),
+          return quizQuery.then(res => res.data);
+        }),
         fetchWithCache('cities', () => supabase.from('cities').select('*').order('name').then(res => res.data)),
         fetchWithCache('schools', () => supabase.from('schools').select('*').order('name').then(res => res.data)),
         fetchWithCache('classes', () => supabase.from('classes').select('*').order('name').then(res => res.data))
@@ -566,7 +580,9 @@ const AnalyticsDetails = () => {
             const sMem = { ...JSON.parse(sessionStorage.getItem('ad_section_to_quiz') || '{}'), [section.id]: targetQuizId };
             const qMem = userIdParam ? { ...JSON.parse(sessionStorage.getItem('ad_quiz_to_user') || '{}'), [targetQuizId]: userIdParam } : JSON.parse(sessionStorage.getItem('ad_quiz_to_user') || '{}');
             
-            setFolderMemory(fMem); setSectionMemory(sMem); setQuizMemory(qMem);
+            folderMemory.current = fMem; 
+            sectionMemory.current = sMem; 
+            quizMemory.current = qMem;
             sessionStorage.setItem('ad_folder_to_section', JSON.stringify(fMem));
             sessionStorage.setItem('ad_section_to_quiz', JSON.stringify(sMem));
             sessionStorage.setItem('ad_quiz_to_user', JSON.stringify(qMem));
@@ -586,110 +602,155 @@ const AnalyticsDetails = () => {
     }, 100);
   };
 
+  const parseAttemptsData = useCallback((atts) => {
+    if (!atts) return [];
+    return atts.map(att => {
+      if (typeof att.answers_data === 'string') {
+        try { return { ...att, answers_data: JSON.parse(att.answers_data) }; } catch (e) { return att; }
+      }
+      return att;
+    });
+  }, []);
+
   const fetchAttempts = useCallback(async (qId, uId) => {
     setContentLoading(true);
-    const [{ data: q }, { data: u }] = await Promise.all([
-      supabase.from('quizzes').select('*').eq('id', qId).single(),
-      supabase.from('profiles').select('*').eq('id', uId).single()
-    ]);
 
-    if (q) setTargetQuiz(q);
-    if (u) setTargetUser(u);
+    const cacheKey = `ad_attempts_${qId}_${uId}`;
+    const data = await fetchWithCache(cacheKey, async () => {
+      const [{ data: q }, { data: u }, { data: rawAtts, error }] = await Promise.all([
+        supabase.from('quizzes').select('*').eq('id', qId).single(),
+        supabase.from('profiles').select('*').eq('id', uId).single(),
+        supabase.from('quiz_attempts').select('*').eq('quiz_id', qId).eq('user_id', uId).order('created_at', { ascending: true })
+      ]);
 
-    const { data: atts, error } = await supabase
-      .from('quiz_attempts')
-      .select('*')
-      .eq('quiz_id', qId)
-      .eq('user_id', uId)
-      .order('created_at', { ascending: true });
+      if (q) setTargetQuiz(q);
+      if (u) setTargetUser(u);
 
-    if (!error && atts) {
-      setAttempts(atts);
-      if (atts.length > 0) setSelectedAttempt(atts[atts.length - 1]);
+      if (!error && rawAtts) return parseAttemptsData(rawAtts);
+      return [];
+    });
+
+    if (data) {
+      const parsed = Array.isArray(data) ? data : parseAttemptsData(data);
+      setAttempts(parsed);
+      if (parsed.length > 0) setSelectedAttempt(parsed[parsed.length - 1]);
+      else setSelectedAttempt(null);
     } else {
       setAttempts([]);
       setSelectedAttempt(null);
     }
+    
     setContentLoading(false);
-  }, []);
+  }, [parseAttemptsData]);
+
+  useCacheSync(`ad_attempts_${filterQuiz}_${targetUser?.id}`, (rawAtts) => {
+    if (rawAtts) {
+      const parsed = parseAttemptsData(rawAtts);
+      setAttempts(parsed);
+      if (parsed.length > 0) setSelectedAttempt(parsed[parsed.length - 1]);
+    }
+  });
 
   const handleUserSelect = useCallback((uId) => {
-    // Also save this user to quiz memory
-    setQuizMemory(prev => {
-      const next = { ...prev, [filterQuiz]: uId };
-      sessionStorage.setItem('ad_quiz_to_user', JSON.stringify(next));
-      return next;
-    });
+    // Immediate UI feedback
+    const u = users.find(user => user.id === uId);
+    if (u) {
+      // Use startTransition for the heavy analytics updates to keep the sidebar responsive
+      React.startTransition(() => {
+        setTargetUser(u);
+      });
+    }
+
+    // Save to memory Ref (stable, no re-render needed for this side effect)
+    quizMemory.current[filterQuiz] = uId;
+    sessionStorage.setItem('ad_quiz_to_user', JSON.stringify(quizMemory.current));
 
     setSearchParams({ quizId: filterQuiz, userId: uId });
     fetchAttempts(filterQuiz, uId);
-  }, [filterQuiz, fetchAttempts, setSearchParams]);
+  }, [filterQuiz, fetchAttempts, setSearchParams, users]);
+
+  useCacheSync('quiz_classes', (data) => { if (data) setQuizFolders(data); });
+  useCacheSync('quiz_sections', (data) => { if (data) setSections(data); });
+  useCacheSync(`catalog_struct_quizzes_analytics_${profile?.role === 'editor' ? profile?.id : 'all'}`, (data) => { if (data) setQuizzes(data); });
+  useCacheSync('cities', (data) => { if (data) setCities(data); });
+  useCacheSync('schools', (data) => { if (data) setSchools(data); });
+  useCacheSync('classes', (data) => { if (data) setClasses(data); });
 
   const fetchUsersForQuiz = useCallback(async (qId, currentUserProfile, targetUserId = null) => {
-    const [{ data: results }, { data: currentQuizObj }] = await Promise.all([
-      supabase.from('quiz_results').select('user_id, score, total_questions').eq('quiz_id', qId),
-      supabase.from('quizzes').select('author_id').eq('id', qId).single()
-    ]);
+    const cacheKey = `ad_users_${qId}`;
+    
+    const userList = await fetchWithCache(cacheKey, async () => {
+      const [{ data: results }, { data: currentQuizObj }] = await Promise.all([
+        supabase.from('quiz_results').select('user_id, score, total_questions').eq('quiz_id', qId),
+        supabase.from('quizzes').select('author_id').eq('id', qId).single()
+      ]);
 
-    if (!results) {
+      if (!results || results.length === 0) return [];
+
+      const userIds = [...new Set(results.map(r => r.user_id))];
+      const [ { data: profs }, { data: attemptsData } ] = await Promise.all([
+        supabase.from('profiles').select('id, first_name, last_name, city_id, school_id, class_id, is_observer').in('id', userIds),
+        supabase.from('quiz_attempts').select('user_id, is_suspicious, is_passed, is_incomplete, score, max_score, created_at').eq('quiz_id', qId).order('created_at', { ascending: true })
+      ]);
+
+      const latestStatusMap = {};
+      if (attemptsData) {
+        attemptsData.forEach(att => {
+          const scorePercent = (att.max_score || 0) > 0 ? (att.score / att.max_score) : 0;
+          latestStatusMap[att.user_id] = {
+            is_incomplete: att.is_incomplete,
+            is_suspicious: att.is_suspicious,
+            is_underperforming: scorePercent <= 0.5 && !att.is_incomplete
+          };
+        });
+      }
+
+      if (profs) {
+        const isTeacher = currentUserProfile?.role === 'teacher';
+        let validProfs = profs.filter(p => (p.first_name?.trim() || p.last_name?.trim()));
+
+        if (isTeacher && currentQuizObj?.author_id !== currentUserProfile?.id) {
+          validProfs = validProfs.filter(p => p.school_id === currentUserProfile.school_id);
+        }
+
+        const uList = validProfs.map(p => {
+          const userResults = results.filter(r => r.user_id === p.id);
+          const maxScore = userResults.length > 0 ? Math.max(...userResults.map(r => r.score)) : 0;
+          const lStatus = latestStatusMap[p.id] || {};
+          return {
+            ...p,
+            maxScore,
+            is_incomplete_user: !!lStatus.is_incomplete,
+            is_suspicious_user: !!lStatus.is_suspicious,
+            is_underperforming_user: !!lStatus.is_underperforming
+          };
+        });
+        
+        uList.sort((a, b) => {
+          const lnA = (a.last_name || '').trim();
+          const lnB = (b.last_name || '').trim();
+          const primaryA = lnA || (a.first_name || '').trim();
+          const primaryB = lnB || (b.first_name || '').trim();
+          const res = primaryA.localeCompare(primaryB, 'ru');
+          if (res !== 0) return res;
+          return (a.first_name || '').trim().localeCompare((b.first_name || '').trim(), 'ru');
+        });
+        
+        return uList;
+      }
+      return [];
+    });
+
+    if (!userList || userList.length === 0) {
       setUsers([]);
       setTargetUser(null);
       setAttempts([]);
       return;
     }
 
-    const userIds = [...new Set(results.map(r => r.user_id))];
-    const [ { data: profs }, { data: attemptsData } ] = await Promise.all([
-      supabase.from('profiles').select('id, first_name, last_name, city_id, school_id, class_id, is_observer').in('id', userIds),
-      supabase.from('quiz_attempts').select('user_id, is_suspicious, is_passed, is_incomplete, score, max_score, created_at').eq('quiz_id', qId).order('created_at', { ascending: true })
-    ]);
+    setUsers(userList);
 
-    const latestStatusMap = {};
-    if (attemptsData) {
-      attemptsData.forEach(att => {
-        const scorePercent = (att.max_score || 0) > 0 ? (att.score / att.max_score) : 0;
-        latestStatusMap[att.user_id] = {
-          is_incomplete: att.is_incomplete,
-          is_suspicious: att.is_suspicious,
-          is_underperforming: scorePercent <= 0.5 && !att.is_incomplete
-        };
-      });
-    }
-
-    if (profs) {
-      const isTeacher = currentUserProfile?.role === 'teacher';
-      let validProfs = profs.filter(p => (p.first_name?.trim() || p.last_name?.trim()));
-
-      if (isTeacher && currentQuizObj?.author_id !== currentUserProfile?.id) {
-        validProfs = validProfs.filter(p => p.school_id === currentUserProfile.school_id);
-      }
-
-      const userList = validProfs.map(p => {
-        const userResults = results.filter(r => r.user_id === p.id);
-        const maxScore = userResults.length > 0 ? Math.max(...userResults.map(r => r.score)) : 0;
-        const lStatus = latestStatusMap[p.id] || {};
-        return {
-          ...p,
-          maxScore,
-          is_incomplete_user: !!lStatus.is_incomplete,
-          is_suspicious_user: !!lStatus.is_suspicious,
-          is_underperforming_user: !!lStatus.is_underperforming
-        };
-      });
-      userList.sort((a, b) => {
-        const lnA = (a.last_name || '').trim();
-        const lnB = (b.last_name || '').trim();
-        const primaryA = lnA || (a.first_name || '').trim();
-        const primaryB = lnB || (b.first_name || '').trim();
-        const res = primaryA.localeCompare(primaryB, 'ru');
-        if (res !== 0) return res;
-        return (a.first_name || '').trim().localeCompare((b.first_name || '').trim(), 'ru');
-      });
-      setUsers(userList);
-
-      // Restoration Logic:
-      // Priority 1: targetUserId passed explicitly (memory or URL param at mount)
-      // Priority 2: userIdParam from URL (only if targetUserId is not provided)
+      // Restoration Logic
       const finalTargetId = targetUserId || userIdParam;
       
       if (finalTargetId) {
@@ -707,8 +768,11 @@ const AnalyticsDetails = () => {
         setTargetUser(null);
         setAttempts([]);
       }
-    }
   }, [userIdParam, fetchAttempts, handleUserSelect]);
+
+  useCacheSync(`ad_users_${filterQuiz}`, (freshUsers) => {
+     if (freshUsers) setUsers(freshUsers);
+  });
 
   const handleQuizSelect = useCallback((qId, overrideUserId = null, sId = null, isAutomated = false) => {
     const currentSId = sId || filterSection;
@@ -724,9 +788,8 @@ const AnalyticsDetails = () => {
 
     setFilterQuiz(qId);
     
-    // 2. Determine target user (use provided quizMemory if state is stale, or read from storage)
-    const activeQuizMem = isAutomated ? JSON.parse(sessionStorage.getItem('ad_quiz_to_user') || '{}') : quizMemory;
-    const targetUId = overrideUserId || activeQuizMem[qId] || 'none';
+    // 2. Determine target user (use provided quizMemory Ref)
+    const targetUId = overrideUserId || quizMemory.current[qId] || 'none';
     
     setSearchParams(qId ? (targetUId !== 'none' ? { quizId: qId, userId: targetUId } : { quizId: qId }) : {});
     setTargetUser(null);
@@ -738,51 +801,40 @@ const AnalyticsDetails = () => {
     } else {
       setUsers([]);
     }
-  }, [profile, filterSection, quizMemory, fetchUsersForQuiz, setSearchParams]);
+  }, [profile, filterSection, fetchUsersForQuiz, setSearchParams]);
 
   const handleSectionChange = useCallback((sId, folderId = filterFolder, isAutomated = false) => {
     const currentFId = folderId || filterFolder;
 
-    // 1. Save current state to memory ONLY if manual
+    // 1. Save current state to memory Ref ONLY if manual
     if (!isAutomated && filterSection !== 'all') {
-      setSectionMemory(prev => {
-        const next = { ...prev, [filterSection]: filterQuiz };
-        sessionStorage.setItem('ad_section_to_quiz', JSON.stringify(next));
-        return next;
-      });
+      sectionMemory.current[filterSection] = filterQuiz;
+      sessionStorage.setItem('ad_section_to_quiz', JSON.stringify(sectionMemory.current));
 
       if (currentFId !== 'all') {
-        setFolderMemory(prev => {
-          const next = { ...prev, [currentFId]: sId };
-          sessionStorage.setItem('ad_folder_to_section', JSON.stringify(next));
-          return next;
-        });
+        folderMemory.current[currentFId] = sId;
+        sessionStorage.setItem('ad_folder_to_section', JSON.stringify(folderMemory.current));
       }
     }
 
     setFilterSection(sId);
     
-    // 2. Restore quiz for new section (read from storage for latest data in case of race)
-    const latestSecMem = JSON.parse(sessionStorage.getItem('ad_section_to_quiz') || '{}');
-    const rememberedQuiz = sId === 'all' ? '' : (latestSecMem[sId] || '');
+    // 2. Restore quiz for new section (read from ref)
+    const rememberedQuiz = sId === 'all' ? '' : (sectionMemory.current[sId] || '');
     handleQuizSelect(rememberedQuiz, null, sId, true);
   }, [filterFolder, filterSection, filterQuiz, handleQuizSelect]);
 
   const handleFolderChange = useCallback((fId) => {
     // 1. Save old folder's section
     if (filterFolder !== 'all') {
-      setFolderMemory(prev => {
-        const next = { ...prev, [filterFolder]: filterSection };
-        sessionStorage.setItem('ad_folder_to_section', JSON.stringify(next));
-        return next;
-      });
+      folderMemory.current[filterFolder] = filterSection;
+      sessionStorage.setItem('ad_folder_to_section', JSON.stringify(folderMemory.current));
     }
 
     setFilterFolder(fId);
 
-    // 2. Restore section for new folder (read from storage synchronously)
-    const latestFolderMem = JSON.parse(sessionStorage.getItem('ad_folder_to_section') || '{}');
-    const rememberedSection = fId === 'all' ? 'all' : (latestFolderMem[fId] || 'all');
+    // 2. Restore section for new folder (read from Ref)
+    const rememberedSection = fId === 'all' ? 'all' : (folderMemory.current[fId] || 'all');
     handleSectionChange(rememberedSection, fId, true);
   }, [filterFolder, filterSection, handleSectionChange]);
 

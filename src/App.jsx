@@ -118,8 +118,8 @@ function App() {
         <Route path="/logs" element={isAdmin ? <Logs profile={profile} /> : <Navigate to="/" />} />
         <Route path="/statistics" element={<Statistics session={session} profile={profile} />} />
         <Route path="/analytics" element={isEditor ? <Analytics profile={profile} /> : <Navigate to="/" />} />
-        <Route path="/analytics-details" element={session ? <AnalyticsDetails /> : <Navigate to="/auth" />} />
-        <Route path="/user-analytics" element={session ? <UserAnalytics /> : <Navigate to="/auth" />} />
+        <Route path="/analytics-details" element={session ? <AnalyticsDetails session={session} profile={profile} /> : <Navigate to="/auth" />} />
+        <Route path="/user-analytics" element={session ? <UserAnalytics session={session} profile={profile} /> : <Navigate to="/auth" />} />
         <Route path="/redactor" element={isEditor ? <QuizRedactor /> : <Navigate to="/" />} />
 
         <Route path="/profile" element={session ? <Profile session={session} profile={profile} refreshProfile={() => fetchProfile(session.user.id)} /> : <Navigate to="/auth" />} />

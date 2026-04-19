@@ -221,9 +221,18 @@ const QuizRedactor = () => {
       setSavedQuestions(deepClone(questions));
       historyRef.current = [];
       setCanUndo(false);
-      setShowSaveModal(false);
       setShowValidErrors(false);
       setValidErrors([]);
+
+      // Invalidate Data-Driven cache for quizzes so structural changes reflect instantly
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith('labtest_cache_catalog_quizzes_') || key.startsWith('labtest_cache_catalog_struct_'))) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(k => localStorage.removeItem(k));
 
       // Trigger background GitHub rename sync if title changed
       if (isTitleChanged) {

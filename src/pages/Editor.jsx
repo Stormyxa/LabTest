@@ -180,6 +180,17 @@ const Editor = ({ session, profile }) => {
   // Full refresh after any mutation — clears cache, reloads structure + tree if open
   const fetchData = async () => {
     _editorTreeCache = null;
+    
+    // Invalidate Data-Driven cache for quizzes so structural changes reflect instantly
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith('labtest_cache_catalog_quizzes_') || key.startsWith('labtest_cache_catalog_struct_'))) {
+            keysToRemove.push(key);
+        }
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k));
+
     await fetchStructure();
     if (activeTabRef.current === 'manage') await fetchTreeData(true);
   };

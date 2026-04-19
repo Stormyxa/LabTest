@@ -1,8 +1,29 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { fetchWithCache } from '../lib/cache';
+import { fetchWithCache, useCacheSync } from '../lib/cache';
 import { ChevronLeft, BarChart2, Search, Filter, Shield, EyeOff, AlertTriangle, Menu, X, Clock, Calendar } from 'lucide-react';
+
+const UserListItem = React.memo(({ u, isSelected, onSelect }) => (
+  <button 
+    onClick={() => onSelect(u.id)}
+    className="user-sidebar-item"
+    style={{ 
+      textAlign: 'left', padding: '10px', 
+      background: isSelected ? 'var(--primary-color)' : 'rgba(0,0,0,0.02)',
+      color: isSelected ? 'white' : 'var(--text-color)',
+      borderRadius: '8px', border: 'none', cursor: 'pointer',
+      fontSize: '0.85rem', width: '100%',
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      transition: 'background 0.2s, transform 0.2s'
+    }}>
+    <div>
+      <div style={{ fontWeight: 'bold' }}>{u.last_name} {u.first_name}</div>
+      <div style={{ opacity: 0.7, fontSize: '0.75rem' }}>{u.email}</div>
+    </div>
+    {u.is_observer && <Shield size={14} title="Наблюдатель" />}
+  </button>
+));
 
 const SidebarUserList = React.memo(({ 
   users, 
@@ -26,25 +47,12 @@ const SidebarUserList = React.memo(({
           <label style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '10px', display: 'block' }}>Ученики ({filteredUsers.length})</label>
           <div ref={scrollRef} onScroll={handleScroll} style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '5px', paddingRight: '5px' }}>
             {filteredUsers.map(u => (
-              <button 
-                key={u.id} 
-                onClick={() => handleUserSelect(u.id)}
-                className="user-sidebar-item"
-                style={{ 
-                  textAlign: 'left', padding: '10px', 
-                  background: targetUser?.id === u.id ? 'var(--primary-color)' : 'rgba(0,0,0,0.02)',
-                  color: targetUser?.id === u.id ? 'white' : 'var(--text-color)',
-                  borderRadius: '8px', border: 'none', cursor: 'pointer',
-                  fontSize: '0.85rem', width: '100%',
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  transition: 'background 0.2s, transform 0.2s'
-                }}>
-                <div>
-                  <div style={{ fontWeight: 'bold' }}>{u.last_name} {u.first_name}</div>
-                  <div style={{ opacity: 0.7, fontSize: '0.75rem' }}>{u.email}</div>
-                </div>
-                {u.is_observer && <Shield size={14} title="Наблюдатель" />}
-              </button>
+              <UserListItem
+                key={u.id}
+                u={u}
+                isSelected={targetUser?.id === u.id}
+                onSelect={handleUserSelect}
+              />
             ))}
             {filteredUsers.length === 0 && <div style={{ fontSize: '0.8rem', opacity: 0.5, textAlign: 'center', marginTop: '10px' }}>Нет учеников по фильтру</div>}
           </div>
@@ -118,7 +126,7 @@ const ActivityHeatMap = React.memo(({ weeks, selectedDay, setSelectedDay }) => {
   );
 });
 
-const UserAnalytics = () => {
+const UserAnalytics = ({ session, profile: initialProfile }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const userIdParam = searchParams.get('userId');
@@ -163,14 +171,15 @@ const UserAnalytics = () => {
   const [selectedDay, setSelectedDay] = useState(null);
 
   useEffect(() => {
-    fetchInitialData();
-  }, []);
+    if (initialProfile) {
+      fetchInitialData();
+    }
+  }, [initialProfile]);
 
   const fetchInitialData = async () => {
     setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      const { data: p } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+    const p = initialProfile;
+    if (p) {
       setProfile(p);
       
       const isPrivileged = p.role === 'admin' || p.role === 'creator' || p.role === 'teacher' || p.role === 'editor';
@@ -203,28 +212,25 @@ const UserAnalytics = () => {
           }
         }
 
-        // Fetch users (only required fields for sidebar)
-        let query = supabase.from('profiles').select('id, first_name, last_name, city_id, school_id, class_id, is_observer');
-        if (p.role === 'teacher') query = query.eq('school_id', p.school_id);
-        
-        const { data: allProfs } = await query;
-        if (allProfs) {
-          allProfs.sort((a, b) => {
-            const lnA = (a.last_name || '').trim();
-            const lnB = (b.last_name || '').trim();
-            const fnA = (a.first_name || '').trim();
-            const fnB = (b.first_name || '').trim();
-            
-            const primaryA = lnA || fnA;
-            const primaryB = lnB || fnB;
-            
-            const res = primaryA.localeCompare(primaryB, 'ru');
-            if (res !== 0) return res;
-            
-            return fnA.localeCompare(fnB, 'ru');
-          });
-          setUsers(allProfs);
-        }
+        // Fetch users with SWR
+        const usersCacheKey = `ua_users_${p.role === 'teacher' ? p.school_id : 'all'}`;
+        const cachedUsers = await fetchWithCache(usersCacheKey, async () => {
+          let query = supabase.from('profiles').select('id, first_name, last_name, city_id, school_id, class_id, is_observer');
+          if (p.role === 'teacher') query = query.eq('school_id', p.school_id);
+          
+          const { data: allProfs } = await query;
+          if (allProfs) {
+            allProfs.sort((a, b) => {
+              const res = (a.last_name || a.first_name || '').trim().localeCompare((b.last_name || b.first_name || '').trim(), 'ru');
+              if (res !== 0) return res;
+              return (a.first_name || '').trim().localeCompare((b.first_name || '').trim(), 'ru');
+            });
+            return allProfs;
+          }
+          return [];
+        });
+
+        if (cachedUsers && cachedUsers.length > 0) setUsers(cachedUsers);
       }
 
       const effectiveUserId = userIdParam || (!isPrivileged ? p.id : null);
@@ -247,33 +253,42 @@ const UserAnalytics = () => {
   const fetchUserAnalytics = useCallback(async (uId, currentUserProfile = profile) => {
     setContentLoading(true);
 
-    // Parallel profile and initial attempts query check
-    const [{ data: u }, { data: myQuizzes }] = await Promise.all([
-      supabase.from('profiles').select('*').eq('id', uId).single(),
-      (async () => {
-        if (currentUserProfile?.role === 'editor') {
-          return await supabase.from('quizzes').select('id').eq('author_id', currentUserProfile.id);
+    const targetUserCacheKey = `ua_target_${uId}`;
+    const data = await fetchWithCache(targetUserCacheKey, async () => {
+      // Parallel profile and initial attempts query check
+      const [{ data: u }, { data: myQuizzes }] = await Promise.all([
+        supabase.from('profiles').select('*').eq('id', uId).single(),
+        (async () => {
+          if (currentUserProfile?.role === 'editor') {
+            return await supabase.from('quizzes').select('id').eq('author_id', currentUserProfile.id);
+          }
+          return { data: null };
+        })()
+      ]);
+
+      if (u) setTargetUser(u);
+
+      // Build the attempts query based on the fetched quiz list (if editor)
+      let attsQuery = supabase.from('quiz_attempts').select('*').eq('user_id', uId).order('created_at', { ascending: false });
+      
+      if (currentUserProfile?.role === 'editor') {
+        if (myQuizzes && myQuizzes.length > 0) {
+          attsQuery = attsQuery.in('quiz_id', myQuizzes.map(q => q.id));
+        } else {
+          attsQuery = supabase.from('quiz_attempts').select('*').eq('id', '00000000-0000-0000-0000-000000000000'); // empty
         }
-        return { data: null };
-      })()
-    ]);
-
-    if (u) setTargetUser(u);
-
-    // Build the attempts query based on the fetched quiz list (if editor)
-    let attsQuery = supabase.from('quiz_attempts').select('*').eq('user_id', uId).order('created_at', { ascending: false });
-    
-    if (currentUserProfile?.role === 'editor') {
-      if (myQuizzes && myQuizzes.length > 0) {
-        attsQuery = attsQuery.in('quiz_id', myQuizzes.map(q => q.id));
-      } else {
-        attsQuery = supabase.from('quiz_attempts').select('*').eq('id', '00000000-0000-0000-0000-000000000000'); // empty
       }
-    }
 
-    const { data: atts } = await attsQuery;
+      const { data: atts } = await attsQuery;
+      
+      return { profile: u, attempts: atts || [] };
+    });
 
-    if (atts && atts.length > 0) {
+    if (data) {
+      if (data.profile) setTargetUser(data.profile);
+      const atts = data.attempts;
+
+      if (atts && atts.length > 0) {
       // Find the first attempt date for each quiz
       const firstMap = {};
       atts.forEach(att => {
@@ -334,6 +349,7 @@ const UserAnalytics = () => {
 
       if (distinctQuizzes.length > 0) setSelectedAttempt(distinctQuizzes[distinctQuizzes.length - 1]);
       setSelectedDay(null);
+      setSelectedDay(null);
     } else {
       setLatestAttempts([]);
       setTotalUniqueQuizzes(0);
@@ -341,17 +357,62 @@ const UserAnalytics = () => {
       setSelectedAttempt(null);
       setSelectedDay(null);
     }
+    }
     setContentLoading(false);
   }, [profile]);
+
+  useCacheSync(`ua_target_${targetUser?.id}`, async (freshData) => {
+    if (!freshData) return;
+    if (freshData.profile) setTargetUser(freshData.profile);
+    const atts = freshData.attempts;
+    if (atts && atts.length > 0) {
+      const distinctQuizzes = [];
+      const seenQuizIds = new Set();
+      for (const att of atts) {
+        if (!seenQuizIds.has(att.quiz_id)) {
+          seenQuizIds.add(att.quiz_id);
+          distinctQuizzes.push(att);
+          if (distinctQuizzes.length === 20) break;
+        }
+      }
+      distinctQuizzes.reverse();
+      setLatestAttempts(distinctQuizzes);
+      setTotalUniqueQuizzes(new Set(atts.map(a => a.quiz_id)).size);
+      setAllUserAttempts(atts);
+      
+      const qIds = Array.from(new Set(atts.map(a => a.quiz_id)));
+      const { data: qz } = await supabase.from('quizzes').select('id, title').in('id', qIds);
+      const qMap = {};
+      if (qz) qz.forEach(q => qMap[q.id] = q.title);
+      setQuizzesMap(qMap);
+      
+      if (distinctQuizzes.length > 0) setSelectedAttempt(distinctQuizzes[distinctQuizzes.length - 1]);
+    } else {
+      setLatestAttempts([]);
+      setAllUserAttempts([]);
+      setSelectedAttempt(null);
+    }
+  });
+
+  useCacheSync(`ua_users_${profile?.role === 'teacher' ? profile?.school_id : 'all'}`, (cachedUsers) => {
+    if (cachedUsers && cachedUsers.length > 0) setUsers(cachedUsers);
+  });
 
   const handleScroll = useCallback((e) => {
     sessionStorage.setItem('ua_list_scroll', e.target.scrollTop);
   }, []);
 
   const handleUserSelect = useCallback((uId) => {
+    // Immediate UI feedback
+    const u = users.find(user => user.id === uId);
+    if (u) {
+      React.startTransition(() => {
+        setTargetUser(u);
+      });
+    }
     setSearchParams({ userId: uId });
     fetchUserAnalytics(uId);
-  }, [fetchUserAnalytics, setSearchParams]);
+  }, [fetchUserAnalytics, setSearchParams, users]);
 
   const filteredUsers = useMemo(() => {
     return users.filter(u => {

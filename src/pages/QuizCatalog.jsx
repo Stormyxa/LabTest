@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Search, Play, CheckCircle, ChevronDown, ChevronUp, Award, Save, BarChart2, Book, Pencil, Eye, AlertTriangle, Plus, Shield, EyeOff, Trash2, Dices, Clock, TrendingUp, Info, Loader2 } from 'lucide-react';
 import { useScrollRestoration } from '../lib/useScrollRestoration';
+import { fetchWithCache, useCacheSync } from '../lib/cache';
 
 const DividerItem = React.memo(({ quiz, qIndex, userRole, searchQuery, swapQuizzes, setRenamingItem, fetchQuizzes, quizzesLength }) => (
   <div className="grid-full animate" style={{ gridColumn: '1 / -1', margin: '10px 0', padding: '10px 0', display: 'flex', alignItems: 'center', gap: '15px' }}>
@@ -87,128 +88,122 @@ const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, pass
 
 const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, onQuizzesChange, setHideModal, setRenamingItem, setSelectedQuiz, setRandomQuizModal }) => {
   const navigate = useNavigate();
-  const [passedQuizzes, setPassedQuizzes] = useState({});
-  const [quizStats, setQuizStats] = useState({});
-  const [statsLoading, setStatsLoading] = useState(false);
   const [visibleCount, setVisibleCount] = useState(25); // Incremental rendering start
 
   // Keep a ref for swapping calculations to avoid dependency-related mass re-renders
   const quizzesRef = React.useRef([]);
 
-  // 5-minute quiz caching logic
-  const QUIZ_CACHE_TTL = 5 * 60 * 1000;
-  const getCachedQuizzes = useCallback(() => {
-    try {
-      const cached = localStorage.getItem(`catalog_quizzes_${section.id}`);
-      if (cached) {
-        const { data, timestamp } = JSON.parse(cached);
-        if (Date.now() - timestamp < QUIZ_CACHE_TTL) return data;
-      }
-    } catch (e) { }
-    return null;
-  }, [section.id]);
-
-  const setCachedQuizzes = useCallback((data) => {
-    try {
-      localStorage.setItem(`catalog_quizzes_${section.id}`, JSON.stringify({ data, timestamp: Date.now() }));
-    } catch (e) { }
-  }, [section.id]);
-
+  // We initialize straight from cache to prevent UI flash, without any artificial TTL (Data-Driven Updates)
   const [quizzes, setQuizzes] = useState(() => {
-    const cached = getCachedQuizzes();
-    if (cached) quizzesRef.current = cached;
-    return cached || [];
-  });
-  const [loading, setLoading] = useState(() => !getCachedQuizzes());
-
-  // 10-minute stats caching logic
-  const STATS_CACHE_TTL = 10 * 60 * 1000;
-  const getCachedStats = useCallback(() => {
     try {
-      const cached = localStorage.getItem(`catalog_stats_${section.id}`);
+      const cached = localStorage.getItem(`labtest_cache_catalog_quizzes_${section.id}`);
       if (cached) {
-        const { data, timestamp } = JSON.parse(cached);
-        if (Date.now() - timestamp < STATS_CACHE_TTL) return data;
+        const parsed = JSON.parse(cached).data;
+        quizzesRef.current = parsed;
+        return parsed;
       }
-    } catch (e) { }
-    return null;
-  }, [section.id]);
+    } catch(e) {}
+    return [];
+  });
+  
+  const [loading, setLoading] = useState(quizzes.length === 0);
 
-  const setCachedStats = useCallback((data) => {
+  const [passedQuizzes, setPassedQuizzes] = useState(() => {
     try {
-      localStorage.setItem(`catalog_stats_${section.id}`, JSON.stringify({ data, timestamp: Date.now() }));
-    } catch (e) { }
-  }, [section.id]);
+      const cached = localStorage.getItem(`labtest_cache_catalog_stats_${section.id}`);
+      if (cached) return JSON.parse(cached).data?.passed || {};
+    } catch(e) {}
+    return {};
+  });
+
+  const [quizStats, setQuizStats] = useState(() => {
+    try {
+      const cached = localStorage.getItem(`labtest_cache_catalog_stats_${section.id}`);
+      if (cached) return JSON.parse(cached).data?.stats || {};
+    } catch(e) {}
+    return {};
+  });
+
+  const [statsLoading, setStatsLoading] = useState(Object.keys(passedQuizzes).length === 0);
 
   const fetchQuizzes = useCallback(async () => {
-    setLoading(true);
-    const { data: qData } = await supabase.from('quizzes')
-      .select('id, title, section_id, is_hidden, is_verified, sort_order, content, author_id, avg_success_rate, profiles(first_name, last_name, role)')
-      .eq('section_id', section.id)
-      .eq('is_archived', false)
-      .eq('is_hidden', false)
-      .order('sort_order', { ascending: true });
+    if (quizzesRef.current.length === 0) setLoading(true);
 
-    if (qData) {
-      const mapped = qData.map(q => ({ ...q, is_dirty: false }));
-      setQuizzes(mapped);
-      quizzesRef.current = mapped;
-      setCachedQuizzes(mapped);
+    const freshData = await fetchWithCache(`catalog_quizzes_${section.id}`, async () => {
+      const { data: qData } = await supabase.from('quizzes')
+        .select('id, title, section_id, is_hidden, is_verified, sort_order, content, author_id, avg_success_rate, profiles(first_name, last_name, role)')
+        .eq('section_id', section.id)
+        .eq('is_archived', false)
+        .eq('is_hidden', false)
+        .order('sort_order', { ascending: true });
+
+      if (qData) return qData.map(q => ({ ...q, is_dirty: false }));
+      return null;
+    });
+
+    if (freshData) {
+      setQuizzes(prev => {
+        if (prev.some(q => q.is_dirty)) return prev; // Do not overwrite if user is dragging
+        quizzesRef.current = freshData;
+        return freshData;
+      });
     }
     setLoading(false);
-  }, [section.id, setCachedQuizzes]);
+  }, [section.id]);
+
+  // SWR Event Listener for background quiz updates
+  useCacheSync(`catalog_quizzes_${section.id}`, (freshData) => {
+    setQuizzes(prev => {
+      if (prev.some(q => q.is_dirty)) return prev; 
+      quizzesRef.current = freshData;
+      return freshData;
+    });
+  });
 
   const fetchDetailedStats = useCallback(async (currentQuizzes) => {
-    const cached = getCachedStats();
-    if (cached) {
-      setPassedQuizzes(cached.passed);
-      setQuizStats(cached.stats);
-      return;
-    }
-
     const quizIds = currentQuizzes.map(q => q.id);
     if (quizIds.length === 0) return;
 
-    setStatsLoading(true);
-    try {
-      const [resultsRes, statsRes] = await Promise.all([
+    // Use SWR pattern for stats as well, with no background force for average stats unless cache is missing (wait, user wants 10 min TTL for avg score? yes, but since avg score is in main query, it naturally revalidates. Personal stats can be infinity).
+    const freshData = await fetchWithCache(`catalog_stats_${section.id}`, async () => {
+      const [resultsRes] = await Promise.all([
         profile?.id ? supabase.from('quiz_results')
           .select('quiz_id, is_passed, score, total_questions')
           .eq('user_id', profile.id)
-          .in('quiz_id', quizIds) : Promise.resolve({ data: null }),
-        // We still use RPC as a fallback or if the column isn't fully ready, 
-        // but we'll prioritize the avg_success_rate from the main query later.
-        // For now, let's just get the user's specific results in the background.
-        Promise.resolve({ data: null }) 
+          .in('quiz_id', quizIds) : Promise.resolve({ data: null })
       ]);
 
       const passMap = {};
       if (resultsRes.data) {
         resultsRes.data.forEach(r => { passMap[r.quiz_id] = { is_passed: r.is_passed, score: r.score, total: r.total_questions }; });
       }
+      return { passed: passMap, stats: {} };
+    });
 
-      setPassedQuizzes(passMap);
-      // Average score is now handled by avg_success_rate in the main quiz query,
-      // but if we need deeper stats (like participants), we can fetch here.
-      setCachedStats({ passed: passMap, stats: {} });
-    } catch (err) {
-      console.error('Stats fetch error:', err);
-    } finally {
-      setStatsLoading(false);
+    if (freshData) {
+      setPassedQuizzes(freshData.passed);
+      setQuizStats(freshData.stats);
     }
-  }, [section.id, profile, getCachedStats, setCachedStats]);
+    setStatsLoading(false);
+  }, [section.id, profile]);
+
+  // SWR Event Listener for background stats updates
+  useCacheSync(`catalog_stats_${section.id}`, (freshData) => {
+    setPassedQuizzes(freshData.passed);
+    setQuizStats(freshData.stats);
+  });
 
   useEffect(() => {
-    if (isExpanded && quizzes.length === 0 && loading) {
+    if (isExpanded) {
       fetchQuizzes();
     }
-  }, [isExpanded, fetchQuizzes, quizzes.length, loading]);
+  }, [isExpanded, fetchQuizzes]);
 
   useEffect(() => {
-    if (quizzes.length > 0 && Object.keys(passedQuizzes).length === 0 && !statsLoading) {
+    if (quizzes.length > 0) {
       fetchDetailedStats(quizzes);
     }
-  }, [quizzes.length, passedQuizzes, statsLoading, fetchDetailedStats]);
+  }, [quizzes.length, fetchDetailedStats]);
 
   // Incremental rendering loop to avoid blocking UI
   useEffect(() => {
@@ -372,9 +367,43 @@ const QuizCatalog = ({ profile }) => {
   const setHideModal = useCallback((v) => setHideModalState(v), []);
   const setRandomQuizModal = useCallback((v) => setRandomQuizModalState(v), []);
 
-  useEffect(() => {
-    fetchData();
+  const formatClasses = useCallback((c, s, basicQuizzes) => {
+    if (!c || !s || !basicQuizzes) return [];
+    return c.map(cls => ({
+      ...cls,
+      sections: s.filter(sec => sec.class_id === cls.id).map(sec => ({
+        ...sec,
+        basicQuizzes: basicQuizzes.filter(quiz => quiz.section_id === sec.id)
+      }))
+    }));
   }, []);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+
+    const isPrivileged = profile?.role === 'admin' || profile?.role === 'creator';
+    
+    const [c, s, basicQuizzes] = await Promise.all([
+      fetchWithCache('catalog_struct_classes', () => supabase.from('quiz_classes').select('*').order('sort_order', { ascending: true }).then(r => r.data)),
+      fetchWithCache('catalog_struct_sections', () => supabase.from('quiz_sections').select('*').order('sort_order', { ascending: true }).then(r => r.data)),
+      fetchWithCache(`catalog_struct_quizzes_${isPrivileged ? 'all' : 'visible'}`, () => {
+        let quizQuery = supabase.from('quizzes').select('id, section_id, is_hidden, content').eq('is_archived', false);
+        if (!isPrivileged) quizQuery = quizQuery.eq('is_hidden', false);
+        return quizQuery.then(r => r.data);
+      })
+    ]);
+
+    if (c && s && basicQuizzes) {
+      setClasses(formatClasses(c, s, basicQuizzes));
+    }
+    setLoading(false);
+  }, [profile, formatClasses]);
+
+  useEffect(() => {
+    if (profile !== undefined) {
+      fetchData();
+    }
+  }, [profile, fetchData]);
 
   useEffect(() => {
     if (!debouncedSearchQuery.trim()) return;
@@ -408,35 +437,12 @@ const QuizCatalog = ({ profile }) => {
     })();
   }, [debouncedSearchQuery]); // eslint-disable-line
 
-  const fetchData = async () => {
-    setLoading(true);
 
-    const { data: c } = await supabase.from('quiz_classes').select('*').order('sort_order', { ascending: true });
-    const { data: s } = await supabase.from('quiz_sections').select('*').order('sort_order', { ascending: true });
 
-    // Подгружаем только скелеты тестов чтобы знать количество и пустоту (очень мало весит)
-    const isPrivileged = profile?.role === 'admin' || profile?.role === 'creator';
-    let quizQuery = supabase.from('quizzes')
-      .select('id, section_id, is_hidden, content')
-      .eq('is_archived', false);
-
-    if (!isPrivileged) {
-      quizQuery = quizQuery.eq('is_hidden', false);
-    }
-    const { data: basicQuizzes } = await quizQuery;
-
-    if (c && s && basicQuizzes) {
-      const formatted = c.map(cls => ({
-        ...cls,
-        sections: s.filter(sec => sec.class_id === cls.id).map(sec => ({
-          ...sec,
-          basicQuizzes: basicQuizzes.filter(quiz => quiz.section_id === sec.id)
-        }))
-      }));
-      setClasses(formatted);
-    }
-    setLoading(false);
-  };
+  // Sync cache events for structure
+  useCacheSync('catalog_struct_classes', () => fetchData());
+  useCacheSync('catalog_struct_sections', () => fetchData());
+  useCacheSync(`catalog_struct_quizzes_${profile?.role === 'admin' || profile?.role === 'creator' ? 'all' : 'visible'}`, () => fetchData());
 
   const swapClasses = (index, direction, e) => {
     e.stopPropagation();

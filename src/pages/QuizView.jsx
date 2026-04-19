@@ -466,6 +466,21 @@ const QuizView = ({ session, profile }) => {
         if (profile?.class_id) resultData.class_id = profile.class_id;
         await supabase.from('quiz_results').insert(resultData);
       }
+
+      // Optimistic UI Update: Directly modify the catalog stats cache
+      // so the user sees their new score instantly upon returning.
+      const catalogCacheKey = `labtest_cache_catalog_stats_${quiz.section_id}`;
+      const rawCache = localStorage.getItem(catalogCacheKey);
+      if (rawCache) {
+        try {
+          const parsed = JSON.parse(rawCache);
+          if (parsed.data && parsed.data.passed) {
+            parsed.data.passed[id] = { is_passed: isPassed, score: correctCount, total: qs.length };
+            localStorage.setItem(catalogCacheKey, JSON.stringify(parsed));
+          }
+        } catch(e) {}
+      }
+      
     } catch (err) {
       console.error('Ошибка сохранения результата:', err);
     }

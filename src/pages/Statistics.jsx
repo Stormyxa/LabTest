@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { fetchWithCache, useCacheSync } from '../lib/cache';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Trophy, Download, Users, School, Filter, AlertTriangle, MapPin, Building, Info } from 'lucide-react';
@@ -50,19 +51,20 @@ const Statistics = ({ session, profile }) => {
   const fetchData = async () => {
     setLoading(true);
 
-    const [ { data: c }, { data: s }, { data: cl }, { data: pData } ] = await Promise.all([
-      supabase.from('cities').select('*').order('name'),
-      supabase.from('schools').select('*').order('name'),
-      supabase.from('classes').select('*').order('name'),
-      supabase
+    const [ c, s, cl, pData ] = await Promise.all([
+      fetchWithCache('cities', () => supabase.from('cities').select('*').order('name').then(r => r.data)),
+      fetchWithCache('schools', () => supabase.from('schools').select('*').order('name').then(r => r.data)),
+      fetchWithCache('classes', () => supabase.from('classes').select('*').order('name').then(r => r.data)),
+      fetchWithCache('statistics_all_profiles', () => supabase
         .from('profiles')
         .select('*, quiz_results(score, total_questions, is_passed, quiz_id), quiz_attempts(is_suspicious, is_passed, quiz_id)')
+        .then(r => r.data))
     ]);
 
     if (c) setCities(c); if (s) setSchools(s); if (cl) setClasses(cl);
 
-    if (pData) {
-      const processed = pData.map(u => {
+    const processProfiles = (profilesData) => {
+      return profilesData.map(u => {
         const results = [...(u.quiz_results || [])].sort((a, b) => b.score - a.score);
         const attempts = [...(u.quiz_attempts || [])];
         
@@ -103,10 +105,59 @@ const Statistics = ({ session, profile }) => {
           isUnderperforming
         };
       });
-      setStats(processed);
+    };
+
+    if (pData) {
+      setStats(processProfiles(pData));
     }
     setLoading(false);
   };
+
+  useCacheSync('cities', (data) => { if (data) setCities(data); });
+  useCacheSync('schools', (data) => { if (data) setSchools(data); });
+  useCacheSync('classes', (data) => { if (data) setClasses(data); });
+  useCacheSync('statistics_all_profiles', (data) => {
+    if (data) {
+      const processProfiles = (profilesData) => {
+        return profilesData.map(u => {
+          const results = [...(u.quiz_results || [])].sort((a, b) => b.score - a.score);
+          const attempts = [...(u.quiz_attempts || [])];
+          const quizStatsMap = {};
+          attempts.forEach(a => {
+            if (!quizStatsMap[a.quiz_id]) quizStatsMap[a.quiz_id] = { total: 0, suspicious: 0, failed: 0 };
+            quizStatsMap[a.quiz_id].total++;
+            if (a.is_suspicious) quizStatsMap[a.quiz_id].suspicious++;
+            if (!a.is_passed) quizStatsMap[a.quiz_id].failed++;
+          });
+          let redQuizzes = 0; let yellowQuizzes = 0;
+          const quizIds = Object.keys(quizStatsMap);
+          quizIds.forEach(qId => {
+            const s = quizStatsMap[qId];
+            if (s.suspicious / s.total >= 0.4) redQuizzes++;
+            else if (s.failed / s.total > 0.5) yellowQuizzes++;
+          });
+          const totalUniqueQuizzes = quizIds.length;
+          const isSuspicious = totalUniqueQuizzes > 0 && (redQuizzes / totalUniqueQuizzes) >= 0.4;
+          const totalPointsScored = results.reduce((acc, curr) => acc + (curr.score || 0), 0);
+          const totalPointsPossible = results.reduce((acc, curr) => acc + (curr.total_questions || 1), 0);
+          const rawAvgScore = totalPointsPossible > 0 ? (totalPointsScored / totalPointsPossible) : 1;
+          const isUnderperforming = rawAvgScore <= 0.5 && !isSuspicious;
+
+          return {
+            ...u,
+            passedQuizzes: results.filter(r => r.is_passed).length,
+            totalPoints: results.reduce((acc, curr) => acc + curr.score, 0),
+            avgScore: results.length > 0 ? Math.round(rawAvgScore * 100) : 0,
+            isSuspicious,
+            isUnderperforming
+          };
+        });
+      };
+      setStats(processProfiles(data));
+    }
+  });
+    // Original Processing is now inside processProfiles
+
 
   const availableSchools = schools.filter(s => filterCity === 'all' || s.city_id === filterCity);
   const availableClasses = classes.filter(c => filterSchool === 'all' || c.school_id === filterSchool);

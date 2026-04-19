@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { fetchWithCache, useCacheSync } from '../lib/cache';
 import { User, Shield, Search, Edit3, Trash2, Mail, X, AlertTriangle, MapPin, Building, GraduationCap, Plus, History, Ban, ShieldAlert, Unlock, Eye, EyeOff, Zap, ChevronDown, ChevronRight } from 'lucide-react';
 import { useScrollRestoration } from '../lib/useScrollRestoration';
 
@@ -85,10 +86,10 @@ const Dashboard = ({ session, profile }) => {
   }, [profile]);
 
   const fetchStructure = async () => {
-    const [ { data: c }, { data: s }, { data: cl } ] = await Promise.all([
-      supabase.from('cities').select('*').order('name'),
-      supabase.from('schools').select('*').order('name'),
-      supabase.from('classes').select('*').order('name')
+    const [c, s, cl] = await Promise.all([
+      fetchWithCache('cities', () => supabase.from('cities').select('*').order('name').then(r => r.data)),
+      fetchWithCache('schools', () => supabase.from('schools').select('*').order('name').then(r => r.data)),
+      fetchWithCache('classes', () => supabase.from('classes').select('*').order('name').then(r => r.data))
     ]);
     if (c) setCities(c); if (s) setSchools(s); if (cl) setClassesList(cl);
   };
@@ -96,14 +97,24 @@ const Dashboard = ({ session, profile }) => {
   const fetchUsers = async () => {
     setLoading(true);
     setErrorMessage(null);
-    const { data: profiles, error } = await supabase.rpc('get_all_users');
-    if (profiles) setUsers(profiles);
-    if (error) {
+    try {
+      const data = await fetchWithCache('dashboard_all_users', async () => {
+        const { data: profiles, error } = await supabase.rpc('get_all_users');
+        if (error) throw error;
+        return profiles;
+      });
+      if (data) setUsers(data);
+    } catch (error) {
       console.error(error);
       setErrorMessage("Ошибка получения списка пользователей. Убедитесь, что миграция SQL (get_all_users) была выполнена успешно.");
     }
     setLoading(false);
   };
+
+  useCacheSync('cities', (data) => { if (data) setCities(data); });
+  useCacheSync('schools', (data) => { if (data) setSchools(data); });
+  useCacheSync('classes', (data) => { if (data) setClassesList(data); });
+  useCacheSync('dashboard_all_users', (data) => { if (data) setUsers(data); });
 
   const fetchBlacklist = async () => {
     const { data } = await supabase.from('blacklisted_emails').select('*').order('created_at', { ascending: false });

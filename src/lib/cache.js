@@ -1,16 +1,16 @@
+import { useEffect } from 'react';
+
 /**
- * Robust caching utility for localStorage with TTL (Time-To-Live) support.
+ * Robust caching utility for localStorage with TTL and Data-Driven Updates (SWR).
  */
 
 const CACHE_PREFIX = 'labtest_cache_';
+const fetchingPromises = new Map();
 
 /**
- * Stores data in localStorage with an expiration timestamp.
- * @param {string} key - Cache key.
- * @param {any} data - Data to store.
- * @param {number} ttlHours - Time-To-Live in hours.
+ * Stores data in localStorage. Default TTL is basically infinite (1 year) since we use SWR.
  */
-export const setCachedData = (key, data, ttlHours = 1) => {
+export const setCachedData = (key, data, ttlHours = 24 * 365) => {
   const expiresAt = Date.now() + ttlHours * 60 * 60 * 1000;
   const payload = {
     data,
@@ -19,14 +19,12 @@ export const setCachedData = (key, data, ttlHours = 1) => {
   try {
     localStorage.setItem(`${CACHE_PREFIX}${key}`, JSON.stringify(payload));
   } catch (e) {
-    console.error('Failed to set cache:', e);
+    console.error('Failed to set cache (quota exceeded?):', e);
   }
 };
 
 /**
  * Retrieves data from localStorage if it hasn't expired.
- * @param {string} key - Cache key.
- * @returns {any|null} - Cached data or null if not found/expired.
  */
 export const getCachedData = (key) => {
   try {
@@ -46,21 +44,63 @@ export const getCachedData = (key) => {
 };
 
 /**
- * Helper to fetch data with a caching layer.
- * @param {string} key - Cache key.
- * @param {Function} fetchFn - Async function that returns data.
- * @param {number} ttlHours - Time-To-Live in hours.
- * @returns {Promise<any>}
+ * Fetches data with Stale-While-Revalidate (Data-Driven Updates).
+ * - Returns cache instantly if available.
+ * - Triggers background fetch.
+ * - If new data differs from cache, updates cache and dispatches event.
  */
-export const fetchWithCache = async (key, fetchFn, ttlHours = 1) => {
+export const fetchWithCache = async (key, fetchFn, ttlHours = 24 * 365, forceUpdate = false) => {
   const cached = getCachedData(key);
-  if (cached) {
+
+  const fetchTask = async () => {
+    try {
+      const fresh = await fetchFn();
+      if (fresh) {
+        // Deep comparison stringify
+        const cachedStr = JSON.stringify(cached);
+        const freshStr = JSON.stringify(fresh);
+        
+        if (cachedStr !== freshStr) {
+          setCachedData(key, fresh, ttlHours);
+          window.dispatchEvent(new CustomEvent(`cache-update-${key}`, { detail: fresh }));
+        }
+      }
+      return fresh;
+    } catch (e) {
+      console.error(`SWR Background Fetch Error for ${key}:`, e);
+      return cached; // Return cache as fallback if server fails
+    } finally {
+      fetchingPromises.delete(key);
+    }
+  };
+
+  // If cache exists and no forced update, return cache & fire background revalidation
+  if (cached && !forceUpdate) {
+    if (!fetchingPromises.has(key)) {
+      fetchingPromises.set(key, fetchTask());
+    }
     return cached;
   }
 
-  const data = await fetchFn();
-  if (data) {
-    setCachedData(key, data, ttlHours);
+  // Deduplicate inflight requests if cache miss
+  if (fetchingPromises.has(key)) {
+    return fetchingPromises.get(key);
   }
-  return data;
+
+  const promise = fetchTask();
+  fetchingPromises.set(key, promise);
+  return promise;
+};
+
+/**
+ * React hook to listen for cache invalidation events.
+ * Use this to auto-update state when background SWR detects changes.
+ */
+export const useCacheSync = (key, onUpdate) => {
+  useEffect(() => {
+    if (!key) return;
+    const handler = (e) => onUpdate(e.detail);
+    window.addEventListener(`cache-update-${key}`, handler);
+    return () => window.removeEventListener(`cache-update-${key}`, handler);
+  }, [key, onUpdate]);
 };
