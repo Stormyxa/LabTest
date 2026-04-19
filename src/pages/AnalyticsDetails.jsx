@@ -52,7 +52,7 @@ const SidebarUserList = React.memo(({
         <>
           <div style={{ marginBottom: '20px' }}>
             <label htmlFor="ad-folder" style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '5px', display: 'block' }}>Выбор Теста</label>
-            <select id="ad-folder" value={filterFolder} onChange={e => { setFilterFolder(e.target.value); setFilterSection('all'); }} style={{ width: '100%', marginBottom: '10px', padding: '8px' }}>
+            <select id="ad-folder" value={filterFolder} onChange={e => setFilterFolder(e.target.value)} style={{ width: '100%', marginBottom: '10px', padding: '8px' }}>
               <option value="all">Все папки</option>
               {quizFolders.map(f => (
                 <option key={f.id} value={f.id} disabled={f.is_divider || isFolderEmpty(f.id)}>
@@ -304,7 +304,7 @@ const AttemptDetailsView = React.memo(({
   const isSkippedHeavy = skippedPerc > 0.4;
 
   const limitTime = totalQs * 25;
-  const timeSpent = selectedAttempt.time_spent || 0;
+  const timeSpent = selectedAttempt.time_spent_total || 0;
   const minutes = Math.floor(timeSpent / 60);
   const seconds = timeSpent % 60;
   const scorePercent = (selectedAttempt.score / (selectedAttempt.total_questions || totalQs)) || 0;
@@ -472,6 +472,11 @@ const AnalyticsDetails = () => {
 
   const [detailedImageModal, setDetailedImageModal] = useState({ isOpen: false, images: [], currentImgIdx: 0, question: '', userAnswer: '', correctAnswer: '', isCorrect: false, timeSpent: 0, avgQTime: 0 });
 
+  // category-specific memory for "smart" persistence
+  const [folderMemory, setFolderMemory] = useState(() => JSON.parse(sessionStorage.getItem('ad_folder_to_section') || '{}'));
+  const [sectionMemory, setSectionMemory] = useState(() => JSON.parse(sessionStorage.getItem('ad_section_to_quiz') || '{}'));
+  const [quizMemory, setQuizMemory] = useState(() => JSON.parse(sessionStorage.getItem('ad_quiz_to_user') || '{}'));
+
   useEffect(() => { sessionStorage.setItem('ad_sidebar_open', sidebarOpen); }, [sidebarOpen]);
 
   // Delete Modal States
@@ -555,10 +560,20 @@ const AnalyticsDetails = () => {
           if (section) {
             setFilterFolder(section.class_id);
             setFilterSection(section.id);
+            
+            // Update memory from URL params immediately
+            const fMem = { ...JSON.parse(sessionStorage.getItem('ad_folder_to_section') || '{}'), [section.class_id]: section.id };
+            const sMem = { ...JSON.parse(sessionStorage.getItem('ad_section_to_quiz') || '{}'), [section.id]: targetQuizId };
+            const qMem = userIdParam ? { ...JSON.parse(sessionStorage.getItem('ad_quiz_to_user') || '{}'), [targetQuizId]: userIdParam } : JSON.parse(sessionStorage.getItem('ad_quiz_to_user') || '{}');
+            
+            setFolderMemory(fMem); setSectionMemory(sMem); setQuizMemory(qMem);
+            sessionStorage.setItem('ad_folder_to_section', JSON.stringify(fMem));
+            sessionStorage.setItem('ad_section_to_quiz', JSON.stringify(sMem));
+            sessionStorage.setItem('ad_quiz_to_user', JSON.stringify(qMem));
           }
         }
         
-        fetchUsersForQuiz(targetQuizId, p);
+        fetchUsersForQuiz(targetQuizId, p, userIdParam);
       } else if (p.role === 'player' && !targetQuizId) {
         // If player but no quiz selected, they just see empty state
       }
@@ -599,11 +614,18 @@ const AnalyticsDetails = () => {
   }, []);
 
   const handleUserSelect = useCallback((uId) => {
+    // Also save this user to quiz memory
+    setQuizMemory(prev => {
+      const next = { ...prev, [filterQuiz]: uId };
+      sessionStorage.setItem('ad_quiz_to_user', JSON.stringify(next));
+      return next;
+    });
+
     setSearchParams({ quizId: filterQuiz, userId: uId });
     fetchAttempts(filterQuiz, uId);
   }, [filterQuiz, fetchAttempts, setSearchParams]);
 
-  const fetchUsersForQuiz = useCallback(async (qId, currentUserProfile) => {
+  const fetchUsersForQuiz = useCallback(async (qId, currentUserProfile, targetUserId = null) => {
     const [{ data: results }, { data: currentQuizObj }] = await Promise.all([
       supabase.from('quiz_results').select('user_id, score, total_questions').eq('quiz_id', qId),
       supabase.from('quizzes').select('author_id').eq('id', qId).single()
@@ -611,6 +633,8 @@ const AnalyticsDetails = () => {
 
     if (!results) {
       setUsers([]);
+      setTargetUser(null);
+      setAttempts([]);
       return;
     }
 
@@ -635,7 +659,6 @@ const AnalyticsDetails = () => {
     if (profs) {
       const isTeacher = currentUserProfile?.role === 'teacher';
       let validProfs = profs.filter(p => (p.first_name?.trim() || p.last_name?.trim()));
-      const { data: currentQuizObj } = await supabase.from('quizzes').select('author_id').eq('id', qId).single();
 
       if (isTeacher && currentQuizObj?.author_id !== currentUserProfile?.id) {
         validProfs = validProfs.filter(p => p.school_id === currentUserProfile.school_id);
@@ -664,23 +687,104 @@ const AnalyticsDetails = () => {
       });
       setUsers(userList);
 
-      if (userIdParam) {
-        const tu = userList.find(u => u.id === userIdParam);
-        if (tu) fetchAttempts(qId, tu.id);
+      // Restoration Logic:
+      // Priority 1: targetUserId passed explicitly (memory or URL param at mount)
+      // Priority 2: userIdParam from URL (only if targetUserId is not provided)
+      const finalTargetId = targetUserId || userIdParam;
+      
+      if (finalTargetId) {
+        const tu = userList.find(u => u.id === finalTargetId);
+        if (tu) {
+          fetchAttempts(qId, tu.id);
+        } else {
+          setTargetUser(null);
+          setAttempts([]);
+        }
       } else if (currentUserProfile?.role === 'player' || currentUserProfile?.is_observer) {
         const self = userList.find(u => u.id === currentUserProfile.id);
         if (self) handleUserSelect(self.id);
+      } else {
+        setTargetUser(null);
+        setAttempts([]);
       }
     }
   }, [userIdParam, fetchAttempts, handleUserSelect]);
 
-  const handleQuizSelect = useCallback((qId) => {
+  const handleQuizSelect = useCallback((qId, overrideUserId = null, sId = null, isAutomated = false) => {
+    const currentSId = sId || filterSection;
+    
+    // 1. Save to memory ONLY if manual selection and we have a valid context
+    if (!isAutomated && currentSId !== 'all' && qId) {
+      setSectionMemory(prev => {
+        const next = { ...prev, [currentSId]: qId };
+        sessionStorage.setItem('ad_section_to_quiz', JSON.stringify(next));
+        return next;
+      });
+    }
+
     setFilterQuiz(qId);
-    setSearchParams({ quizId: qId });
+    
+    // 2. Determine target user (use provided quizMemory if state is stale, or read from storage)
+    const activeQuizMem = isAutomated ? JSON.parse(sessionStorage.getItem('ad_quiz_to_user') || '{}') : quizMemory;
+    const targetUId = overrideUserId || activeQuizMem[qId] || 'none';
+    
+    setSearchParams(qId ? (targetUId !== 'none' ? { quizId: qId, userId: targetUId } : { quizId: qId }) : {});
     setTargetUser(null);
+    setTargetQuiz(null); // Clear the quiz info as well
     setAttempts([]);
-    fetchUsersForQuiz(qId, profile);
-  }, [profile, fetchUsersForQuiz, setSearchParams]);
+    
+    if (qId) {
+      fetchUsersForQuiz(qId, profile, targetUId === 'none' ? null : targetUId);
+    } else {
+      setUsers([]);
+    }
+  }, [profile, filterSection, quizMemory, fetchUsersForQuiz, setSearchParams]);
+
+  const handleSectionChange = useCallback((sId, folderId = filterFolder, isAutomated = false) => {
+    const currentFId = folderId || filterFolder;
+
+    // 1. Save current state to memory ONLY if manual
+    if (!isAutomated && filterSection !== 'all') {
+      setSectionMemory(prev => {
+        const next = { ...prev, [filterSection]: filterQuiz };
+        sessionStorage.setItem('ad_section_to_quiz', JSON.stringify(next));
+        return next;
+      });
+
+      if (currentFId !== 'all') {
+        setFolderMemory(prev => {
+          const next = { ...prev, [currentFId]: sId };
+          sessionStorage.setItem('ad_folder_to_section', JSON.stringify(next));
+          return next;
+        });
+      }
+    }
+
+    setFilterSection(sId);
+    
+    // 2. Restore quiz for new section (read from storage for latest data in case of race)
+    const latestSecMem = JSON.parse(sessionStorage.getItem('ad_section_to_quiz') || '{}');
+    const rememberedQuiz = sId === 'all' ? '' : (latestSecMem[sId] || '');
+    handleQuizSelect(rememberedQuiz, null, sId, true);
+  }, [filterFolder, filterSection, filterQuiz, handleQuizSelect]);
+
+  const handleFolderChange = useCallback((fId) => {
+    // 1. Save old folder's section
+    if (filterFolder !== 'all') {
+      setFolderMemory(prev => {
+        const next = { ...prev, [filterFolder]: filterSection };
+        sessionStorage.setItem('ad_folder_to_section', JSON.stringify(next));
+        return next;
+      });
+    }
+
+    setFilterFolder(fId);
+
+    // 2. Restore section for new folder (read from storage synchronously)
+    const latestFolderMem = JSON.parse(sessionStorage.getItem('ad_folder_to_section') || '{}');
+    const rememberedSection = fId === 'all' ? 'all' : (latestFolderMem[fId] || 'all');
+    handleSectionChange(rememberedSection, fId, true);
+  }, [filterFolder, filterSection, handleSectionChange]);
 
   const handleScroll = useCallback((e) => {
     sessionStorage.setItem('ad_list_scroll', e.target.scrollTop);
@@ -780,8 +884,8 @@ const AnalyticsDetails = () => {
           <SidebarUserList
             loading={loading} quizFolders={quizFolders} sections={sections} quizzes={quizzes}
             users={users} filteredUsers={filteredUsers} targetUser={targetUser}
-            filterFolder={filterFolder} setFilterFolder={setFilterFolder}
-            filterSection={filterSection} setFilterSection={setFilterSection}
+            filterFolder={filterFolder} setFilterFolder={handleFolderChange}
+            filterSection={filterSection} setFilterSection={handleSectionChange}
             filterQuiz={filterQuiz} handleQuizSelect={handleQuizSelect}
             filterCity={filterCity} setFilterCity={setFilterCity}
             filterSchool={filterSchool} setFilterSchool={setFilterSchool}
