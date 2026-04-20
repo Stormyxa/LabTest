@@ -78,7 +78,7 @@ const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, pass
           </button>
           {canEditQuiz(quiz) && <button onClick={() => navigate(`/redactor?id=${quiz.id}`)} style={{ padding: '8px', background: 'rgba(99,102,241,0.08)', color: 'var(--primary-color)', boxShadow: 'none', borderRadius: '10px' }} title="Редактировать"><Pencil size={15} /></button>}
           {canEditQuiz(quiz) && <button onClick={() => setHideModal(quiz)} style={{ padding: '8px', background: 'rgba(250,204,21,0.08)', color: '#ca8a04', boxShadow: 'none', borderRadius: '10px' }} title="Скрыть"><Eye size={15} /></button>}
-          {(userRole === 'admin' || userRole === 'creator' || userId === quiz.author_id) && <button onClick={() => navigate(`/analytics?id=${quiz.id}`)} style={{ padding: '8px', background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none', borderRadius: '10px' }} title="Аналитика"><BarChart2 size={15} /></button>}
+          {(userRole === 'admin' || userRole === 'creator' || userRole === 'teacher' || userId === quiz.author_id) && <button onClick={() => navigate(`/analytics?id=${quiz.id}`)} style={{ padding: '8px', background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none', borderRadius: '10px' }} title="Аналитика"><BarChart2 size={15} /></button>}
           <button onClick={() => setSelectedQuiz(quiz)} style={{ padding: '8px 20px', display: 'flex', alignItems: 'center', gap: '8px', borderRadius: '10px' }}><Play size={15} fill="currentColor" /> Начать</button>
         </div>
       </div>

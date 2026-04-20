@@ -234,6 +234,9 @@ const QuizRedactor = () => {
       }
       keysToRemove.forEach(k => localStorage.removeItem(k));
 
+      setShowSaveModal(false);
+      setShowSuccessUpdateModal(true);
+
       // Trigger background GitHub rename sync if title changed
       if (isTitleChanged) {
         const sName = quiz?.quiz_sections?.name;
