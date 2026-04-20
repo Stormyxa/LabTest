@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { fetchWithCache, useCacheSync } from '../lib/cache';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { resolveImgUrl } from '../lib/imageUtils';
 import { ChevronLeft, User, BarChart, Calendar, CheckCircle, XCircle, Mail, Trash2, AlertTriangle, Filter, Download, Pencil, Shield, EyeOff, ArrowDown, ArrowUp, Info, Lock, Image as ImageIcon, ChevronRight, X } from 'lucide-react';
 
 const Analytics = () => {
@@ -773,7 +774,7 @@ const Analytics = () => {
               <X size={24} />
             </button>
             <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%' }}>
-              <img src={imagePreviewModal.images[imagePreviewModal.currentIdx]} alt="Preview" style={{ maxWidth: '100%', maxHeight: '85vh', objectFit: 'contain', borderRadius: '12px', border: '2px solid rgba(255,255,255,0.1)' }} />
+              <img src={resolveImgUrl(imagePreviewModal.images[imagePreviewModal.currentIdx])} alt="Preview" style={{ maxWidth: '100%', maxHeight: '85vh', objectFit: 'contain', borderRadius: '12px', border: '2px solid rgba(255,255,255,0.1)' }} />
               
               {imagePreviewModal.images.length > 1 && (
                 <>

@@ -5,6 +5,7 @@ import {
   CheckCircle, XCircle, ChevronRight, ChevronLeft, RotateCcw, X, 
   AlertTriangle, Book, FileText, ChevronDown, ChevronUp, Clock, Zap 
 } from 'lucide-react';
+import { resolveImgUrl } from '../lib/imageUtils';
 
 const SECONDS_PER_QUESTION = 25;
 const EXIT_GRACE_SECONDS = 30;
@@ -611,7 +612,7 @@ const QuizView = ({ session, profile }) => {
                             {q.images.map((imgUrl, imgIdx) => (
                               <img 
                                 key={imgIdx} 
-                                src={imgUrl} 
+                                src={resolveImgUrl(imgUrl)} 
                                 alt={`QImg ${imgIdx+1}`} 
                                 onClick={() => setDetailedImageModal({ isOpen: true, images: q.images, currentImgIdx: imgIdx, question: q.question, userAnswer: userChoice !== undefined ? q.options[userChoice] : 'Пропущено', correctAnswer: q.options[q.correctIndex], isCorrect, timeSpent: questionTimesRef.current[idx] || 0 })}
                                 style={{ height: '80px', borderRadius: '8px', objectFit: 'contain', border: '1px solid rgba(0,0,0,0.1)', background: 'var(--card-bg)', cursor: 'pointer' }}
@@ -663,7 +664,7 @@ const QuizView = ({ session, profile }) => {
               </button>
               <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
                 <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center', maxHeight: '55vh', padding: '0px' }}>
-                  <img src={detailedImageModal.images[detailedImageModal.currentImgIdx]} alt="Preview" style={{ maxWidth: '100%', maxHeight: '55vh', objectFit: 'contain', borderRadius: '12px', border: '2px solid rgba(255,255,255,0.1)' }} />
+                  <img src={resolveImgUrl(detailedImageModal.images[detailedImageModal.currentImgIdx])} alt="Preview" style={{ maxWidth: '100%', maxHeight: '55vh', objectFit: 'contain', borderRadius: '12px', border: '2px solid rgba(255,255,255,0.1)' }} />
                   {detailedImageModal.images.length > 1 && (
                     <>
                       <button 
@@ -849,7 +850,7 @@ const QuizView = ({ session, profile }) => {
             <div style={{ marginBottom: '25px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
               <div style={{ position: 'relative', width: '100%', display: 'flex', justifyContent: 'center' }}>
                 <img 
-                  src={currentQ.images[currentImageIdx]} 
+                  src={resolveImgUrl(currentQ.images[currentImageIdx])} 
                   style={{ maxWidth: '100%', maxHeight: '40vh', objectFit: 'contain', borderRadius: '12px', userSelect: 'none', WebkitUserSelect: 'none' }} 
                   alt={`Изображение ${currentImageIdx+1}`}
                   onContextMenu={(e) => e.preventDefault()}

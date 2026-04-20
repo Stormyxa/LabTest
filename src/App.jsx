@@ -42,6 +42,21 @@ function App() {
       }
     });
 
+    // --- Cache Busting for Images/Catalog Optimization ---
+    const CACHE_VERSION = 'v2.1'; // Increment this to force-clear stale quiz data for everyone
+    if (localStorage.getItem('labtest_cache_version') !== CACHE_VERSION) {
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('labtest_cache_')) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(k => localStorage.removeItem(k));
+      localStorage.setItem('labtest_cache_version', CACHE_VERSION);
+      console.log('Stale cache cleared (New version: ' + CACHE_VERSION + ')');
+    }
+
     return () => subscription.unsubscribe();
   }, []);
 

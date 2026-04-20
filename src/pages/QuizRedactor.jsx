@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { transliterate } from '../lib/transliterate';
 import { syncGithubRenames, updateQuizzesWithNewUrls } from '../lib/githubSync';
+import { resolveImgUrl } from '../lib/imageUtils';
 
 const MAX_QUESTIONS = 30;
 const MAX_OPTIONS = 6;
@@ -883,7 +884,7 @@ const QuizRedactor = () => {
               >
                 <X size={24} />
               </button>
-              <img src={imagePreviewModal.url} alt="Preview" style={{ maxWidth: '100%', maxHeight: '85vh', objectFit: 'contain', borderRadius: '12px', border: '2px solid rgba(255,255,255,0.1)' }} />
+              <img src={resolveImgUrl(imagePreviewModal.url)} alt="Preview" style={{ maxWidth: '100%', maxHeight: '85vh', objectFit: 'contain', borderRadius: '12px', border: '2px solid rgba(255,255,255,0.1)' }} />
               {imagePreviewModal.qIdx !== null && (
                 <div style={{ position: 'absolute', bottom: '-40px', left: '0', width: '100%', textAlign: 'center', color: 'rgba(255,255,255,0.7)', fontSize: '0.9rem' }}>
                   Вопрос {imagePreviewModal.qIdx + 1} • Изображение {imagePreviewModal.imgIdx + 1}
@@ -1141,7 +1142,7 @@ const QuizRedactor = () => {
                       {q.images.map((imgUrl, imgIdx) => (
                         <div key={imgIdx} style={{ position: 'relative', borderRadius: '10px', overflow: 'hidden', border: '1px solid rgba(0,0,0,0.1)', height: '100px', cursor: 'pointer', group: 'img-group' }}
                              onClick={() => setImagePreviewModal({ isOpen: true, url: imgUrl, qIdx, imgIdx })}>
-                          <img src={imgUrl} alt={`Q${qIdx} / Img${imgIdx}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          <img src={resolveImgUrl(imgUrl)} alt={`Q${qIdx} / Img${imgIdx}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                           <button 
                             onClick={(e) => { e.stopPropagation(); removeImage(qIdx, imgIdx); }}
                             className="flex-center animate-fade-in"

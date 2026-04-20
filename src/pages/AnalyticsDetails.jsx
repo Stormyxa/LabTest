@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { fetchWithCache, useCacheSync } from '../lib/cache';
+import { resolveImgUrl } from '../lib/imageUtils';
 import { ChevronLeft, BarChart2, Clock, CheckCircle, XCircle, Search, Filter, AlertTriangle, Menu, Pencil, Trash2, Eye, X, ChevronRight } from 'lucide-react';
 
 const UserListItem = React.memo(({ u, isSelected, onSelect }) => {
@@ -426,7 +427,7 @@ const AttemptDetailsView = React.memo(({
                       cursor: 'pointer', border: '1px solid rgba(0,0,0,0.1)', position: 'relative' 
                     }}
                   >
-                    <img src={qImages[0]} alt="Question" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <img src={resolveImgUrl(qImages[0])} alt="Question" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0, transition: 'opacity 0.2s' }} onMouseEnter={e => e.currentTarget.style.opacity = 1} onMouseLeave={e => e.currentTarget.style.opacity = 0}>
                        <Eye size={20} color="white" />
                     </div>
@@ -1114,7 +1115,7 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
             </button>
             <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
               <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center', maxHeight: '55vh', padding: '0px' }}>
-                <img src={detailedImageModal.images[detailedImageModal.currentImgIdx]} alt="Preview" style={{ maxWidth: '100%', maxHeight: '55vh', objectFit: 'contain', borderRadius: '12px', border: '2px solid rgba(255,255,255,0.1)' }} />
+                <img src={resolveImgUrl(detailedImageModal.images[detailedImageModal.currentImgIdx])} alt="Preview" style={{ maxWidth: '100%', maxHeight: '55vh', objectFit: 'contain', borderRadius: '12px', border: '2px solid rgba(255,255,255,0.1)' }} />
                 {detailedImageModal.images.length > 1 && (
                   <>
                     <button 

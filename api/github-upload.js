@@ -7,7 +7,7 @@ export const config = {
 };
 
 export default async function handler(req, res) {
-  // CORS check (allow all for simplicity or restrict in production)
+  // CORS check
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -20,15 +20,20 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  const { base64Data, path, fileName } = req.body;
   const token = process.env.GITHUB_PAT;
-
   if (!token) {
-    return res.status(500).json({ error: 'GITHUB_PAT is not configured in Vercel.' });
+    console.error('CRITICAL: GITHUB_PAT is not configured');
+    return res.status(500).json({ error: 'Сервер не настроен: отсутствует GITHUB_PAT. Пожалуйста, добавьте его в переменные окружения Vercel.' });
   }
 
   try {
-    // 1. Get the authenticated user's login to locate the repository
+    const { base64Data, path, fileName } = req.body;
+
+    if (!base64Data || !fileName) {
+      return res.status(400).json({ error: 'Отсутствуют данные файла или имя' });
+    }
+
+    // 1. Get the authenticated user
     const userRes = await fetch('https://api.github.com/user', {
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -38,17 +43,20 @@ export default async function handler(req, res) {
     });
 
     if (!userRes.ok) {
-      throw new Error(`Failed to authenticate GitHub token: ${await userRes.text()}`);
+      const errText = await userRes.text();
+      console.error('GitHub Auth Error:', errText);
+      return res.status(userRes.status).json({ error: `Ошибка авторизации GitHub: ${errText}` });
     }
 
     const userData = await userRes.json();
     const owner = userData.login;
-    const repo = 'LabTestAssets'; // As requested by user
+    const repo = 'LabTestAssets'; 
 
-    // 2. Prepare the payload (base64, no data:image/png;base64, prefix)
+    // 2. Prepare the payload
     const cleanBase64 = base64Data.replace(/^data:image\/\w+;base64,/, '');
-
     const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${path}/${fileName}`;
+
+    console.log(`Uploading to: ${apiUrl}`);
 
     // 3. Upload file
     const uploadRes = await fetch(apiUrl, {
@@ -65,15 +73,13 @@ export default async function handler(req, res) {
       })
     });
 
+    const uploadData = await uploadRes.json();
+
     if (!uploadRes.ok) {
-      const errText = await uploadRes.text();
-      console.error('GitHub API Error:', errText);
-      throw new Error(`GitHub API Upload failed: ${errText}`);
+      console.error('GitHub API Upload Error:', uploadData);
+      return res.status(uploadRes.status).json({ error: uploadData.message || 'Ошибка загрузки в GitHub' });
     }
 
-    const uploadData = await uploadRes.json();
-    
-    // uploadData.content.download_url gives the direct raw url
     return res.status(200).json({
       success: true,
       url: uploadData.content.download_url,
@@ -82,7 +88,7 @@ export default async function handler(req, res) {
     });
 
   } catch (error) {
-    console.error('Upload Error:', error);
-    return res.status(500).json({ error: error.message });
+    console.error('Global Upload Handler Error:', error);
+    return res.status(500).json({ error: `Внутренняя ошибка сервера: ${error.message}` });
   }
 }
