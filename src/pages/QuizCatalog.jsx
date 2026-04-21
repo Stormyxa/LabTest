@@ -60,7 +60,7 @@ const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, pass
               </div>
             )
           )}
-          
+
           {quiz.avg_success_rate !== undefined && quiz.avg_success_rate > 0 && (
             <div className="flex-center" style={{ gap: '6px', fontSize: '0.8rem', color: 'var(--primary-color)', fontWeight: 'bold', background: 'rgba(99, 102, 241, 0.05)', padding: '6px 12px', borderRadius: '10px' }} title="Общая успеваемость учеников (без учета наблюдателей)">
               <TrendingUp size={14} /> {quiz.avg_success_rate}% успех
@@ -102,17 +102,17 @@ const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, 
         quizzesRef.current = parsed;
         return parsed;
       }
-    } catch(e) {}
+    } catch (e) { }
     return [];
   });
-  
+
   const [loading, setLoading] = useState(quizzes.length === 0);
 
   const [passedQuizzes, setPassedQuizzes] = useState(() => {
     try {
       const cached = localStorage.getItem(`labtest_cache_catalog_stats_${section.id}`);
       if (cached) return JSON.parse(cached).data?.passed || {};
-    } catch(e) {}
+    } catch (e) { }
     return {};
   });
 
@@ -120,7 +120,7 @@ const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, 
     try {
       const cached = localStorage.getItem(`labtest_cache_catalog_stats_${section.id}`);
       if (cached) return JSON.parse(cached).data?.stats || {};
-    } catch(e) {}
+    } catch (e) { }
     return {};
   });
 
@@ -154,7 +154,7 @@ const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, 
   // SWR Event Listener for background quiz updates
   useCacheSync(`catalog_quizzes_${section.id}`, (freshData) => {
     setQuizzes(prev => {
-      if (prev.some(q => q.is_dirty)) return prev; 
+      if (prev.some(q => q.is_dirty)) return prev;
       quizzesRef.current = freshData;
       return freshData;
     });
@@ -280,7 +280,7 @@ const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, 
               currentDividerHidden = quiz.is_hidden;
               if (searchQuery) return null;
               return (
-                <DividerItem 
+                <DividerItem
                   key={quiz.id}
                   quiz={quiz}
                   qIndex={qIndex}
@@ -295,7 +295,7 @@ const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, 
             }
             if (currentDividerHidden && profile?.role !== 'creator' && profile?.role !== 'admin') return null;
             return (
-              <QuizCard 
+              <QuizCard
                 key={quiz.id}
                 quiz={quiz}
                 qIndex={qIndex}
@@ -317,6 +317,233 @@ const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, 
           });
         })()}
       </div>
+    </div>
+  );
+});
+
+const CatalogSectionRow = React.memo(({
+  section, clsId, sIndex, profile, searchQuery, isExpanded,
+  onToggle, onQuizzesChange, setHideModal, setRenamingItem, setSelectedQuiz, setRandomQuizModal,
+  handleCreateDivider, swapSections, setNewName
+}) => {
+  return (
+    <div className="catalog-container" style={{
+      padding: '0',
+      overflow: 'hidden',
+      border: section.isEmpty ? '1px dashed rgba(0,0,0,0.1)' : '1px solid rgba(99, 102, 241, 0.15)',
+      borderRadius: '20px',
+      opacity: section.isEmpty ? 0.5 : 1,
+      boxShadow: 'var(--soft-shadow)'
+    }}>
+      <div
+        onClick={() => (!section.isEmpty || profile?.role === 'creator') && onToggle(section.id)}
+        className="flex-center catalog-section-head"
+        style={{
+          padding: '15px 25px',
+          background: section.isEmpty ? 'transparent' : 'rgba(99, 102, 241, 0.04)',
+          borderRadius: '20px 20px 0 0',
+          justifyContent: 'space-between',
+          cursor: (!section.isEmpty || profile?.role === 'creator') ? 'pointer' : 'default'
+        }}
+      >
+        <div className="flex-center" style={{ gap: '15px' }}>
+          {(profile?.role === 'admin' || profile?.role === 'creator') && !searchQuery && (
+            <div className="flex-center" style={{ gap: '5px' }}>
+              <button
+                onClick={(e) => { e.stopPropagation(); swapSections(clsId, sIndex, -1, e); }}
+                disabled={sIndex === 0}
+                style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}
+              >
+                <ChevronUp size={16} />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); swapSections(clsId, sIndex, 1, e); }}
+                style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}
+              >
+                <ChevronDown size={16} />
+              </button>
+            </div>
+          )}
+          {section.book_url && (
+            <a
+              href={section.book_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              style={{ padding: '5px', background: 'var(--primary-color)', color: 'white', borderRadius: '8px', display: 'flex', alignItems: 'center' }}
+            >
+              <Book size={16} />
+            </a>
+          )}
+          <h4 style={{ fontSize: '1.2rem', margin: 0 }}>
+            {section.name}
+            <span style={{ opacity: 0.5, fontSize: '0.9rem', marginLeft: '5px' }}>({section.realQuizCount})</span>
+          </h4>
+          {section.isEmpty && (
+            <span style={{ fontSize: '0.65rem', padding: '3px 8px', background: 'rgba(0,0,0,0.05)', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 'bold' }}>
+              <Clock size={10} /> В РАЗРАБОТКЕ
+            </span>
+          )}
+          {profile?.role === 'creator' && (
+            <div className="flex-center" style={{ gap: '10px' }}>
+              <button
+                onClick={(e) => { e.stopPropagation(); handleCreateDivider(section.id); }}
+                className="flex-center"
+                style={{ padding: '5px 12px', fontSize: '0.75rem', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', borderRadius: '8px', border: 'none', boxShadow: 'none', fontWeight: 'bold' }}
+              >
+                <Plus size={14} style={{ marginRight: '4px' }} /> Разделитель
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: section.id, name: section.name, type: 'section' }); setNewName(section.name); }}
+                style={{ background: 'transparent', color: 'var(--text-color)', opacity: 0.4, boxShadow: 'none', padding: '5px' }}
+                title="Переименовать предмет"
+              >
+                <Pencil size={16} />
+              </button>
+            </div>
+          )}
+        </div>
+        {(!section.isEmpty || profile?.role === 'creator') && (isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />)}
+      </div>
+
+      {(isExpanded || searchQuery) && (!section.isEmpty || profile?.role === 'creator') && (
+        <SectionContent
+          section={section}
+          profile={profile}
+          isExpanded={true}
+          searchQuery={searchQuery}
+          onQuizzesChange={onQuizzesChange}
+          setHideModal={setHideModal}
+          setRenamingItem={setRenamingItem}
+          setSelectedQuiz={setSelectedQuiz}
+          setRandomQuizModal={setRandomQuizModal}
+        />
+      )}
+    </div>
+  );
+});
+
+const CatalogClassRow = React.memo(({
+  cls, cIndex, profile, searchQuery, isExpanded, expandedSections,
+  onToggle, onSectionToggle, swapClasses, swapSections, handleRenameItem, handleCreateDivider, handleCreateSectionDivider, setNewName,
+  onQuizzesChange, setHideModal, setSelectedQuiz, setRandomQuizModal
+}) => {
+  return (
+    <div className="card animate" style={{ 
+      padding: '0', 
+      marginBottom: '40px', 
+      overflow: 'hidden', 
+      border: cls.isEmpty ? '1px dashed rgba(0,0,0,0.1)' : '1px solid var(--border-color)', 
+      background: 'var(--card-bg)',
+      boxShadow: 'var(--soft-shadow)'
+    }}>
+      <div
+        className="flex-center catalog-class-head"
+        onClick={() => (!cls.isEmpty || profile?.role === 'creator') && onToggle(cls.id)}
+        style={{
+          padding: '20px 30px',
+          background: cls.isEmpty ? 'rgba(0,0,0,0.02)' : 'rgba(99, 102, 241, 0.08)',
+          borderRadius: '24px 24px 0 0',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          cursor: (!cls.isEmpty || profile?.role === 'creator') ? 'pointer' : 'default'
+        }}
+      >
+        <div className="flex-center" style={{ gap: '15px' }}>
+          {profile?.role === 'creator' && !searchQuery && (
+            <div className="flex-center" style={{ gap: '5px' }}>
+              <button
+                onClick={(e) => { e.stopPropagation(); swapClasses(cIndex, -1, e); }}
+                disabled={cIndex === 0}
+                style={{ padding: '5px', background: 'transparent', color: 'var(--primary-color)', boxShadow: 'none' }}
+              >
+                <ChevronUp size={20} />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); swapClasses(cIndex, 1, e); }}
+                style={{ padding: '5px', background: 'transparent', color: 'var(--primary-color)', boxShadow: 'none' }}
+              >
+                <ChevronDown size={20} />
+              </button>
+            </div>
+          )}
+          <h3 style={{ fontSize: '1.5rem', margin: 0, fontWeight: 'bold' }}>
+            {cls.name} <span style={{ fontSize: '0.9rem', opacity: 0.5, marginLeft: '10px' }}>({cls.sections.length} предметов)</span>
+          </h3>
+          {cls.isEmpty && (
+            <span style={{ fontSize: '0.7rem', padding: '4px 10px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 'bold', opacity: 0.6 }}>
+              <Clock size={12} /> В РАЗРАБОТКЕ
+            </span>
+          )}
+          {profile?.role === 'creator' && (
+            <div className="flex-center" style={{ gap: '10px' }}>
+              <button
+                onClick={(e) => { e.stopPropagation(); handleRenameItem({ id: cls.id, name: cls.name, type: 'class' }); }}
+                style={{ background: 'transparent', color: 'var(--primary-color)', opacity: 0.5, boxShadow: 'none', padding: '5px' }}
+                title="Переименовать класс"
+              >
+                <Pencil size={18} />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); handleCreateSectionDivider(cls.id); }}
+                className="flex-center animate"
+                style={{ padding: '8px 15px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', borderRadius: '12px', boxShadow: 'none', fontWeight: 'bold', fontSize: '0.8rem', gap: '6px' }}
+              >
+                <Plus size={16} /> Разделитель предмета
+              </button>
+            </div>
+          )}
+        </div>
+        {(!cls.isEmpty || profile?.role === 'creator') && (isExpanded ? <ChevronUp size={24} /> : <ChevronDown size={24} />)}
+      </div>
+
+      {isExpanded && (!cls.isEmpty || profile?.role === 'creator') && (
+        <div className="animate catalog-class-content" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px', background: 'rgba(0,0,0,0.02)' }}>
+          {cls.sections.map((section, sIndex) => {
+            if (section.is_divider) {
+              return (
+                <div key={section.id} className="animate" style={{ padding: '15px 0', borderBottom: '1px solid rgba(0,0,0,0.03)', display: 'flex', alignItems: 'center', gap: '15px', opacity: 0.8 }}>
+                  <div style={{ height: '3px', background: 'var(--primary-color)', width: '25px', borderRadius: '2px', opacity: 0.6 }} />
+                  <h4 style={{ fontSize: '1.4rem', fontWeight: '800', margin: 0, color: 'var(--text-color)' }}>{section.name}</h4>
+                  <div style={{ height: '1px', background: 'rgba(0,0,0,0.06)', flex: 1 }} />
+                  {profile?.role === 'creator' && !searchQuery && (
+                    <div className="flex-center" style={{ gap: '8px' }}>
+                      <div className="flex-center" style={{ gap: '3px' }}>
+                        <button onClick={(e) => { e.stopPropagation(); swapSections(cls.id, sIndex, -1, e); }} disabled={sIndex === 0} style={{ padding: '4px', background: 'rgba(0,0,0,0.02)', color: 'var(--primary-color)', borderRadius: '8px', boxShadow: 'none' }}><ChevronUp size={16} /></button>
+                        <button onClick={(e) => { e.stopPropagation(); swapSections(cls.id, sIndex, 1, e); }} disabled={sIndex === cls.sections.length - 1} style={{ padding: '4px', background: 'rgba(0,0,0,0.02)', color: 'var(--primary-color)', borderRadius: '8px', boxShadow: 'none' }}><ChevronDown size={16} /></button>
+                      </div>
+                      <button onClick={(e) => { e.stopPropagation(); handleRenameItem({ id: section.id, name: section.name, type: 'section' }); }} style={{ padding: '5px', background: 'rgba(99, 102, 241, 0.08)', color: 'var(--primary-color)', borderRadius: '8px', boxShadow: 'none' }}><Pencil size={16} /></button>
+                      <button onClick={async (e) => { e.stopPropagation(); if (window.confirm('Удалить этот разделитель предметов?')) { await supabase.from('quiz_sections').delete().eq('id', section.id); fetchData(); } }} style={{ padding: '5px', background: 'rgba(239, 68, 68, 0.08)', color: '#ef4444', borderRadius: '8px', boxShadow: 'none' }}><Trash2 size={16} /></button>
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            return (
+              <CatalogSectionRow
+                key={section.id}
+                section={section}
+                clsId={cls.id}
+                sIndex={sIndex}
+                profile={profile}
+                searchQuery={searchQuery}
+                isExpanded={expandedSections[section.id]}
+                onToggle={onSectionToggle}
+                onQuizzesChange={onQuizzesChange}
+                setHideModal={setHideModal}
+                setRenamingItem={handleRenameItem}
+                setSelectedQuiz={setSelectedQuiz}
+                setRandomQuizModal={setRandomQuizModal}
+                handleCreateDivider={handleCreateDivider}
+                swapSections={swapSections}
+                setNewName={setNewName}
+              />
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 });
@@ -369,20 +596,30 @@ const QuizCatalog = ({ profile }) => {
 
   const formatClasses = useCallback((c, s, basicQuizzes) => {
     if (!c || !s || !basicQuizzes) return [];
-    return c.map(cls => ({
-      ...cls,
-      sections: s.filter(sec => sec.class_id === cls.id).map(sec => ({
-        ...sec,
-        basicQuizzes: basicQuizzes.filter(quiz => quiz.section_id === sec.id)
-      }))
-    }));
+    return c.map(cls => {
+      const clsSections = s.filter(sec => sec.class_id === cls.id).map(sec => {
+        const quizzes = basicQuizzes.filter(quiz => quiz.section_id === sec.id);
+        const realCount = quizzes.filter(q => !q.content?.is_divider).length;
+        return {
+          ...sec,
+          basicQuizzes: quizzes,
+          realQuizCount: realCount,
+          isEmpty: realCount === 0
+        };
+      });
+      return {
+        ...cls,
+        sections: clsSections,
+        isEmpty: clsSections.length === 0
+      };
+    });
   }, []);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
 
     const isPrivileged = profile?.role === 'admin' || profile?.role === 'creator';
-    
+
     const [c, s, basicQuizzes] = await Promise.all([
       fetchWithCache('catalog_struct_classes', () => supabase.from('quiz_classes').select('*').order('sort_order', { ascending: true }).then(r => r.data)),
       fetchWithCache('catalog_struct_sections', () => supabase.from('quiz_sections').select('*').order('sort_order', { ascending: true }).then(r => r.data)),
@@ -440,20 +677,20 @@ const QuizCatalog = ({ profile }) => {
 
 
   // Sync cache events for structure
-  useCacheSync('catalog_struct_classes', () => fetchData());
-  useCacheSync('catalog_struct_sections', () => fetchData());
-  useCacheSync(`catalog_struct_quizzes_${profile?.role === 'admin' || profile?.role === 'creator' ? 'all' : 'visible'}`, () => fetchData());
+  useCacheSync('catalog_struct_classes', fetchData);
+  useCacheSync('catalog_struct_sections', fetchData);
+  useCacheSync(`catalog_struct_quizzes_${profile?.role === 'admin' || profile?.role === 'creator' ? 'all' : 'visible'}`, fetchData);
 
-  const swapClasses = (index, direction, e) => {
+  const swapClasses = useCallback((index, direction, e) => {
     e.stopPropagation();
     const arr = [...classes];
     if (index + direction < 0 || index + direction >= arr.length) return;
     const temp = arr[index]; arr[index] = arr[index + direction]; arr[index + direction] = temp;
     setClasses(arr.map((x, i) => ({ ...x, sort_order: i, is_dirty: true })));
     setHasUnsavedChanges(true);
-  };
+  }, [classes]);
 
-  const swapSections = (classId, index, direction, e) => {
+  const swapSections = useCallback((classId, index, direction, e) => {
     e.stopPropagation();
     const newClasses = [...classes];
     const cIndex = newClasses.findIndex(c => c.id === classId);
@@ -464,21 +701,27 @@ const QuizCatalog = ({ profile }) => {
     newClasses[cIndex].sections = secArr.map((x, i) => ({ ...x, sort_order: i, is_dirty: true }));
     setClasses(newClasses);
     setHasUnsavedChanges(true);
-  };
+  }, [classes]);
 
   const handleQuizzesChange = useCallback((sectionId, updatedQuizzes) => {
     setDirtySections(prev => ({ ...prev, [sectionId]: updatedQuizzes }));
     setHasUnsavedChanges(true);
   }, []);
 
-  const handleHideQuiz = async () => {
+  const handleHideQuiz = useCallback(async () => {
     if (!hideModal) return;
     const { error } = await supabase.from('quizzes').update({ is_hidden: true }).eq('id', hideModal.id);
     if (error) alert('Ошибка: ' + error.message);
-    else { setHideModal(null); fetchData(); }
-  };
+    else {
+      localStorage.removeItem(`labtest_cache_catalog_quizzes_${hideModal.section_id}`);
+      localStorage.removeItem(`labtest_cache_catalog_struct_quizzes_all`);
+      localStorage.removeItem(`labtest_cache_catalog_struct_quizzes_visible`);
+      setHideModal(null);
+      fetchData();
+    }
+  }, [hideModal, fetchData]);
 
-  const handleCreateDivider = async (sId, text = '') => {
+  const handleCreateDivider = useCallback(async (sId, text = '') => {
     try {
       const { data: q } = await supabase.from('quizzes').select('sort_order').eq('section_id', sId).order('sort_order', { ascending: false }).limit(1);
       const maxOrder = q && q.length > 0 ? q[0].sort_order : -1;
@@ -491,11 +734,12 @@ const QuizCatalog = ({ profile }) => {
         sort_order: maxOrder + 1
       });
       if (error) throw error;
+      localStorage.removeItem(`labtest_cache_catalog_quizzes_${sId}`);
       fetchData();
     } catch (err) { alert(`Ошибка: ${err.message}`); }
-  };
+  }, [profile?.id, fetchData]);
 
-  const handleCreateClassDivider = async () => {
+  const handleCreateClassDivider = useCallback(async () => {
     try {
       const { data: lastCls } = await supabase.from('quiz_classes').select('sort_order').order('sort_order', { ascending: false }).limit(1);
       const maxOrder = lastCls && lastCls.length > 0 ? lastCls[0].sort_order : -1;
@@ -505,11 +749,12 @@ const QuizCatalog = ({ profile }) => {
         sort_order: maxOrder + 1
       });
       if (error) throw error;
+      localStorage.removeItem('labtest_cache_catalog_struct_classes');
       fetchData();
     } catch (err) { alert(`Ошибка: ${err.message}`); }
-  };
+  }, [fetchData]);
 
-  const handleCreateSectionDivider = async (classId) => {
+  const handleCreateSectionDivider = useCallback(async (classId) => {
     try {
       const { data: lastSec } = await supabase.from('quiz_sections').select('sort_order').eq('class_id', classId).order('sort_order', { ascending: false }).limit(1);
       const maxOrder = lastSec && lastSec.length > 0 ? lastSec[0].sort_order : -1;
@@ -520,23 +765,35 @@ const QuizCatalog = ({ profile }) => {
         sort_order: maxOrder + 1
       });
       if (error) throw error;
+      localStorage.removeItem('labtest_cache_catalog_struct_sections');
       fetchData();
     } catch (err) { alert(`Ошибка: ${err.message}`); }
-  };
+  }, [fetchData]);
 
-  const handleRename = async () => {
+  const handleRename = useCallback(async () => {
     if (!renamingItem || !newName.trim()) return;
     if (renamingItem.type === 'quiz') {
       const { error } = await supabase.from('quizzes').update({ title: newName }).eq('id', renamingItem.id);
       if (error) alert('Ошибка переименования: ' + error.message);
-      else { setRenamingItem(null); setNewName(''); fetchData(); }
+      else {
+        localStorage.removeItem(`labtest_cache_catalog_struct_quizzes_all`);
+        localStorage.removeItem(`labtest_cache_catalog_struct_quizzes_visible`);
+        setRenamingItem(null);
+        setNewName('');
+        fetchData();
+      }
       return;
     }
     const table = renamingItem.type === 'class' ? 'quiz_classes' : 'quiz_sections';
     const { error } = await supabase.from(table).update({ name: newName }).eq('id', renamingItem.id);
     if (error) alert('Ошибка переименования: ' + error.message);
-    else { setRenamingItem(null); setNewName(''); fetchData(); }
-  };
+    else {
+      localStorage.removeItem(renamingItem.type === 'class' ? 'labtest_cache_catalog_struct_classes' : 'labtest_cache_catalog_struct_sections');
+      setRenamingItem(null);
+      setNewName('');
+      fetchData();
+    }
+  }, [renamingItem, newName, fetchData]);
 
   const handleRenameItem = useCallback((item) => {
     setRenamingItem(item);
@@ -546,14 +803,28 @@ const QuizCatalog = ({ profile }) => {
   const filteredClasses = useMemo(() => {
     if (!debouncedSearchQuery) return classes;
     const query = debouncedSearchQuery.toLowerCase();
-    return classes.map(cls => {
-      const matchingSections = cls.sections.filter(sec => {
-        const matchesName = sec.name.toLowerCase().includes(query);
-        const matchesBasicQuiz = sec.basicQuizzes?.some(q => !q.content?.is_divider && q.id); // placeholder match if loaded
-        return matchesName || expandedSections[sec.id];
-      });
-      return { ...cls, sections: matchingSections };
-    }).filter(cls => cls.sections.length > 0 || cls.name.toLowerCase().includes(query));
+
+    // We want to keep object references stable where possible to keep SectionContent React.memo effective
+    const result = [];
+
+    for (const cls of classes) {
+      const clsMatches = cls.name.toLowerCase().includes(query);
+      const matchingSections = [];
+
+      for (const sec of cls.sections) {
+        const secMatches = sec.name.toLowerCase().includes(query) || expandedSections[sec.id];
+        if (secMatches) {
+          matchingSections.push(sec);
+        }
+      }
+
+      if (clsMatches || matchingSections.length > 0) {
+        // If nothing changed in sections list, we could theoretically keep cls object but sections is already a new array after filter
+        // The most important thing is that 'sec' objects themselves are stable
+        result.push({ ...cls, sections: matchingSections });
+      }
+    }
+    return result;
   }, [classes, debouncedSearchQuery, expandedSections]);
 
   const CatalogSkeleton = () => (
@@ -572,6 +843,14 @@ const QuizCatalog = ({ profile }) => {
       ))}
     </div>
   );
+
+  const handleToggleClass = useCallback((id) => {
+    setExpandedClasses(prev => ({ ...prev, [id]: !prev[id] }));
+  }, []);
+
+  const handleToggleSection = useCallback((id) => {
+    setExpandedSections(prev => ({ ...prev, [id]: !prev[id] }));
+  }, []);
 
   return (
     <div className="container" style={{ padding: '40px 20px' }}>
@@ -599,16 +878,14 @@ const QuizCatalog = ({ profile }) => {
               className="flex-center animate"
               style={{ padding: '0 20px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', whiteSpace: 'nowrap', borderRadius: '15px', boxShadow: 'none', fontWeight: 'bold', gap: '8px' }}
             >
-              <Plus size={20} /> Разделитель
+              <Plus size={18} /> Класс
             </button>
           )}
         </div>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '40px' }}>
-        {loading ? (
-          <CatalogSkeleton />
-        ) : (
+      <div style={{ minHeight: '400px' }}>
+        {loading ? <CatalogSkeleton /> : (
           filteredClasses.map((cls, cIndex) => {
             if (cls.is_divider) {
               if (debouncedSearchQuery) return null;
@@ -619,10 +896,8 @@ const QuizCatalog = ({ profile }) => {
                   <div style={{ height: '1px', background: 'rgba(0,0,0,0.1)', flex: 1 }} />
                   {profile?.role === 'creator' && !debouncedSearchQuery && (
                     <div className="flex-center" style={{ gap: '10px' }}>
-                      <div className="flex-center" style={{ gap: '5px' }}>
-                        <button onClick={(e) => swapClasses(cIndex, -1, e)} disabled={cIndex === 0} style={{ padding: '8px', background: 'rgba(0,0,0,0.03)', color: 'var(--primary-color)', borderRadius: '10px', boxShadow: 'none' }}><ChevronUp size={20} /></button>
-                        <button onClick={(e) => swapClasses(cIndex, 1, e)} disabled={cIndex === classes.length - 1} style={{ padding: '8px', background: 'rgba(0,0,0,0.03)', color: 'var(--primary-color)', borderRadius: '10px', boxShadow: 'none' }}><ChevronDown size={20} /></button>
-                      </div>
+                      <button onClick={(e) => swapClasses(cIndex, -1, e)} disabled={cIndex === 0} style={{ padding: '8px', background: 'rgba(0,0,0,0.03)', color: 'var(--primary-color)', borderRadius: '10px', boxShadow: 'none' }}><ChevronUp size={20} /></button>
+                      <button onClick={(e) => swapClasses(cIndex, 1, e)} disabled={cIndex === classes.length - 1} style={{ padding: '8px', background: 'rgba(0,0,0,0.03)', color: 'var(--primary-color)', borderRadius: '10px', boxShadow: 'none' }}><ChevronDown size={20} /></button>
                       <button onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: cls.id, name: cls.name, type: 'class' }); setNewName(cls.name); }} style={{ padding: '8px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', borderRadius: '10px', boxShadow: 'none' }}><Pencil size={18} /></button>
                       <button onClick={async (e) => { e.stopPropagation(); if (window.confirm('Удалить этот разделитель?')) { await supabase.from('quiz_classes').delete().eq('id', cls.id); fetchData(); } }} style={{ padding: '8px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', borderRadius: '10px', boxShadow: 'none' }}><Trash2 size={18} /></button>
                     </div>
@@ -630,173 +905,28 @@ const QuizCatalog = ({ profile }) => {
                 </div>
               );
             }
-
-            const isEmptyClass = cls.sections.length === 0 || cls.sections.every(sec =>
-              (sec.basicQuizzes || []).filter(q => !q.content?.is_divider).length === 0
-            );
             return (
-              <div key={cls.id} className="catalog-container" style={{
-                padding: '0',
-                overflow: 'hidden',
-                border: isEmptyClass ? '1px dashed rgba(0,0,0,0.1)' : '1px solid var(--border-color)',
-                borderRadius: '24px',
-                opacity: isEmptyClass ? 0.6 : 1
-              }}>
-                <div
-                  onClick={() => (!isEmptyClass || profile?.role === 'creator') && setExpandedClasses(prev => ({ ...prev, [cls.id]: !prev[cls.id] }))}
-                  style={{
-                    padding: '20px 30px',
-                    background: isEmptyClass ? 'rgba(0,0,0,0.02)' : 'rgba(99, 102, 241, 0.08)',
-                    borderRadius: '24px 24px 0 0',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    cursor: (!isEmptyClass || profile?.role === 'creator') ? 'pointer' : 'default'
-                  }}
-                >
-                  <div className="flex-center" style={{ gap: '15px' }}>
-                    {profile?.role === 'creator' && !debouncedSearchQuery && (
-                      <div className="flex-center" style={{ gap: '5px' }}>
-                        <button onClick={(e) => swapClasses(cIndex, -1, e)} disabled={cIndex === 0} style={{ padding: '5px', background: 'transparent', color: 'var(--primary-color)', boxShadow: 'none' }}><ChevronUp size={20} /></button>
-                        <button onClick={(e) => swapClasses(cIndex, 1, e)} disabled={cIndex === classes.length - 1} style={{ padding: '5px', background: 'transparent', color: 'var(--primary-color)', boxShadow: 'none' }}><ChevronDown size={20} /></button>
-                      </div>
-                    )}
-                    <h3 style={{ fontSize: '1.5rem', margin: 0, fontWeight: 'bold' }}>{cls.name} <span style={{ fontSize: '0.9rem', opacity: 0.5, marginLeft: '10px' }}>({cls.sections.length} предметов)</span></h3>
-                    {isEmptyClass && (
-                      <span style={{ fontSize: '0.7rem', padding: '4px 10px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 'bold', opacity: 0.6 }}>
-                        <Clock size={12} /> В РАЗРАБОТКЕ
-                      </span>
-                    )}
-                    {profile?.role === 'creator' && (
-                      <div className="flex-center" style={{ gap: '10px' }}>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: cls.id, name: cls.name, type: 'class' }); setNewName(cls.name); }}
-                          style={{ background: 'transparent', color: 'var(--primary-color)', opacity: 0.5, boxShadow: 'none', padding: '5px' }}
-                          title="Переименовать класс"
-                        >
-                          <Pencil size={18} />
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleCreateSectionDivider(cls.id); }}
-                          className="flex-center animate"
-                          style={{ padding: '8px 15px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', borderRadius: '12px', boxShadow: 'none', fontWeight: 'bold', fontSize: '0.8rem', gap: '6px' }}
-                        >
-                          <Plus size={16} /> Разделитель предмета
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  {(!isEmptyClass || profile?.role === 'creator') && (expandedClasses[cls.id] ? <ChevronUp size={24} /> : <ChevronDown size={24} />)}
-                </div>
-
-                {expandedClasses[cls.id] && (!isEmptyClass || profile?.role === 'creator') && (
-                  <div className="animate catalog-class-content" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px', background: 'rgba(0,0,0,0.02)' }}>
-                    {cls.sections.map((section, sIndex) => {
-                      if (section.is_divider) {
-                        return (
-                          <div key={section.id} className="animate" style={{ padding: '15px 0', borderBottom: '1px solid rgba(0,0,0,0.03)', display: 'flex', alignItems: 'center', gap: '15px', opacity: 0.8 }}>
-                            <div style={{ height: '3px', background: 'var(--primary-color)', width: '25px', borderRadius: '2px', opacity: 0.6 }} />
-                            <h4 style={{ fontSize: '1.4rem', fontWeight: '800', margin: 0, color: 'var(--text-color)' }}>{section.name}</h4>
-                            <div style={{ height: '1px', background: 'rgba(0,0,0,0.06)', flex: 1 }} />
-                            {profile?.role === 'creator' && !debouncedSearchQuery && (
-                              <div className="flex-center" style={{ gap: '8px' }}>
-                                <div className="flex-center" style={{ gap: '3px' }}>
-                                  <button onClick={(e) => swapSections(cls.id, sIndex, -1, e)} disabled={sIndex === 0} style={{ padding: '4px', background: 'rgba(0,0,0,0.02)', color: 'var(--primary-color)', borderRadius: '8px', boxShadow: 'none' }}><ChevronUp size={16} /></button>
-                                  <button onClick={(e) => swapSections(cls.id, sIndex, 1, e)} disabled={sIndex === cls.sections.length - 1} style={{ padding: '4px', background: 'rgba(0,0,0,0.02)', color: 'var(--primary-color)', borderRadius: '8px', boxShadow: 'none' }}><ChevronDown size={16} /></button>
-                                </div>
-                                <button onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: section.id, name: section.name, type: 'section' }); setNewName(section.name); }} style={{ padding: '5px', background: 'rgba(99, 102, 241, 0.08)', color: 'var(--primary-color)', borderRadius: '8px', boxShadow: 'none' }}><Pencil size={16} /></button>
-                                <button onClick={async (e) => { e.stopPropagation(); if (window.confirm('Удалить этот разделитель предметов?')) { await supabase.from('quiz_sections').delete().eq('id', section.id); fetchData(); } }} style={{ padding: '5px', background: 'rgba(239, 68, 68, 0.08)', color: '#ef4444', borderRadius: '8px', boxShadow: 'none' }}><Trash2 size={16} /></button>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      }
-
-                      const isEmptySection = (section.basicQuizzes || []).filter(q => !q.content?.is_divider).length === 0;
-                      return (
-                        <div key={section.id} className="catalog-container" style={{
-                          padding: '0',
-                          overflow: 'hidden',
-                          border: isEmptySection ? '1px dashed rgba(0,0,0,0.1)' : '1px solid rgba(0,0,0,0.05)',
-                          borderRadius: '20px',
-                          opacity: isEmptySection ? 0.5 : 1
-                        }}>
-                          <div
-                            onClick={() => (!isEmptySection || profile?.role === 'creator') && setExpandedSections(prev => ({ ...prev, [section.id]: !prev[section.id] }))}
-                            className="flex-center catalog-section-head"
-                            style={{
-                              padding: '15px 25px',
-                              background: isEmptySection ? 'transparent' : 'rgba(99, 102, 241, 0.04)',
-                              borderRadius: '20px 20px 0 0',
-                              justifyContent: 'space-between',
-                              cursor: (!isEmptySection || profile?.role === 'creator') ? 'pointer' : 'default'
-                            }}
-                          >
-                            <div className="flex-center" style={{ gap: '15px' }}>
-                              {(profile?.role === 'admin' || profile?.role === 'creator') && !debouncedSearchQuery && (
-                                <div className="flex-center" style={{ gap: '5px' }}>
-                                  <button onClick={(e) => swapSections(cls.id, sIndex, -1, e)} disabled={sIndex === 0} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronUp size={16} /></button>
-                                  <button onClick={(e) => swapSections(cls.id, sIndex, 1, e)} disabled={sIndex === cls.sections.length - 1} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronDown size={16} /></button>
-                                </div>
-                              )}
-                              {section.book_url && (
-                                <a
-                                  href={section.book_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  onClick={(e) => e.stopPropagation()}
-                                  style={{ padding: '5px', background: 'var(--primary-color)', color: 'white', borderRadius: '8px', display: 'flex', alignItems: 'center' }}
-                                >
-                                  <Book size={16} />
-                                </a>
-                              )}
-                              <h4 style={{ fontSize: '1.2rem', margin: 0 }}>{section.name} <span style={{ opacity: 0.5, fontSize: '0.9rem', marginLeft: '5px' }}>({section.basicQuizzes.filter(q => !q.content?.is_divider).length})</span></h4>
-                              {isEmptySection && (
-                                <span style={{ fontSize: '0.65rem', padding: '3px 8px', background: 'rgba(0,0,0,0.05)', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 'bold' }}>
-                                  <Clock size={10} /> В РАЗРАБОТКЕ
-                                </span>
-                              )}
-                              {profile?.role === 'creator' && (
-                                <div className="flex-center" style={{ gap: '10px' }}>
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); handleCreateDivider(section.id); }}
-                                    className="flex-center"
-                                    style={{ padding: '5px 12px', fontSize: '0.75rem', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', borderRadius: '8px', border: 'none', boxShadow: 'none', fontWeight: 'bold' }}
-                                  >
-                                    <Plus size={14} style={{ marginRight: '4px' }} /> Разделитель
-                                  </button>
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: section.id, name: section.name, type: 'section' }); setNewName(section.name); }}
-                                    style={{ background: 'transparent', color: 'var(--text-color)', opacity: 0.4, boxShadow: 'none', padding: '5px' }}
-                                    title="Переименовать предмет"
-                                  >
-                                    <Pencil size={16} />
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                            {(!isEmptySection || profile?.role === 'creator') && (expandedSections[section.id] ? <ChevronUp size={20} /> : <ChevronDown size={20} />)}
-                          </div>
-
-                          {(expandedSections[section.id] || searchQuery) && (!isEmptySection || profile?.role === 'creator') && (
-                            <SectionContent
-                              section={section}
-                              profile={profile}
-                              isExpanded={true}
-                              searchQuery={debouncedSearchQuery}
-                              onQuizzesChange={handleQuizzesChange}
-                              setHideModal={setHideModal}
-                              setRenamingItem={handleRenameItem}
-                              setSelectedQuiz={setSelectedQuiz}
-                              setRandomQuizModal={setRandomQuizModal}
-                            />
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+              <CatalogClassRow
+                key={cls.id}
+                cls={cls}
+                cIndex={cIndex}
+                profile={profile}
+                searchQuery={debouncedSearchQuery}
+                isExpanded={expandedClasses[cls.id]}
+                expandedSections={expandedSections}
+                onToggle={handleToggleClass}
+                onSectionToggle={handleToggleSection}
+                swapClasses={swapClasses}
+                swapSections={swapSections}
+                handleRenameItem={handleRenameItem}
+                handleCreateDivider={handleCreateDivider}
+                handleCreateSectionDivider={handleCreateSectionDivider}
+                setNewName={setNewName}
+                onQuizzesChange={handleQuizzesChange}
+                setHideModal={setHideModal}
+                setSelectedQuiz={setSelectedQuiz}
+                setRandomQuizModal={setRandomQuizModal}
+              />
             );
           })
         )}

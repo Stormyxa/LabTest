@@ -9,12 +9,13 @@ import {
   Pencil, Eye, EyeOff, Shield, Clock, Lock
 } from 'lucide-react';
 import { syncGithubRenames, updateQuizzesWithNewUrls } from '../lib/githubSync';
+import { fetchWithCache, useCacheSync } from '../lib/cache';
 
 const EditorSkeleton = () => (
-  <div style={{ width: '100%' }}>
+  <div style={{ width: '100%', padding: '20px' }}>
     <div className="flex-center" style={{ marginBottom: '30px', opacity: 0.5, gap: '10px', justifyContent: 'flex-start' }}>
-      <Clock size={20} className="skeleton-pulse" />
-      <span className="skeleton-text" style={{ width: '200px', height: '16px', margin: 0 }}>Загрузка панели управления...</span>
+      <Clock size={20} className="spinner" />
+      <span style={{ fontSize: '0.9rem', opacity: 0.6 }}>Загрузка структуры редактора...</span>
     </div>
     <div className="grid-2" style={{ gap: '30px' }}>
       <div className="card" style={{ padding: '30px' }}>
@@ -36,19 +37,215 @@ const EditorSkeleton = () => (
         </div>
       </div>
       <div className="card" style={{ padding: '30px' }}>
-        <div className="flex-center" style={{ gap: '10px', marginBottom: '20px', justifyContent: 'flex-start' }}>
-          <div className="skeleton" style={{ height: '32px', width: '32px', borderRadius: '12px' }}></div>
-          <div className="skeleton" style={{ height: '24px', width: '60%', borderRadius: '10px' }}></div>
+        <div className="flex-center" style={{ gap: '10px', marginBottom: '25px', justifyContent: 'flex-start' }}>
+          <div className="skeleton" style={{ height: '32px', width: '32px', borderRadius: '10px' }}></div>
+          <div className="skeleton" style={{ height: '24px', width: '60%', borderRadius: '8px' }}></div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
           {[1, 2, 3].map(i => (
-            <div key={i} className="skeleton" style={{ height: '100px', width: '100%', borderRadius: '15px' }}></div>
+            <div key={i} className="skeleton" style={{ height: '100px', width: '100%', borderRadius: '18px' }}></div>
           ))}
         </div>
       </div>
     </div>
   </div>
 );
+
+// Lazy component for section quizzes in Editor
+const EditorSectionQuizzes = ({ 
+  section, 
+  profile, 
+  session, 
+  showHidden, 
+  setDeleteId, 
+  setRenamingItem, 
+  setNewName, 
+  toggleHideQuiz, 
+  swapQuizzes, 
+  handleCreateDivider,
+  navigate 
+}) => {
+  const [quizzes, setQuizzes] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const cacheKey = `editor_quizzes_${section.id}_${showHidden ? 'hidden' : 'visible'}`;
+
+  const fetchQuizzes = async () => {
+    setLoading(true);
+    try {
+      const data = await fetchWithCache(cacheKey, async () => {
+        let query = supabase.from('quizzes').select('*, quiz_sections(name, class_id, book_url), profiles(role, first_name, last_name)');
+        
+        if (profile?.role === 'editor' || profile?.role === 'teacher') {
+          query = query.eq('author_id', session.user.id);
+        } else if (!showHidden) {
+          query = query.eq('is_hidden', false);
+        }
+        
+        const { data: q } = await query
+          .eq('section_id', section.id)
+          .order('sort_order', { ascending: true })
+          .order('created_at', { ascending: false });
+
+        if (!q) return [];
+
+        const allQuizIds = q.map(quiz => quiz.id);
+        let statsMap = {};
+        if (allQuizIds.length > 0) {
+          const { data: statsData } = await supabase.rpc('get_quiz_stats_batch', { p_quiz_ids: allQuizIds });
+          if (statsData) statsData.forEach(stat => { statsMap[stat.quiz_id] = { avgScore: stat.avg_score, participants: stat.participants }; });
+        }
+
+        let foreignResultsSet = new Set();
+        if (allQuizIds.length > 0) {
+          const { data: allResults } = await supabase.from('quiz_results').select('quiz_id, user_id').in('quiz_id', allQuizIds);
+          if (allResults) q.forEach(quiz => { if (allResults.some(r => r.quiz_id === quiz.id && r.user_id !== quiz.author_id)) foreignResultsSet.add(quiz.id); });
+        }
+
+        return q.map(quiz => ({
+          ...quiz,
+          avgScore: statsMap[quiz.id]?.avgScore || 0,
+          participants: statsMap[quiz.id]?.participants || 0,
+          hasForeignResults: foreignResultsSet.has(quiz.id)
+        }));
+      });
+      setQuizzes(data || []);
+    } catch (err) {
+      console.error('Section quizzes fetch error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchQuizzes();
+  }, [section.id, showHidden]);
+
+  useCacheSync(cacheKey, setQuizzes);
+
+  if (loading) {
+    return (
+      <div style={{ padding: '20px', textAlign: 'center' }}>
+        <Clock size={20} className="spinner" style={{ opacity: 0.3 }} />
+      </div>
+    );
+  }
+
+  if (quizzes.length === 0) {
+    return (
+      <div className="animate">
+        {(profile?.role === 'admin' || profile?.role === 'creator' || profile?.id === section.author_id) && (
+          <button onClick={() => handleCreateDivider(section.id)} style={{ width: '100%', padding: '10px', marginBottom: '20px', background: 'rgba(99, 102, 241, 0.05)', color: 'var(--primary-color)', border: '1px dashed rgba(99, 102, 241, 0.2)', boxShadow: 'none', fontWeight: 'bold', fontSize: '0.9rem' }}><Plus size={16} /> Добавить разделитель</button>
+        )}
+        <p style={{ opacity: 0.5, textAlign: 'center', margin: '20px 0' }}>Здесь пока пусто.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="animate">
+      {(profile?.role === 'admin' || profile?.role === 'creator' || profile?.id === section.author_id) && (
+        <button onClick={() => handleCreateDivider(section.id)} style={{ width: '100%', padding: '10px', marginBottom: '20px', background: 'rgba(99, 102, 241, 0.05)', color: 'var(--primary-color)', border: '1px dashed rgba(99, 102, 241, 0.2)', boxShadow: 'none', fontWeight: 'bold', fontSize: '0.9rem' }}><Plus size={16} /> Добавить разделитель</button>
+      )}
+      <div className="grid-2" style={{ gap: '15px' }}>
+        {quizzes.map((quiz, qIndex) => {
+          if (quiz.content?.is_divider) {
+            return (
+              <div key={quiz.id} className="grid-full" style={{
+                gridColumn: '1 / -1',
+                margin: '10px 0',
+                padding: '15px 20px',
+                background: 'rgba(99, 102, 241, 0.05)',
+                border: '1px dashed rgba(99, 102, 241, 0.3)',
+                borderRadius: '15px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '15px'
+              }}>
+                <div className="flex-center" style={{ flexDirection: 'column', gap: '5px' }}>
+                  <button onClick={() => swapQuizzes(section.id, qIndex, -1, quiz, quizzes, setQuizzes)} disabled={qIndex === 0} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronUp size={16} /></button>
+                  <button onClick={() => swapQuizzes(section.id, qIndex, 1, quiz, quizzes, setQuizzes)} disabled={qIndex === quizzes.length - 1} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronDown size={16} /></button>
+                </div>
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ height: '1px', background: 'rgba(99, 102, 241, 0.2)', flex: 1 }} />
+                  <span style={{ fontWeight: 'bold', fontSize: '0.85rem', color: 'var(--primary-color)' }}>
+                    {quiz.content.divider_text || 'Разделительная линия'}
+                  </span>
+                  <div style={{ height: '1px', background: 'rgba(99, 102, 241, 0.2)', flex: 1 }} />
+                </div>
+                <div className="flex-center" style={{ gap: '8px' }}>
+                  <button onClick={() => { setRenamingItem({ id: quiz.id, name: quiz.title, type: 'quiz' }); setNewName(quiz.title); }} style={{ background: 'transparent', color: 'var(--primary-color)', opacity: 0.6, boxShadow: 'none', padding: '5px' }}><Pencil size={16} /></button>
+                  <button onClick={() => toggleHideQuiz(quiz)} style={{ background: 'transparent', color: quiz.is_hidden ? '#ca8a04' : 'inherit', opacity: 0.6, boxShadow: 'none', padding: '5px' }}>{quiz.is_hidden ? <Eye size={16} /> : <EyeOff size={16} />}</button>
+                  {(profile?.role === 'creator' || profile?.role === 'admin' || (quiz.author_id === profile?.id && !quiz.hasForeignResults)) ? (
+                    <button onClick={() => setDeleteId(quiz.id)} style={{ background: 'transparent', color: 'red', opacity: 0.6, boxShadow: 'none', padding: '5px' }}><Trash2 size={16} /></button>
+                  ) : (
+                    quiz.author_id === profile?.id && (
+                      <div style={{ color: '#f87171', opacity: 0.6 }} title="Удаление ограничено: есть результаты других учеников. Обратитесь к админу.">
+                        <Lock size={14} />
+                      </div>
+                    )
+                  )}
+                </div>
+              </div>
+            );
+          }
+
+          return (
+            <div key={quiz.id} className="card" style={{
+              padding: '20px',
+              background: 'var(--card-bg)',
+              border: quiz.is_hidden ? '1px dashed #ca8a04' : '1px solid rgba(0,0,0,0.05)',
+              display: 'flex',
+              flexDirection: 'column',
+              height: '100%'
+            }}>
+              <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '15px', gap: '10px' }}>
+                <div className="flex-center" style={{ gap: '10px', flex: 1, minWidth: 0 }}>
+                  {(profile?.role === 'creator' || profile?.role === 'admin' || quiz.author_id === profile?.id) && (
+                    <div className="flex-center" style={{ flexDirection: 'column', gap: '5px' }}>
+                      <button onClick={() => swapQuizzes(section.id, qIndex, -1, quiz, quizzes, setQuizzes)} disabled={qIndex === 0} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronUp size={18} /></button>
+                      <button onClick={() => swapQuizzes(section.id, qIndex, 1, quiz, quizzes, setQuizzes)} disabled={qIndex === quizzes.length - 1} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronDown size={18} /></button>
+                    </div>
+                  )}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <h4 style={{ fontSize: '1.1rem', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: quiz.is_hidden ? 0.6 : 1 }}>{quiz.title}</h4>
+                    <div style={{ display: 'flex', gap: '8px', fontSize: '0.75rem', opacity: 0.5 }}>
+                      <span>{new Date(quiz.created_at).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                  {quiz.is_verified && <CheckCircle size={18} color="var(--primary-color)" title="Верифицирован" />}
+                </div>
+                <div className="flex-center" style={{ gap: '10px' }}>
+                  <button onClick={() => toggleHideQuiz(quiz)} style={{ background: 'transparent', color: quiz.is_hidden ? '#ca8a04' : 'inherit', opacity: 0.5, boxShadow: 'none', padding: '5px' }} title={quiz.is_hidden ? 'Скрыт' : 'Виден всем'}>{quiz.is_hidden ? <Shield size={18} /> : <Eye size={18} />}</button>
+                  {(profile?.role === 'creator' || (profile?.role === 'admin' && quiz.profiles?.role !== 'creator') || (quiz.author_id === profile?.id && !quiz.hasForeignResults)) ? (
+                    <button onClick={() => setDeleteId(quiz.id)} style={{ background: 'transparent', color: 'red', opacity: 0.5, boxShadow: 'none', padding: '5px' }} title="Удалить тест"><Trash2 size={18} /></button>
+                  ) : (
+                    quiz.author_id === profile?.id && (
+                      <div className="flex-center" style={{ padding: '8px', background: 'rgba(248,113,113,0.05)', color: '#f87171', borderRadius: '10px' }} title="Удаление ограничено: есть результаты других учеников. Обратитесь к админу.">
+                        <Lock size={18} />
+                      </div>
+                    )
+                  )}
+                </div>
+              </div>
+              <div className="flex-center" style={{ justifyContent: 'space-between', fontSize: '0.8rem', opacity: 0.6, marginBottom: '20px' }}>
+                <div className="flex-center" style={{ gap: '10px' }}>
+                  <div className="flex-center" style={{ gap: '5px' }}><TrendingUp size={14} /> <span>{quiz.avgScore}%</span></div>
+                  <div className="flex-center" style={{ gap: '5px' }}><Pencil size={14} /> <span>{quiz.participants}</span></div>
+                </div>
+                <span style={{ fontSize: '0.75rem' }}>{quiz.profiles && `${quiz.profiles.last_name || ''} ${quiz.profiles.first_name || ''}`}</span>
+              </div>
+              <div className="flex-center" style={{ justifyContent: 'flex-end', gap: '8px', marginTop: 'auto' }}>
+                <button onClick={() => navigate(`/analytics?id=${quiz.id}`)} style={{ padding: '8px', background: 'rgba(0,0,0,0.05)', color: 'inherit', boxShadow: 'none', borderRadius: '10px' }} title="Аналитика"><TrendingUp size={15} /></button>
+                <button onClick={() => navigate(`/redactor?id=${quiz.id}`)} style={{ padding: '8px 15px', borderRadius: '10px', fontSize: '0.9rem' }}>Редактировать</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
 
 // Module-level cache persists across component remounts within the same browser session
 let _editorTreeCache = null;
@@ -82,6 +279,7 @@ const Editor = ({ session, profile }) => {
   const [newSectionBookUrl, setNewSectionBookUrl] = useState('');
 
   const [pendingEmptyQuiz, setPendingEmptyQuiz] = useState(null); // { titleList, canBulk, sectionId }
+  const [dirtyQuizzesMap, setDirtyQuizzesMap] = useState({});
   const [successLoadedQuiz, setSuccessLoadedQuiz] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [copyFeedbackJson, setCopyFeedbackJson] = useState(false);
@@ -108,22 +306,12 @@ const Editor = ({ session, profile }) => {
     localStorage.setItem('editor_expanded_sections', JSON.stringify(expandedSections));
   }, [expandedSections]);
 
-  // On mount: load only structure (classes + sections) — fast, needed for create form dropdowns
-  useEffect(() => { fetchStructure(); }, []);
-
-  // showHidden toggle: invalidate tree cache, reload tree if already open
-  useEffect(() => {
-    _editorTreeCache = null;
-    _editorTreeCacheShowHidden = showHidden;
-    if (activeTabRef.current === 'manage') fetchTreeData(true);
-  }, [showHidden]); // eslint-disable-line
-
   // Load only classes + sections (instant)
   const fetchStructure = async () => {
     setLoading(true);
     try {
-      const { data: c } = await supabase.from('quiz_classes').select('*').order('sort_order', { ascending: true });
-      const { data: secs } = await supabase.from('quiz_sections').select('*').order('sort_order', { ascending: true });
+      const c = await fetchWithCache('catalog_struct_classes', () => supabase.from('quiz_classes').select('*').order('sort_order', { ascending: true }).then(r => r.data));
+      const secs = await fetchWithCache('catalog_struct_sections', () => supabase.from('quiz_sections').select('*').order('sort_order', { ascending: true }).then(r => r.data));
       if (c) setClasses(c);
       if (secs) setSections(secs);
     } catch (err) {
@@ -133,66 +321,26 @@ const Editor = ({ session, profile }) => {
     }
   };
 
-  // Load quizzes + stats — lazy, uses module-level cache
-  const fetchTreeData = async (force = false) => {
-    if (!force && _editorTreeCache !== null && _editorTreeCacheShowHidden === showHidden) {
-      setMyQuizzes(_editorTreeCache);
-      return;
-    }
-    setTreeLoading(true);
-    try {
-      let query = supabase.from('quizzes').select('*, quiz_sections(name, class_id, book_url), profiles(role, first_name, last_name)');
-      if (profile?.role === 'editor' || profile?.role === 'teacher') {
-        query = query.eq('author_id', session.user.id);
-      } else if (!showHidden) {
-        query = query.eq('is_hidden', false);
-      }
-      const { data: q } = await query.order('sort_order', { ascending: true }).order('created_at', { ascending: false });
-      if (q) {
-        const allQuizIds = q.map(quiz => quiz.id);
-        let statsMap = {};
-        if (allQuizIds.length > 0) {
-          const { data: statsData } = await supabase.rpc('get_quiz_stats_batch', { p_quiz_ids: allQuizIds });
-          if (statsData) statsData.forEach(stat => { statsMap[stat.quiz_id] = { avgScore: stat.avg_score, participants: stat.participants }; });
-        }
-        let foreignResultsSet = new Set();
-        if (allQuizIds.length > 0) {
-          const { data: allResults } = await supabase.from('quiz_results').select('quiz_id, user_id').in('quiz_id', allQuizIds);
-          if (allResults) q.forEach(quiz => { if (allResults.some(r => r.quiz_id === quiz.id && r.user_id !== quiz.author_id)) foreignResultsSet.add(quiz.id); });
-        }
-        const quizzesWithStats = q.map(quiz => ({
-          ...quiz,
-          avgScore: statsMap[quiz.id]?.avgScore || 0,
-          participants: statsMap[quiz.id]?.participants || 0,
-          hasForeignResults: foreignResultsSet.has(quiz.id)
-        }));
-        _editorTreeCache = quizzesWithStats;
-        _editorTreeCacheShowHidden = showHidden;
-        setMyQuizzes(quizzesWithStats);
-      }
-    } catch (err) {
-      console.error('Tree fetch error:', err);
-    } finally {
-      setTreeLoading(false);
-    }
+  useEffect(() => {
+    fetchStructure();
+  }, []);
+
+  useCacheSync('catalog_struct_classes', (data) => setClasses(data));
+  useCacheSync('catalog_struct_sections', (data) => setSections(data));
+
+  // Load quizzes + stats — uses granular invalidation
+  const fetchTreeData = () => {
+    // Structural changes will trigger this to refresh classes/sections
+    fetchStructure();
   };
 
-  // Full refresh after any mutation — clears cache, reloads structure + tree if open
+  // Full refresh after any mutation — clears cache
   const fetchData = async () => {
-    _editorTreeCache = null;
-    
-    // Invalidate Data-Driven cache for quizzes so structural changes reflect instantly
-    const keysToRemove = [];
-    for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && (key.startsWith('labtest_cache_catalog_quizzes_') || key.startsWith('labtest_cache_catalog_struct_'))) {
-            keysToRemove.push(key);
-        }
-    }
-    keysToRemove.forEach(k => localStorage.removeItem(k));
+    // Invalidate structural cache
+    localStorage.removeItem('labtest_cache_catalog_struct_classes');
+    localStorage.removeItem('labtest_cache_catalog_struct_sections');
 
     await fetchStructure();
-    if (activeTabRef.current === 'manage') await fetchTreeData(true);
   };
 
   const handleTabChange = (tab) => {
@@ -421,7 +569,7 @@ const Editor = ({ session, profile }) => {
     setHasUnsavedChanges(true);
   };
 
-  const swapQuizzes = (sectionId, index, direction, quiz) => {
+  const swapQuizzes = (sectionId, index, direction, quiz, localQuizzes, setLocalQuizzes) => {
     const canMoveQuiz = (quiz) => {
       if (!profile) return false;
       if (profile.role === 'creator') return true;
@@ -433,25 +581,19 @@ const Editor = ({ session, profile }) => {
 
     if (!canMoveQuiz(quiz)) return;
 
-    const qList = [...myQuizzes];
-    const sectionQuizzes = qList.filter(q => q.section_id === sectionId);
-    if (index + direction < 0 || index + direction >= sectionQuizzes.length) return;
+    const qList = [...localQuizzes];
+    if (index + direction < 0 || index + direction >= qList.length) return;
 
-    const temp = sectionQuizzes[index];
-    sectionQuizzes[index] = sectionQuizzes[index + direction];
-    sectionQuizzes[index + direction] = temp;
+    const temp = qList[index];
+    qList[index] = qList[index + direction];
+    qList[index + direction] = temp;
 
     let order = 0;
     const final = qList.map(q => {
-      if (q.section_id === sectionId) {
-        const updated = sectionQuizzes.shift();
-        updated.sort_order = order++;
-        updated.is_dirty = true;
-        return updated;
-      }
-      return q;
+        return { ...q, sort_order: order++, is_dirty: true };
     });
-    setMyQuizzes(final);
+    setLocalQuizzes(final);
+    setDirtyQuizzesMap(prev => ({ ...prev, [sectionId]: final }));
     setHasUnsavedChanges(true);
   };
 
@@ -535,7 +677,12 @@ const Editor = ({ session, profile }) => {
   const toggleHideQuiz = async (quiz) => {
     const { error } = await supabase.from('quizzes').update({ is_hidden: !quiz.is_hidden }).eq('id', quiz.id);
     if (error) alert(error.message);
-    else fetchData();
+    else {
+      // Invalidate specific section cache
+      localStorage.removeItem(`labtest_cache_editor_quizzes_${quiz.section_id}_hidden`);
+      localStorage.removeItem(`labtest_cache_editor_quizzes_${quiz.section_id}_visible`);
+      fetchData(); // update structure if needed
+    }
   };
 
   return (
@@ -816,108 +963,19 @@ const Editor = ({ session, profile }) => {
                               </div>
 
                               {expandedSections[section.id] && (
-                                <div className="animate">
-                                  {(profile?.role === 'admin' || profile?.role === 'creator' || profile?.id === section.author_id) && (
-                                    <button onClick={() => handleCreateDivider(section.id)} style={{ width: '100%', padding: '10px', marginBottom: '20px', background: 'rgba(99, 102, 241, 0.05)', color: 'var(--primary-color)', border: '1px dashed rgba(99, 102, 241, 0.2)', boxShadow: 'none', fontWeight: 'bold', fontSize: '0.9rem' }}><Plus size={16} /> Добавить разделитель</button>
-                                  )}
-                                  <div className="grid-2" style={{ gap: '15px' }}>
-                                    {qs.map((quiz, qIndex) => {
-                                      if (quiz.content?.is_divider) {
-                                        return (
-                                          <div key={quiz.id} className="grid-full" style={{
-                                            gridColumn: '1 / -1',
-                                            margin: '10px 0',
-                                            padding: '15px 20px',
-                                            background: 'rgba(99, 102, 241, 0.05)',
-                                            border: '1px dashed rgba(99, 102, 241, 0.3)',
-                                            borderRadius: '15px',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '15px'
-                                          }}>
-                                            <div className="flex-center" style={{ flexDirection: 'column', gap: '5px' }}>
-                                              <button onClick={() => swapQuizzes(section.id, qIndex, -1, quiz)} disabled={qIndex === 0} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronUp size={16} /></button>
-                                              <button onClick={() => swapQuizzes(section.id, qIndex, 1, quiz)} disabled={qIndex === qs.length - 1} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronDown size={16} /></button>
-                                            </div>
-                                            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                              <div style={{ height: '1px', background: 'rgba(99, 102, 241, 0.2)', flex: 1 }} />
-                                              <span style={{ fontWeight: 'bold', fontSize: '0.85rem', color: 'var(--primary-color)' }}>
-                                                {quiz.content.divider_text || 'Разделительная линия'}
-                                              </span>
-                                              <div style={{ height: '1px', background: 'rgba(99, 102, 241, 0.2)', flex: 1 }} />
-                                            </div>
-                                            <div className="flex-center" style={{ gap: '8px' }}>
-                                              <button onClick={() => { setRenamingItem({ id: quiz.id, name: quiz.title, type: 'quiz' }); setNewName(quiz.title); }} style={{ background: 'transparent', color: 'var(--primary-color)', opacity: 0.6, boxShadow: 'none', padding: '5px' }}><Pencil size={16} /></button>
-                                              <button onClick={() => toggleHideQuiz(quiz)} style={{ background: 'transparent', color: quiz.is_hidden ? '#ca8a04' : 'inherit', opacity: 0.6, boxShadow: 'none', padding: '5px' }}>{quiz.is_hidden ? <Eye size={16} /> : <EyeOff size={16} />}</button>
-                                              {(profile?.role === 'creator' || profile?.role === 'admin' || (quiz.author_id === profile?.id && !quiz.hasForeignResults)) ? (
-                                                <button onClick={() => setDeleteId(quiz.id)} style={{ background: 'transparent', color: 'red', opacity: 0.6, boxShadow: 'none', padding: '5px' }}><Trash2 size={16} /></button>
-                                              ) : (
-                                                quiz.author_id === profile?.id && (
-                                                  <div style={{ color: '#f87171', opacity: 0.6 }} title="Удаление ограничено: есть результаты других учеников. Обратитесь к админу.">
-                                                    <Lock size={14} />
-                                                  </div>
-                                                )
-                                              )}
-                                            </div>
-                                          </div>
-                                        );
-                                      }
-
-                                      return (
-                                        <div key={quiz.id} className="card" style={{
-                                          padding: '20px',
-                                          background: 'var(--card-bg)',
-                                          border: quiz.is_hidden ? '1px dashed #ca8a04' : '1px solid rgba(0,0,0,0.05)',
-                                          display: 'flex',
-                                          flexDirection: 'column',
-                                          height: '100%'
-                                        }}>
-                                          <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '15px', gap: '10px' }}>
-                                            <div className="flex-center" style={{ gap: '10px', flex: 1, minWidth: 0 }}>
-                                              {(profile?.role === 'creator' || profile?.role === 'admin' || quiz.author_id === profile?.id) && (
-                                                <div className="flex-center" style={{ flexDirection: 'column', gap: '5px' }}>
-                                                  <button onClick={() => swapQuizzes(section.id, qIndex, -1, quiz)} disabled={qIndex === 0} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronUp size={18} /></button>
-                                                  <button onClick={() => swapQuizzes(section.id, qIndex, 1, quiz)} disabled={qIndex === qs.length - 1} style={{ padding: '2px', background: 'transparent', color: 'var(--text-color)', boxShadow: 'none' }}><ChevronDown size={18} /></button>
-                                                </div>
-                                              )}
-                                              <div style={{ flex: 1, minWidth: 0 }}>
-                                                <h4 style={{ fontSize: '1.1rem', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: quiz.is_hidden ? 0.6 : 1 }}>{quiz.title}</h4>
-                                                <div style={{ display: 'flex', gap: '8px', fontSize: '0.75rem', opacity: 0.5 }}>
-                                                  <span>{new Date(quiz.created_at).toLocaleDateString()}</span>
-                                                </div>
-                                              </div>
-                                              {quiz.is_verified && <CheckCircle size={18} color="var(--primary-color)" title="Верифицирован" />}
-                                            </div>
-                                            <div className="flex-center" style={{ gap: '10px' }}>
-                                              <button onClick={() => toggleHideQuiz(quiz)} style={{ background: 'transparent', color: quiz.is_hidden ? '#ca8a04' : 'inherit', opacity: 0.5, boxShadow: 'none', padding: '5px' }} title={quiz.is_hidden ? 'Скрыт' : 'Виден всем'}>{quiz.is_hidden ? <Shield size={18} /> : <Eye size={18} />}</button>
-                                              {(profile?.role === 'creator' || (profile?.role === 'admin' && quiz.profiles?.role !== 'creator') || (quiz.author_id === profile?.id && !quiz.hasForeignResults)) ? (
-                                                <button onClick={() => setDeleteId(quiz.id)} style={{ background: 'transparent', color: 'red', opacity: 0.5, boxShadow: 'none', padding: '5px' }} title="Удалить тест"><Trash2 size={18} /></button>
-                                              ) : (
-                                                quiz.author_id === profile?.id && (
-                                                  <div className="flex-center" style={{ padding: '8px', background: 'rgba(248,113,113,0.05)', color: '#f87171', borderRadius: '10px' }} title="Удаление ограничено: есть результаты других учеников. Обратитесь к админу.">
-                                                    <Lock size={18} />
-                                                  </div>
-                                                )
-                                              )}
-                                            </div>
-                                          </div>
-                                          <div className="flex-center" style={{ justifyContent: 'space-between', fontSize: '0.8rem', opacity: 0.6, marginBottom: '20px' }}>
-                                            <div className="flex-center" style={{ gap: '10px' }}>
-                                              <div className="flex-center" style={{ gap: '5px' }}><TrendingUp size={14} /> <span>{quiz.avgScore}%</span></div>
-                                              <div className="flex-center" style={{ gap: '5px' }}><Pencil size={14} /> <span>{quiz.participants}</span></div>
-                                            </div>
-                                            <span style={{ fontSize: '0.75rem' }}>{quiz.profiles && `${quiz.profiles.last_name || ''} ${quiz.profiles.first_name || ''}`}</span>
-                                          </div>
-                                          <div className="flex-center" style={{ justifyContent: 'flex-end', gap: '8px', marginTop: 'auto' }}>
-                                            <button onClick={() => navigate(`/analytics?id=${quiz.id}`)} style={{ padding: '8px', background: 'rgba(0,0,0,0.05)', color: 'inherit', boxShadow: 'none', borderRadius: '10px' }} title="Аналитика"><TrendingUp size={15} /></button>
-                                            <button onClick={() => navigate(`/redactor?id=${quiz.id}`)} style={{ padding: '8px 15px', borderRadius: '10px', fontSize: '0.9rem' }}>Редактировать</button>
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                    {qs.length === 0 && <p style={{ gridColumn: '1 / -1', opacity: 0.5, textAlign: 'center', margin: '20px 0' }}>Здесь пока пусто.</p>}
-                                  </div>
-                                </div>
+                                <EditorSectionQuizzes 
+                                  section={section}
+                                  profile={profile}
+                                  session={session}
+                                  showHidden={showHidden}
+                                  setDeleteId={setDeleteId}
+                                  setRenamingItem={setRenamingItem}
+                                  setNewName={setNewName}
+                                  toggleHideQuiz={toggleHideQuiz}
+                                  swapQuizzes={swapQuizzes}
+                                  handleCreateDivider={handleCreateDivider}
+                                  navigate={navigate}
+                                />
                               )}
                             </div>
                           );
@@ -955,10 +1013,11 @@ const Editor = ({ session, profile }) => {
                 for (const s of sections) {
                   if (s.is_dirty) updates.push(supabase.from('quiz_sections').update({ sort_order: s.sort_order }).eq('id', s.id));
                 }
-                for (const q of myQuizzes) {
+                for (const q of Object.values(dirtyQuizzesMap).flat()) {
                   if (q.is_dirty) updates.push(supabase.from('quizzes').update({ sort_order: q.sort_order }).eq('id', q.id));
                 }
                 await Promise.all(updates);
+                setDirtyQuizzesMap({});
                 await fetchData();
               } catch (e) {
                 console.error(e);

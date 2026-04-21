@@ -60,6 +60,7 @@ const QuizRedactor = () => {
   const [saving, setSaving] = useState(false);
   const [validErrors, setValidErrors] = useState([]);
   const [showValidErrors, setShowValidErrors] = useState(false);
+  const [shakeIdx, setShakeIdx] = useState(null);
   const [showDeleteResultsModal, setShowDeleteResultsModal] = useState(false);
   const [deleteResultsLock, setDeleteResultsLock] = useState(3);
 
@@ -155,15 +156,42 @@ const QuizRedactor = () => {
 
   const validate = () => {
     const errs = [];
+    let firstErrorIdx = null;
+
     if (!title.trim()) errs.push('Заголовок теста пуст');
     if (!questions.length) errs.push('Тест должен содержать хотя бы один вопрос');
+    
     questions.forEach((q, i) => {
-      if (!q.question.trim()) errs.push(`Вопрос ${i + 1}: текст вопроса пуст`);
-      if ((q.options || []).length < MIN_OPTIONS) errs.push(`Вопрос ${i + 1}: минимум ${MIN_OPTIONS} варианта`);
-      if (q.correctIndex === null || q.correctIndex === undefined) errs.push(`Вопрос ${i + 1}: не выбран верный ответ`);
-      (q.options || []).forEach((o, oi) => { if (!o.trim()) errs.push(`Вопрос ${i + 1}, вариант ${oi + 1}: текст пуст`); });
+      let hasQError = false;
+      if (!q.question.trim()) {
+        errs.push(`Вопрос ${i + 1}: текст вопроса пуст`);
+        hasQError = true;
+      }
+      if ((q.options || []).length < MIN_OPTIONS) {
+        errs.push(`Вопрос ${i + 1}: минимум ${MIN_OPTIONS} варианта`);
+        hasQError = true;
+      }
+      if (q.correctIndex === null || q.correctIndex === undefined) {
+        errs.push(`Вопрос ${i + 1}: не выбран верный ответ`);
+        hasQError = true;
+      }
+      (q.options || []).forEach((o, oi) => { 
+        if (!o.trim()) {
+          errs.push(`Вопрос ${i + 1}, вариант ${oi + 1}: текст пуст`);
+          hasQError = true;
+        }
+      });
+
+      if (hasQError && firstErrorIdx === null) {
+        firstErrorIdx = i;
+      }
     });
+
     setValidErrors(errs);
+    if (firstErrorIdx !== null) {
+      setShakeIdx(firstErrorIdx);
+      setTimeout(() => setShakeIdx(null), 500);
+    }
     return errs.length === 0;
   };
 
@@ -1011,7 +1039,11 @@ const QuizRedactor = () => {
         {/* Questions list */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {questions.map((q, qIdx) => (
-            <div key={qIdx} className="card animate" style={{ padding: '0', overflow: 'hidden', border: '1px solid rgba(0,0,0,0.06)' }}>
+            <div key={qIdx} 
+              id={`question-card-${qIdx}`}
+              className={`card animate ${shakeIdx === qIdx ? 'shake' : ''}`} 
+              style={{ padding: '0', overflow: 'hidden', border: '1px solid rgba(0,0,0,0.06)' }}
+            >
               {/* Question header */}
               <div style={{ padding: '20px 25px', background: 'rgba(99,102,241,0.04)', borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
                 <div className="flex-center" style={{ gap: '10px', justifyContent: 'space-between' }}>
