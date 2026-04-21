@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, startTransition } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { Search, Play, CheckCircle, ChevronDown, ChevronUp, Award, Save, BarChart2, Book, Pencil, Eye, AlertTriangle, Plus, Shield, EyeOff, Trash2, Dices, Clock, TrendingUp, Info, Loader2 } from 'lucide-react';
+import { Search, Play, CheckCircle, ChevronDown, ChevronUp, Award, Save, BarChart2, Book, Pencil, Eye, AlertTriangle, Plus, Shield, EyeOff, Trash2, Dices, Clock, TrendingUp, Info, Loader2, Share2, Check } from 'lucide-react';
 import { useScrollRestoration } from '../lib/useScrollRestoration';
 import { fetchWithCache, useCacheSync } from '../lib/cache';
 
@@ -33,7 +33,36 @@ const DividerItem = React.memo(({ quiz, qIndex, userRole, searchQuery, swapQuizz
   </div>
 ));
 
-const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, passState, statsLoading, canEditQuiz, canMoveQuiz, swapQuizzes, navigate, setSelectedQuiz, setHideModal, isDimmed, quizzesLength }) => (
+const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, passState, statsLoading, canEditQuiz, canMoveQuiz, swapQuizzes, navigate, setSelectedQuiz, setHideModal, isDimmed, quizzesLength }) => {
+  const [toast, setToast] = useState({ visible: false, opacity: 0 });
+
+  const handleShare = useCallback((e) => {
+    e.stopPropagation();
+    const url = `${window.location.origin}/catalog?shareQuiz=${quiz.id}`;
+    const text = `${quiz.title}\n${url}`;
+    
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        setToast({ visible: true, opacity: 1 });
+        setTimeout(() => setToast(prev => ({ ...prev, opacity: 0 })), 2000);
+        setTimeout(() => setToast({ visible: false, opacity: 0 }), 2500);
+      });
+    } else {
+      const textArea = document.createElement("textarea");
+      textArea.value = text;
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        setToast({ visible: true, opacity: 1 });
+        setTimeout(() => setToast(prev => ({ ...prev, opacity: 0 })), 2000);
+        setTimeout(() => setToast({ visible: false, opacity: 0 }), 3000); // Increased buffer for transition
+      } catch (err) {}
+      document.body.removeChild(textArea);
+    }
+  }, [quiz.id, quiz.title]);
+
+  return (
   <div className="card animate" style={{ padding: '20px', background: 'var(--card-bg)', boxShadow: 'var(--soft-shadow)', display: 'flex', flexDirection: 'column', height: '100%', opacity: isDimmed ? 0.5 : 1, border: isDimmed ? '1px dashed #ca8a04' : '1px solid rgba(99, 102, 241, 0.1)', position: 'relative' }}>
     {canMoveQuiz(quiz) && !searchQuery && (
       <div style={{ position: 'absolute', top: '15px', right: '15px', display: 'flex', gap: '5px', zIndex: 10 }}>
@@ -79,12 +108,45 @@ const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, pass
           {canEditQuiz(quiz) && <button onClick={() => navigate(`/redactor?id=${quiz.id}`)} style={{ padding: '8px', background: 'rgba(99,102,241,0.08)', color: 'var(--primary-color)', boxShadow: 'none', borderRadius: '10px' }} title="Редактировать"><Pencil size={15} /></button>}
           {canEditQuiz(quiz) && <button onClick={() => setHideModal(quiz)} style={{ padding: '8px', background: 'rgba(250,204,21,0.08)', color: '#ca8a04', boxShadow: 'none', borderRadius: '10px' }} title="Скрыть"><Eye size={15} /></button>}
           {(userRole === 'admin' || userRole === 'creator' || userRole === 'teacher' || userId === quiz.author_id) && <button onClick={() => navigate(`/analytics?id=${quiz.id}`)} style={{ padding: '8px', background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none', borderRadius: '10px' }} title="Аналитика"><BarChart2 size={15} /></button>}
-          <button onClick={() => setSelectedQuiz(quiz)} style={{ padding: '8px 20px', display: 'flex', alignItems: 'center', gap: '8px', borderRadius: '10px' }}><Play size={15} fill="currentColor" /> Начать</button>
+            <button
+              onClick={handleShare}
+              style={{ padding: '8px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none', borderRadius: '10px' }}
+              title="Поделиться"
+            >
+              <Share2 size={15} />
+            </button>
+
+            {toast.visible && (
+              <div style={{
+                position: 'absolute',
+                top: '-40px',
+                right: '0',
+                background: 'var(--primary-color)',
+                color: 'white',
+                padding: '5px 12px',
+                borderRadius: '8px',
+                fontSize: '0.75rem',
+                fontWeight: 'bold',
+                boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)',
+                zIndex: 100,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                whiteSpace: 'nowrap',
+                opacity: toast.opacity,
+                transition: 'opacity 0.5s ease',
+                pointerEvents: 'none'
+              }}>
+                <Check size={14} /> Скопировано!
+              </div>
+            )}
+            <button onClick={() => setSelectedQuiz(quiz)} style={{ padding: '8px 20px', display: 'flex', alignItems: 'center', gap: '8px', borderRadius: '10px' }}><Play size={15} fill="currentColor" /> Начать</button>
         </div>
       </div>
     </div>
   </div>
-));
+);
+});
 
 const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, onQuizzesChange, setHideModal, setRenamingItem, setSelectedQuiz, setRandomQuizModal }) => {
   const navigate = useNavigate();
@@ -469,7 +531,7 @@ const CatalogClassRow = React.memo(({
             </div>
           )}
           <h3 style={{ fontSize: '1.5rem', margin: 0, fontWeight: 'bold' }}>
-            {cls.name} <span style={{ fontSize: '0.9rem', opacity: 0.5, marginLeft: '10px' }}>({cls.sections.length} предметов)</span>
+            {cls.name} <span style={{ fontSize: '0.9rem', opacity: 0.5, marginLeft: '10px' }}>({cls.realSectionCount ?? 0} предметов)</span>
           </h3>
           {cls.isEmpty && (
             <span style={{ fontSize: '0.7rem', padding: '4px 10px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 'bold', opacity: 0.6 }}>
@@ -550,6 +612,8 @@ const CatalogClassRow = React.memo(({
 
 const QuizCatalog = ({ profile }) => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [isFromShare, setIsFromShare] = useState(false);
   const [classes, setClasses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -607,10 +671,12 @@ const QuizCatalog = ({ profile }) => {
           isEmpty: realCount === 0
         };
       });
+      const realSecCount = clsSections.filter(s => !s.is_divider).length;
       return {
         ...cls,
         sections: clsSections,
-        isEmpty: clsSections.length === 0
+        realSectionCount: realSecCount,
+        isEmpty: realSecCount === 0
       };
     });
   }, []);
@@ -624,7 +690,7 @@ const QuizCatalog = ({ profile }) => {
       fetchWithCache('catalog_struct_classes', () => supabase.from('quiz_classes').select('*').order('sort_order', { ascending: true }).then(r => r.data)),
       fetchWithCache('catalog_struct_sections', () => supabase.from('quiz_sections').select('*').order('sort_order', { ascending: true }).then(r => r.data)),
       fetchWithCache(`catalog_struct_quizzes_${isPrivileged ? 'all' : 'visible'}`, () => {
-        let quizQuery = supabase.from('quizzes').select('id, section_id, is_hidden, content').eq('is_archived', false);
+        let quizQuery = supabase.from('quizzes').select('id, title, section_id, is_hidden, content').eq('is_archived', false);
         if (!isPrivileged) quizQuery = quizQuery.eq('is_hidden', false);
         return quizQuery.then(r => r.data);
       })
@@ -673,6 +739,29 @@ const QuizCatalog = ({ profile }) => {
       }
     })();
   }, [debouncedSearchQuery]); // eslint-disable-line
+  
+  // Logic for opening quiz from shared link
+  useEffect(() => {
+    const shareId = searchParams.get('shareQuiz');
+    if (shareId && classes.length > 0) {
+      let found = null;
+      for (const cls of classes) {
+        for (const sec of cls.sections) {
+          if (sec.basicQuizzes) {
+            found = sec.basicQuizzes.find(q => q.id === shareId);
+            if (found) break;
+          }
+        }
+        if (found) break;
+      }
+      if (found) {
+        setSelectedQuizState(found);
+        setIsFromShare(true);
+        // Clear param without page reload to avoid re-opening on every render/mount if navigation happens
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    }
+  }, [searchParams, classes]);
 
 
 
@@ -981,6 +1070,7 @@ const QuizCatalog = ({ profile }) => {
         <div className="modal-overlay" onClick={() => setSelectedQuiz(null)}>
           <div className="modal-content animate" onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', margin: '0 auto 25px' }}><Award size={32} /></div>
+            {isFromShare && <div style={{ fontSize: '0.8rem', color: 'var(--primary-color)', fontWeight: 'bold', marginBottom: '10px' }}>Вы перешли по ссылке на этот предмет</div>}
             <h2 style={{ marginBottom: '15px' }}>Вы готовы?</h2>
             <p style={{ opacity: 0.7, marginBottom: '30px', lineHeight: '1.6' }}>Начать тест: <br /> <strong>"{selectedQuiz.title}"</strong>.</p>
             <div className="grid-2" style={{ gap: '15px' }}>
