@@ -6,11 +6,12 @@ import {
   AlertTriangle, Book, FileText, ChevronDown, ChevronUp, Clock, Zap 
 } from 'lucide-react';
 import { resolveImgUrl } from '../lib/imageUtils';
+import { fetchWithCache } from '../lib/cache';
 
 const SECONDS_PER_QUESTION = 25;
 const EXIT_GRACE_SECONDS = 30;
 
-const QuizView = ({ session, profile }) => {
+const QuizView = ({ session, profile, onStateUpdate }) => {
   const { id } = useParams();
   const navigate = useNavigate();
 
@@ -22,6 +23,7 @@ const QuizView = ({ session, profile }) => {
   const [loading, setLoading] = useState(true);
   const [showExitModal, setShowExitModal] = useState(false);
   const [isBlurred, setIsBlurred] = useState(false);
+  const [isTimeExpired, setIsTimeExpired] = useState(false);
   const [startTime] = useState(Date.now());
   const startTimeRef = useRef(Date.now());
 
@@ -185,9 +187,15 @@ const QuizView = ({ session, profile }) => {
 
     if (timeLeft <= 0) {
       if (!finishedRef.current) {
-        finishedRef.current = true;
-        localStorage.removeItem(`quiz_timer_${id}`);
-        saveResultRef.current(answersRef.current).then(() => setShowResult(true));
+        setIsTimeExpired(true);
+        // Delay saving to let the user see the "TIME EXPIRED" red/shake state
+        setTimeout(() => {
+          if (!finishedRef.current) {
+            finishedRef.current = true;
+            localStorage.removeItem(`quiz_timer_${id}`);
+            saveResultRef.current(answersRef.current).then(() => setShowResult(true));
+          }
+        }, 1500);
       }
       return;
     }
@@ -203,40 +211,77 @@ const QuizView = ({ session, profile }) => {
   }, [isFirstAttempt, timeLeft, showResult]);
 
   const fetchQuiz = async () => {
-    const { data } = await supabase
+    const data = await fetchWithCache(`quiz_full_${id}`, () => supabase
       .from('quizzes')
       .select('*, quiz_sections(name, book_url)')
       .eq('id', id)
-      .single();
+      .single()
+      .then(res => res.data));
 
     if (data) {
       setQuiz(data);
       const rawQuestions = data.content.questions || [];
-      // Assign original indices before shuffling
       const indexedQuestions = rawQuestions.map((q, idx) => ({ ...q, originalIndex: idx }));
 
-      // Shuffle questions (Fisher-Yates)
-      const shuffledQuestions = [...indexedQuestions];
-      for (let i = shuffledQuestions.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [shuffledQuestions[i], shuffledQuestions[j]] = [shuffledQuestions[j], shuffledQuestions[i]];
+      // --- Shuffle Persistence Logic ---
+      const shuffleKey = `labtest_shuffle_${id}`;
+      let fullyShuffled = [];
+      const storedShuffle = localStorage.getItem(shuffleKey);
+
+      if (storedShuffle) {
+        try {
+          const shuffleMap = JSON.parse(storedShuffle);
+          // shuffleMap is an array of { qIdx: originalQuestionIndex, oMap: [originalOptionIndices] }
+          fullyShuffled = shuffleMap.map(entry => {
+            const q = indexedQuestions[entry.qIdx];
+            const optionsWithIndices = entry.oMap.map(oIdx => ({
+              opt: q.options[oIdx],
+              originalIndex: oIdx
+            }));
+            const newCorrectIndex = optionsWithIndices.findIndex(o => o.originalIndex === q.correctIndex);
+            return {
+              ...q,
+              options: optionsWithIndices.map(o => o.opt),
+              correctIndex: newCorrectIndex,
+              optionMapping: optionsWithIndices.map(o => o.originalIndex)
+            };
+          });
+        } catch (e) {
+          console.error("Failed to restore shuffle:", e);
+          localStorage.removeItem(shuffleKey);
+        }
       }
 
-      // Shuffle options within each question
-      const fullyShuffled = shuffledQuestions.map(q => {
-        const optionsWithIndices = q.options.map((opt, idx) => ({ opt, originalIndex: idx }));
-        for (let i = optionsWithIndices.length - 1; i > 0; i--) {
+      if (fullyShuffled.length === 0) {
+        // Generate new shuffle if not found or failed
+        const shuffledQuestions = [...indexedQuestions];
+        for (let i = shuffledQuestions.length - 1; i > 0; i--) {
           const j = Math.floor(Math.random() * (i + 1));
-          [optionsWithIndices[i], optionsWithIndices[j]] = [optionsWithIndices[j], optionsWithIndices[i]];
+          [shuffledQuestions[i], shuffledQuestions[j]] = [shuffledQuestions[j], shuffledQuestions[i]];
         }
-        const newCorrectIndex = optionsWithIndices.findIndex(o => o.originalIndex === q.correctIndex);
-        return { 
-          ...q, 
-          options: optionsWithIndices.map(o => o.opt), 
-          correctIndex: newCorrectIndex,
-          optionMapping: optionsWithIndices.map(o => o.originalIndex)
-        };
-      });
+
+        fullyShuffled = shuffledQuestions.map(q => {
+          const optionsWithIndices = q.options.map((opt, idx) => ({ opt, originalIndex: idx }));
+          for (let i = optionsWithIndices.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [optionsWithIndices[i], optionsWithIndices[j]] = [optionsWithIndices[j], optionsWithIndices[i]];
+          }
+          const newCorrectIndex = optionsWithIndices.findIndex(o => o.originalIndex === q.correctIndex);
+          return { 
+            ...q, 
+            options: optionsWithIndices.map(o => o.opt), 
+            correctIndex: newCorrectIndex,
+            optionMapping: optionsWithIndices.map(o => o.originalIndex)
+          };
+        });
+
+        // Save new shuffle map
+        const shuffleMapToStore = fullyShuffled.map(q => ({
+          qIdx: q.originalIndex,
+          oMap: q.optionMapping
+        }));
+        localStorage.setItem(shuffleKey, JSON.stringify(shuffleMapToStore));
+      }
 
       setQuestions(fullyShuffled);
       questionsRef.current = fullyShuffled;
@@ -300,28 +345,30 @@ const QuizView = ({ session, profile }) => {
                 finish_reason: 'aborted',
                 answers_data: []
               });
+              if (onStateUpdate) onStateUpdate();
             }
           } catch (e) { console.error('Failed to register attempt start:', e); }
         })();
       }
 
-      // Save any pending result from a closed tab
-      const pendingKey = `quiz_pending_${data.id}`;
-      const pendingRaw = localStorage.getItem(pendingKey);
-      if (pendingRaw) {
-        try {
-          const pending = JSON.parse(pendingRaw);
-          localStorage.removeItem(pendingKey);
-          // Check if already saved (first attempt might have been saved)
-          const { data: existing } = await supabase.from('quiz_results').select('id').eq('quiz_id', pending.quiz_id).eq('user_id', pending.user_id).maybeSingle();
-          if (existing) {
-            await supabase.from('quiz_results').update({ score: pending.score, total_questions: pending.total_questions, is_passed: pending.is_passed, completed_at: pending.completed_at, answers_array: pending.answers_array }).eq('id', existing.id);
-          } else {
-            const ins = { ...pending, first_score: pending.score, first_completed_at: pending.completed_at, first_answers_array: pending.answers_array };
-            if (!ins.class_id) delete ins.class_id;
-            await supabase.from('quiz_results').insert(ins);
-          }
-        } catch (e) { console.error('Pending save failed:', e); }
+      // Save any pending result from a closed tab (only for non-timed tests to avoid duplication)
+      if (!first) {
+        const pendingKey = `quiz_pending_${data.id}`;
+        const pendingRaw = localStorage.getItem(pendingKey);
+        if (pendingRaw) {
+          try {
+            const pending = JSON.parse(pendingRaw);
+            localStorage.removeItem(pendingKey);
+            const { data: existing } = await supabase.from('quiz_results').select('id').eq('quiz_id', pending.quiz_id).eq('user_id', pending.user_id).maybeSingle();
+            if (existing) {
+              await supabase.from('quiz_results').update({ score: pending.score, total_questions: pending.total_questions, is_passed: pending.is_passed, completed_at: pending.completed_at, answers_array: pending.answers_array }).eq('id', existing.id);
+            } else {
+              const ins = { ...pending, first_score: pending.score, first_completed_at: pending.completed_at, first_answers_array: pending.answers_array };
+              if (!ins.class_id) delete ins.class_id;
+              await supabase.from('quiz_results').insert(ins);
+            }
+          } catch (e) { console.error('Pending save failed:', e); }
+        }
       }
     }
     setLoading(false);
@@ -525,6 +572,7 @@ const QuizView = ({ session, profile }) => {
     localStorage.removeItem(`quiz_timer_${id}`);
     localStorage.removeItem(`quiz_answers_${id}`);
     await saveResultRef.current(finalAnswers, false);
+    if (onStateUpdate) onStateUpdate();
     if (blocker.state === 'blocked') blocker.proceed();
     setShowResult(true);
   };
@@ -557,7 +605,7 @@ const QuizView = ({ session, profile }) => {
     if (blocker.state === 'blocked') blocker.reset();
   };
 
-  if (loading) return <div className="flex-center" style={{ height: '60vh' }}>Загрузка теста...</div>;
+  if (loading) return <QuizSkeleton />;
   if (!quiz) return <div className="container" style={{ textAlign: 'center', padding: '100px' }}>Тест не найден.</div>;
 
   // SCREEN: NO CLASS (Observers can pass without a class)
@@ -782,20 +830,21 @@ const QuizView = ({ session, profile }) => {
         <div style={{
           position: 'sticky', top: 0, zIndex: 100,
           background: 'var(--card-bg)',
-          borderBottom: `3px solid ${timerColor}`,
+          borderBottom: `3px solid ${isTimeExpired ? '#ef4444' : timerColor}`,
           padding: '10px 20px',
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
-          boxShadow: '0 2px 12px rgba(0,0,0,0.1)',
-          transition: 'border-color 0.5s'
+          boxShadow: isTimeExpired ? '0 4px 20px rgba(239, 68, 68, 0.4)' : '0 2px 12px rgba(0,0,0,0.1)',
+          transition: 'all 0.5s',
+          animation: isTimeExpired ? 'shake 0.5s infinite' : 'none'
         }}>
-          <Clock size={18} color={timerColor} />
-          <span style={{ fontWeight: '700', fontSize: '1.1rem', color: timerColor, fontVariantNumeric: 'tabular-nums', transition: 'color 0.5s' }}>
-            {formatTime(timeLeft)}
+          {isTimeExpired ? <AlertTriangle size={18} color="#ef4444" /> : <Clock size={18} color={timerColor} />}
+          <span style={{ fontWeight: '900', fontSize: '1.2rem', color: isTimeExpired ? '#ef4444' : timerColor, fontVariantNumeric: 'tabular-nums', transition: 'color 0.5s' }}>
+            {isTimeExpired ? 'ВРЕМЯ ВЫШЛО' : formatTime(timeLeft)}
           </span>
-          <span style={{ opacity: 0.5, fontSize: '0.85rem' }}>— Оставшееся время</span>
+          {!isTimeExpired && <span style={{ opacity: 0.5, fontSize: '0.85rem' }}>— Оставшееся время</span>}
           {/* Mini progress bar */}
           <div style={{ flex: 1, maxWidth: '200px', height: '6px', background: 'rgba(0,0,0,0.08)', borderRadius: '10px', overflow: 'hidden', marginLeft: '10px' }}>
-            <div style={{ width: `${timerPercent * 100}%`, height: '100%', background: timerColor, transition: 'width 1s linear, background 0.5s' }} />
+            <div style={{ width: `${timerPercent * 100}%`, height: '100%', background: isTimeExpired ? '#ef4444' : timerColor, transition: 'width 1s linear, background 0.5s' }} />
           </div>
         </div>
       )}
@@ -872,7 +921,14 @@ const QuizView = ({ session, profile }) => {
           })}
         </div>
 
-        <div className="card animate" key={currentIdx} style={{ minHeight: '450px', display: 'flex', flexDirection: 'column' }}>
+        <div className={`card animate ${isTimeExpired ? 'shake' : ''}`} key={currentIdx} style={{ 
+          minHeight: '450px', 
+          display: 'flex', 
+          flexDirection: 'column',
+          border: isTimeExpired ? '2px solid #ef4444' : '1px solid rgba(0,0,0,0.05)',
+          background: isTimeExpired ? 'rgba(239, 68, 68, 0.02)' : 'var(--card-bg)',
+          transition: 'all 0.5s ease'
+        }}>
           {currentQ.images && currentQ.images.length > 0 && (
             <div style={{ marginBottom: '25px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
               <div style={{ position: 'relative', width: '100%', display: 'flex', justifyContent: 'center' }}>
@@ -1010,5 +1066,21 @@ const QuizView = ({ session, profile }) => {
     </div>
   );
 };
+
+const QuizSkeleton = () => (
+  <div className="container" style={{ maxWidth: '800px', padding: '60px 20px' }}>
+    <div className="skeleton-pulse" style={{ height: '40px', width: '150px', marginBottom: '20px', borderRadius: '12px' }} />
+    <div className="skeleton-pulse" style={{ height: '8px', width: '100%', marginBottom: '30px', borderRadius: '10px' }} />
+    <div className="flex-center" style={{ gap: '8px', marginBottom: '40px', justifyContent: 'center' }}>
+      {[1,2,3,4,5].map(i => <div key={i} className="skeleton-pulse" style={{ width: '12px', height: '12px', borderRadius: '50%' }} />)}
+    </div>
+    <div className="card" style={{ minHeight: '450px', padding: '40px' }}>
+      <div className="skeleton-pulse" style={{ height: '30px', width: '70%', marginBottom: '40px', borderRadius: '8px' }} />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+        {[1,2,3,4].map(i => <div key={i} className="skeleton-pulse" style={{ height: '80px', borderRadius: '16px' }} />)}
+      </div>
+    </div>
+  </div>
+);
 
 export default QuizView;

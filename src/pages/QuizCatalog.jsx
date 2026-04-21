@@ -33,8 +33,27 @@ const DividerItem = React.memo(({ quiz, qIndex, userRole, searchQuery, swapQuizz
   </div>
 ));
 
-const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, passState, statsLoading, canEditQuiz, canMoveQuiz, swapQuizzes, navigate, setSelectedQuiz, setHideModal, isDimmed, quizzesLength }) => {
+const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, passState, statsLoading, canEditQuiz, canMoveQuiz, swapQuizzes, navigate, setSelectedQuiz, setHideModal, isDimmed, quizzesLength, activeAttempts = [] }) => {
   const [toast, setToast] = useState({ visible: false, opacity: 0 });
+  const [tick, setTick] = useState(0);
+
+  // Sync internal timer for smooth UI
+  useEffect(() => {
+    const active = activeAttempts.find(a => a.quiz_id === quiz.id);
+    if (!active) return;
+    const interval = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(interval);
+  }, [activeAttempts.length, quiz.id]);
+
+  const activeAttempt = activeAttempts.find(a => a.quiz_id === quiz.id);
+  const now = Date.now();
+  const remaining = activeAttempt ? Math.max(0, Math.floor((activeAttempt.endTime - now) / 1000)) : null;
+  const isExpired = activeAttempt && remaining <= 0;
+  
+  const formatTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  
+  const timerPercent = activeAttempt ? remaining / activeAttempt.totalSeconds : 0;
+  const timerColor = timerPercent > 0.5 ? '#4ade80' : timerPercent > 0.2 ? '#facc15' : '#f87171';
 
   const handleShare = useCallback((e) => {
     e.stopPropagation();
@@ -63,7 +82,39 @@ const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, pass
   }, [quiz.id, quiz.title]);
 
   return (
-  <div className="card animate" style={{ padding: '20px', background: 'var(--card-bg)', boxShadow: 'var(--soft-shadow)', display: 'flex', flexDirection: 'column', height: '100%', opacity: isDimmed ? 0.5 : 1, border: isDimmed ? '1px dashed #ca8a04' : '1px solid rgba(99, 102, 241, 0.1)', position: 'relative' }}>
+  <div className={`card animate ${activeAttempt ? 'active-test-card' : ''}`} style={{ 
+    padding: '20px', 
+    background: activeAttempt && isExpired ? 'rgba(248, 113, 113, 0.05)' : 'var(--card-bg)', 
+    boxShadow: activeAttempt ? `0 10px 30px ${isExpired ? '#f8717133' : timerColor + '33'}` : 'var(--soft-shadow)', 
+    display: 'flex', 
+    flexDirection: 'column', 
+    height: '100%', 
+    opacity: isDimmed ? 0.5 : 1, 
+    border: activeAttempt ? `2px solid ${isExpired ? '#f87171' : timerColor}` : (isDimmed ? '1px dashed #ca8a04' : '1px solid rgba(99, 102, 241, 0.1)'),
+    position: 'relative',
+    transition: 'all 0.3s ease'
+  }}>
+    {activeAttempt && (
+      <div style={{
+        position: 'absolute',
+        top: '-12px',
+        right: '20px',
+        background: isExpired ? '#f87171' : timerColor,
+        color: 'white',
+        padding: '4px 12px',
+        borderRadius: '20px',
+        fontSize: '0.75rem',
+        fontWeight: '900',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+        zIndex: 5,
+        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+        animation: isExpired ? 'shake 0.5s infinite' : 'pulse-gentle 2s infinite'
+      }}>
+        <Clock size={14} /> {isExpired ? 'ВРЕМЯ ВЫШЛО' : formatTime(remaining)}
+      </div>
+    )}
     {canMoveQuiz(quiz) && !searchQuery && (
       <div style={{ position: 'absolute', top: '15px', right: '15px', display: 'flex', gap: '5px', zIndex: 10 }}>
         <button onClick={(e) => swapQuizzes(qIndex, -1, e, quiz)} disabled={qIndex === 0} style={{ padding: '4px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none', borderRadius: '8px' }} title="Переместить левее"><ChevronUp size={16} /></button>
@@ -148,7 +199,7 @@ const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, pass
 );
 });
 
-const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, onQuizzesChange, setHideModal, setRenamingItem, setSelectedQuiz, setRandomQuizModal }) => {
+const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, onQuizzesChange, setHideModal, setRenamingItem, setSelectedQuiz, setRandomQuizModal, activeAttempts = [] }) => {
   const navigate = useNavigate();
   const [visibleCount, setVisibleCount] = useState(25); // Incremental rendering start
 
@@ -374,6 +425,7 @@ const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, 
                 setHideModal={setHideModal}
                 isDimmed={currentDividerHidden}
                 quizzesLength={quizzes.length}
+                activeAttempts={activeAttempts}
               />
             );
           });
@@ -386,7 +438,7 @@ const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, 
 const CatalogSectionRow = React.memo(({
   section, clsId, sIndex, profile, searchQuery, isExpanded,
   onToggle, onQuizzesChange, setHideModal, setRenamingItem, setSelectedQuiz, setRandomQuizModal,
-  handleCreateDivider, swapSections, setNewName
+  handleCreateDivider, swapSections, setNewName, activeAttempts
 }) => {
   return (
     <div className="catalog-container" style={{
@@ -479,6 +531,7 @@ const CatalogSectionRow = React.memo(({
           setRenamingItem={setRenamingItem}
           setSelectedQuiz={setSelectedQuiz}
           setRandomQuizModal={setRandomQuizModal}
+          activeAttempts={activeAttempts}
         />
       )}
     </div>
@@ -488,7 +541,7 @@ const CatalogSectionRow = React.memo(({
 const CatalogClassRow = React.memo(({
   cls, cIndex, profile, searchQuery, isExpanded, expandedSections,
   onToggle, onSectionToggle, swapClasses, swapSections, handleRenameItem, handleCreateDivider, handleCreateSectionDivider, setNewName,
-  onQuizzesChange, setHideModal, setSelectedQuiz, setRandomQuizModal
+  onQuizzesChange, setHideModal, setSelectedQuiz, setRandomQuizModal, activeAttempts
 }) => {
   return (
     <div className="card animate" style={{ 
@@ -601,6 +654,7 @@ const CatalogClassRow = React.memo(({
                 handleCreateDivider={handleCreateDivider}
                 swapSections={swapSections}
                 setNewName={setNewName}
+                activeAttempts={activeAttempts}
               />
             );
           })}
@@ -610,7 +664,7 @@ const CatalogClassRow = React.memo(({
   );
 });
 
-const QuizCatalog = ({ profile }) => {
+const QuizCatalog = ({ profile, activeAttempts }) => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [isFromShare, setIsFromShare] = useState(false);
@@ -1015,6 +1069,7 @@ const QuizCatalog = ({ profile }) => {
                 setHideModal={setHideModal}
                 setSelectedQuiz={setSelectedQuiz}
                 setRandomQuizModal={setRandomQuizModal}
+                activeAttempts={activeAttempts}
               />
             );
           })

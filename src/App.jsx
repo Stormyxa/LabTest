@@ -90,6 +90,54 @@ function App() {
   const isAdmin = profile?.role === 'admin' || profile?.role === 'creator';
   const isEditor = profile?.role === 'editor' || profile?.role === 'teacher' || isAdmin;
 
+  const [activeAttempts, setActiveAttempts] = useState([]);
+
+  useEffect(() => {
+    if (!session) {
+      setActiveAttempts([]);
+      return;
+    }
+    fetchActiveAttempts();
+    const interval = setInterval(fetchActiveAttempts, 30000);
+    return () => clearInterval(interval);
+  }, [session]);
+
+  const fetchActiveAttempts = async () => {
+    if (!session) return;
+    const { data: attempts, error } = await supabase
+      .from('quiz_attempts')
+      .select('*, quizzes(title, content)')
+      .eq('user_id', session.user.id)
+      .eq('is_incomplete', true)
+      .order('created_at', { ascending: false });
+
+    if (error || !attempts) return;
+
+    const SECONDS_PER_QUESTION = 25;
+    const now = Date.now();
+    const uniqueMap = new Map();
+    const processed = [];
+
+    for (const att of attempts) {
+      if (!att.quizzes || uniqueMap.has(att.quiz_id)) continue;
+      uniqueMap.set(att.quiz_id, true);
+      
+      const qCount = att.quizzes.content?.questions?.length || 0;
+      const totalSeconds = qCount * SECONDS_PER_QUESTION;
+      const startMs = new Date(att.created_at).getTime();
+      const endTime = startMs + (totalSeconds * 1000);
+      
+      const remainingAtFetch = Math.floor((endTime - now) / 1000);
+      if (remainingAtFetch <= -10) { // Give a 10s grace period before auto-finalizing
+        await supabase.from('quiz_attempts').update({ is_incomplete: false, finish_reason: 'timer_expired' }).eq('id', att.id);
+        continue;
+      }
+
+      processed.push({ ...att, endTime, totalSeconds, title: att.quizzes.title });
+    }
+    setActiveAttempts(processed);
+  };
+
   // Use useMemo to avoid re-creating the router on every state change
   const router = useMemo(() => createBrowserRouter(
     createRoutesFromElements(
@@ -115,14 +163,14 @@ function App() {
               </div>
             </div>
           </nav>
-          <ActiveAttemptsMonitor session={session} />
+          <ActiveAttemptsMonitor session={session} activeAttempts={activeAttempts} />
           <Outlet />
         </div>
       }>
         <Route path="/" element={<Home session={session} profile={profile} />} />
         <Route path="/auth" element={<AuthWrapper session={session} />} />
-        <Route path="/catalog" element={<ProtectedRoute session={session} profile={profile}><QuizCatalog profile={profile} /></ProtectedRoute>} />
-        <Route path="/quiz/:id" element={<ProtectedRoute session={session} profile={profile}><QuizView session={session} profile={profile} /></ProtectedRoute>} />
+        <Route path="/catalog" element={<ProtectedRoute session={session} profile={profile}><QuizCatalog profile={profile} activeAttempts={activeAttempts} /></ProtectedRoute>} />
+        <Route path="/quiz/:id" element={<ProtectedRoute session={session} profile={profile}><QuizView session={session} profile={profile} onStateUpdate={fetchActiveAttempts} /></ProtectedRoute>} />
 
         <Route path="/editor" element={isEditor ? <Editor session={session} profile={profile} /> : <Navigate to="/" />} />
         <Route path="/dashboard" element={isAdmin ? <Dashboard session={session} profile={profile} /> : <Navigate to="/" />} />
@@ -147,71 +195,17 @@ function App() {
 }
 
 // Ongoing test monitor component
-const ActiveAttemptsMonitor = ({ session }) => {
-  const [activeAttempts, setActiveAttempts] = useState([]);
+const ActiveAttemptsMonitor = ({ session, activeAttempts }) => {
   const [isMinimized, setIsMinimized] = useState(() => sessionStorage.getItem('labtest_attempts_minimized') === 'true');
-  const [tick, setTick] = useState(0); // Used to force re-render every second for smooth timer
+  const [tick, setTick] = useState(0); 
   const location = useLocation();
 
-  // 1. Fetch data logic (standard 30s sync)
-  useEffect(() => {
-    if (!session) return;
-    fetchActiveAttempts();
-    const interval = setInterval(fetchActiveAttempts, 30000);
-    return () => clearInterval(interval);
-  }, [session, location.pathname]);
-
-  // 2. Local timer logic (1s tick)
+  // Local timer logic (1s tick) for smooth UI updates
   useEffect(() => {
     if (activeAttempts.length === 0) return;
     const interval = setInterval(() => setTick(t => t + 1), 1000);
     return () => clearInterval(interval);
   }, [activeAttempts.length]);
-
-  const fetchActiveAttempts = async () => {
-    if (!session) return;
-    
-    const { data: attempts, error } = await supabase
-      .from('quiz_attempts')
-      .select('*, quizzes(title, content)')
-      .eq('user_id', session.user.id)
-      .eq('is_incomplete', true)
-      .order('created_at', { ascending: false });
-
-    if (error || !attempts) return;
-
-    const SECONDS_PER_QUESTION = 25;
-    const now = Date.now();
-    
-    // Deduplicate by quiz_id (keeping the most recent)
-    const uniqueMap = new Map();
-    const processed = [];
-
-    for (const att of attempts) {
-      if (!att.quizzes || uniqueMap.has(att.quiz_id)) continue;
-      uniqueMap.set(att.quiz_id, true);
-      
-      const qCount = att.quizzes.content?.questions?.length || 0;
-      const totalSeconds = qCount * SECONDS_PER_QUESTION;
-      const startMs = new Date(att.created_at).getTime();
-      const endTime = startMs + (totalSeconds * 1000);
-      const remainingAtFetch = Math.floor((endTime - now) / 1000);
-
-      if (remainingAtFetch <= 0) {
-        await supabase.from('quiz_attempts').update({ is_incomplete: false, finish_reason: 'timer_expired' }).eq('id', att.id);
-        continue;
-      }
-
-      processed.push({
-        ...att,
-        endTime,
-        totalSeconds,
-        title: att.quizzes.title
-      });
-    }
-
-    setActiveAttempts(processed);
-  };
 
   const toggleMinimized = () => {
     const next = !isMinimized;
@@ -310,32 +304,33 @@ const ActiveAttemptsMonitor = ({ session }) => {
 
           return (
             <div key={att.id} style={{
-              background: 'var(--card-bg)',
-              borderLeft: `5px solid ${timerColor}`,
+              background: remaining <= 0 ? 'rgba(239, 68, 68, 0.1)' : 'var(--card-bg)',
+              borderLeft: `5px solid ${remaining <= 0 ? '#ef4444' : timerColor}`,
               padding: '16px',
               borderRadius: '18px',
-              boxShadow: '0 12px 40px rgba(0,0,0,0.15)',
+              boxShadow: remaining <= 0 ? '0 10px 40px rgba(239, 68, 68, 0.25)' : '0 12px 40px rgba(0,0,0,0.15)',
               display: 'flex',
               flexDirection: 'column',
               gap: '14px',
               backdropFilter: 'blur(16px)',
-              border: '1px solid rgba(255,255,255,0.1)',
+              border: remaining <= 0 ? '2px solid #ef4444' : '1px solid rgba(255,255,255,0.1)',
               transition: 'all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)',
               transitionDelay: isMinimized ? '0s' : `${i * 0.1}s`,
               opacity: isMinimized ? 0 : 1,
-              transform: isMinimized ? 'translateY(20px)' : 'translateY(0)'
+              transform: isMinimized ? 'translateY(20px)' : 'translateY(0)',
+              animation: remaining <= 0 ? 'shake 0.5s infinite' : 'none'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: `${timerColor}15`, color: timerColor, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <Clock size={20} />
+                <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: remaining <= 0 ? '#ef4444' : `${timerColor}15`, color: remaining <= 0 ? 'white' : timerColor, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  {remaining <= 0 ? <AlertCircle size={20} /> : <Clock size={20} />}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: '0.75rem', opacity: 0.5, fontWeight: '600' }}>В процессе:</div>
+                  <div style={{ fontSize: '0.75rem', opacity: 0.5, fontWeight: '600' }}>{remaining <= 0 ? 'ВРЕМЯ ВЫШЛО' : 'В процессе:'}</div>
                   <div style={{ fontWeight: '700', fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{att.title}</div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '1.2rem', fontWeight: '900', color: timerColor, fontVariantNumeric: 'tabular-nums' }}>
-                    {formatTime(remaining)}
+                  <div style={{ fontSize: '1.2rem', fontWeight: '900', color: remaining <= 0 ? '#ef4444' : timerColor, fontVariantNumeric: 'tabular-nums' }}>
+                    {remaining <= 0 ? '0:00' : formatTime(remaining)}
                   </div>
                 </div>
               </div>
