@@ -80,10 +80,18 @@ const QuizView = ({ session, profile }) => {
       
       const currentVal = questionTimesRef.current[currentIdx] || 0;
       questionTimesRef.current[currentIdx] = currentVal + 1;
+      localStorage.setItem(`quiz_times_${id}`, JSON.stringify(questionTimesRef.current));
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [currentIdx, showResult, loading, isBlurred, isFirstAttempt]);
+  }, [currentIdx, showResult, loading, isBlurred, isFirstAttempt, id]);
+
+  // Persist current question index
+  useEffect(() => {
+    if (!loading && !showResult && id) {
+      localStorage.setItem(`quiz_current_idx_${id}`, currentIdx.toString());
+    }
+  }, [currentIdx, loading, showResult, id]);
 
   // beforeunload: save result if elapsed >= EXIT_GRACE_SECONDS
   useEffect(() => {
@@ -185,9 +193,7 @@ const QuizView = ({ session, profile }) => {
 
     if (timeLeft <= 0) {
       if (!finishedRef.current) {
-        finishedRef.current = true;
-        localStorage.removeItem(`quiz_timer_${id}`);
-        saveResultRef.current(answersRef.current).then(() => setShowResult(true));
+        finishQuiz(answersRef.current);
       }
       return;
     }
@@ -215,31 +221,70 @@ const QuizView = ({ session, profile }) => {
       // Assign original indices before shuffling
       const indexedQuestions = rawQuestions.map((q, idx) => ({ ...q, originalIndex: idx }));
 
-      // Shuffle questions (Fisher-Yates)
-      const shuffledQuestions = [...indexedQuestions];
-      for (let i = shuffledQuestions.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [shuffledQuestions[i], shuffledQuestions[j]] = [shuffledQuestions[j], shuffledQuestions[i]];
+      // Try to restore shuffled structure from cache
+      const structureKey = `quiz_structure_${data.id}`;
+      const cachedStructure = localStorage.getItem(structureKey);
+      let finalQuestions = null;
+
+      if (cachedStructure) {
+        try {
+          finalQuestions = JSON.parse(cachedStructure);
+        } catch (e) {
+          console.error('Failed to parse cached structure:', e);
+        }
       }
 
-      // Shuffle options within each question
-      const fullyShuffled = shuffledQuestions.map(q => {
-        const optionsWithIndices = q.options.map((opt, idx) => ({ opt, originalIndex: idx }));
-        for (let i = optionsWithIndices.length - 1; i > 0; i--) {
+      if (!finalQuestions) {
+        // Shuffle questions (Fisher-Yates)
+        const shuffledQuestions = [...indexedQuestions];
+        for (let i = shuffledQuestions.length - 1; i > 0; i--) {
           const j = Math.floor(Math.random() * (i + 1));
-          [optionsWithIndices[i], optionsWithIndices[j]] = [optionsWithIndices[j], optionsWithIndices[i]];
+          [shuffledQuestions[i], shuffledQuestions[j]] = [shuffledQuestions[j], shuffledQuestions[i]];
         }
-        const newCorrectIndex = optionsWithIndices.findIndex(o => o.originalIndex === q.correctIndex);
-        return { 
-          ...q, 
-          options: optionsWithIndices.map(o => o.opt), 
-          correctIndex: newCorrectIndex,
-          optionMapping: optionsWithIndices.map(o => o.originalIndex)
-        };
-      });
 
-      setQuestions(fullyShuffled);
-      questionsRef.current = fullyShuffled;
+        // Shuffle options within each question
+        finalQuestions = shuffledQuestions.map(q => {
+          const optionsWithIndices = q.options.map((opt, idx) => ({ opt, originalIndex: idx }));
+          for (let i = optionsWithIndices.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [optionsWithIndices[i], optionsWithIndices[j]] = [optionsWithIndices[j], optionsWithIndices[i]];
+          }
+          const newCorrectIndex = optionsWithIndices.findIndex(o => o.originalIndex === q.correctIndex);
+          return { 
+            ...q, 
+            options: optionsWithIndices.map(o => o.opt), 
+            correctIndex: newCorrectIndex,
+            optionMapping: optionsWithIndices.map(o => o.originalIndex)
+          };
+        });
+        localStorage.setItem(structureKey, JSON.stringify(finalQuestions));
+      }
+
+      setQuestions(finalQuestions);
+      questionsRef.current = finalQuestions;
+
+      // Restore session-specific state (Timer, Start Time, Current Question Index)
+      const startKey = `quiz_start_time_${data.id}`;
+      const savedStart = localStorage.getItem(startKey);
+      if (savedStart) {
+        startTimeRef.current = parseInt(savedStart);
+      } else {
+        localStorage.setItem(startKey, Date.now().toString());
+      }
+
+      const idxKey = `quiz_current_idx_${data.id}`;
+      const savedIdx = localStorage.getItem(idxKey);
+      if (savedIdx) {
+        setCurrentIdx(parseInt(savedIdx));
+      }
+
+      const timesKey = `quiz_times_${data.id}`;
+      const savedTimes = localStorage.getItem(timesKey);
+      if (savedTimes) {
+        try {
+          questionTimesRef.current = JSON.parse(savedTimes);
+        } catch (e) {}
+      }
 
       // Check if this is first attempt
       const { count } = await supabase
@@ -251,32 +296,30 @@ const QuizView = ({ session, profile }) => {
       const first = (count || 0) === 0;
       setIsFirstAttempt(first);
 
-      if (first) {
-        // Restore timer from localStorage if page was refreshed mid-attempt
-        const timerKey = `quiz_timer_${data.id}`;
-        const answersKey = `quiz_answers_${data.id}`;
-        
-        const storedTimer = localStorage.getItem(timerKey);
-        if (storedTimer) {
-          try {
-            const { timeLeft: storedTime, ts } = JSON.parse(storedTimer);
-            const secondsPassed = Math.round((Date.now() - ts) / 1000);
-            const restored = Math.max(0, storedTime - secondsPassed);
-            setTimeLeft(restored);
-          } catch { setTimeLeft(fullyShuffled.length * SECONDS_PER_QUESTION); }
-        } else {
-          setTimeLeft(fullyShuffled.length * SECONDS_PER_QUESTION);
-        }
+      // Restore timer from localStorage if page was refreshed mid-attempt
+      const timerKey = `quiz_timer_${data.id}`;
+      const answersKey = `quiz_answers_${data.id}`;
+      
+      const storedTimer = localStorage.getItem(timerKey);
+      if (storedTimer && first) {
+        try {
+          const { timeLeft: storedTime, ts } = JSON.parse(storedTimer);
+          const secondsPassed = Math.round((Date.now() - ts) / 1000);
+          const restored = Math.max(0, storedTime - secondsPassed);
+          setTimeLeft(restored);
+        } catch { setTimeLeft(finalQuestions.length * SECONDS_PER_QUESTION); }
+      } else if (first) {
+        setTimeLeft(finalQuestions.length * SECONDS_PER_QUESTION);
+      }
 
-        // Restore answers from localStorage
-        const storedAnswers = localStorage.getItem(answersKey);
-        if (storedAnswers) {
-          try {
-            const parsedAnswers = JSON.parse(storedAnswers);
-            setAnswers(parsedAnswers);
-            answersRef.current = parsedAnswers;
-          } catch (e) { console.error('Failed to restore answers:', e); }
-        }
+      // Restore answers from localStorage (always restore if cached)
+      const storedAnswers = localStorage.getItem(answersKey);
+      if (storedAnswers) {
+        try {
+          const parsedAnswers = JSON.parse(storedAnswers);
+          setAnswers(parsedAnswers);
+          answersRef.current = parsedAnswers;
+        } catch (e) { console.error('Failed to restore answers:', e); }
       }
 
       // Save any pending result from a closed tab
@@ -311,10 +354,8 @@ const QuizView = ({ session, profile }) => {
     setAnswers(updatedAnswers);
     answersRef.current = updatedAnswers; // keep ref in sync
 
-    // Persist answers during first attempt
-    if (isFirstAttempt) {
-      localStorage.setItem(`quiz_answers_${id}`, JSON.stringify(updatedAnswers));
-    }
+    // Persist answers (always, to survive reloads)
+    localStorage.setItem(`quiz_answers_${id}`, JSON.stringify(updatedAnswers));
 
     // In learning mode, auto-advance after 1s
     if (!isFirstAttempt) {
@@ -497,6 +538,10 @@ const QuizView = ({ session, profile }) => {
     localStorage.removeItem(`quiz_pending_${id}`);
     localStorage.removeItem(`quiz_timer_${id}`);
     localStorage.removeItem(`quiz_answers_${id}`);
+    localStorage.removeItem(`quiz_structure_${id}`);
+    localStorage.removeItem(`quiz_current_idx_${id}`);
+    localStorage.removeItem(`quiz_times_${id}`);
+    localStorage.removeItem(`quiz_start_time_${id}`);
     await saveResultRef.current(finalAnswers, false);
     if (blocker.state === 'blocked') blocker.proceed();
     setShowResult(true);
@@ -520,6 +565,14 @@ const QuizView = ({ session, profile }) => {
       clearTimeout(timerRef.current);
       await saveResultRef.current(answersRef.current, true); // use stable ref
     }
+
+    localStorage.removeItem(`quiz_pending_${id}`);
+    localStorage.removeItem(`quiz_timer_${id}`);
+    localStorage.removeItem(`quiz_answers_${id}`);
+    localStorage.removeItem(`quiz_structure_${id}`);
+    localStorage.removeItem(`quiz_current_idx_${id}`);
+    localStorage.removeItem(`quiz_times_${id}`);
+    localStorage.removeItem(`quiz_start_time_${id}`);
     
     if (blocker.state === 'blocked') blocker.proceed();
     else navigate('/catalog');
