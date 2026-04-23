@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useBlocker } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { 
@@ -49,10 +49,12 @@ const QuizView = ({ session, profile }) => {
   const finishTimeRef = useRef(null); // frozen finish timestamp for results screen
   const questionTimesRef = useRef({}); // tracks seconds spent on each question
 
-  // NAVIGATION BLOCKER: intercept internal links (Profile, Catalog, etc.)
   const blocker = useBlocker(
-    ({ currentLocation, nextLocation }) =>
-      !finishedRef.current && !loading && !showResult && currentLocation.pathname !== nextLocation.pathname
+    useCallback(
+      ({ currentLocation, nextLocation }) =>
+        !finishedRef.current && !loading && !showResult && currentLocation.pathname !== nextLocation.pathname,
+      [loading, showResult]
+    )
   );
 
   // When blocked, show our exit modal
