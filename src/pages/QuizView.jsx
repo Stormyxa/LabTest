@@ -322,33 +322,6 @@ const QuizView = ({ session, profile, onStateUpdate }) => {
             answersRef.current = parsedAnswers;
           } catch (e) { console.error('Failed to restore answers:', e); }
         }
-
-        // Record the start of the test in DB for global monitoring (only for timed tests)
-        (async () => {
-          try {
-            const { data: existingList } = await supabase
-              .from('quiz_attempts')
-              .select('id')
-              .eq('quiz_id', data.id)
-              .eq('user_id', session.user.id)
-              .eq('is_incomplete', true);
-
-            if (!existingList || existingList.length === 0) {
-              await supabase.from('quiz_attempts').insert({
-                user_id: session.user.id,
-                quiz_id: data.id,
-                score: 0,
-                max_score: fullyShuffled.length,
-                time_spent_total: 0,
-                is_passed: false,
-                is_incomplete: true,
-                finish_reason: 'aborted',
-                answers_data: []
-              });
-              if (onStateUpdate) onStateUpdate();
-            }
-          } catch (e) { console.error('Failed to register attempt start:', e); }
-        })();
       }
 
       // Save any pending result from a closed tab (only for non-timed tests to avoid duplication)

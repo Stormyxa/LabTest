@@ -198,14 +198,35 @@ function App() {
 const ActiveAttemptsMonitor = ({ session, activeAttempts }) => {
   const [isMinimized, setIsMinimized] = useState(() => sessionStorage.getItem('labtest_attempts_minimized') === 'true');
   const [tick, setTick] = useState(0); 
-  const location = useLocation();
+  const evaluationInProgressRef = React.useRef(new Set());
 
-  // Local timer logic (1s tick) for smooth UI updates
+  // Local timer logic (1s tick) for smooth UI updates & auto-finalization
   useEffect(() => {
     if (activeAttempts.length === 0) return;
     const interval = setInterval(() => setTick(t => t + 1), 1000);
     return () => clearInterval(interval);
   }, [activeAttempts.length]);
+
+  // Handle background auto-evaluation when a timer expires
+  useEffect(() => {
+    if (activeAttempts.length === 0 || !session || location.pathname.startsWith('/quiz/')) return;
+    const now = Date.now();
+    
+    activeAttempts.forEach(att => {
+      if (evaluationInProgressRef.current.has(att.id)) return;
+      
+      const remaining = Math.max(0, Math.floor((att.endTime - now) / 1000));
+      if (remaining <= 0) {
+        evaluationInProgressRef.current.add(att.id);
+        import('./lib/quizEvaluation').then(m => {
+          m.evaluateAndSaveExpiredAttempt(att, session.user.id).finally(() => {
+            // Remove from local tracking after evaluator finishes
+            setTimeout(() => evaluationInProgressRef.current.delete(att.id), 35000);
+          });
+        });
+      }
+    });
+  }, [tick, session, activeAttempts, location.pathname]);
 
   const toggleMinimized = () => {
     const next = !isMinimized;
