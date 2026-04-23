@@ -17,13 +17,13 @@ const DividerItem = React.memo(({ quiz, qIndex, userRole, searchQuery, swapQuizz
       <div style={{ height: '1px', background: 'rgba(99, 102, 241, 0.2)', width: '20px' }} />
     </div>
     <span style={{ fontWeight: 'bold', fontSize: '0.85rem', color: 'var(--primary-color)', opacity: quiz.is_hidden ? 0.5 : 1 }}>
-      {quiz.content.divider_text || ''}
+      {quiz.content.divider_text || quiz.title || ''}
       {quiz.is_hidden && <Shield size={14} style={{ marginLeft: '8px', verticalAlign: 'middle' }} />}
     </span>
     <div style={{ height: '1px', background: 'rgba(99, 102, 241, 0.2)', flex: 1 }} />
     {userRole === 'creator' && (
       <div className="flex-center" style={{ gap: '5px' }}>
-        <button onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: quiz.id, name: quiz.title, type: 'quiz' }); }} style={{ background: 'transparent', color: 'var(--primary-color)', opacity: 0.4, padding: '5px', boxShadow: 'none' }}><Pencil size={14} /></button>
+        <button onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: quiz.id, name: quiz.content.divider_text || quiz.title, type: 'quiz', isDivider: true, sectionId: quiz.section_id }); }} style={{ background: 'transparent', color: 'var(--primary-color)', opacity: 0.4, padding: '5px', boxShadow: 'none' }}><Pencil size={14} /></button>
         <button onClick={async (e) => { e.stopPropagation(); await supabase.from('quizzes').update({ is_hidden: !quiz.is_hidden }).eq('id', quiz.id); fetchQuizzes(); }} style={{ background: 'transparent', color: quiz.is_hidden ? '#ca8a04' : 'inherit', opacity: 0.4, padding: '5px', boxShadow: 'none' }}>
           {quiz.is_hidden ? <Shield size={14} /> : <EyeOff size={14} />}
         </button>
@@ -862,11 +862,23 @@ const QuizCatalog = ({ profile }) => {
   const handleRename = useCallback(async () => {
     if (!renamingItem || !newName.trim()) return;
     if (renamingItem.type === 'quiz') {
-      const { error } = await supabase.from('quizzes').update({ title: newName }).eq('id', renamingItem.id);
+      let updateObj = { title: newName };
+      if (renamingItem.isDivider) {
+        // For dividers, we also update the divider_text inside content JSON
+        const { data: q } = await supabase.from('quizzes').select('content').eq('id', renamingItem.id).single();
+        if (q && q.content) {
+          updateObj.content = { ...q.content, divider_text: newName };
+        }
+      }
+
+      const { error } = await supabase.from('quizzes').update(updateObj).eq('id', renamingItem.id);
       if (error) alert('Ошибка переименования: ' + error.message);
       else {
         localStorage.removeItem(`labtest_cache_catalog_struct_quizzes_all`);
         localStorage.removeItem(`labtest_cache_catalog_struct_quizzes_visible`);
+        if (renamingItem.sectionId) {
+          localStorage.removeItem(`labtest_cache_catalog_quizzes_${renamingItem.sectionId}`);
+        }
         setRenamingItem(null);
         setNewName('');
         fetchData();
