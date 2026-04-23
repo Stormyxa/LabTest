@@ -346,19 +346,9 @@ const AttemptDetailsView = React.memo(({
                 Низкий результат за слишком короткое время
               </span>
             )}
-            {selectedAttempt.finish_reason === 'timer_expired' && (
-              <span style={{ fontSize: '0.8rem', background: 'rgba(250, 204, 21, 0.1)', color: '#ca8a04', padding: '4px 10px', borderRadius: '10px', border: '1px solid #facc15' }}>
-                Окончен таймер
-              </span>
-            )}
-            {selectedAttempt.finish_reason === 'aborted' && (
+            {selectedAttempt.is_incomplete && (
               <span style={{ fontSize: '0.8rem', background: 'rgba(0, 0, 0, 0.05)', color: 'var(--text-color)', opacity: 0.6, padding: '4px 10px', borderRadius: '10px', border: '1px solid rgba(0,0,0,0.1)' }}>
                 Вышел до завершения
-              </span>
-            )}
-            {selectedAttempt.finish_reason === 'finished' && !selectedAttempt.is_suspicious && (
-              <span style={{ fontSize: '0.8rem', background: 'rgba(74, 222, 128, 0.1)', color: '#4ade80', padding: '4px 10px', borderRadius: '10px', border: '1px solid #4ade80' }}>
-                Завершено полностью
               </span>
             )}
           </div>
