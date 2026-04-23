@@ -52,18 +52,18 @@ const EditorSkeleton = () => (
 );
 
 // Lazy component for section quizzes in Editor
-const EditorSectionQuizzes = ({ 
-  section, 
-  profile, 
-  session, 
-  showHidden, 
-  setDeleteId, 
-  setRenamingItem, 
-  setNewName, 
-  toggleHideQuiz, 
-  swapQuizzes, 
+const EditorSectionQuizzes = ({
+  section,
+  profile,
+  session,
+  showHidden,
+  setDeleteId,
+  setRenamingItem,
+  setNewName,
+  toggleHideQuiz,
+  swapQuizzes,
   handleCreateDivider,
-  navigate 
+  navigate
 }) => {
   const [quizzes, setQuizzes] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -75,13 +75,13 @@ const EditorSectionQuizzes = ({
     try {
       const data = await fetchWithCache(cacheKey, async () => {
         let query = supabase.from('quizzes').select('*, quiz_sections(name, class_id, book_url), profiles(role, first_name, last_name)');
-        
+
         if (profile?.role === 'editor' || profile?.role === 'teacher') {
           query = query.eq('author_id', session.user.id);
         } else if (!showHidden) {
           query = query.eq('is_hidden', false);
         }
-        
+
         const { data: q } = await query
           .eq('section_id', section.id)
           .order('sort_order', { ascending: true })
@@ -521,7 +521,7 @@ const Editor = ({ session, profile }) => {
         const sToRename = sections.find(s => s.id === renamingItem.id);
         const cId = sToRename?.class_id;
         const quizzesToUpdate = myQuizzes.filter(q => q.section_id === renamingItem.id);
-        
+
         if (cId) {
           syncGithubRenames(cId, oldName, finalNewName, null, null)
             .then(renamedMap => updateQuizzesWithNewUrls(quizzesToUpdate, renamedMap))
@@ -532,7 +532,7 @@ const Editor = ({ session, profile }) => {
   };
 
   const copyJsonPrompt = () => {
-    const prompt = `Качественно создай строгий интересный тест без подсказок по одному большему параграфу с приложенных изображений из кратного 5 количества вопросов от 5 до 30 в зависимости от объёма информации (чем больше информации, тем больше число вопросов). Выведи результат СТРОГО в формате JSON:\n{\n"title":\n"§ Номер-Номер (если есть). Название",\n"questions": [\n{\n"question": "Текст вопроса?",\n"options": ["Вариант 1", "Вариант 2", "Вариант 3", "Вариант 4", "...до 6 вариантов"],\n"correctIndex": 0 (всегда)\n}\n]\n}\nВАЖНО: Количество вариантов ответа может быть разным для каждого вопроса (от 2 до 6), но верный только один.\nСоставляй вопросы строго в рамках информации из параграфа, но делай их самодостаточными, чтобы ученик мог ответить на них, опираясь на общие знания по теме, даже если у него нет перед глазами текста или схем с изображений.\n\nХорошо составленный тест должен следовать правилу однородности:\n\nВсе варианты ответов должны быть примерно одинаковой длины.\nЕсли один ответ длинный, нужно либо укоротить его, либо удлинить остальные, добавив в них детали.\nИногда детализацию лучше вынести в само условие вопроса, чтобы варианты ответов были лаконичными.`;
+    const prompt = `Без подобострастия. Качественно создай строгий интересный тест с вопросами высокого порядка без подсказок по одному большему параграфу с приложенных изображений из кратного 5 количества вопросов от 5 до 30 в зависимости от объёма информации (чем больше информации, тем больше число вопросов). Выведи результат СТРОГО в формате JSON:\n{\n"title":\n"§ Номер-Номер (если есть). Название",\n"questions": [\n{\n"question": "Текст вопроса?",\n"options": ["Вариант 1", "Вариант 2", "Вариант 3", "Вариант 4", "...до 6 вариантов"],\n"correctIndex": 0 (всегда)\n}\n]\n}\nВАЖНО: Количество вариантов ответа может быть разным для каждого вопроса (от 2 до 6), но верный только один.\nСоставляй вопросы строго в рамках информации из параграфа, но делай их самодостаточными, чтобы ученик мог ответить на них, опираясь на общие знания по теме, даже если у него нет перед глазами текста или схем с изображений.\n\nХорошо составленный тест должен следовать правилу однородности:\n\nВсе варианты ответов должны быть примерно одинаковой длины.\nЕсли верный ответ длинный, нужно либо укоротить его, либо удлинить дистракторы, добавив в них детали.\nИногда детализацию лучше вынести в само условие вопроса, чтобы варианты ответов были лаконичными.\nДистракторы должны быть ничем не менее правдоподобны, чем верный ответ для запутывания учащихся.`;
     navigator.clipboard.writeText(prompt);
     setCopyFeedbackJson(true);
     setTimeout(() => setCopyFeedbackJson(false), 2000);
@@ -590,7 +590,7 @@ const Editor = ({ session, profile }) => {
 
     let order = 0;
     const final = qList.map(q => {
-        return { ...q, sort_order: order++, is_dirty: true };
+      return { ...q, sort_order: order++, is_dirty: true };
     });
     setLocalQuizzes(final);
     setDirtyQuizzesMap(prev => ({ ...prev, [sectionId]: final }));
@@ -811,185 +811,185 @@ const Editor = ({ session, profile }) => {
                 </>
               ) : (
                 <>
-                <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
-                  <p style={{ opacity: 0.5, fontSize: '0.9rem', margin: 0 }}>Управление структурой тестов, сортировкой и видимостью</p>
-                  {(profile?.role === 'admin' || profile?.role === 'creator') && (
-                    <button
-                      onClick={() => setShowHidden(prev => !prev)}
-                      style={{
-                        padding: '8px 18px',
-                        background: showHidden ? 'rgba(202, 138, 4, 0.15)' : 'rgba(0,0,0,0.05)',
-                        color: showHidden ? '#ca8a04' : 'inherit',
-                        border: showHidden ? '1px solid rgba(202,138,4,0.4)' : '1px solid transparent',
-                        boxShadow: 'none',
-                        borderRadius: '20px',
-                        fontWeight: '600',
-                        fontSize: '0.85rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px'
-                      }}
-                    >
-                      {showHidden ? <Eye size={16} /> : <EyeOff size={16} />}
-                      {showHidden ? 'Скрытые: видны' : 'Скрытые: скрыты'}
-                    </button>
-                  )}
-                </div>
-                {treeLoading ? (
-                  <div style={{ gridColumn: '1 / -1' }}>
-                    <div className="flex-center" style={{ marginBottom: '25px', opacity: 0.5, gap: '10px', justifyContent: 'flex-start' }}>
-                      <Clock size={18} className="skeleton-pulse" />
-                      <span className="skeleton-text" style={{ width: '220px', height: '14px', margin: 0 }}>Загрузка дерева тестов...</span>
-                    </div>
-                    {[1, 2, 3].map(i => (
-                      <div key={i} className="skeleton" style={{ height: '80px', width: '100%', borderRadius: '16px', marginBottom: '15px', opacity: 0.5 }} />
-                    ))}
+                  <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
+                    <p style={{ opacity: 0.5, fontSize: '0.9rem', margin: 0 }}>Управление структурой тестов, сортировкой и видимостью</p>
+                    {(profile?.role === 'admin' || profile?.role === 'creator') && (
+                      <button
+                        onClick={() => setShowHidden(prev => !prev)}
+                        style={{
+                          padding: '8px 18px',
+                          background: showHidden ? 'rgba(202, 138, 4, 0.15)' : 'rgba(0,0,0,0.05)',
+                          color: showHidden ? '#ca8a04' : 'inherit',
+                          border: showHidden ? '1px solid rgba(202,138,4,0.4)' : '1px solid transparent',
+                          boxShadow: 'none',
+                          borderRadius: '20px',
+                          fontWeight: '600',
+                          fontSize: '0.85rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px'
+                        }}
+                      >
+                        {showHidden ? <Eye size={16} /> : <EyeOff size={16} />}
+                        {showHidden ? 'Скрытые: видны' : 'Скрытые: скрыты'}
+                      </button>
+                    )}
                   </div>
-                ) : (
-                <div style={{ gridColumn: '1 / -1' }}>
-                  {classes.map((cls, cIndex) => {
-                    const clsSections = sections.filter(s => s.class_id === cls.id);
-                    if ((profile?.role === 'editor' || profile?.role === 'teacher') && myQuizzes.filter(q => clsSections.some(s => s.id === q.section_id)).length === 0) {
-                      return null;
-                    }
+                  {treeLoading ? (
+                    <div style={{ gridColumn: '1 / -1' }}>
+                      <div className="flex-center" style={{ marginBottom: '25px', opacity: 0.5, gap: '10px', justifyContent: 'flex-start' }}>
+                        <Clock size={18} className="skeleton-pulse" />
+                        <span className="skeleton-text" style={{ width: '220px', height: '14px', margin: 0 }}>Загрузка дерева тестов...</span>
+                      </div>
+                      {[1, 2, 3].map(i => (
+                        <div key={i} className="skeleton" style={{ height: '80px', width: '100%', borderRadius: '16px', marginBottom: '15px', opacity: 0.5 }} />
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ gridColumn: '1 / -1' }}>
+                      {classes.map((cls, cIndex) => {
+                        const clsSections = sections.filter(s => s.class_id === cls.id);
+                        if ((profile?.role === 'editor' || profile?.role === 'teacher') && myQuizzes.filter(q => clsSections.some(s => s.id === q.section_id)).length === 0) {
+                          return null;
+                        }
 
-                    if (cls.is_divider) {
-                      return (
-                        <div key={cls.id} className="animate" style={{ padding: '20px 25px', marginBottom: '15px', background: 'rgba(0,0,0,0.02)', border: '2px dashed rgba(99, 102, 241, 0.2)', borderRadius: '24px', display: 'flex', alignItems: 'center', gap: '20px' }}>
-                          <div style={{ height: '4px', background: 'var(--primary-color)', width: '30px', borderRadius: '2px' }} />
-                          <h3 style={{ fontSize: '1.4rem', fontWeight: '900', margin: 0, textTransform: 'uppercase', color: 'var(--text-color)', flex: 1 }}>{cls.name}</h3>
-                          {profile?.role === 'creator' && (
-                            <div className="flex-center" style={{ gap: '10px' }}>
-                              <div className="flex-center" style={{ gap: '5px' }}>
-                                <button onClick={() => swapClasses(cIndex, -1)} disabled={cIndex === 0} style={{ padding: '5px', background: 'rgba(0,0,0,0.03)', color: 'var(--primary-color)', borderRadius: '8px', boxShadow: 'none' }}><ChevronUp size={16} /></button>
-                                <button onClick={() => swapClasses(cIndex, 1)} disabled={cIndex === classes.length - 1} style={{ padding: '5px', background: 'rgba(0,0,0,0.03)', color: 'var(--primary-color)', borderRadius: '8px', boxShadow: 'none' }}><ChevronDown size={16} /></button>
-                              </div>
-                              <button onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: cls.id, name: cls.name, type: 'class' }); setNewName(cls.name); }} style={{ padding: '5px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', borderRadius: '8px', boxShadow: 'none' }}><Pencil size={18} /></button>
-                              <button onClick={() => setDeleteClassId(cls.id)} style={{ padding: '5px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', borderRadius: '8px', boxShadow: 'none' }} title="Удалить разделитель"><Trash2 size={18} /></button>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    }
-
-                    return (
-                      <div key={cls.id} className="catalog-container" style={{ padding: '0', overflow: 'hidden', border: '2px solid rgba(0,0,0,0.05)', marginBottom: '30px' }}>
-                        <div
-                          onClick={() => setExpandedClasses(prev => ({ ...prev, [cls.id]: !prev[cls.id] }))}
-                          className="editor-class-head"
-                          style={{ padding: '25px', background: 'rgba(99, 102, 241, 0.08)', borderRadius: '24px 24px 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
-                        >
-                          <div className="flex-center" style={{ gap: '15px', overflow: 'hidden' }}>
-                            {profile?.role === 'creator' && (
-                              <div className="flex-center" style={{ flexDirection: 'column', gap: '5px', flexShrink: 0 }}>
-                                <button onClick={() => swapClasses(cIndex, -1)} disabled={cIndex === 0} style={{ padding: '2px', background: 'transparent', color: 'var(--primary-color)', boxShadow: 'none' }}><ChevronUp size={20} /></button>
-                                <button onClick={() => swapClasses(cIndex, 1)} disabled={cIndex === classes.length - 1} style={{ padding: '2px', background: 'transparent', color: 'var(--primary-color)', boxShadow: 'none' }}><ChevronDown size={20} /></button>
-                              </div>
-                            )}
-                            <h2 style={{ fontSize: '1.6rem', margin: 0, color: 'var(--primary-color)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cls.name}</h2>
-                            {profile?.role === 'creator' && (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: cls.id, name: cls.name, type: 'class' }); setNewName(cls.name); }}
-                                style={{ background: 'transparent', color: 'var(--primary-color)', opacity: 0.5, boxShadow: 'none', padding: '5px' }}
-                                title="Переименовать класс"
-                              >
-                                <Pencil size={18} />
-                              </button>
-                            )}
-                          </div>
-                          {profile?.role === 'creator' && (
-                            <button onClick={() => setDeleteClassId(cls.id)} style={{ background: 'transparent', color: 'red', boxShadow: 'none' }} title="Удалить класс">
-                              <Trash2 size={24} />
-                            </button>
-                          )}
-                          {expandedClasses[cls.id] ? <ChevronUp size={24} /> : <ChevronDown size={24} />}
-                        </div>
-
-                        {expandedClasses[cls.id] && clsSections.map((section, sIndex) => {
-                          const qs = myQuizzes.filter(q => q.section_id === section.id);
-                          if (qs.length === 0 && (profile?.role === 'editor' || profile?.role === 'teacher')) return null;
-
-                          if (section.is_divider) {
-                            return (
-                              <div key={section.id} className="animate" style={{ padding: '15px 25px', borderTop: '1px solid rgba(0,0,0,0.03)', background: 'rgba(0,0,0,0.01)', display: 'flex', alignItems: 'center', gap: '15px' }}>
-                                <div style={{ height: '3px', background: 'var(--primary-color)', width: '20px', borderRadius: '1.5px', opacity: 0.6 }} />
-                                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '800', color: 'var(--text-color)', flex: 1 }}>{section.name}</h3>
-                                {profile?.role === 'creator' && (
-                                  <div className="flex-center" style={{ gap: '8px' }}>
-                                    <div className="flex-center" style={{ gap: '3px' }}>
-                                      <button onClick={() => swapSections(cls.id, sIndex, -1)} disabled={sIndex === 0} style={{ padding: '4px', background: 'rgba(0,0,0,0.03)', color: 'var(--primary-color)', borderRadius: '6px', boxShadow: 'none' }}><ChevronUp size={14} /></button>
-                                      <button onClick={() => swapSections(cls.id, sIndex, 1)} disabled={sIndex === clsSections.length - 1} style={{ padding: '4px', background: 'rgba(0,0,0,0.03)', color: 'var(--primary-color)', borderRadius: '6px', boxShadow: 'none' }}><ChevronDown size={14} /></button>
-                                    </div>
-                                    <button onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: section.id, name: section.name, type: 'section' }); setNewName(section.name); }} style={{ padding: '4px', background: 'rgba(99, 102, 241, 0.08)', color: 'var(--primary-color)', borderRadius: '6px', boxShadow: 'none' }}><Pencil size={14} /></button>
-                                    <button onClick={() => setDeleteSectionId(section.id)} style={{ padding: '4px', background: 'rgba(239, 68, 68, 0.08)', color: '#ef4444', borderRadius: '6px', boxShadow: 'none' }} title="Удалить разделитель предмета"><Trash2 size={14} /></button>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          }
-
+                        if (cls.is_divider) {
                           return (
-                            <div key={section.id} className="editor-section-container" style={{ padding: '25px', borderTop: '1px solid rgba(0,0,0,0.05)' }}>
-                              <div
-                                onClick={() => setExpandedSections(prev => ({ ...prev, [section.id]: !prev[section.id] }))}
-                                className="flex-center"
-                                style={{ gap: '15px', marginBottom: expandedSections[section.id] ? '25px' : '0', justifyContent: 'space-between', overflow: 'hidden', cursor: 'pointer' }}
-                              >
-                                <div className="flex-center" style={{ gap: '10px', overflow: 'hidden' }}>
-                                  {profile?.role === 'creator' && (
-                                    <div className="flex-center" style={{ gap: '5px', flexShrink: 0 }}>
-                                      <button onClick={() => swapSections(cls.id, sIndex, -1)} disabled={sIndex === 0} style={{ padding: '5px', background: 'rgba(0,0,0,0.05)', boxShadow: 'none' }}><ChevronUp size={16} /></button>
-                                      <button onClick={() => swapSections(cls.id, sIndex, 1)} disabled={sIndex === clsSections.length - 1} style={{ padding: '5px', background: 'rgba(0,0,0,0.05)', boxShadow: 'none' }}><ChevronDown size={16} /></button>
-                                    </div>
-                                  )}
-
-                                  {section.book_url && (
-                                    <a href={section.book_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} style={{ padding: '6px', background: 'var(--primary-color)', color: 'white', borderRadius: '8px', display: 'flex', alignItems: 'center' }} title="Учебник"><Book size={18} /></a>
-                                  )}
-                                  <h3 style={{ margin: 0, fontSize: '1.2rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{section.name}</h3>
-                                  {profile?.role === 'creator' && (
-                                    <div className="flex-center" style={{ gap: '5px' }}>
-                                      <button onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: section.id, name: section.name, type: 'section' }); setNewName(section.name); }} style={{ background: 'transparent', color: 'var(--primary-color)', opacity: 0.5, boxShadow: 'none', padding: '5px' }} title="Переименовать предмет"><Pencil size={18} /></button>
-                                      <button onClick={(e) => { e.stopPropagation(); setEditSectionLink({ id: section.id, url: section.book_url || '' }); }} style={{ background: 'transparent', color: 'var(--primary-color)', opacity: 0.5, boxShadow: 'none', padding: '5px' }} title="Ссылка на учебник"><LinkIcon size={18} /></button>
-                                    </div>
-                                  )}
-                                </div>
+                            <div key={cls.id} className="animate" style={{ padding: '20px 25px', marginBottom: '15px', background: 'rgba(0,0,0,0.02)', border: '2px dashed rgba(99, 102, 241, 0.2)', borderRadius: '24px', display: 'flex', alignItems: 'center', gap: '20px' }}>
+                              <div style={{ height: '4px', background: 'var(--primary-color)', width: '30px', borderRadius: '2px' }} />
+                              <h3 style={{ fontSize: '1.4rem', fontWeight: '900', margin: 0, textTransform: 'uppercase', color: 'var(--text-color)', flex: 1 }}>{cls.name}</h3>
+                              {profile?.role === 'creator' && (
                                 <div className="flex-center" style={{ gap: '10px' }}>
-                                  {profile?.role === 'creator' && (
-                                    <button onClick={(e) => setDeleteSectionId(section.id)} style={{ background: 'transparent', color: 'red', boxShadow: 'none', padding: '5px' }} title="Удалить предмет"><Trash2 size={20} /></button>
-                                  )}
-                                  {expandedSections[section.id] ? <ChevronUp size={24} /> : <ChevronDown size={24} />}
+                                  <div className="flex-center" style={{ gap: '5px' }}>
+                                    <button onClick={() => swapClasses(cIndex, -1)} disabled={cIndex === 0} style={{ padding: '5px', background: 'rgba(0,0,0,0.03)', color: 'var(--primary-color)', borderRadius: '8px', boxShadow: 'none' }}><ChevronUp size={16} /></button>
+                                    <button onClick={() => swapClasses(cIndex, 1)} disabled={cIndex === classes.length - 1} style={{ padding: '5px', background: 'rgba(0,0,0,0.03)', color: 'var(--primary-color)', borderRadius: '8px', boxShadow: 'none' }}><ChevronDown size={16} /></button>
+                                  </div>
+                                  <button onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: cls.id, name: cls.name, type: 'class' }); setNewName(cls.name); }} style={{ padding: '5px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', borderRadius: '8px', boxShadow: 'none' }}><Pencil size={18} /></button>
+                                  <button onClick={() => setDeleteClassId(cls.id)} style={{ padding: '5px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', borderRadius: '8px', boxShadow: 'none' }} title="Удалить разделитель"><Trash2 size={18} /></button>
                                 </div>
-                              </div>
-
-                              {expandedSections[section.id] && (
-                                <EditorSectionQuizzes 
-                                  section={section}
-                                  profile={profile}
-                                  session={session}
-                                  showHidden={showHidden}
-                                  setDeleteId={setDeleteId}
-                                  setRenamingItem={setRenamingItem}
-                                  setNewName={setNewName}
-                                  toggleHideQuiz={toggleHideQuiz}
-                                  swapQuizzes={swapQuizzes}
-                                  handleCreateDivider={handleCreateDivider}
-                                  navigate={navigate}
-                                />
                               )}
                             </div>
                           );
-                        })}
-                      </div>
-                    );
-                  })}
-                  {classes.length === 0 && (
-                    <div className="card" style={{ textAlign: 'center', padding: '60px' }}>
-                      <p style={{ opacity: 0.5 }}>У вас пока нет классов/папок. Создайте их в панели справа.</p>
+                        }
+
+                        return (
+                          <div key={cls.id} className="catalog-container" style={{ padding: '0', overflow: 'hidden', border: '2px solid rgba(0,0,0,0.05)', marginBottom: '30px' }}>
+                            <div
+                              onClick={() => setExpandedClasses(prev => ({ ...prev, [cls.id]: !prev[cls.id] }))}
+                              className="editor-class-head"
+                              style={{ padding: '25px', background: 'rgba(99, 102, 241, 0.08)', borderRadius: '24px 24px 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+                            >
+                              <div className="flex-center" style={{ gap: '15px', overflow: 'hidden' }}>
+                                {profile?.role === 'creator' && (
+                                  <div className="flex-center" style={{ flexDirection: 'column', gap: '5px', flexShrink: 0 }}>
+                                    <button onClick={() => swapClasses(cIndex, -1)} disabled={cIndex === 0} style={{ padding: '2px', background: 'transparent', color: 'var(--primary-color)', boxShadow: 'none' }}><ChevronUp size={20} /></button>
+                                    <button onClick={() => swapClasses(cIndex, 1)} disabled={cIndex === classes.length - 1} style={{ padding: '2px', background: 'transparent', color: 'var(--primary-color)', boxShadow: 'none' }}><ChevronDown size={20} /></button>
+                                  </div>
+                                )}
+                                <h2 style={{ fontSize: '1.6rem', margin: 0, color: 'var(--primary-color)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cls.name}</h2>
+                                {profile?.role === 'creator' && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: cls.id, name: cls.name, type: 'class' }); setNewName(cls.name); }}
+                                    style={{ background: 'transparent', color: 'var(--primary-color)', opacity: 0.5, boxShadow: 'none', padding: '5px' }}
+                                    title="Переименовать класс"
+                                  >
+                                    <Pencil size={18} />
+                                  </button>
+                                )}
+                              </div>
+                              {profile?.role === 'creator' && (
+                                <button onClick={() => setDeleteClassId(cls.id)} style={{ background: 'transparent', color: 'red', boxShadow: 'none' }} title="Удалить класс">
+                                  <Trash2 size={24} />
+                                </button>
+                              )}
+                              {expandedClasses[cls.id] ? <ChevronUp size={24} /> : <ChevronDown size={24} />}
+                            </div>
+
+                            {expandedClasses[cls.id] && clsSections.map((section, sIndex) => {
+                              const qs = myQuizzes.filter(q => q.section_id === section.id);
+                              if (qs.length === 0 && (profile?.role === 'editor' || profile?.role === 'teacher')) return null;
+
+                              if (section.is_divider) {
+                                return (
+                                  <div key={section.id} className="animate" style={{ padding: '15px 25px', borderTop: '1px solid rgba(0,0,0,0.03)', background: 'rgba(0,0,0,0.01)', display: 'flex', alignItems: 'center', gap: '15px' }}>
+                                    <div style={{ height: '3px', background: 'var(--primary-color)', width: '20px', borderRadius: '1.5px', opacity: 0.6 }} />
+                                    <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '800', color: 'var(--text-color)', flex: 1 }}>{section.name}</h3>
+                                    {profile?.role === 'creator' && (
+                                      <div className="flex-center" style={{ gap: '8px' }}>
+                                        <div className="flex-center" style={{ gap: '3px' }}>
+                                          <button onClick={() => swapSections(cls.id, sIndex, -1)} disabled={sIndex === 0} style={{ padding: '4px', background: 'rgba(0,0,0,0.03)', color: 'var(--primary-color)', borderRadius: '6px', boxShadow: 'none' }}><ChevronUp size={14} /></button>
+                                          <button onClick={() => swapSections(cls.id, sIndex, 1)} disabled={sIndex === clsSections.length - 1} style={{ padding: '4px', background: 'rgba(0,0,0,0.03)', color: 'var(--primary-color)', borderRadius: '6px', boxShadow: 'none' }}><ChevronDown size={14} /></button>
+                                        </div>
+                                        <button onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: section.id, name: section.name, type: 'section' }); setNewName(section.name); }} style={{ padding: '4px', background: 'rgba(99, 102, 241, 0.08)', color: 'var(--primary-color)', borderRadius: '6px', boxShadow: 'none' }}><Pencil size={14} /></button>
+                                        <button onClick={() => setDeleteSectionId(section.id)} style={{ padding: '4px', background: 'rgba(239, 68, 68, 0.08)', color: '#ef4444', borderRadius: '6px', boxShadow: 'none' }} title="Удалить разделитель предмета"><Trash2 size={14} /></button>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              }
+
+                              return (
+                                <div key={section.id} className="editor-section-container" style={{ padding: '25px', borderTop: '1px solid rgba(0,0,0,0.05)' }}>
+                                  <div
+                                    onClick={() => setExpandedSections(prev => ({ ...prev, [section.id]: !prev[section.id] }))}
+                                    className="flex-center"
+                                    style={{ gap: '15px', marginBottom: expandedSections[section.id] ? '25px' : '0', justifyContent: 'space-between', overflow: 'hidden', cursor: 'pointer' }}
+                                  >
+                                    <div className="flex-center" style={{ gap: '10px', overflow: 'hidden' }}>
+                                      {profile?.role === 'creator' && (
+                                        <div className="flex-center" style={{ gap: '5px', flexShrink: 0 }}>
+                                          <button onClick={() => swapSections(cls.id, sIndex, -1)} disabled={sIndex === 0} style={{ padding: '5px', background: 'rgba(0,0,0,0.05)', boxShadow: 'none' }}><ChevronUp size={16} /></button>
+                                          <button onClick={() => swapSections(cls.id, sIndex, 1)} disabled={sIndex === clsSections.length - 1} style={{ padding: '5px', background: 'rgba(0,0,0,0.05)', boxShadow: 'none' }}><ChevronDown size={16} /></button>
+                                        </div>
+                                      )}
+
+                                      {section.book_url && (
+                                        <a href={section.book_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} style={{ padding: '6px', background: 'var(--primary-color)', color: 'white', borderRadius: '8px', display: 'flex', alignItems: 'center' }} title="Учебник"><Book size={18} /></a>
+                                      )}
+                                      <h3 style={{ margin: 0, fontSize: '1.2rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{section.name}</h3>
+                                      {profile?.role === 'creator' && (
+                                        <div className="flex-center" style={{ gap: '5px' }}>
+                                          <button onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: section.id, name: section.name, type: 'section' }); setNewName(section.name); }} style={{ background: 'transparent', color: 'var(--primary-color)', opacity: 0.5, boxShadow: 'none', padding: '5px' }} title="Переименовать предмет"><Pencil size={18} /></button>
+                                          <button onClick={(e) => { e.stopPropagation(); setEditSectionLink({ id: section.id, url: section.book_url || '' }); }} style={{ background: 'transparent', color: 'var(--primary-color)', opacity: 0.5, boxShadow: 'none', padding: '5px' }} title="Ссылка на учебник"><LinkIcon size={18} /></button>
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div className="flex-center" style={{ gap: '10px' }}>
+                                      {profile?.role === 'creator' && (
+                                        <button onClick={(e) => setDeleteSectionId(section.id)} style={{ background: 'transparent', color: 'red', boxShadow: 'none', padding: '5px' }} title="Удалить предмет"><Trash2 size={20} /></button>
+                                      )}
+                                      {expandedSections[section.id] ? <ChevronUp size={24} /> : <ChevronDown size={24} />}
+                                    </div>
+                                  </div>
+
+                                  {expandedSections[section.id] && (
+                                    <EditorSectionQuizzes
+                                      section={section}
+                                      profile={profile}
+                                      session={session}
+                                      showHidden={showHidden}
+                                      setDeleteId={setDeleteId}
+                                      setRenamingItem={setRenamingItem}
+                                      setNewName={setNewName}
+                                      toggleHideQuiz={toggleHideQuiz}
+                                      swapQuizzes={swapQuizzes}
+                                      handleCreateDivider={handleCreateDivider}
+                                      navigate={navigate}
+                                    />
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })}
+                      {classes.length === 0 && (
+                        <div className="card" style={{ textAlign: 'center', padding: '60px' }}>
+                          <p style={{ opacity: 0.5 }}>У вас пока нет классов/папок. Создайте их в панели справа.</p>
+                        </div>
+                      )}
                     </div>
                   )}
-                </div>
-                )}
                 </>
               )}
             </div>
