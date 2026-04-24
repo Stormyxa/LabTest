@@ -29,7 +29,12 @@ const DashboardSkeleton = () => (
 
 const Dashboard = ({ session, profile }) => {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('users');
+  const [activeTab, setActiveTab] = useState(() => {
+    const saved = sessionStorage.getItem('dash_active_tab');
+    if (saved) return saved;
+    return profile?.role === 'teacher' ? 'structure' : 'users';
+  });
+  useEffect(() => { sessionStorage.setItem('dash_active_tab', activeTab); }, [activeTab]);
 
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -47,7 +52,12 @@ const Dashboard = ({ session, profile }) => {
   useEffect(() => { sessionStorage.setItem('f_class', filterClass); }, [filterClass]);
   const [errorMessage, setErrorMessage] = useState(null);
 
-  const [expandedClassId, setExpandedClassId] = useState(null);
+  const [expandedClasses, setExpandedClasses] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('dash_expanded_classes')) || {};
+    } catch (e) { return {}; }
+  });
+  useEffect(() => { localStorage.setItem('dash_expanded_classes', JSON.stringify(expandedClasses)); }, [expandedClasses]);
   const [classStudents, setClassStudents] = useState([]);
   const [loadingStudents, setLoadingStudents] = useState(false);
   const [removingStudent, setRemovingStudent] = useState(null);
@@ -85,7 +95,12 @@ const Dashboard = ({ session, profile }) => {
   const [classApplications, setClassApplications] = useState([]);
   const [showListsModal, setShowListsModal] = useState(null); // { class, type: 'white' | 'black' }
   const [classListItems, setClassListItems] = useState([]);
-  const [expandedSchoolId, setExpandedSchoolId] = useState(null);
+  const [expandedSchools, setExpandedSchools] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('dash_expanded_schools')) || {};
+    } catch (e) { return {}; }
+  });
+  useEffect(() => { localStorage.setItem('dash_expanded_schools', JSON.stringify(expandedSchools)); }, [expandedSchools]);
   const [editingTeacher, setEditingTeacher] = useState(null);
   const [newTeacherEmail, setNewTeacherEmail] = useState('');
 
@@ -98,6 +113,7 @@ const Dashboard = ({ session, profile }) => {
   }, [profile]);
 
   const fetchStructure = async () => {
+    const cacheSuffix = profile?.role || 'anon';
     // 1. Fetch class_teachers for the current user if they are a teacher/admin/creator
     let assignedClasses = [];
     if (profile?.role === 'teacher') {
@@ -107,9 +123,9 @@ const Dashboard = ({ session, profile }) => {
     }
 
     const [c, s, cl] = await Promise.all([
-      fetchWithCache('cities', () => supabase.from('cities').select('*').order('name').then(r => r.data)),
-      fetchWithCache('schools', () => supabase.from('schools').select('*').order('order_index').then(r => r.data)),
-      fetchWithCache('classes', () => supabase.from('classes').select('*').order('order_index').then(r => r.data))
+      fetchWithCache(`cities_${cacheSuffix}`, () => supabase.from('cities').select('*').order('name').then(r => r.data)),
+      fetchWithCache(`schools_${cacheSuffix}`, () => supabase.from('schools').select('*').order('order_index').then(r => r.data)),
+      fetchWithCache(`classes_${cacheSuffix}`, () => supabase.from('classes').select('*').order('order_index').then(r => r.data))
     ]);
 
     if (c) {
@@ -147,7 +163,7 @@ const Dashboard = ({ session, profile }) => {
     setLoading(true);
     setErrorMessage(null);
     try {
-      const data = await fetchWithCache('dashboard_all_users', async () => {
+      const data = await fetchWithCache(`dashboard_users_${profile?.role || 'anon'}`, async () => {
         const { data: profiles, error } = await supabase.rpc('get_all_users');
         if (error) throw error;
         return profiles;
@@ -160,10 +176,20 @@ const Dashboard = ({ session, profile }) => {
     setLoading(false);
   };
 
-  useCacheSync('cities', (data) => { if (data) setCities(data); });
-  useCacheSync('schools', (data) => { if (data) setSchools(data); });
-  useCacheSync('classes', (data) => { if (data) setClassesList(data); });
-  useCacheSync('dashboard_all_users', (data) => { if (data) setUsers(data); });
+  const cacheSuffix = profile?.role || 'anon';
+  useCacheSync(`cities_${cacheSuffix}`, (data) => { if (data) setCities(data); });
+  useCacheSync(`schools_${cacheSuffix}`, (data) => { if (data) setSchools(data); });
+  useCacheSync(`classes_${cacheSuffix}`, (data) => { 
+    if (data) {
+      if (profile?.role === 'teacher') {
+        // We need teacherClasses state to filter correctly in sync
+        setClassesList(data.filter(cls => teacherClasses.includes(cls.id)));
+      } else {
+        setClassesList(data);
+      }
+    }
+  });
+  useCacheSync(`dashboard_users_${cacheSuffix}`, (data) => { if (data) setUsers(data); });
 
   const fetchBlacklist = async () => {
     const { data } = await supabase.from('blacklisted_emails').select('*').order('created_at', { ascending: false });
@@ -276,12 +302,11 @@ const Dashboard = ({ session, profile }) => {
 
   const fetchClassStudents = async (cid) => {
     setLoadingStudents(true);
-    // Получаем всех пользователей и фильтруем по классу
-    const { data, error } = await supabase.rpc('get_all_users');
+    const { data, error } = await supabase.from('profiles').select('*').eq('class_id', cid);
     if (data) {
-      setClassStudents(data.filter(u => u.class_id === cid));
+      setClassStudents(data);
     }
-    if (error) console.error(error);
+    if (error) console.error("DEBUG Error fetching students:", error);
     setLoadingStudents(false);
   };
 
@@ -611,22 +636,20 @@ const Dashboard = ({ session, profile }) => {
 
           <div style={{ display: 'grid', gap: '20px' }}>
             {schools.map(school => {
-              const isSchoolExpanded = expandedSchoolId === school.id;
+              const isSchoolExpanded = expandedSchools[school.id];
               const schoolClasses = classesList.filter(c => c.school_id === school.id);
               const city = cities.find(c => c.id === school.city_id);
 
               return (
-                <div key={school.id} className="card" style={{ padding: '0', overflow: 'hidden' }}>
-                  <div className="flex-center" style={{ justifyContent: 'space-between', padding: '20px', background: 'rgba(0,0,0,0.01)', borderBottom: isSchoolExpanded ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
-                    <div onClick={() => setExpandedSchoolId(isSchoolExpanded ? null : school.id)} style={{ cursor: 'pointer', flex: 1 }}>
-                      <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px' }}>
-                        {isSchoolExpanded ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
-                        <div>
-                          <div style={{ fontSize: '0.75rem', opacity: 0.5 }}>г. {city?.name}</div>
-                          <h4 style={{ margin: 0 }}>{school.name}</h4>
-                        </div>
-                        <span style={{ padding: '2px 10px', background: 'rgba(0,0,0,0.05)', borderRadius: '50px', fontSize: '0.75rem', opacity: 0.6 }}>{schoolClasses.length} классов</span>
+                <div key={school.id} style={{ background: 'rgba(0,0,0,0.02)', borderRadius: '20px', border: '1px solid rgba(0,0,0,0.05)', marginBottom: '15px', overflow: 'hidden' }}>
+                  <div className="flex-center" style={{ padding: '15px 25px', justifyContent: 'space-between' }}>
+                    <div onClick={() => setExpandedSchools(prev => ({ ...prev, [school.id]: !prev[school.id] }))} style={{ cursor: 'pointer', flex: 1, display: 'flex', alignItems: 'center', gap: '15px' }}>
+                      {isSchoolExpanded ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
+                      <div>
+                        <div style={{ fontSize: '0.75rem', opacity: 0.5 }}>г. {city?.name}</div>
+                        <h4 style={{ margin: 0 }}>{school.name}</h4>
                       </div>
+                      <span style={{ padding: '2px 10px', background: 'rgba(0,0,0,0.05)', borderRadius: '50px', fontSize: '0.75rem', opacity: 0.6 }}>{schoolClasses.length} классов</span>
                     </div>
                     
                     {profile?.role === 'creator' && (
@@ -661,18 +684,23 @@ const Dashboard = ({ session, profile }) => {
                     <div style={{ padding: '15px', background: 'rgba(0,0,0,0.005)' }}>
                       <div style={{ display: 'grid', gap: '10px' }}>
                         {schoolClasses.map(cls => {
-                          const isClassExpanded = expandedClassId === cls.id;
+                          const isClassExpanded = expandedClasses[cls.id];
                           const studentsCount = users.filter(u => u.class_id === cls.id).length;
-                          const isTeacher = profile?.role === 'teacher';
-                          const canManage = isTeacher ? teacherClasses.includes(cls.id) : true;
+                          const isTeacherRole = profile?.role === 'teacher';
+                          const canManage = isTeacherRole ? teacherClasses.includes(cls.id) : true;
 
                           return (
                             <div key={cls.id} style={{ background: 'white', border: '1px solid rgba(0,0,0,0.05)', borderRadius: '12px', overflow: 'hidden' }}>
                               <div className="flex-center" style={{ justifyContent: 'space-between', padding: '12px 20px' }}>
                                 <div onClick={() => {
-                                  if (isClassExpanded) setExpandedClassId(null);
-                                  else {
-                                    setExpandedClassId(cls.id);
+                                  if (isClassExpanded) {
+                                    setExpandedClasses(prev => {
+                                      const next = { ...prev };
+                                      delete next[cls.id];
+                                      return next;
+                                    });
+                                  } else {
+                                    setExpandedClasses(prev => ({ ...prev, [cls.id]: true }));
                                     fetchClassStudents(cls.id);
                                   }
                                 }} style={{ cursor: 'pointer', flex: 1 }}>

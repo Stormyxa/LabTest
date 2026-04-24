@@ -91,7 +91,8 @@ function App() {
   const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
 
   const isAdmin = profile?.role === 'admin' || profile?.role === 'creator';
-  const isEditor = profile?.role === 'editor' || profile?.role === 'teacher' || isAdmin;
+  const isTeacher = profile?.role === 'teacher';
+  const isEditor = isAdmin || profile?.role === 'editor' || isTeacher;
 
   // Use useMemo to avoid re-creating the router on every state change
   const router = useMemo(() => createBrowserRouter(
@@ -109,7 +110,7 @@ function App() {
                 <Link to="/statistics"><NavButton label="Статистика" /></Link>
                 {isEditor && <Link to="/analytics-details"><NavButton label="Аналитика" variant="accent" /></Link>}
                 {isEditor && <Link to="/editor"><NavButton label="Создать" variant="accent" /></Link>}
-                {isAdmin && <Link to="/dashboard"><NavButton label="Панель" variant="accent" /></Link>}
+                {(isAdmin || isTeacher) && <Link to="/dashboard"><NavButton label="Панель" variant="accent" /></Link>}
                 {session ? (
                   <Link to="/profile"><NavButton label="Профиль" variant="primary" /></Link>
                 ) : (
@@ -133,7 +134,7 @@ function App() {
         <Route path="/quiz/:id" element={session ? <QuizView session={session} profile={profile} /> : <Navigate to="/auth" />} />
 
         <Route path="/editor" element={isEditor ? <Editor session={session} profile={profile} /> : <Navigate to="/" />} />
-        <Route path="/dashboard" element={isAdmin ? <Dashboard session={session} profile={profile} /> : <Navigate to="/" />} />
+        <Route path="/dashboard" element={(isAdmin || isTeacher) ? <Dashboard session={session} profile={profile} /> : <Navigate to="/" />} />
         <Route path="/logs" element={isAdmin ? <Logs profile={profile} /> : <Navigate to="/" />} />
         <Route path="/statistics" element={<Statistics session={session} profile={profile} />} />
         <Route path="/analytics" element={isEditor ? <Analytics profile={profile} /> : <Navigate to="/" />} />
