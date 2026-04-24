@@ -58,7 +58,7 @@ const Dashboard = ({ session, profile }) => {
     } catch (e) { return {}; }
   });
   useEffect(() => { localStorage.setItem('dash_expanded_classes', JSON.stringify(expandedClasses)); }, [expandedClasses]);
-  const [classStudents, setClassStudents] = useState([]);
+  const [classStudents, setClassStudents] = useState({}); // { classId: students[] }
   const [loadingStudents, setLoadingStudents] = useState(false);
   const [removingStudent, setRemovingStudent] = useState(null);
   const [editingClassLimit, setEditingClassLimit] = useState(null);
@@ -109,6 +109,15 @@ const Dashboard = ({ session, profile }) => {
     fetchUsers();
     if (profile?.role === 'creator') {
       fetchBlacklist();
+    }
+    // Auto-fetch students for already expanded classes (from localStorage)
+    const expandedKeys = Object.keys(expandedClasses);
+    if (expandedKeys.length > 0) {
+      expandedKeys.forEach(cid => {
+        if (expandedClasses[cid]) {
+          fetchClassStudents(cid);
+        }
+      });
     }
   }, [profile]);
 
@@ -163,15 +172,24 @@ const Dashboard = ({ session, profile }) => {
     setLoading(true);
     setErrorMessage(null);
     try {
-      const data = await fetchWithCache(`dashboard_users_${profile?.role || 'anon'}`, async () => {
-        const { data: profiles, error } = await supabase.rpc('get_all_users');
-        if (error) throw error;
-        return profiles;
+      const cacheSuffix = profile?.role || 'anon';
+      const data = await fetchWithCache(`dashboard_users_${cacheSuffix}`, async () => {
+        if (profile?.role === 'teacher') {
+          // Teachers fetch students they have access to directly
+          const { data: profiles, error } = await supabase.from('profiles').select('*');
+          if (error) throw error;
+          return profiles;
+        } else {
+          // Admins use the RPC to get more details if needed
+          const { data: profiles, error } = await supabase.rpc('get_all_users');
+          if (error) throw error;
+          return profiles;
+        }
       });
       if (data) setUsers(data);
     } catch (error) {
       console.error(error);
-      setErrorMessage("Ошибка получения списка пользователей. Убедитесь, что миграция SQL (get_all_users) была выполнена успешно.");
+      setErrorMessage("Ошибка получения списка пользователей.");
     }
     setLoading(false);
   };
@@ -304,7 +322,7 @@ const Dashboard = ({ session, profile }) => {
     setLoadingStudents(true);
     const { data, error } = await supabase.from('profiles').select('*').eq('class_id', cid);
     if (data) {
-      setClassStudents(data);
+      setClassStudents(prev => ({ ...prev, [cid]: data }));
     }
     if (error) console.error("DEBUG Error fetching students:", error);
     setLoadingStudents(false);
@@ -757,8 +775,8 @@ const Dashboard = ({ session, profile }) => {
                               </div>
 
                               {isClassExpanded && (
-                                <div className="animate" style={{ padding: '0 20px 20px 20px', borderTop: '1px solid rgba(0,0,0,0.03)', background: 'rgba(0,0,0,0.005)' }}>
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px', marginBottom: '15px' }}>
+                                <div className="animate" style={{ borderTop: '1px solid rgba(0,0,0,0.03)', background: 'rgba(0,0,0,0.005)' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px', marginBottom: '15px', padding: '0 25px' }}>
                                     <div style={{ fontSize: '0.85rem', fontWeight: 'bold', opacity: 0.6 }}>Список учеников</div>
                                     <button 
                                       onClick={() => { setNewLimit(cls.max_students || 50); setEditingClassLimit(cls); }}
@@ -767,27 +785,36 @@ const Dashboard = ({ session, profile }) => {
                                       Лимит: {cls.max_students || 50}
                                     </button>
                                   </div>
-                                  {loadingStudents ? (
-                                    <div style={{ textAlign: 'center', padding: '20px', opacity: 0.5 }}>Загрузка...</div>
-                                  ) : classStudents.length > 0 ? (
-                                    <div style={{ display: 'grid', gap: '8px' }}>
-                                      {classStudents.sort((a, b) => (a.last_name || '').localeCompare(b.last_name || '')).map(s => (
-                                        <div key={s.id} className="flex-center" style={{ justifyContent: 'space-between', background: 'white', padding: '10px 15px', borderRadius: '10px', border: '1px solid rgba(0,0,0,0.03)' }}>
-                                          <div>
-                                            <div style={{ fontWeight: '500' }}>{s.last_name} {s.first_name} {s.patronymic}</div>
-                                            <div style={{ fontSize: '0.75rem', opacity: 0.5 }}>{s.email}</div>
+                                  <div style={{ padding: '0 25px 20px' }}>
+                                    {loadingStudents && !classStudents[cls.id] ? (
+                                      <div style={{ textAlign: 'center', padding: '20px', opacity: 0.5 }}>Загрузка...</div>
+                                    ) : classStudents[cls.id]?.length > 0 ? (
+                                      <div style={{ display: 'grid', gap: '8px' }}>
+                                        {classStudents[cls.id].sort((a, b) => (a.last_name || '').localeCompare(b.last_name || '')).map(s => (
+                                          <div key={s.id} className="flex-center" style={{ justifyContent: 'space-between', background: 'white', padding: '10px 15px', borderRadius: '10px', border: '1px solid rgba(0,0,0,0.03)' }}>
+                                            <div>
+                                              <div style={{ fontWeight: '500' }}>{s.last_name} {s.first_name} {s.patronymic}</div>
+                                              <div style={{ fontSize: '0.75rem', opacity: 0.5 }}>{s.email}</div>
+                                            </div>
+                                            <div className="flex-center" style={{ gap: '8px' }}>
+                                              <button 
+                                                onClick={() => navigate(`/user-analytics?userId=${s.id}`)}
+                                                style={{ background: 'transparent', color: 'var(--primary-color)', padding: '5px', boxShadow: 'none' }} 
+                                                title="Аналитика ученика"
+                                              >
+                                                <Eye size={16} />
+                                              </button>
+                                              <button onClick={() => openEditModal(s)} style={{ background: 'transparent', color: 'var(--primary-color)', padding: '5px', boxShadow: 'none' }} title="Изменить ФИО"><Edit3 size={16} /></button>
+                                              <button onClick={() => setRemovingStudent(s)} style={{ background: 'transparent', color: 'red', padding: '5px', boxShadow: 'none' }} title="Удалить из класса"><UserMinus size={16} /></button>
+                                              <button onClick={() => setBlockingUser(s)} style={{ background: 'transparent', color: '#dc2626', padding: '5px', boxShadow: 'none' }} title="Исключить и заблокировать"><Ban size={16} /></button>
+                                            </div>
                                           </div>
-                                          <div className="flex-center" style={{ gap: '8px' }}>
-                                            <button onClick={() => openEditModal(s)} style={{ background: 'transparent', color: 'var(--primary-color)', padding: '5px', boxShadow: 'none' }} title="Изменить ФИО"><Edit3 size={16} /></button>
-                                            <button onClick={() => setRemovingStudent(s)} style={{ background: 'transparent', color: 'red', padding: '5px', boxShadow: 'none' }} title="Удалить из класса"><UserMinus size={16} /></button>
-                                            <button onClick={() => setBlockingUser(s)} style={{ background: 'transparent', color: '#dc2626', padding: '5px', boxShadow: 'none' }} title="Исключить и заблокировать"><Ban size={16} /></button>
-                                          </div>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  ) : (
-                                    <div style={{ textAlign: 'center', padding: '20px', opacity: 0.4, fontSize: '0.9rem' }}>В классе пока нет учеников</div>
-                                  )}
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <div style={{ textAlign: 'center', padding: '20px', opacity: 0.4, fontSize: '0.9rem' }}>В классе пока нет учеников</div>
+                                    )}
+                                  </div>
                                 </div>
                               )}
                             </div>
