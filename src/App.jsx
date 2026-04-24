@@ -61,11 +61,15 @@ function App() {
   }, []);
 
   const fetchProfile = async (id, currentSession = null) => {
-    const { data } = await supabase
+    console.log("DEBUG: Fetching profile for ID:", id);
+    const { data, error } = await supabase
       .from('profiles')
-      .select('*, classes(name)')
+      .select('*, classes!class_id(name)')
       .eq('id', id)
       .single();
+
+    console.log("DEBUG: Data:", data);
+    if (error) console.error("DEBUG: Error:", error);
 
     if (data) {
       // Sync email if missing in profile but present in session

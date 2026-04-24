@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { User, Mail, Calendar, GraduationCap, CheckCircle, Award, FileText, TrendingUp, Star, MapPin, Building, Shield, ShieldOff, Zap, BarChart2 } from 'lucide-react';
+import { User, Mail, Calendar, GraduationCap, CheckCircle, Award, FileText, TrendingUp, Star, MapPin, Building, Shield, ShieldOff, Zap, BarChart2, Clock, XCircle, Info, AlertCircle } from 'lucide-react';
 
 const Profile = ({ session, profile, refreshProfile }) => {
   const location = useLocation();
@@ -31,6 +31,10 @@ const Profile = ({ session, profile, refreshProfile }) => {
   const [msg, setMsg] = useState(location.state?.msg || '');
   const [stats, setStats] = useState({ passed: 0, perfect: 0, totalPoints: 0, created: 0 });
   const [autoAdvance, setAutoAdvance] = useState(localStorage.getItem('quiz_auto_advance') === 'true');
+  
+  const [classStudentCounts, setClassStudentCounts] = useState({});
+  const [application, setApplication] = useState(null);
+  const [isEmailConfirmed, setIsEmailConfirmed] = useState(true); // Default to true, will check session
 
   useEffect(() => {
     localStorage.setItem('quiz_auto_advance', autoAdvance);
@@ -39,6 +43,11 @@ const Profile = ({ session, profile, refreshProfile }) => {
   useEffect(() => {
     fetchStructure();
     fetchStats();
+    fetchApplication();
+    if (session?.user) {
+      // Simple check for confirmation (Supabase specific)
+      setIsEmailConfirmed(!!session.user.email_confirmed_at || !!session.user.confirmed_at);
+    }
     if (location.state?.from === '/catalog' && !profile?.is_profile_setup_completed) {
       onboardingRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
@@ -60,15 +69,34 @@ const Profile = ({ session, profile, refreshProfile }) => {
   }, [profile]);
 
   const fetchStructure = async () => {
-    const [ { data: c }, { data: s }, { data: cl } ] = await Promise.all([
+    const [ { data: c }, { data: s }, { data: cl }, { data: counts } ] = await Promise.all([
       supabase.from('cities').select('*').order('name'),
       supabase.from('schools').select('*').order('name'),
-      supabase.from('classes').select('*').order('name')
+      supabase.from('classes').select('*').order('order_index'),
+      supabase.rpc('get_class_student_counts') // We'll need this RPC or a manual count
     ]);
 
     if (c) setCities(c);
     if (s) setSchools(s);
     if (cl) setClasses(cl);
+    if (counts) {
+      const dict = {};
+      counts.forEach(row => { dict[row.class_id] = row.student_count; });
+      setClassStudentCounts(dict);
+    } else {
+      // Fallback if RPC doesn't exist yet: fetch counts manually
+      const { data: profilesData } = await supabase.from('profiles').select('class_id');
+      const dict = {};
+      if (profilesData) {
+        profilesData.forEach(p => { if(p.class_id) dict[p.class_id] = (dict[p.class_id] || 0) + 1; });
+      }
+      setClassStudentCounts(dict);
+    }
+  };
+
+  const fetchApplication = async () => {
+    const { data } = await supabase.from('class_applications').select('*, classes(name, school_id)').eq('user_id', session.user.id).eq('status', 'pending').order('created_at', { ascending: false }).limit(1).maybeSingle();
+    setApplication(data || null);
   };
 
   const fetchStats = async () => {
@@ -132,8 +160,50 @@ const Profile = ({ session, profile, refreshProfile }) => {
       return;
     }
 
-    // Otherwise, normal save (if they picked a class, observer is false)
+    if (classId && classId !== profile?.class_id) {
+      // User is trying to join a NEW class
+      const cls = classes.find(c => c.id === classId);
+      const currentCount = classStudentCounts[classId] || 0;
+      if (cls && cls.max_students && currentCount >= cls.max_students) {
+        setMsg('Ошибка: В выбранном классе нет свободных мест.');
+        return;
+      }
+      
+      // Send application
+      setLoading(true);
+      const { error } = await supabase.from('class_applications').upsert({ 
+        user_id: session.user.id, 
+        class_id: classId, 
+        status: 'pending' 
+      });
+      
+      if (error) {
+        setMsg(`Ошибка при подаче заявки: ${error.message}`);
+      } else {
+        await supabase.from('profiles').update({ pending_class_id: classId }).eq('id', session.user.id);
+        setMsg('Заявка на вступление в класс отправлена!');
+        fetchApplication();
+        refreshProfile();
+      }
+      setLoading(false);
+      return;
+    }
+
+    // Otherwise, normal save
     await executeUpdate(false);
+  };
+
+  const handleCancelApplication = async () => {
+    if (!application) return;
+    setLoading(true);
+    const { error } = await supabase.from('class_applications').delete().eq('id', application.id);
+    if (!error) {
+      await supabase.from('profiles').update({ pending_class_id: null }).eq('id', session.user.id);
+      setApplication(null);
+      setMsg('Заявка отменена.');
+      refreshProfile();
+    }
+    setLoading(false);
   };
 
   const executeUpdate = async (makeObserver) => {
@@ -178,6 +248,15 @@ const Profile = ({ session, profile, refreshProfile }) => {
   return (
     <>
       <div className="container animate" style={{ padding: '40px 20px' }}>
+        {!isEmailConfirmed && (
+          <div className="card" style={{ marginBottom: '20px', background: 'rgba(245, 158, 11, 0.1)', border: '1px solid #f59e0b', color: '#b45309', padding: '20px', display: 'flex', gap: '15px' }}>
+            <AlertCircle size={24} style={{ flexShrink: 0 }} />
+            <div>
+              <h4 style={{ margin: '0 0 5px 0' }}>Подтвердите ваш Email</h4>
+              <p style={{ margin: 0, fontSize: '0.9rem', opacity: 0.8 }}>Для полноценного использования сайта необходимо подтвердить почту. Если вы не получили письмо, проверьте папку "Спам" или обратитесь к учителю за помощью.</p>
+            </div>
+          </div>
+        )}
         {msg && <div className="card" style={{ marginBottom: '20px', background: 'var(--primary-color)', color: 'white', padding: '15px' }}>{msg}</div>}
 
       <div className="grid-2">
@@ -213,6 +292,15 @@ const Profile = ({ session, profile, refreshProfile }) => {
                 <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px' }}>
                   <GraduationCap size={18} /> <span>{classes.find(c => c.id === profile.class_id)?.name || 'Класс не указан'}</span>
                 </div>
+                {application && (
+                   <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px', color: 'var(--primary-color)', background: 'rgba(99, 102, 241, 0.05)', padding: '10px', borderRadius: '10px', marginTop: '5px' }}>
+                     <Clock size={16} /> 
+                     <div style={{ fontSize: '0.85rem' }}>
+                       Заявка в <strong>{application.classes?.name}</strong> рассматривается
+                       <button onClick={handleCancelApplication} style={{ display: 'block', background: 'transparent', color: 'red', border: 'none', padding: 0, fontSize: '0.75rem', marginTop: '4px', textDecoration: 'underline', boxShadow: 'none' }}>Отменить заявку</button>
+                     </div>
+                   </div>
+                 )}
               </>
             )}
           </div>
@@ -325,12 +413,21 @@ const Profile = ({ session, profile, refreshProfile }) => {
               {availableSchools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <label htmlFor="class-select">Ваш класс</label>
-            <select id="class-select" name="class" value={classId} onChange={(e) => setClassId(e.target.value)} disabled={(profile?.is_profile_setup_completed && profile?.role !== 'creator') || !schoolId}>
+            <select id="class-select" name="class" value={classId} onChange={(e) => setClassId(e.target.value)} disabled={(profile?.is_profile_setup_completed && profile?.role !== 'creator') || !schoolId || application}>
               <option value="">Выберите класс...</option>
-              {availableClasses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {availableClasses.map(c => {
+                const count = classStudentCounts[c.id] || 0;
+                const isFull = c.max_students && count >= c.max_students;
+                return (
+                  <option key={c.id} value={c.id} disabled={isFull} style={{ color: isFull ? '#999' : 'inherit' }}>
+                    {c.name} {isFull ? '(заполнен)' : `(${count}/${c.max_students || 50})`}
+                  </option>
+                );
+              })}
             </select>
+            {application && <p style={{ fontSize: '0.75rem', color: 'var(--primary-color)', margin: 0 }}>У вас есть активная заявка. Отмените её, чтобы выбрать другой класс.</p>}
           </div>
 
           {(profile?.role === 'admin' || profile?.role === 'creator') && (

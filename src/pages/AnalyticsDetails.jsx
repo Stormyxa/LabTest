@@ -38,7 +38,7 @@ const SidebarUserList = React.memo(({
   filterCity, setFilterCity, filterSchool, setFilterSchool, filterClass, setFilterClass,
   searchQuery, setSearchQuery, showObservers, setShowObservers, handleUserSelect, handleScroll,
   scrollRef, validSections, validQuizzes, isFolderEmpty, isSectionEmpty,
-  profile, cities, schools, classes, navigate, setSidebarOpen
+  profile, cities, schools, classes, teacherClasses, navigate, setSidebarOpen
 }) => {
   return (
     <div style={{ padding: '20px', width: '320px', display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -122,7 +122,10 @@ const SidebarUserList = React.memo(({
                 </select>
                 <select id="ad-class" value={filterClass} onChange={e => setFilterClass(e.target.value)} style={{ padding: '6px', fontSize: '0.85rem' }} aria-label="Класс">
                   <option value="all">Все классы</option>
-                  {classes.filter(c => filterSchool === 'all' || c.school_id === filterSchool).map(c => <option key={c.id} value={c.id} disabled={!users.some(u => u.class_id === c.id)}>{c.name}</option>)}
+                  {classes.filter(c => {
+                    if (profile?.role === 'teacher') return teacherClasses.includes(c.id);
+                    return filterSchool === 'all' || c.school_id === filterSchool;
+                  }).map(c => <option key={c.id} value={c.id} disabled={!users.some(u => u.class_id === c.id)}>{c.name}</option>)}
                 </select>
                 <div style={{ position: 'relative' }}>
                   <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', opacity: 0.5 }} />
@@ -470,6 +473,7 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
   const [sections, setSections] = useState([]);
   const [quizzes, setQuizzes] = useState([]);
   const [users, setUsers] = useState([]); // users who took the selected quiz
+  const [teacherClasses, setTeacherClasses] = useState([]); // Array of class IDs
 
   const [cities, setCities] = useState([]);
   const [schools, setSchools] = useState([]);
@@ -532,6 +536,11 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
     const p = initialProfile;
     if (p) {
       setProfile(p);
+      
+      if (p.role === 'teacher') {
+        const { data: tc } = await supabase.from('class_teachers').select('class_id').eq('email', session.user.email.toLowerCase());
+        if (tc) setTeacherClasses(tc.map(row => row.class_id));
+      }
 
       const isPrivileged = p.role === 'admin' || p.role === 'creator' || p.role === 'teacher' || p.role === 'editor';
       if (!isPrivileged) {
@@ -719,7 +728,7 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
         let validProfs = profs.filter(p => (p.first_name?.trim() || p.last_name?.trim()));
 
         if (isTeacher && currentQuizObj?.author_id !== currentUserProfile?.id) {
-          validProfs = validProfs.filter(p => p.school_id === currentUserProfile.school_id);
+          validProfs = validProfs.filter(p => teacherClasses.includes(p.class_id));
         }
 
         const uList = validProfs.map(p => {
@@ -953,7 +962,7 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
             handleUserSelect={handleUserSelect} handleScroll={handleScroll}
             scrollRef={scrollRef} validSections={validSections} validQuizzes={validQuizzes}
             isFolderEmpty={isFolderEmpty} isSectionEmpty={isSectionEmpty}
-            profile={profile} cities={cities} schools={schools} classes={classes} navigate={navigate}
+            profile={profile} cities={cities} schools={schools} classes={classes} teacherClasses={teacherClasses} navigate={navigate}
             setSidebarOpen={setSidebarOpen}
           />
         </div>

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { fetchWithCache, useCacheSync } from '../lib/cache';
-import { User, Shield, Search, Edit3, Trash2, Mail, X, AlertTriangle, MapPin, Building, GraduationCap, Plus, History, Ban, ShieldAlert, Unlock, Eye, EyeOff, Zap, ChevronDown, ChevronRight } from 'lucide-react';
+import { User, Shield, Search, Edit3, Trash2, Mail, X, AlertTriangle, MapPin, Building, GraduationCap, Plus, History, Ban, ShieldAlert, Unlock, Eye, EyeOff, Zap, ChevronDown, ChevronRight, Settings, Users, UserPlus, UserMinus, ArrowUp, ArrowDown, UserCheck } from 'lucide-react';
 import { useScrollRestoration } from '../lib/useScrollRestoration';
 
 const DashboardSkeleton = () => (
@@ -77,6 +77,18 @@ const Dashboard = ({ session, profile }) => {
   const [blacklist, setBlacklist] = useState([]);
   const [newBlacklistEmail, setNewBlacklistEmail] = useState('');
 
+  // New states for advanced class management
+  const [teacherClasses, setTeacherClasses] = useState([]); // Classes assigned to the current teacher
+  const [classTeachers, setClassTeachers] = useState([]); // Teachers for the selected class
+  const [showTeachersModal, setShowTeachersModal] = useState(null); // class object
+  const [showApplicationsModal, setShowApplicationsModal] = useState(null); // class object
+  const [classApplications, setClassApplications] = useState([]);
+  const [showListsModal, setShowListsModal] = useState(null); // { class, type: 'white' | 'black' }
+  const [classListItems, setClassListItems] = useState([]);
+  const [expandedSchoolId, setExpandedSchoolId] = useState(null);
+  const [editingTeacher, setEditingTeacher] = useState(null);
+  const [newTeacherEmail, setNewTeacherEmail] = useState('');
+
   useEffect(() => {
     fetchStructure();
     fetchUsers();
@@ -86,12 +98,49 @@ const Dashboard = ({ session, profile }) => {
   }, [profile]);
 
   const fetchStructure = async () => {
+    // 1. Fetch class_teachers for the current user if they are a teacher/admin/creator
+    let assignedClasses = [];
+    if (profile?.role === 'teacher') {
+      const { data: tc } = await supabase.from('class_teachers').select('class_id').eq('email', session.user.email);
+      if (tc) assignedClasses = tc.map(x => x.class_id);
+      setTeacherClasses(assignedClasses);
+    }
+
     const [c, s, cl] = await Promise.all([
       fetchWithCache('cities', () => supabase.from('cities').select('*').order('name').then(r => r.data)),
-      fetchWithCache('schools', () => supabase.from('schools').select('*').order('name').then(r => r.data)),
-      fetchWithCache('classes', () => supabase.from('classes').select('*').order('name').then(r => r.data))
+      fetchWithCache('schools', () => supabase.from('schools').select('*').order('order_index').then(r => r.data)),
+      fetchWithCache('classes', () => supabase.from('classes').select('*').order('order_index').then(r => r.data))
     ]);
-    if (c) setCities(c); if (s) setSchools(s); if (cl) setClassesList(cl);
+
+    if (c) {
+      if (profile?.role === 'teacher') {
+        // Filter cities that have schools that have assigned classes
+        const filteredCities = c.filter(city => 
+          s.some(school => school.city_id === city.id && cl.some(cls => cls.school_id === school.id && assignedClasses.includes(cls.id)))
+        );
+        setCities(filteredCities);
+      } else {
+        setCities(c);
+      }
+    }
+    
+    if (s) {
+      if (profile?.role === 'teacher') {
+        const filteredSchools = s.filter(school => cl.some(cls => cls.school_id === school.id && assignedClasses.includes(cls.id)));
+        setSchools(filteredSchools);
+      } else {
+        setSchools(s);
+      }
+    }
+
+    if (cl) {
+      if (profile?.role === 'teacher') {
+        const filteredClasses = cl.filter(cls => assignedClasses.includes(cls.id));
+        setClassesList(filteredClasses);
+      } else {
+        setClassesList(cl);
+      }
+    }
   };
 
   const fetchUsers = async () => {
@@ -264,6 +313,88 @@ const Dashboard = ({ session, profile }) => {
     }
   };
 
+  const handleMoveStructure = async (table, id, direction, items) => {
+    const idx = items.findIndex(item => item.id === id);
+    if (idx === -1) return;
+    if (direction === 'up' && idx === 0) return;
+    if (direction === 'down' && idx === items.length - 1) return;
+
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+    const target = items[swapIdx];
+
+    const currentOrder = items[idx].order_index || 0;
+    const targetOrder = target.order_index || 0;
+
+    await Promise.all([
+      supabase.from(table).update({ order_index: targetOrder }).eq('id', id),
+      supabase.from(table).update({ order_index: currentOrder }).eq('id', target.id)
+    ]);
+    fetchStructure();
+  };
+
+  const handleRenameStructure = async (table, id, newName) => {
+    if (!newName.trim()) return;
+    const { error } = await supabase.from(table).update({ name: newName.trim() }).eq('id', id);
+    if (error) alert(error.message);
+    else fetchStructure();
+  };
+
+  const fetchClassTeachers = async (cid) => {
+    const { data } = await supabase.from('class_teachers').select('*').eq('class_id', cid);
+    if (data) setClassTeachers(data);
+  };
+
+  const handleAddTeacher = async (cid, email) => {
+    const { error } = await supabase.from('class_teachers').insert({ class_id: cid, email: email.toLowerCase().trim() });
+    if (error) alert(error.message);
+    else {
+      setNewTeacherEmail('');
+      fetchClassTeachers(cid);
+    }
+  };
+
+  const handleRemoveTeacher = async (cid, tid) => {
+    if (!confirm("Удалить этого учителя из управления классом?")) return;
+    const { error } = await supabase.from('class_teachers').delete().eq('id', tid);
+    if (error) alert(error.message);
+    else fetchClassTeachers(cid);
+  };
+
+  const handleToggleTeacherPermission = async (cid, tid, current) => {
+    const { error } = await supabase.from('class_teachers').update({ can_manage_students: !current }).eq('id', tid);
+    if (error) alert(error.message);
+    else fetchClassTeachers(cid);
+  };
+
+  const fetchClassApplications = async (cid) => {
+    const { data } = await supabase.from('class_applications')
+      .select('*, profiles(first_name, last_name, email)')
+      .eq('class_id', cid)
+      .eq('status', 'pending');
+    if (data) setClassApplications(data);
+  };
+
+  const handleApplication = async (app, status) => {
+    const { error } = await supabase.from('class_applications').update({ status }).eq('id', app.id);
+    if (!error) {
+      if (status === 'accepted') {
+        await supabase.from('profiles').update({ class_id: app.class_id, pending_class_id: null, is_observer: false }).eq('id', app.user_id);
+      } else {
+        await supabase.from('profiles').update({ pending_class_id: null }).eq('id', app.user_id);
+      }
+      fetchClassApplications(app.class_id);
+      fetchUsers();
+    } else {
+      alert(error.message);
+    }
+  };
+
+  const fetchClassLists = async (cid, type) => {
+    const table = type === 'white' ? 'class_white_list' : 'class_black_list';
+    const { data } = await supabase.from(table).select('*').eq('class_id', cid);
+    if (data) setClassListItems(data);
+  };
+
   const filteredUsers = (users || []).filter(u => {
     const searchStr = `${u.last_name || ''} ${u.first_name || ''} ${u.patronymic || ''} ${u.email || ''}`.toLowerCase();
     const searchMatch = search === '' || searchStr.includes(search.toLowerCase());
@@ -295,11 +426,11 @@ const Dashboard = ({ session, profile }) => {
         </div>
 
         <div className="flex-center" style={{ gap: '20px' }}>
-          {profile?.role === 'creator' && (
+          {(profile?.role === 'creator' || profile?.role === 'admin' || profile?.role === 'teacher') && (
             <div style={{ background: 'rgba(0,0,0,0.05)', padding: '5px', borderRadius: '15px', display: 'flex' }}>
-              <button onClick={() => setActiveTab('users')} style={{ background: activeTab === 'users' ? 'var(--primary-color)' : 'transparent', color: activeTab === 'users' ? 'white' : 'inherit', boxShadow: 'none' }}>Ученики</button>
+              {(profile?.role === 'creator' || profile?.role === 'admin') && <button onClick={() => setActiveTab('users')} style={{ background: activeTab === 'users' ? 'var(--primary-color)' : 'transparent', color: activeTab === 'users' ? 'white' : 'inherit', boxShadow: 'none' }}>Ученики</button>}
               <button onClick={() => setActiveTab('structure')} style={{ background: activeTab === 'structure' ? 'var(--primary-color)' : 'transparent', color: activeTab === 'structure' ? 'white' : 'inherit', boxShadow: 'none' }}>Структура</button>
-              <button onClick={() => setActiveTab('blacklist')} style={{ background: activeTab === 'blacklist' ? 'red' : 'transparent', color: activeTab === 'blacklist' ? 'white' : 'red', boxShadow: 'none', fontWeight: 'bold' }}>Черный список</button>
+              {(profile?.role === 'creator' || profile?.role === 'admin') && <button onClick={() => setActiveTab('blacklist')} style={{ background: activeTab === 'blacklist' ? 'red' : 'transparent', color: activeTab === 'blacklist' ? 'white' : 'red', boxShadow: 'none', fontWeight: 'bold' }}>Черный список</button>}
             </div>
           )}
         </div>
@@ -463,135 +594,190 @@ const Dashboard = ({ session, profile }) => {
       )}
 
       {/* ВКЛАДКА СТРУКТУРА */}
-      {activeTab === 'structure' && profile?.role === 'creator' && (
-        <div className="grid-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
-          <div className="card">
-            <h3 className="flex-center" style={{ gap: '10px', marginBottom: '20px', justifyContent: 'flex-start' }}><MapPin size={20} color="var(--primary-color)" /> Города</h3>
-            <div className="flex-center" style={{ gap: '10px', marginBottom: '20px' }}>
-              <input id="new-city-name" name="city-name" type="text" placeholder="Новый город" value={newCity} onChange={e => setNewCity(e.target.value)} style={{ flex: 1, padding: '10px' }} />
-              <button onClick={handleCreateCity} style={{ padding: '10px' }}><Plus size={20} /></button>
-            </div>
-            <div style={{ display: 'grid', gap: '10px' }}>
-              {cities.map(city => (
-                <div key={city.id} className="flex-center" style={{ justifyContent: 'space-between', padding: '12px 15px', background: 'rgba(0,0,0,0.02)', borderRadius: '10px', border: '1px solid rgba(0,0,0,0.05)' }}>
-                  <span style={{ fontWeight: '500' }}>{city.name}</span>
-                  <button onClick={() => setDeletingStructure({ table: 'cities', id: city.id, name: city.name, typeLabel: 'город' })} style={{ background: 'transparent', color: 'red', padding: '5px', boxShadow: 'none' }}><Trash2 size={16} /></button>
-                </div>
-              ))}
-            </div>
+      {activeTab === 'structure' && (
+        <div className="animate">
+          <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '30px' }}>
+            <h3 style={{ margin: 0 }}>Список школ</h3>
+            {profile?.role === 'creator' && (
+              <button onClick={() => {
+                const name = prompt("Введите название новой школы:");
+                const cityId = prompt("Введите ID города (или выберите из списка):", cities[0]?.id);
+                if (name && cityId) supabase.from('schools').insert({ name, city_id: cityId, order_index: schools.length }).then(() => fetchStructure());
+              }} className="flex-center" style={{ gap: '8px' }}>
+                <Plus size={18} /> Добавить школу
+              </button>
+            )}
           </div>
 
-          <div className="card">
-            <h3 className="flex-center" style={{ gap: '10px', marginBottom: '20px', justifyContent: 'flex-start' }}><Building size={20} color="var(--primary-color)" /> Школы</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px' }}>
-              <select id="new-school-city" name="city-id" value={newSchoolCityId} onChange={e => setNewSchoolCityId(e.target.value)} style={{ padding: '10px' }}>
-                <option value="">Выберите город...</option>
-                {cities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-              <div className="flex-center" style={{ gap: '10px' }}>
-                <input id="new-school-name" name="school-name" type="text" placeholder="Название школы" value={newSchool} onChange={e => setNewSchool(e.target.value)} style={{ flex: 1, padding: '10px' }} />
-                <button onClick={handleCreateSchool} style={{ padding: '10px' }} disabled={!newSchoolCityId}><Plus size={20} /></button>
-              </div>
-            </div>
-            <div style={{ display: 'grid', gap: '10px' }}>
-              {schools.map(school => (
-                <div key={school.id} className="flex-center" style={{ justifyContent: 'space-between', padding: '12px 15px', background: 'rgba(0,0,0,0.02)', borderRadius: '10px', border: '1px solid rgba(0,0,0,0.05)' }}>
-                  <div>
-                    <span style={{ fontSize: '0.75rem', opacity: 0.5, display: 'block' }}>г. {cities.find(c => c.id === school.city_id)?.name}</span>
-                    <span style={{ fontWeight: '500' }}>{school.name}</span>
-                  </div>
-                  <button onClick={() => setDeletingStructure({ table: 'schools', id: school.id, name: school.name, typeLabel: 'школу' })} style={{ background: 'transparent', color: 'red', padding: '5px', boxShadow: 'none' }}><Trash2 size={16} /></button>
-                </div>
-              ))}
-            </div>
-          </div>
+          <div style={{ display: 'grid', gap: '20px' }}>
+            {schools.map(school => {
+              const isSchoolExpanded = expandedSchoolId === school.id;
+              const schoolClasses = classesList.filter(c => c.school_id === school.id);
+              const city = cities.find(c => c.id === school.city_id);
 
-          <div className="card">
-            <h3 className="flex-center" style={{ gap: '10px', marginBottom: '20px', justifyContent: 'flex-start' }}><GraduationCap size={20} color="var(--primary-color)" /> Классы</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px' }}>
-              <select value={newClassSchoolId} onChange={e => setNewClassSchoolId(e.target.value)} style={{ padding: '10px' }}>
-                <option value="">Выберите школу...</option>
-                {schools.map(s => <option key={s.id} value={s.id}>{s.name} ({cities.find(c => c.id === s.city_id)?.name})</option>)}
-              </select>
-              <div className="flex-center" style={{ gap: '10px' }}>
-                <input type="text" placeholder="Название класса" value={newClass} onChange={e => setNewClass(e.target.value)} style={{ flex: 1, padding: '10px' }} />
-                <input type="number" placeholder="Лимит (50)" title="Макс. кол-во учеников" style={{ width: '80px', padding: '10px' }} defaultValue={50} id="max_students_input" />
-                <button onClick={() => {
-                  const maxVal = document.getElementById('max_students_input').value;
-                  handleCreateClass(maxVal);
-                }} style={{ padding: '10px' }} disabled={!newClassSchoolId}><Plus size={20} /></button>
-              </div>
-            </div>
-            <div style={{ display: 'grid', gap: '10px' }}>
-              {classesList.map(cls => {
-                const isExpanded = expandedClassId === cls.id;
-                return (
-                  <div key={cls.id} style={{ background: 'rgba(0,0,0,0.02)', borderRadius: '10px', border: '1px solid rgba(0,0,0,0.05)', overflow: 'hidden' }}>
-                    <div className="flex-center" style={{ justifyContent: 'space-between', padding: '12px 15px' }}>
-                      <div onClick={() => {
-                        if (isExpanded) setExpandedClassId(null);
-                        else {
-                          setExpandedClassId(cls.id);
-                          fetchClassStudents(cls.id);
-                        }
-                      }} style={{ cursor: 'pointer', flex: 1 }}>
-                        <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '8px' }}>
-                          {isExpanded ? <ChevronDown size={14} opacity={0.5} /> : <ChevronRight size={14} opacity={0.5} />}
-                          <span style={{ fontSize: '0.75rem', opacity: 0.5 }}>{schools.find(s => s.id === cls.school_id)?.name}</span>
+              return (
+                <div key={school.id} className="card" style={{ padding: '0', overflow: 'hidden' }}>
+                  <div className="flex-center" style={{ justifyContent: 'space-between', padding: '20px', background: 'rgba(0,0,0,0.01)', borderBottom: isSchoolExpanded ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
+                    <div onClick={() => setExpandedSchoolId(isSchoolExpanded ? null : school.id)} style={{ cursor: 'pointer', flex: 1 }}>
+                      <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px' }}>
+                        {isSchoolExpanded ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
+                        <div>
+                          <div style={{ fontSize: '0.75rem', opacity: 0.5 }}>г. {city?.name}</div>
+                          <h4 style={{ margin: 0 }}>{school.name}</h4>
                         </div>
-                        <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px' }}>
-                          <span style={{ fontWeight: 'bold' }}>{cls.name}</span>
-                          <span 
-                            onClick={(e) => { e.stopPropagation(); setNewLimit(cls.max_students || 50); setEditingClassLimit(cls); }}
-                            className="flex-center" 
-                            style={{ fontSize: '0.7rem', background: 'rgba(0,0,0,0.05)', padding: '2px 8px', borderRadius: '4px', cursor: 'pointer', gap: '4px' }}
-                            title="Изменить лимит учеников"
-                          >
-                            <User size={10} /> {cls.max_students || 50}
-                            {cls.max_students && users.filter(u => u.class_id === cls.id).length > cls.max_students && (
-                              <AlertTriangle size={12} color="red" title="Лимит превышен!" />
-                            )}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex-center" style={{ gap: '5px' }}>
-                        <button onClick={(e) => { e.stopPropagation(); setNewLimit(cls.max_students || 50); setEditingClassLimit(cls); }} style={{ background: 'transparent', color: 'var(--primary-color)', padding: '5px', boxShadow: 'none' }} title="Изменить лимит"><Edit3 size={16} /></button>
-                        <button onClick={(e) => { e.stopPropagation(); setDeletingStructure({ table: 'classes', id: cls.id, name: cls.name, typeLabel: 'класс' }); }} style={{ background: 'transparent', color: 'red', padding: '5px', boxShadow: 'none' }} title="Удалить класс"><Trash2 size={16} /></button>
+                        <span style={{ padding: '2px 10px', background: 'rgba(0,0,0,0.05)', borderRadius: '50px', fontSize: '0.75rem', opacity: 0.6 }}>{schoolClasses.length} классов</span>
                       </div>
                     </div>
-
-                    {isExpanded && (
-                      <div className="animate" style={{ padding: '0 15px 15px 15px', borderTop: '1px solid rgba(0,0,0,0.03)' }}>
-                        <div style={{ fontSize: '0.8rem', opacity: 0.6, marginBottom: '10px', marginTop: '10px' }}>Ученики в классе:</div>
-                        {loadingStudents ? (
-                          <div style={{ fontSize: '0.85rem', opacity: 0.5 }}>Загрузка списка...</div>
-                        ) : classStudents.length > 0 ? (
-                          <div style={{ display: 'grid', gap: '8px' }}>
-                            {classStudents.map(s => (
-                              <div key={s.id} className="flex-center" style={{ justifyContent: 'space-between', background: 'var(--card-bg)', padding: '8px 12px', borderRadius: '8px', fontSize: '0.9rem' }}>
-                                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                  <span style={{ fontWeight: '500' }}>{s.last_name} {s.first_name}</span>
-                                  <span style={{ fontSize: '0.75rem', opacity: 0.5 }}>{s.email}</span>
-                                </div>
-                                <button
-                                  onClick={() => setRemovingStudent(s)}
-                                  style={{ background: 'rgba(255,0,0,0.05)', color: 'red', padding: '5px', boxShadow: 'none' }}
-                                  title="Исключить из класса"
-                                >
-                                  <X size={14} />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div style={{ fontSize: '0.85rem', opacity: 0.5 }}>В классе пока нет учеников.</div>
-                        )}
+                    
+                    {profile?.role === 'creator' && (
+                      <div className="flex-center" style={{ gap: '10px' }}>
+                        <button onClick={() => {
+                          const newName = prompt("Переименовать школу:", school.name);
+                          if (newName) handleRenameStructure('schools', school.id, newName);
+                        }} style={{ background: 'transparent', padding: '5px', color: 'var(--primary-color)', boxShadow: 'none' }}><Edit3 size={18} /></button>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                          <button onClick={() => handleMoveStructure('schools', school.id, 'up', schools)} style={{ background: 'transparent', padding: '2px', color: 'inherit', boxShadow: 'none' }}><ArrowUp size={14} /></button>
+                          <button onClick={() => handleMoveStructure('schools', school.id, 'down', schools)} style={{ background: 'transparent', padding: '2px', color: 'inherit', boxShadow: 'none' }}><ArrowDown size={14} /></button>
+                        </div>
+                        <button onClick={() => {
+                          if (schoolClasses.length > 0) return alert("Нельзя удалить школу, в которой есть классы!");
+                          if (confirm(`Удалить школу "${school.name}"?`)) {
+                            supabase.from('schools').delete().eq('id', school.id).then(() => fetchStructure());
+                          }
+                        }} style={{ background: 'transparent', padding: '5px', color: 'red', boxShadow: 'none' }}><Trash2 size={18} /></button>
                       </div>
                     )}
+                    {profile?.role === 'creator' && (
+                      <button onClick={() => {
+                        const name = prompt(`Добавить класс в школу "${school.name}":`);
+                        if (name) supabase.from('classes').insert({ name, school_id: school.id, order_index: schoolClasses.length }).then(() => fetchStructure());
+                      }} style={{ marginLeft: '15px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', padding: '8px 15px', boxShadow: 'none' }}>
+                        <Plus size={16} />
+                      </button>
+                    )}
                   </div>
-                );
-              })}
-            </div>
+
+                  {isSchoolExpanded && (
+                    <div style={{ padding: '15px', background: 'rgba(0,0,0,0.005)' }}>
+                      <div style={{ display: 'grid', gap: '10px' }}>
+                        {schoolClasses.map(cls => {
+                          const isClassExpanded = expandedClassId === cls.id;
+                          const studentsCount = users.filter(u => u.class_id === cls.id).length;
+                          const isTeacher = profile?.role === 'teacher';
+                          const canManage = isTeacher ? teacherClasses.includes(cls.id) : true;
+
+                          return (
+                            <div key={cls.id} style={{ background: 'white', border: '1px solid rgba(0,0,0,0.05)', borderRadius: '12px', overflow: 'hidden' }}>
+                              <div className="flex-center" style={{ justifyContent: 'space-between', padding: '12px 20px' }}>
+                                <div onClick={() => {
+                                  if (isClassExpanded) setExpandedClassId(null);
+                                  else {
+                                    setExpandedClassId(cls.id);
+                                    fetchClassStudents(cls.id);
+                                  }
+                                }} style={{ cursor: 'pointer', flex: 1 }}>
+                                  <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px' }}>
+                                    {isClassExpanded ? <ChevronDown size={16} opacity={0.5} /> : <ChevronRight size={16} opacity={0.5} />}
+                                    <span style={{ fontWeight: '600' }}>{cls.name}</span>
+                                    <div className="flex-center" style={{ gap: '5px', opacity: 0.5, fontSize: '0.8rem' }}>
+                                      <Users size={14} /> {studentsCount} / {cls.max_students || 50}
+                                      {cls.max_students && studentsCount > cls.max_students && <AlertTriangle size={14} color="red" />}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="flex-center" style={{ gap: '10px' }}>
+                                  {/* Orange Shield for Teacher Management */}
+                                  {profile?.role === 'creator' && (
+                                    <button 
+                                      onClick={() => { setShowTeachersModal(cls); fetchClassTeachers(cls.id); }} 
+                                      style={{ background: '#f59e0b', color: 'white', padding: '6px 12px', borderRadius: '8px', boxShadow: 'none', display: 'flex', gap: '5px', alignItems: 'center', fontSize: '0.85rem' }}
+                                    >
+                                      <Shield size={16} /> Учителя
+                                    </button>
+                                  )}
+
+                                  {canManage && (
+                                    <>
+                                      <button onClick={() => { setShowApplicationsModal(cls); fetchClassApplications(cls.id); }} style={{ background: 'rgba(99,102,241,0.1)', color: 'var(--primary-color)', padding: '6px 12px', borderRadius: '8px', boxShadow: 'none', display: 'flex', gap: '5px', alignItems: 'center', fontSize: '0.85rem' }}>
+                                        <UserPlus size={16} /> Заявки
+                                      </button>
+                                      <button onClick={() => { setShowListsModal({ class: cls, type: 'white' }); fetchClassLists(cls.id, 'white'); }} style={{ background: 'rgba(34,197,94,0.1)', color: '#16a34a', padding: '6px', borderRadius: '8px', boxShadow: 'none' }} title="Белый список"><UserCheck size={18} /></button>
+                                      <button onClick={() => { setShowListsModal({ class: cls, type: 'black' }); fetchClassLists(cls.id, 'black'); }} style={{ background: 'rgba(239,68,68,0.1)', color: '#dc2626', padding: '6px', borderRadius: '8px', boxShadow: 'none' }} title="Черный список"><Ban size={18} /></button>
+                                    </>
+                                  )}
+
+                                  {profile?.role === 'creator' && (
+                                    <>
+                                      <button onClick={() => {
+                                        const newName = prompt("Переименовать класс:", cls.name);
+                                        if (newName) handleRenameStructure('classes', cls.id, newName);
+                                      }} style={{ background: 'transparent', padding: '5px', color: 'var(--primary-color)', boxShadow: 'none' }}><Edit3 size={18} /></button>
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                        <button onClick={() => handleMoveStructure('classes', cls.id, 'up', schoolClasses)} style={{ background: 'transparent', padding: '2px', color: 'inherit', boxShadow: 'none' }}><ArrowUp size={14} /></button>
+                                        <button onClick={() => handleMoveStructure('classes', cls.id, 'down', schoolClasses)} style={{ background: 'transparent', padding: '2px', color: 'inherit', boxShadow: 'none' }}><ArrowDown size={14} /></button>
+                                      </div>
+                                      <button onClick={() => {
+                                        if (studentsCount > 0) return alert("Нельзя удалить класс, в котором есть ученики!");
+                                        if (confirm(`Удалить класс "${cls.name}"?`)) {
+                                          supabase.from('classes').delete().eq('id', cls.id).then(() => fetchStructure());
+                                        }
+                                      }} style={{ background: 'transparent', padding: '5px', color: 'red', boxShadow: 'none' }}><Trash2 size={18} /></button>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+
+                              {isClassExpanded && (
+                                <div className="animate" style={{ padding: '0 20px 20px 20px', borderTop: '1px solid rgba(0,0,0,0.03)', background: 'rgba(0,0,0,0.005)' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px', marginBottom: '15px' }}>
+                                    <div style={{ fontSize: '0.85rem', fontWeight: 'bold', opacity: 0.6 }}>Список учеников</div>
+                                    <button 
+                                      onClick={() => { setNewLimit(cls.max_students || 50); setEditingClassLimit(cls); }}
+                                      style={{ background: 'transparent', color: 'var(--primary-color)', fontSize: '0.85rem', padding: '5px 10px', border: '1px solid var(--primary-color)', borderRadius: '8px', boxShadow: 'none' }}
+                                    >
+                                      Лимит: {cls.max_students || 50}
+                                    </button>
+                                  </div>
+                                  {loadingStudents ? (
+                                    <div style={{ textAlign: 'center', padding: '20px', opacity: 0.5 }}>Загрузка...</div>
+                                  ) : classStudents.length > 0 ? (
+                                    <div style={{ display: 'grid', gap: '8px' }}>
+                                      {classStudents.sort((a, b) => (a.last_name || '').localeCompare(b.last_name || '')).map(s => (
+                                        <div key={s.id} className="flex-center" style={{ justifyContent: 'space-between', background: 'white', padding: '10px 15px', borderRadius: '10px', border: '1px solid rgba(0,0,0,0.03)' }}>
+                                          <div>
+                                            <div style={{ fontWeight: '500' }}>{s.last_name} {s.first_name} {s.patronymic}</div>
+                                            <div style={{ fontSize: '0.75rem', opacity: 0.5 }}>{s.email}</div>
+                                          </div>
+                                          <div className="flex-center" style={{ gap: '8px' }}>
+                                            <button onClick={() => openEditModal(s)} style={{ background: 'transparent', color: 'var(--primary-color)', padding: '5px', boxShadow: 'none' }} title="Изменить ФИО"><Edit3 size={16} /></button>
+                                            <button onClick={() => setRemovingStudent(s)} style={{ background: 'transparent', color: 'red', padding: '5px', boxShadow: 'none' }} title="Удалить из класса"><UserMinus size={16} /></button>
+                                            <button onClick={() => setBlockingUser(s)} style={{ background: 'transparent', color: '#dc2626', padding: '5px', boxShadow: 'none' }} title="Исключить и заблокировать"><Ban size={16} /></button>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <div style={{ textAlign: 'center', padding: '20px', opacity: 0.4, fontSize: '0.9rem' }}>В классе пока нет учеников</div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                        {schoolClasses.length === 0 && <div style={{ textAlign: 'center', padding: '20px', opacity: 0.4 }}>Нет добавленных классов</div>}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {schools.length === 0 && (
+              <div className="card flex-center" style={{ height: '200px', flexDirection: 'column', gap: '15px' }}>
+                <Building size={48} opacity={0.2} />
+                <div style={{ opacity: 0.5 }}>Список школ пуст</div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -810,6 +996,124 @@ const Dashboard = ({ session, profile }) => {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
               <button onClick={() => setDeletingStructure(null)} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>Отмена</button>
               <button onClick={confirmDeleteStructure} style={{ background: '#f87171', color: 'white' }}>Да, удалить</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* МОДАЛКА УПРАВЛЕНИЯ УЧИТЕЛЯМИ КЛАССА */}
+      {showTeachersModal && (
+        <div className="modal-overlay" onClick={() => setShowTeachersModal(null)}>
+          <div className="modal-content animate" style={{ width: '500px' }} onClick={e => e.stopPropagation()}>
+            <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '25px' }}>
+              <div>
+                <h3 style={{ margin: 0 }}>Учителя класса</h3>
+                <div style={{ fontSize: '0.85rem', opacity: 0.5 }}>{showTeachersModal.name}</div>
+              </div>
+              <button onClick={() => setShowTeachersModal(null)} style={{ background: 'transparent', color: 'inherit', padding: 0 }}><X size={24} /></button>
+            </div>
+
+            <form onSubmit={(e) => { e.preventDefault(); handleAddTeacher(showTeachersModal.id, newTeacherEmail); }} className="flex-center" style={{ gap: '10px', marginBottom: '25px' }}>
+              <input 
+                type="email" 
+                placeholder="Email учителя..." 
+                value={newTeacherEmail} 
+                onChange={e => setNewTeacherEmail(e.target.value)} 
+                required 
+                style={{ flex: 1 }}
+              />
+              <button type="submit" style={{ background: 'var(--primary-color)', color: 'white' }}><Plus size={20} /></button>
+            </form>
+
+            <div style={{ display: 'grid', gap: '10px', maxHeight: '400px', overflowY: 'auto' }}>
+              {classTeachers.map(t => (
+                <div key={t.id} className="flex-center" style={{ justifyContent: 'space-between', padding: '12px 15px', background: 'rgba(0,0,0,0.02)', borderRadius: '12px', border: '1px solid rgba(0,0,0,0.03)' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: '500' }}>{t.email}</div>
+                    <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px', marginTop: '5px' }}>
+                      <label className="flex-center" style={{ gap: '5px', cursor: 'pointer', fontSize: '0.75rem', opacity: t.can_manage_students ? 1 : 0.5 }}>
+                        <input type="checkbox" checked={t.can_manage_students} onChange={() => handleToggleTeacherPermission(showTeachersModal.id, t.id, t.can_manage_students)} />
+                        Управление учениками
+                      </label>
+                    </div>
+                  </div>
+                  <button onClick={() => handleRemoveTeacher(showTeachersModal.id, t.id)} style={{ background: 'transparent', color: 'red', padding: '5px', boxShadow: 'none' }}><Trash2 size={16} /></button>
+                </div>
+              ))}
+              {classTeachers.length === 0 && <div style={{ textAlign: 'center', padding: '20px', opacity: 0.4 }}>Учителя не назначены</div>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* МОДАЛКА ЗАЯВОК В КЛАСС */}
+      {showApplicationsModal && (
+        <div className="modal-overlay" onClick={() => setShowApplicationsModal(null)}>
+          <div className="modal-content animate" style={{ width: '500px' }} onClick={e => e.stopPropagation()}>
+            <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '25px' }}>
+              <div>
+                <h3 style={{ margin: 0 }}>Заявки на вступление</h3>
+                <div style={{ fontSize: '0.85rem', opacity: 0.5 }}>{showApplicationsModal.name}</div>
+              </div>
+              <button onClick={() => setShowApplicationsModal(null)} style={{ background: 'transparent', color: 'inherit', padding: 0 }}><X size={24} /></button>
+            </div>
+
+            <div style={{ display: 'grid', gap: '12px', maxHeight: '450px', overflowY: 'auto' }}>
+              {classApplications.map(app => (
+                <div key={app.id} className="card" style={{ padding: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white' }}>
+                  <div>
+                    <div style={{ fontWeight: '600' }}>{app.profiles.last_name} {app.profiles.first_name}</div>
+                    <div style={{ fontSize: '0.8rem', opacity: 0.5 }}>{app.profiles.email}</div>
+                    <div style={{ fontSize: '0.7rem', opacity: 0.4, marginTop: '4px' }}>{new Date(app.created_at).toLocaleString()}</div>
+                  </div>
+                  <div className="flex-center" style={{ gap: '10px' }}>
+                    <button onClick={() => handleApplication(app, 'accepted')} style={{ background: '#22c55e', color: 'white', padding: '6px 12px', borderRadius: '8px', fontSize: '0.85rem' }}>Принять</button>
+                    <button onClick={() => handleApplication(app, 'rejected')} style={{ background: 'rgba(239, 68, 68, 0.1)', color: 'red', padding: '6px 12px', borderRadius: '8px', fontSize: '0.85rem', boxShadow: 'none' }}>Отклонить</button>
+                  </div>
+                </div>
+              ))}
+              {classApplications.length === 0 && <div style={{ textAlign: 'center', padding: '30px', opacity: 0.4 }}>Новых заявок нет</div>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* МОДАЛКА БЕЛОГО/ЧЕРНОГО СПИСКА */}
+      {showListsModal && (
+        <div className="modal-overlay" onClick={() => setShowListsModal(null)}>
+          <div className="modal-content animate" style={{ width: '450px' }} onClick={e => e.stopPropagation()}>
+            <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '25px' }}>
+              <div>
+                <h3 style={{ margin: 0 }}>{showListsModal.type === 'white' ? 'Белый список' : 'Черный список'}</h3>
+                <div style={{ fontSize: '0.85rem', opacity: 0.5 }}>{showListsModal.class.name}</div>
+              </div>
+              <button onClick={() => setShowListsModal(null)} style={{ background: 'transparent', color: 'inherit', padding: 0 }}><X size={24} /></button>
+            </div>
+
+            <form onSubmit={(e) => { 
+              e.preventDefault(); 
+              const email = e.target.email.value;
+              const table = showListsModal.type === 'white' ? 'class_white_list' : 'class_black_list';
+              supabase.from(table).insert({ class_id: showListsModal.class.id, email }).then(() => {
+                e.target.reset();
+                fetchClassLists(showListsModal.class.id, showListsModal.type);
+              });
+            }} className="flex-center" style={{ gap: '10px', marginBottom: '25px' }}>
+              <input name="email" type="email" placeholder="Email для добавления..." required style={{ flex: 1 }} />
+              <button type="submit" style={{ background: showListsModal.type === 'white' ? '#16a34a' : '#dc2626', color: 'white' }}><Plus size={20} /></button>
+            </form>
+
+            <div style={{ display: 'grid', gap: '8px', maxHeight: '400px', overflowY: 'auto' }}>
+              {classListItems.map(item => (
+                <div key={item.id} className="flex-center" style={{ justifyContent: 'space-between', padding: '10px 15px', background: 'rgba(0,0,0,0.02)', borderRadius: '10px' }}>
+                  <div style={{ fontWeight: '500' }}>{item.email}</div>
+                  <button onClick={() => {
+                    const table = showListsModal.type === 'white' ? 'class_white_list' : 'class_black_list';
+                    supabase.from(table).delete().eq('id', item.id).then(() => fetchClassLists(showListsModal.class.id, showListsModal.type));
+                  }} style={{ background: 'transparent', color: 'red', padding: '5px', boxShadow: 'none' }}><X size={16} /></button>
+                </div>
+              ))}
+              {classListItems.length === 0 && <div style={{ textAlign: 'center', padding: '20px', opacity: 0.4 }}>Список пуст</div>}
             </div>
           </div>
         </div>

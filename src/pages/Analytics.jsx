@@ -20,6 +20,7 @@ const Analytics = () => {
   const [showEditBlockedModal, setShowEditBlockedModal] = useState(false);
   const [profile, setProfile] = useState(null);
   const [quizAuthorRole, setQuizAuthorRole] = useState(null);
+  const [teacherClasses, setTeacherClasses] = useState([]); // Array of class IDs
   
   const [showObservers, setShowObservers] = useState(sessionStorage.getItem('an_show_observers') === 'true');
   const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
@@ -75,6 +76,12 @@ const Analytics = () => {
     if (user) {
       const { data: p } = await supabase.from('profiles').select('*').eq('id', user.id).single();
       setProfile(p);
+      
+      if (p.role === 'teacher') {
+        const { data: tc } = await supabase.from('class_teachers').select('class_id').eq('email', user.email.toLowerCase());
+        if (tc) setTeacherClasses(tc.map(row => row.class_id));
+      }
+      
       fetchStructure(p);
     }
   };
@@ -219,8 +226,15 @@ const Analytics = () => {
   const isTeacher = profile?.role === 'teacher';
 
   // Логика фильтрации
-  const availableSchools = schools.filter(s => filterCity === 'all' || s.city_id === filterCity);
-  const availableClasses = classes.filter(c => filterSchool === 'all' || c.school_id === filterSchool);
+  const availableSchools = schools.filter(s => {
+    if (profile?.role === 'teacher' && quiz?.author_id !== profile?.id) return s.id === profile.school_id;
+    return filterCity === 'all' || s.city_id === filterCity;
+  });
+  
+  const availableClasses = classes.filter(c => {
+    if (profile?.role === 'teacher' && quiz?.author_id !== profile?.id) return teacherClasses.includes(c.id);
+    return filterSchool === 'all' || c.school_id === filterSchool;
+  });
 
   const filteredResults = results.filter(res => {
     const p = res.profiles;
@@ -231,7 +245,7 @@ const Analytics = () => {
 
     // Ограничение видимости для учителя
     if (isTeacher && quiz?.author_id !== profile?.id) {
-      if (p.school_id !== profile?.school_id) return false;
+      if (!teacherClasses.includes(p.class_id)) return false;
     }
 
     if (filterCity !== 'all' && p.city_id !== filterCity) return false;

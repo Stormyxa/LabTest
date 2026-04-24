@@ -140,6 +140,7 @@ const UserAnalytics = ({ session, profile: initialProfile }) => {
   const [schools, setSchools] = useState([]);
   const [classes, setClasses] = useState([]);
   const [users, setUsers] = useState([]);
+  const [teacherClasses, setTeacherClasses] = useState([]); // Array of class IDs
   
   // Filters
   const [filterCity, setFilterCity] = useState(sessionStorage.getItem('f_city') || 'all');
@@ -182,6 +183,11 @@ const UserAnalytics = ({ session, profile: initialProfile }) => {
     if (p) {
       setProfile(p);
       
+      if (p.role === 'teacher') {
+        const { data: tc } = await supabase.from('class_teachers').select('class_id').eq('email', session.user.email.toLowerCase());
+        if (tc) setTeacherClasses(tc.map(row => row.class_id));
+      }
+
       const isPrivileged = p.role === 'admin' || p.role === 'creator' || p.role === 'teacher' || p.role === 'editor';
       if (!isPrivileged) {
         setSidebarOpen(false);
@@ -220,12 +226,19 @@ const UserAnalytics = ({ session, profile: initialProfile }) => {
           
           const { data: allProfs } = await query;
           if (allProfs) {
-            allProfs.sort((a, b) => {
+            let filtered = allProfs;
+            if (p.role === 'teacher') {
+              // Wait for teacherClasses to be fetched (already happening in this function)
+              const tcs = await supabase.from('class_teachers').select('class_id').eq('email', session.user.email.toLowerCase()).then(r => r.data?.map(row => row.class_id) || []);
+              filtered = allProfs.filter(u => tcs.includes(u.class_id));
+            }
+            
+            filtered.sort((a, b) => {
               const res = (a.last_name || a.first_name || '').trim().localeCompare((b.last_name || b.first_name || '').trim(), 'ru');
               if (res !== 0) return res;
               return (a.first_name || '').trim().localeCompare((b.first_name || '').trim(), 'ru');
             });
-            return allProfs;
+            return filtered;
           }
           return [];
         });
@@ -583,7 +596,10 @@ const UserAnalytics = ({ session, profile: initialProfile }) => {
                     </select>
                     <select id="ua-class" value={filterClass} onChange={e => setFilterClass(e.target.value)} style={{ padding: '6px', fontSize: '0.85rem' }} aria-label="Класс">
                       <option value="all">Все классы</option>
-                      {classes.filter(c => filterSchool==='all' || c.school_id === filterSchool).map(c => <option key={c.id} value={c.id} disabled={!users.some(u => u.class_id === c.id)}>{c.name}</option>)}
+                      {classes.filter(c => {
+                        if (profile?.role === 'teacher') return teacherClasses.includes(c.id);
+                        return filterSchool === 'all' || c.school_id === filterSchool;
+                      }).map(c => <option key={c.id} value={c.id} disabled={!users.some(u => u.class_id === c.id)}>{c.name}</option>)}
                     </select>
                     <div style={{ position: 'relative' }}>
                       <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', opacity: 0.5 }} />

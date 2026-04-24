@@ -14,6 +14,7 @@ const Statistics = ({ session, profile }) => {
   const [cities, setCities] = useState([]);
   const [schools, setSchools] = useState([]);
   const [classes, setClasses] = useState([]);
+  const [teacherClasses, setTeacherClasses] = useState([]);
 
   const [loading, setLoading] = useState(true);
 
@@ -51,17 +52,21 @@ const Statistics = ({ session, profile }) => {
   const fetchData = async () => {
     setLoading(true);
 
-    const [ c, s, cl, pData ] = await Promise.all([
+    const [ c, s, cl, pData, tClassesData ] = await Promise.all([
       fetchWithCache('cities', () => supabase.from('cities').select('*').order('name').then(r => r.data)),
       fetchWithCache('schools', () => supabase.from('schools').select('*').order('name').then(r => r.data)),
       fetchWithCache('classes', () => supabase.from('classes').select('*').order('name').then(r => r.data)),
       fetchWithCache('statistics_all_profiles', () => supabase
         .from('profiles')
         .select('*, quiz_results(score, total_questions, is_passed, quiz_id), quiz_attempts(is_suspicious, is_passed, quiz_id)')
-        .then(r => r.data))
+        .then(r => r.data)),
+      profile?.role === 'teacher' ? supabase.from('class_teachers').select('class_id').eq('email', session.user.email.toLowerCase()).then(r => r.data) : Promise.resolve([])
     ]);
 
-    if (c) setCities(c); if (s) setSchools(s); if (cl) setClasses(cl);
+    if (c) setCities(c); 
+    if (s) setSchools(s); 
+    if (cl) setClasses(cl);
+    if (tClassesData) setTeacherClasses(tClassesData.map(tc => tc.class_id));
 
     const processProfiles = (profilesData) => {
       return profilesData.map(u => {
@@ -159,19 +164,28 @@ const Statistics = ({ session, profile }) => {
     // Original Processing is now inside processProfiles
 
 
-  const availableSchools = schools.filter(s => filterCity === 'all' || s.city_id === filterCity);
-  const availableClasses = classes.filter(c => filterSchool === 'all' || c.school_id === filterSchool);
+  const availableSchools = schools.filter(s => {
+    if (profile?.role === 'teacher') return s.id === profile.school_id;
+    return filterCity === 'all' || s.city_id === filterCity;
+  });
+  
+  const availableClasses = classes.filter(c => {
+    if (profile?.role === 'teacher') return teacherClasses.includes(c.id);
+    return filterSchool === 'all' || c.school_id === filterSchool;
+  });
 
   const filteredStats = stats
     .filter(u => {
       // 1. Исключаем наблюдателей, скрытых и неподтвержденных пользователей из рейтинга
       if (u.is_observer || u.is_hidden || !u.is_profile_setup_completed) return false;
 
-      // 2. ЖЕСТКОЕ ОГРАНИЧЕНИЕ ДЛЯ УЧИТЕЛЕЙ И УЧЕНИКОВ (видят только свою школу)
-      const isRestricted = profile?.role === 'teacher' || profile?.role === 'player';
-      if (isRestricted && u.school_id !== profile?.school_id) return false;
+      // 2. ЖЕСТКОЕ ОГРАНИЧЕНИЕ ДЛЯ УЧИТЕЛЕЙ (только приписанные классы)
+      if (profile?.role === 'teacher' && !teacherClasses.includes(u.class_id)) return false;
+      
+      // 3. ЖЕСТКОЕ ОГРАНИЧЕНИЕ ДЛЯ УЧЕНИКОВ (видят только свою школу)
+      if (profile?.role === 'player' && u.school_id !== profile?.school_id) return false;
 
-      // 3. Стандартные фильтры
+      // 4. Стандартные фильтры
       if (filterCity !== 'all' && u.city_id !== filterCity) return false;
       if (filterSchool !== 'all' && u.school_id !== filterSchool) return false;
       if (filterClass !== 'all' && u.class_id !== filterClass) return false;
