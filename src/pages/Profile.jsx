@@ -26,6 +26,7 @@ const Profile = ({ session, profile, refreshProfile }) => {
   
   // Modal states
   const [showNoClassModal, setShowNoClassModal] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [agreeObserver, setAgreeObserver] = useState(false);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState(location.state?.msg || '');
@@ -160,7 +161,24 @@ const Profile = ({ session, profile, refreshProfile }) => {
       return;
     }
 
+    setShowConfirmModal(true);
+  };
+
+  const confirmUpdate = async () => {
+    setShowConfirmModal(false);
+    
     if (classId && classId !== profile?.class_id) {
+      // Time limit check for class application (30 seconds)
+      const now = new Date();
+      const lastClassChange = profile?.last_class_application_change ? new Date(profile.last_class_application_change) : null;
+      const isAdminOrCreator = profile?.role === 'admin' || profile?.role === 'creator';
+      
+      if (!isAdminOrCreator && lastClassChange && (now - lastClassChange) < 30 * 1000) {
+        const remaining = Math.ceil((30 * 1000 - (now - lastClassChange)) / 1000);
+        setMsg(`Ожидайте: Повторная заявка в класс будет доступна через ${remaining} сек.`);
+        return;
+      }
+
       // User is trying to join a NEW class
       const cls = classes.find(c => c.id === classId);
       const currentCount = classStudentCounts[classId] || 0;
@@ -180,8 +198,11 @@ const Profile = ({ session, profile, refreshProfile }) => {
       if (error) {
         setMsg(`Ошибка при подаче заявки: ${error.message}`);
       } else {
-        await supabase.from('profiles').update({ pending_class_id: classId }).eq('id', session.user.id);
-        setMsg('Заявка на вступление в класс отправлена!');
+        await supabase.from('profiles').update({ 
+          pending_class_id: classId,
+          last_class_application_change: new Date().toISOString()
+        }).eq('id', session.user.id);
+        setMsg('Ваша заявка успешно отправлена учителю!');
         fetchApplication();
         refreshProfile();
       }
@@ -189,8 +210,22 @@ const Profile = ({ session, profile, refreshProfile }) => {
       return;
     }
 
+    // Check 24h limit for City/School change
+    const now = new Date();
+    const lastInstChange = profile?.last_institution_change ? new Date(profile.last_institution_change) : null;
+    const isAdminOrCreator = profile?.role === 'admin' || profile?.role === 'creator';
+    const institutionChanged = cityId !== profile?.city_id || schoolId !== profile?.school_id;
+
+    if (institutionChanged && !isAdminOrCreator && lastInstChange && (now - lastInstChange) < 24 * 60 * 60 * 1000) {
+      const remainingMs = 24 * 60 * 60 * 1000 - (now - lastInstChange);
+      const hours = Math.floor(remainingMs / (60 * 60 * 1000));
+      const minutes = Math.ceil((remainingMs % (60 * 60 * 1000)) / (60 * 1000));
+      setMsg(`Ограничение: Сменить заведение можно будет через ${hours} ч. ${minutes} мин.`);
+      return;
+    }
+
     // Otherwise, normal save
-    await executeUpdate(false);
+    await executeUpdate(false, institutionChanged);
   };
 
   const handleCancelApplication = async () => {
@@ -206,18 +241,24 @@ const Profile = ({ session, profile, refreshProfile }) => {
     setLoading(false);
   };
 
-  const executeUpdate = async (makeObserver) => {
+  const executeUpdate = async (makeObserver, institutionChanged = false) => {
     setLoading(true);
     let finalObserverStatus = makeObserver;
     if (classId && profile?.role !== 'teacher') finalObserverStatus = false;
     if (profile?.role === 'teacher') finalObserverStatus = true;
 
-    const { error } = await supabase.from('profiles').update({
+    const updates = {
       first_name: firstName, last_name: lastName, patronymic: patronymic, birth_date: birthDate,
       city_id: cityId || null, school_id: schoolId || null, class_id: classId || null,
       phone_number: phoneNumber, show_phone_number: showPhone, is_profile_setup_completed: true,
       is_observer: finalObserverStatus
-    }).eq('id', session.user.id);
+    };
+
+    if (institutionChanged) {
+      updates.last_institution_change = new Date().toISOString();
+    }
+
+    const { error } = await supabase.from('profiles').update(updates).eq('id', session.user.id);
 
     if (error) setMsg(`Ошибка: ${error.message}`);
     else {
@@ -401,21 +442,21 @@ const Profile = ({ session, profile, refreshProfile }) => {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <label htmlFor="city-select">Ваш город</label>
-            <select id="city-select" name="city" value={cityId} onChange={(e) => { setCityId(e.target.value); setSchoolId(''); setClassId(''); }} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} required>
+            <select id="city-select" name="city" value={cityId} onChange={(e) => { setCityId(e.target.value); setSchoolId(''); setClassId(''); }} disabled={(profile?.class_id || profile?.role === 'teacher') && profile?.role !== 'creator' && profile?.role !== 'admin'} required>
               <option value="">Выберите город...</option>
               {cities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <label htmlFor="school-select">Ваша школа</label>
-            <select id="school-select" name="school" value={schoolId} onChange={(e) => { setSchoolId(e.target.value); setClassId(''); }} disabled={(profile?.is_profile_setup_completed && profile?.role !== 'creator') || (profile?.role === 'teacher' && profile?.school_id) || !cityId} required>
+            <select id="school-select" name="school" value={schoolId} onChange={(e) => { setSchoolId(e.target.value); setClassId(''); }} disabled={(profile?.class_id || profile?.role === 'teacher') && profile?.role !== 'creator' && profile?.role !== 'admin' || !cityId} required>
               <option value="">Выберите школу...</option>
               {availableSchools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <label htmlFor="class-select">Ваш класс</label>
-            <select id="class-select" name="class" value={classId} onChange={(e) => setClassId(e.target.value)} disabled={(profile?.is_profile_setup_completed && profile?.role !== 'creator') || !schoolId || application}>
+            <select id="class-select" name="class" value={classId} onChange={(e) => setClassId(e.target.value)} disabled={(profile?.class_id || profile?.role === 'teacher') && profile?.role !== 'creator' && profile?.role !== 'admin' || !schoolId || application}>
               <option value="">Выберите класс...</option>
               {availableClasses.map(c => {
                 const count = classStudentCounts[c.id] || 0;
@@ -427,7 +468,9 @@ const Profile = ({ session, profile, refreshProfile }) => {
                 );
               })}
             </select>
-            {application && <p style={{ fontSize: '0.75rem', color: 'var(--primary-color)', margin: 0 }}>У вас есть активная заявка. Отмените её, чтобы выбрать другой класс.</p>}
+            {profile?.role === 'teacher' && <p style={{ fontSize: '0.75rem', color: '#666', margin: 0 }}>Ваши данные заведения управляются администратором.</p>}
+            {profile?.class_id && profile?.role !== 'teacher' && <p style={{ fontSize: '0.75rem', color: '#666', margin: 0 }}>Вы уже приняты в класс. Чтобы сменить заведение, обратитесь к учителю.</p>}
+            {application && !profile?.class_id && <p style={{ fontSize: '0.75rem', color: 'var(--primary-color)', margin: 0 }}>У вас есть активная заявка. Отмените её, чтобы выбрать другой класс.</p>}
           </div>
 
           {(profile?.role === 'admin' || profile?.role === 'creator') && (
@@ -477,6 +520,23 @@ const Profile = ({ session, profile, refreshProfile }) => {
               >
                 Сохранить
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* МОДАЛКА ПОДТВЕРЖДЕНИЯ ОБНОВЛЕНИЯ */}
+      {showConfirmModal && (
+        <div className="modal-overlay" onClick={() => setShowConfirmModal(false)}>
+          <div className="modal-content animate" style={{ width: '450px' }} onClick={e => e.stopPropagation()}>
+            <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '50%', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', margin: '0 auto 25px' }}><Shield size={32} /></div>
+            <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>Обновить данные?</h2>
+            <p style={{ opacity: 0.7, marginBottom: '30px', lineHeight: '1.6', textAlign: 'center' }}>
+              Вы уверены, что хотите сохранить изменения?<br />
+              <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>Важно:</span> Смена города или школы будет доступна только через 24 часа.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+              <button onClick={() => setShowConfirmModal(false)} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>Отмена</button>
+              <button onClick={confirmUpdate}>Да, обновить</button>
             </div>
           </div>
         </div>
