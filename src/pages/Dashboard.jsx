@@ -804,9 +804,17 @@ const Dashboard = ({ session, profile }) => {
                                               >
                                                 <Eye size={16} />
                                               </button>
-                                              <button onClick={() => openEditModal(s)} style={{ background: 'transparent', color: 'var(--primary-color)', padding: '5px', boxShadow: 'none' }} title="Изменить ФИО"><Edit3 size={16} /></button>
-                                              <button onClick={() => setRemovingStudent(s)} style={{ background: 'transparent', color: 'red', padding: '5px', boxShadow: 'none' }} title="Удалить из класса"><UserMinus size={16} /></button>
-                                              <button onClick={() => setBlockingUser(s)} style={{ background: 'transparent', color: '#dc2626', padding: '5px', boxShadow: 'none' }} title="Исключить и заблокировать"><Ban size={16} /></button>
+                                              
+                                              {/* Restricted actions for teachers on admins/creators */}
+                                              {!(profile?.role === 'teacher' && (s.role === 'admin' || s.role === 'creator')) ? (
+                                                <>
+                                                  <button onClick={() => openEditModal(s)} style={{ background: 'transparent', color: 'var(--primary-color)', padding: '5px', boxShadow: 'none' }} title="Изменить ФИО"><Edit3 size={16} /></button>
+                                                  <button onClick={() => setRemovingStudent(s)} style={{ background: 'transparent', color: 'red', padding: '5px', boxShadow: 'none' }} title="Удалить из класса"><UserMinus size={16} /></button>
+                                                  <button onClick={() => setBlockingUser(s)} style={{ background: 'transparent', color: '#dc2626', padding: '5px', boxShadow: 'none' }} title="Исключить и заблокировать"><Ban size={16} /></button>
+                                                </>
+                                              ) : (
+                                                <div title="Защищенный профиль" style={{ opacity: 0.3, padding: '5px' }}><Shield size={16} /></div>
+                                              )}
                                             </div>
                                           </div>
                                         ))}
