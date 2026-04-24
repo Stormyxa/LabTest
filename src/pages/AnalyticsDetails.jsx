@@ -383,7 +383,8 @@ const AttemptDetailsView = React.memo(({
                 correctAnswer: originQ.options[originQ.correctIndex],
                 isCorrect: ans.isCorrect,
                 timeSpent: ans.timeSpent || 0,
-                avgQTime: avgQ
+                avgQTime: avgQ,
+                explanation: originQ.explanation
               });
             }
           };
@@ -417,6 +418,13 @@ const AttemptDetailsView = React.memo(({
                       <BarChart2 size={14} /> <span>Среднее: {avgQ} сек</span>
                     </div>
                   </div>
+
+                  {originQ.explanation && (
+                    <div style={{ marginTop: '15px', padding: '12px 15px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '12px', border: '1px dashed rgba(99, 102, 241, 0.2)' }}>
+                      <div style={{ fontSize: '0.75rem', opacity: 0.5, fontWeight: '700', textTransform: 'uppercase', marginBottom: '5px', letterSpacing: '0.5px' }}>Пояснение</div>
+                      <div style={{ fontSize: '0.9rem', lineHeight: '1.5', opacity: 0.9 }}>{originQ.explanation}</div>
+                    </div>
+                  )}
                 </div>
 
                 {qImages.length > 0 && (
@@ -1167,6 +1175,13 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
                         <BarChart2 size={16} /> Среднее: <strong>{detailedImageModal.avgQTime}с</strong>
                       </div>
                     </div>
+
+                    {detailedImageModal.explanation && (
+                      <div style={{ marginTop: '15px', padding: '15px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '15px', border: '1px dashed rgba(99, 102, 241, 0.2)' }}>
+                        <div style={{ fontSize: '0.8rem', opacity: 0.5, fontWeight: '700', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px', color: 'var(--primary-color)' }}>Пояснение</div>
+                        <div style={{ fontSize: '1rem', lineHeight: '1.5', opacity: 0.9 }}>{detailedImageModal.explanation}</div>
+                      </div>
+                    )}
                     
                   </div>
               </div>

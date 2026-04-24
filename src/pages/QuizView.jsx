@@ -669,7 +669,7 @@ const QuizView = ({ session, profile }) => {
                                 key={imgIdx} 
                                 src={resolveImgUrl(imgUrl)} 
                                 alt={`QImg ${imgIdx+1}`} 
-                                onClick={() => setDetailedImageModal({ isOpen: true, images: q.images, currentImgIdx: imgIdx, question: q.question, userAnswer: userChoice !== undefined ? q.options[userChoice] : 'Пропущено', correctAnswer: q.options[q.correctIndex], isCorrect, timeSpent: questionTimesRef.current[idx] || 0 })}
+                                onClick={() => setDetailedImageModal({ isOpen: true, images: q.images, currentImgIdx: imgIdx, question: q.question, userAnswer: userChoice !== undefined ? q.options[userChoice] : 'Пропущено', correctAnswer: q.options[q.correctIndex], isCorrect, timeSpent: questionTimesRef.current[idx] || 0, explanation: q.explanation })}
                                 style={{ height: '80px', borderRadius: '8px', objectFit: 'contain', border: '1px solid rgba(0,0,0,0.1)', background: 'var(--card-bg)', cursor: 'pointer' }}
                               />
                             ))}
@@ -696,6 +696,13 @@ const QuizView = ({ session, profile }) => {
                               <Clock size={14} /> Время на вопрос: {questionTimesRef.current[idx] || 0}с
                             </div>
                           </div>
+
+                          {q.explanation && (
+                            <div style={{ marginTop: '15px', padding: '12px 15px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '12px', border: '1px dashed rgba(99, 102, 241, 0.2)' }}>
+                              <div style={{ fontSize: '0.75rem', opacity: 0.5, fontWeight: '700', textTransform: 'uppercase', marginBottom: '5px', letterSpacing: '0.5px' }}>Пояснение</div>
+                              <div style={{ fontSize: '0.9rem', lineHeight: '1.5', opacity: 0.9 }}>{q.explanation}</div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -768,6 +775,13 @@ const QuizView = ({ session, profile }) => {
                           <Clock size={16} /> Потрачено времени: <strong>{detailedImageModal.timeSpent}с</strong>
                         </div>
                       </div>
+
+                      {detailedImageModal.explanation && (
+                        <div style={{ marginTop: '15px', padding: '15px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '15px', border: '1px dashed rgba(99, 102, 241, 0.2)' }}>
+                          <div style={{ fontSize: '0.8rem', opacity: 0.5, fontWeight: '700', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px', color: 'var(--primary-color)' }}>Пояснение</div>
+                          <div style={{ fontSize: '1rem', lineHeight: '1.5', opacity: 0.9 }}>{detailedImageModal.explanation}</div>
+                        </div>
+                      )}
                     </div>
                 </div>
               </div>
@@ -993,6 +1007,19 @@ const QuizView = ({ session, profile }) => {
               );
             })}
           </div>
+
+          {/* Learning Mode Explanation */}
+          {!isFirstAttempt && chosen !== undefined && currentQ.explanation && (
+            <div className="animate-fade-in" style={{ marginTop: '25px', padding: '20px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '20px', border: '1.5px dashed rgba(99, 102, 241, 0.2)' }}>
+              <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px', marginBottom: '10px', color: 'var(--primary-color)' }}>
+                <Zap size={18} />
+                <span style={{ fontSize: '0.85rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px' }}>Пояснение</span>
+              </div>
+              <div style={{ fontSize: '1.05rem', lineHeight: '1.6', opacity: 0.9 }}>
+                {currentQ.explanation}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex-center" style={{ justifyContent: 'space-between', marginTop: '30px', gap: '15px' }}>

@@ -388,7 +388,7 @@ const QuizRedactor = () => {
   const addQuestion = () => {
     if (questions.length >= MAX_QUESTIONS) return;
     pushHistory(title, questions);
-    setQuestions(p => [...p, { question: 'Новый вопрос', options: ['Вариант 1', 'Вариант 2'], correctIndex: null, images: [] }]);
+    setQuestions(p => [...p, { question: 'Новый вопрос', options: ['Вариант 1', 'Вариант 2'], correctIndex: null, images: [], explanation: '' }]);
   };
 
   const deleteQuestion = (idx) => {
@@ -399,6 +399,9 @@ const QuizRedactor = () => {
 
   const updateQText = (idx, text) =>
     setQuestions(p => p.map((q, i) => i === idx ? { ...q, question: text } : q));
+
+  const updateQExplanation = (idx, text) =>
+    setQuestions(p => p.map((q, i) => i === idx ? { ...q, explanation: text } : q));
 
   // Option operations
   const addOption = (qIdx) => {
@@ -1211,6 +1214,29 @@ const QuizRedactor = () => {
                       ))}
                     </div>
                   )}
+                  {/* Explanation Section */}
+                  <div style={{ marginTop: '20px', borderTop: '1px solid rgba(0,0,0,0.05)', paddingTop: '15px' }}>
+                    <div style={{ fontSize: '0.85rem', opacity: 0.6, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '10px' }}>
+                      Пояснение к ответу (необязательно)
+                    </div>
+                    <textarea
+                      placeholder="Объясните, почему этот ответ правильный..."
+                      value={q.explanation || ''}
+                      onChange={e => {
+                        updateQExplanation(qIdx, e.target.value);
+                      }}
+                      style={{
+                        width: '100%',
+                        height: '80px',
+                        fontSize: '0.9rem',
+                        padding: '12px 15px',
+                        borderRadius: '12px',
+                        resize: 'vertical',
+                        background: 'rgba(0,0,0,0.02)',
+                        border: '1px solid rgba(0,0,0,0.05)'
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
