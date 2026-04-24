@@ -76,6 +76,7 @@ const QuizView = ({ session, profile }) => {
   const saveResultRef = useRef(null); // stable ref to saveResult
   const finishTimeRef = useRef(null); // frozen finish timestamp for results screen
   const questionTimesRef = useRef({}); // tracks seconds spent on each question
+  const navRef = useRef(null);
 
   const blocker = useBlocker(
     useCallback(
@@ -122,6 +123,16 @@ const QuizView = ({ session, profile }) => {
       localStorage.setItem(`quiz_current_idx_${id}`, currentIdx.toString());
     }
   }, [currentIdx, loading, showResult, id]);
+
+  // AUTO-SCROLL to buttons on PC when answering in learning mode
+  useEffect(() => {
+    if (!isMobile && !isFirstAttempt && answers[currentIdx] !== undefined) {
+      // Small delay to let the explanation expansion start
+      setTimeout(() => {
+        navRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      }, 150);
+    }
+  }, [answers, currentIdx, isMobile, isFirstAttempt]);
 
   // beforeunload: save result if elapsed >= EXIT_GRACE_SECONDS
   useEffect(() => {
@@ -1085,7 +1096,7 @@ const QuizView = ({ session, profile }) => {
 
         {/* Navigation Buttons (Desktop) */}
         {!isMobile && (
-          <div className="quiz-nav-container flex-center" style={{ 
+          <div ref={navRef} className="quiz-nav-container flex-center" style={{ 
             justifyContent: 'space-between', 
             gap: '15px',
             maxWidth: '800px',
@@ -1136,7 +1147,7 @@ const QuizView = ({ session, profile }) => {
       )}
 
       {isMobile && createPortal(
-        <div className="quiz-nav-container flex-center" style={{ 
+        <div ref={navRef} className="quiz-nav-container flex-center" style={{ 
           justifyContent: 'space-between', 
           gap: '15px',
           maxWidth: '800px',
