@@ -1133,37 +1133,6 @@ const Dashboard = ({ session, profile }) => {
         </div>
       )}
 
-      {/* МОДАЛКА ЗАЯВОК В КЛАСС */}
-      {showApplicationsModal && (
-        <div className="modal-overlay" onClick={() => setShowApplicationsModal(null)}>
-          <div className="modal-content animate" style={{ width: '500px' }} onClick={e => e.stopPropagation()}>
-            <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '25px' }}>
-              <div>
-                <h3 style={{ margin: 0 }}>Заявки на вступление</h3>
-                <div style={{ fontSize: '0.85rem', opacity: 0.5 }}>{showApplicationsModal.name}</div>
-              </div>
-              <button onClick={() => setShowApplicationsModal(null)} style={{ background: 'transparent', color: 'inherit', padding: 0 }}><X size={24} /></button>
-            </div>
-
-            <div style={{ display: 'grid', gap: '12px', maxHeight: '450px', overflowY: 'auto' }}>
-              {classApplications.map(app => (
-                <div key={app.id} className="card" style={{ padding: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white' }}>
-                  <div>
-                    <div style={{ fontWeight: '600' }}>{app.profiles.last_name} {app.profiles.first_name}</div>
-                    <div style={{ fontSize: '0.8rem', opacity: 0.5 }}>{app.profiles.email}</div>
-                    <div style={{ fontSize: '0.7rem', opacity: 0.4, marginTop: '4px' }}>{new Date(app.created_at).toLocaleString()}</div>
-                  </div>
-                  <div className="flex-center" style={{ gap: '10px' }}>
-                    <button onClick={() => handleApplication(app, 'accepted')} style={{ background: '#22c55e', color: 'white', padding: '6px 12px', borderRadius: '8px', fontSize: '0.85rem' }}>Принять</button>
-                    <button onClick={() => handleApplication(app, 'rejected')} style={{ background: 'rgba(239, 68, 68, 0.1)', color: 'red', padding: '6px 12px', borderRadius: '8px', fontSize: '0.85rem', boxShadow: 'none' }}>Отклонить</button>
-                  </div>
-                </div>
-              ))}
-              {classApplications.length === 0 && <div style={{ textAlign: 'center', padding: '30px', opacity: 0.4 }}>Новых заявок нет</div>}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* МОДАЛКА БЕЛОГО/ЧЕРНОГО СПИСКА */}
       {showListsModal && (
