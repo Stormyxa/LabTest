@@ -239,12 +239,26 @@ const Profile = ({ session, profile, refreshProfile }) => {
 
   const handleCancelApplication = async () => {
     if (!application) return;
+    
+    // 30s cooldown for cancellation too
+    const now = new Date();
+    const lastChange = profile?.last_class_application_change ? new Date(profile.last_class_application_change) : null;
+    if (lastChange && (now - lastChange) < 30 * 1000) {
+      const remaining = Math.ceil((30 * 1000 - (now - lastChange)) / 1000);
+      setMsg(`Ожидайте: Отмена заявки возможна через ${remaining} сек.`);
+      return;
+    }
+
     setLoading(true);
     const { error } = await supabase.from('class_applications').delete().eq('id', application.id);
     if (!error) {
-      await supabase.from('profiles').update({ pending_class_id: null }).eq('id', session.user.id);
+      await supabase.from('profiles').update({ 
+        pending_class_id: null,
+        last_class_application_change: new Date().toISOString()
+      }).eq('id', session.user.id);
       setApplication(null);
-      setMsg('Заявка отменена.');
+      setClassId(''); // Reset selection
+      setMsg('Заявка отменена. Теперь вы можете выбрать другой класс.');
       refreshProfile();
     }
     setLoading(false);

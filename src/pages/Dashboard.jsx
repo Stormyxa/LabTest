@@ -91,8 +91,7 @@ const Dashboard = ({ session, profile }) => {
   const [teacherClasses, setTeacherClasses] = useState([]); // Classes assigned to the current teacher
   const [classTeachers, setClassTeachers] = useState([]); // Teachers for the selected class
   const [showTeachersModal, setShowTeachersModal] = useState(null); // class object
-  const [showApplicationsModal, setShowApplicationsModal] = useState(null); // class object
-  const [classApplications, setClassApplications] = useState([]);
+  const [classApplications, setClassApplications] = useState({}); // { classId: apps[] }
   const [showListsModal, setShowListsModal] = useState(null); // { class, type: 'white' | 'black' }
   const [classListItems, setClassListItems] = useState([]);
   const [expandedSchools, setExpandedSchools] = useState(() => {
@@ -116,6 +115,7 @@ const Dashboard = ({ session, profile }) => {
       expandedKeys.forEach(cid => {
         if (expandedClasses[cid]) {
           fetchClassStudents(cid);
+          fetchClassApplications(cid);
         }
       });
     }
@@ -411,10 +411,10 @@ const Dashboard = ({ session, profile }) => {
 
   const fetchClassApplications = async (cid) => {
     const { data } = await supabase.from('class_applications')
-      .select('*, profiles(first_name, last_name, email)')
+      .select('*, profiles(id, first_name, last_name, patronymic, email)')
       .eq('class_id', cid)
       .eq('status', 'pending');
-    if (data) setClassApplications(data);
+    if (data) setClassApplications(prev => ({ ...prev, [cid]: data }));
   };
 
   const handleApplication = async (app, status) => {
@@ -720,6 +720,7 @@ const Dashboard = ({ session, profile }) => {
                                   } else {
                                     setExpandedClasses(prev => ({ ...prev, [cls.id]: true }));
                                     fetchClassStudents(cls.id);
+                                    fetchClassApplications(cls.id);
                                   }
                                 }} style={{ cursor: 'pointer', flex: 1 }}>
                                   <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px' }}>
@@ -785,6 +786,29 @@ const Dashboard = ({ session, profile }) => {
                                       Лимит: {cls.max_students || 50}
                                     </button>
                                   </div>
+
+                                  {/* APPLICATIONS SECTION */}
+                                  {classApplications[cls.id]?.length > 0 && (
+                                    <div style={{ margin: '0 25px 20px', padding: '15px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '15px', border: '1px dashed var(--primary-color)' }}>
+                                      <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--primary-color)', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                        <UserPlus size={14} /> НОВЫЕ ЗАЯВКИ ({classApplications[cls.id].length})
+                                      </div>
+                                      <div style={{ display: 'grid', gap: '10px' }}>
+                                        {classApplications[cls.id].map(app => (
+                                          <div key={app.id} className="flex-center" style={{ justifyContent: 'space-between', background: 'white', padding: '10px 15px', borderRadius: '10px' }}>
+                                            <div style={{ fontSize: '0.85rem' }}>
+                                              <strong>{app.profiles?.last_name} {app.profiles?.first_name}</strong>
+                                              <div style={{ opacity: 0.5, fontSize: '0.75rem' }}>{app.profiles?.email}</div>
+                                            </div>
+                                            <div className="flex-center" style={{ gap: '10px' }}>
+                                              <button onClick={() => handleApplication(app, 'accepted')} style={{ padding: '5px 12px', fontSize: '0.75rem', background: '#22c55e', color: 'white' }}>Принять</button>
+                                              <button onClick={() => handleApplication(app, 'rejected')} style={{ padding: '5px 12px', fontSize: '0.75rem', background: 'rgba(0,0,0,0.05)', color: 'red', boxShadow: 'none' }}>Отклонить</button>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
                                   <div style={{ padding: '0 25px 20px' }}>
                                     {loadingStudents && !classStudents[cls.id] ? (
                                       <div style={{ textAlign: 'center', padding: '20px', opacity: 0.5 }}>Загрузка...</div>
