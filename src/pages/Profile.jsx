@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { User, Mail, Calendar, GraduationCap, CheckCircle, Award, FileText, TrendingUp, Star, MapPin, Building, Shield, ShieldOff, Zap, BarChart2, Clock, XCircle, Info, AlertCircle } from 'lucide-react';
+import { User, Mail, Calendar, GraduationCap, CheckCircle, Award, FileText, TrendingUp, Star, MapPin, Building, Shield, ShieldOff, Zap, BarChart2, Clock, XCircle, Info, AlertCircle, Check, AlertTriangle } from 'lucide-react';
 
 const Profile = ({ session, profile, refreshProfile }) => {
   const location = useLocation();
@@ -27,6 +27,8 @@ const Profile = ({ session, profile, refreshProfile }) => {
   // Modal states
   const [showNoClassModal, setShowNoClassModal] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successModalContent, setSuccessModalContent] = useState({ title: '', text: '', icon: 'check' });
   const [agreeObserver, setAgreeObserver] = useState(false);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState(location.state?.msg || '');
@@ -202,7 +204,14 @@ const Profile = ({ session, profile, refreshProfile }) => {
           pending_class_id: classId,
           last_class_application_change: new Date().toISOString()
         }).eq('id', session.user.id);
-        setMsg('Ваша заявка успешно отправлена учителю!');
+        
+        setSuccessModalContent({
+          title: 'Заявка отправлена!',
+          text: `Вы подали заявку в класс "${cls.name}". Теперь нужно дождаться, пока ваш учитель подтвердит её в своей панели управления. После этого вам откроется доступ ко всем функциям класса.`,
+          icon: 'check'
+        });
+        setShowSuccessModal(true);
+        
         fetchApplication();
         refreshProfile();
       }
@@ -484,7 +493,7 @@ const Profile = ({ session, profile, refreshProfile }) => {
             </div>
           )}
 
-          {(!profile?.is_profile_setup_completed || profile?.role === 'admin' || profile?.role === 'creator') && (
+          {(!profile?.is_profile_setup_completed || !profile?.class_id || profile?.role === 'admin' || profile?.role === 'creator') && (
             <div style={{ gridColumn: '1 / -1', marginTop: '10px' }}>
               <button type="submit" disabled={loading} style={{ width: '100%', padding: '15px' }}>
                 {loading ? 'Сохранение...' : (profile?.is_profile_setup_completed ? 'Обновить данные' : 'Подтвердить и сохранить')}
@@ -538,6 +547,26 @@ const Profile = ({ session, profile, refreshProfile }) => {
               <button onClick={() => setShowConfirmModal(false)} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>Отмена</button>
               <button onClick={confirmUpdate}>Да, обновить</button>
             </div>
+          </div>
+        </div>
+      )}
+      {/* МОДАЛКА УСПЕХА / ОШИБКИ */}
+      {showSuccessModal && (
+        <div className="modal-overlay" onClick={() => setShowSuccessModal(false)}>
+          <div className="modal-content animate" style={{ width: '450px' }} onClick={e => e.stopPropagation()}>
+            <div className="flex-center" style={{ 
+              justifyContent: 'center', width: '60px', height: '60px', borderRadius: '50%', 
+              background: successModalContent.icon === 'check' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)', 
+              color: successModalContent.icon === 'check' ? '#22c55e' : '#ef4444', 
+              margin: '0 auto 25px' 
+            }}>
+              {successModalContent.icon === 'check' ? <Check size={32} /> : <AlertTriangle size={32} />}
+            </div>
+            <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>{successModalContent.title}</h2>
+            <p style={{ opacity: 0.7, marginBottom: '30px', lineHeight: '1.6', textAlign: 'center' }}>
+              {successModalContent.text}
+            </p>
+            <button onClick={() => setShowSuccessModal(false)} style={{ width: '100%' }}>Понятно</button>
           </div>
         </div>
       )}
