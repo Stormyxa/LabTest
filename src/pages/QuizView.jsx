@@ -27,6 +27,18 @@ const QuizView = ({ session, profile }) => {
 
   // Results display
   const [showAnswersList, setShowAnswersList] = useState(false);
+  const [isExplanationExpanded, setIsExplanationExpanded] = useState(() => {
+    const saved = localStorage.getItem('quiz_explanation_expanded');
+    return saved === null ? true : saved === 'true';
+  });
+
+  const toggleExplanation = () => {
+    setIsExplanationExpanded(prev => {
+      const newVal = !prev;
+      localStorage.setItem('quiz_explanation_expanded', newVal.toString());
+      return newVal;
+    });
+  };
 
   // Timer
   const [isFirstAttempt, setIsFirstAttempt] = useState(false);
@@ -698,9 +710,23 @@ const QuizView = ({ session, profile }) => {
                           </div>
 
                           {q.explanation && (
-                            <div style={{ marginTop: '15px', padding: '12px 15px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '12px', border: '1px dashed rgba(99, 102, 241, 0.2)' }}>
-                              <div style={{ fontSize: '0.75rem', opacity: 0.5, fontWeight: '700', textTransform: 'uppercase', marginBottom: '5px', letterSpacing: '0.5px' }}>Пояснение</div>
-                              <div style={{ fontSize: '0.9rem', lineHeight: '1.5', opacity: 0.9 }}>{q.explanation}</div>
+                            <div style={{ marginTop: '15px', padding: '0 15px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '12px', border: '1px dashed rgba(99, 102, 241, 0.2)', transition: 'all 0.3s' }}>
+                              <div 
+                                className="flex-center" 
+                                onClick={toggleExplanation}
+                                style={{ justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none', padding: '12px 0' }}
+                              >
+                                <div style={{ fontSize: '0.75rem', opacity: 0.5, fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Пояснение</div>
+                                {isExplanationExpanded ? <ChevronUp size={14} opacity={0.4} /> : <ChevronDown size={14} opacity={0.4} />}
+                              </div>
+                              <div style={{ 
+                                maxHeight: isExplanationExpanded ? '1000px' : '0', 
+                                overflow: 'hidden', 
+                                transition: 'max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s',
+                                opacity: isExplanationExpanded ? 1 : 0
+                              }}>
+                                <div style={{ paddingBottom: '12px', fontSize: '0.9rem', lineHeight: '1.5', opacity: 0.9 }}>{q.explanation}</div>
+                              </div>
                             </div>
                           )}
                         </div>
@@ -1010,13 +1036,32 @@ const QuizView = ({ session, profile }) => {
 
           {/* Learning Mode Explanation */}
           {!isFirstAttempt && chosen !== undefined && currentQ.explanation && (
-            <div className="animate-fade-in" style={{ marginTop: '25px', padding: '20px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '20px', border: '1.5px dashed rgba(99, 102, 241, 0.2)' }}>
-              <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px', marginBottom: '10px', color: 'var(--primary-color)' }}>
-                <Zap size={18} />
-                <span style={{ fontSize: '0.85rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px' }}>Пояснение</span>
+            <div style={{ 
+              background: 'rgba(99, 102, 241, 0.05)', borderRadius: '20px', border: '1.5px dashed rgba(99, 102, 241, 0.2)',
+              overflow: 'hidden', padding: '0 20px',
+              animation: 'slideDownFade 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards'
+            }}>
+              <div 
+                className="flex-center" 
+                onClick={toggleExplanation}
+                style={{ justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none', padding: '20px 0' }}
+              >
+                <div className="flex-center" style={{ gap: '10px', color: 'var(--primary-color)' }}>
+                  <Zap size={18} />
+                  <span style={{ fontSize: '0.85rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px' }}>Пояснение</span>
+                </div>
+                {isExplanationExpanded ? <ChevronUp size={18} opacity={0.5} /> : <ChevronDown size={18} opacity={0.5} />}
               </div>
-              <div style={{ fontSize: '1.05rem', lineHeight: '1.6', opacity: 0.9 }}>
-                {currentQ.explanation}
+              
+              <div style={{ 
+                maxHeight: isExplanationExpanded ? '1000px' : '0', 
+                overflow: 'hidden', 
+                transition: 'max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s',
+                opacity: isExplanationExpanded ? 1 : 0
+              }}>
+                <div style={{ paddingBottom: '20px', fontSize: '1.05rem', lineHeight: '1.6', opacity: 0.9 }}>
+                  {currentQ.explanation}
+                </div>
               </div>
             </div>
           )}

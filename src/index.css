@@ -166,6 +166,25 @@ select {
   }
 }
 
+@keyframes slideDownFade {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+    max-height: 0;
+    margin-top: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    max-height: 1500px;
+    margin-top: 25px;
+    padding-top: 20px;
+    padding-bottom: 20px;
+  }
+}
+
 /* --- SKELETON LOADERS (Заглушки) --- */
 .skeleton {
   background: var(--card-bg);
