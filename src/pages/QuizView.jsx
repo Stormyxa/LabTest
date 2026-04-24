@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate, useBlocker } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { 
@@ -6,11 +7,23 @@ import {
   AlertTriangle, Book, FileText, ChevronDown, ChevronUp, Clock, Zap 
 } from 'lucide-react';
 import { resolveImgUrl } from '../lib/imageUtils';
+import { useScrollRestoration } from '../lib/useScrollRestoration';
 
 const SECONDS_PER_QUESTION = 25;
 const EXIT_GRACE_SECONDS = 30;
 
+const useIsMobile = () => {
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+  return isMobile;
+};
+
 const QuizView = ({ session, profile }) => {
+  const isMobile = useIsMobile();
   const { id } = useParams();
   const navigate = useNavigate();
 
@@ -50,7 +63,10 @@ const QuizView = ({ session, profile }) => {
   
   useEffect(() => {
     setCurrentImageIdx(0);
+    // Note: We don't scroll to top here because the user explicitly asked to preserve scroll position between questions.
   }, [currentIdx]);
+
+  useScrollRestoration(loading);
 
   const timerRef = useRef(null);
   const finishedRef = useRef(false);
@@ -829,237 +845,237 @@ const QuizView = ({ session, profile }) => {
   const formatTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
   return (
-    <div style={{ position: 'relative' }}>
-      {/* BLUR OVERLAY when tab is hidden */}
-      {isBlurred && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 99999,
-          backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
-          background: 'rgba(0,0,0,0.5)',
-          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '20px',
-          color: 'white', textAlign: 'center', padding: '20px'
-        }}>
-          <AlertTriangle size={48} color="#facc15" />
-          <h2>Вкладка свёрнута</h2>
-          <p style={{ opacity: 0.8, maxWidth: '350px' }}>Тест продолжается. Вернитесь обратно, чтобы продолжить прохождение.</p>
-        </div>
-      )}
-
-      {/* STICKY TIMER (first attempt only) */}
-      {isFirstAttempt && timeLeft !== null && !showResult && (
-        <div style={{
-          position: 'sticky', top: 0, zIndex: 100,
-          background: 'var(--card-bg)',
-          borderBottom: `3px solid ${timerColor}`,
-          padding: '10px 20px',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
-          boxShadow: '0 2px 12px rgba(0,0,0,0.1)',
-          transition: 'border-color 0.5s'
-        }}>
-          <Clock size={18} color={timerColor} />
-          <span style={{ fontWeight: '700', fontSize: '1.1rem', color: timerColor, fontVariantNumeric: 'tabular-nums', transition: 'color 0.5s' }}>
-            {formatTime(timeLeft)}
-          </span>
-          <span style={{ opacity: 0.5, fontSize: '0.85rem' }}>— Оставшееся время</span>
-          {/* Mini progress bar */}
-          <div style={{ flex: 1, maxWidth: '200px', height: '6px', background: 'rgba(0,0,0,0.08)', borderRadius: '10px', overflow: 'hidden', marginLeft: '10px' }}>
-            <div style={{ width: `${timerPercent * 100}%`, height: '100%', background: timerColor, transition: 'width 1s linear, background 0.5s' }} />
-          </div>
-        </div>
-      )}
-
-      <div
-        className="container animate"
-        style={{
-          maxWidth: '800px',
-          padding: '60px 20px',
-          position: 'relative',
-          userSelect: 'none',
-          WebkitUserSelect: 'none',
-          MozUserSelect: 'none',
-          msUserSelect: 'none',
-        }}
-      >
-        {/* Exit button */}
-        <button
-          onClick={handleExit}
-          className="flex-center"
-          style={{ position: 'absolute', top: '20px', right: '20px', width: '40px', height: '40px', borderRadius: '12px', background: 'rgba(255,0,0,0.05)', color: 'red', padding: 0, boxShadow: 'none', zIndex: 10 }}
-          title="Выйти из теста"
-        >
-          <X size={20} />
-        </button>
-
-        <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '20px', opacity: 0.6, paddingRight: '50px' }}>
-          <span style={{ whiteSpace: 'nowrap', fontSize: '0.9rem', fontWeight: '500' }}>Вопрос {currentIdx + 1} из {questions.length}</span>
-          <div className="flex-center" style={{ gap: '10px', flex: 1, justifyContent: 'flex-end', marginLeft: '20px', minWidth: 0 }}>
-            {quiz.quiz_sections?.book_url && (
-              <a href={quiz.quiz_sections.book_url} target="_blank" rel="noopener noreferrer"
-                style={{ color: 'var(--primary-color)', flexShrink: 0, display: 'flex' }} title="Открыть учебник">
-                <Book size={20} />
-              </a>
-            )}
-            <h3 style={{ fontSize: '0.95rem', fontWeight: '600', margin: 0, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {quiz.title}
-            </h3>
-          </div>
-        </div>
-
-        <div style={{ width: '100%', height: '8px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', marginBottom: '20px', overflow: 'hidden' }}>
-          <div style={{ width: `${(Object.keys(answers).length / questions.length) * 100}%`, height: '100%', background: 'var(--primary-color)', transition: 'width 0.3s' }} />
-        </div>
-
-        {/* QUESTION NAVIGATOR (DOTS) */}
-        <div className="flex-center" style={{ gap: '8px', marginBottom: '30px', flexWrap: 'wrap', justifyContent: 'center' }}>
-          {questions.map((q, idx) => {
-            const isCurrent = idx === currentIdx;
-            const hasAns = answers[idx] !== undefined;
-            const isCorrect = hasAns && answers[idx] === q.correctIndex;
-            
-            let dotColor = 'rgba(0,0,0,0.1)';
-            if (isFirstAttempt) {
-              if (hasAns) dotColor = 'var(--primary-color)';
-            } else {
-              if (hasAns) dotColor = isCorrect ? '#4ade80' : '#f87171';
-            }
-
-            return (
-              <button
-                key={idx}
-                onClick={() => setCurrentIdx(idx)}
-                style={{
-                  width: '12px', height: '12px', borderRadius: '50%', padding: 0, minWidth: 0, boxShadow: 'none',
-                  background: dotColor,
-                  transform: isCurrent ? 'scale(1.3)' : 'scale(1)',
-                  border: isCurrent ? '2px solid var(--text-color)' : 'none',
-                  transition: 'all 0.2s', cursor: 'pointer'
-                }}
-                title={`Вопрос ${idx + 1}`}
-              />
-            );
-          })}
-        </div>
-
-        <div className="card animate" key={currentIdx} style={{ minHeight: '450px', display: 'flex', flexDirection: 'column' }}>
-          {currentQ.images && currentQ.images.length > 0 && (
-            <div style={{ marginBottom: '25px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <div style={{ position: 'relative', width: '100%', display: 'flex', justifyContent: 'center' }}>
-                <img 
-                  src={resolveImgUrl(currentQ.images[currentImageIdx])} 
-                  style={{ maxWidth: '100%', maxHeight: '40vh', objectFit: 'contain', borderRadius: '12px', userSelect: 'none', WebkitUserSelect: 'none' }} 
-                  alt={`Изображение ${currentImageIdx+1}`}
-                  onContextMenu={(e) => e.preventDefault()}
-                  onDragStart={(e) => e.preventDefault()}
-                />
-                
-                {currentQ.images.length > 1 && (
-                  <>
-                    <button 
-                      onClick={() => setCurrentImageIdx(p => p === 0 ? currentQ.images.length - 1 : p - 1)}
-                      style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', background: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', padding: '8px', cursor: 'pointer', boxShadow: 'none' }}
-                      className="flex-center"
-                    >
-                      <ChevronLeft size={20} />
-                    </button>
-                    <button 
-                      onClick={() => setCurrentImageIdx(p => p === currentQ.images.length - 1 ? 0 : p + 1)}
-                      style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', padding: '8px', cursor: 'pointer', boxShadow: 'none' }}
-                      className="flex-center"
-                    >
-                      <ChevronRight size={20} />
-                    </button>
-                  </>
-                )}
-              </div>
-              {currentQ.images.length > 1 && (
-                <div style={{ marginTop: '10px', fontSize: '0.85rem', opacity: 0.6, fontWeight: 'bold' }}>
-                  {currentImageIdx + 1} / {currentQ.images.length}
-                </div>
-              )}
-            </div>
-          )}
-          
-          <h2 style={{ marginBottom: '40px', fontSize: (currentQ.images && currentQ.images.length > 0) ? '1.4rem' : '1.7rem', lineHeight: '1.4' }}>{currentQ.question}</h2>
-
+    <>
+      <div style={{ position: 'relative' }}>
+        {/* BLUR OVERLAY when tab is hidden */}
+        {isBlurred && (
           <div style={{
-            display: 'grid', gap: '12px', marginTop: 'auto',
-            gridTemplateColumns: currentQ.options.some(opt => opt.length > 39) ? '1fr' : 'repeat(auto-fit, minmax(320px, 1fr))',
-            justifyContent: 'center', alignItems: 'stretch'
+            position: 'fixed', inset: 0, zIndex: 99999,
+            backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '20px',
+            color: 'white', textAlign: 'center', padding: '20px'
           }}>
-            {currentQ.options.map((opt, idx) => {
-              const isCorrect = idx === currentQ.correctIndex;
-              const isSelected = chosen === idx;
-              
-              let bgColor = 'var(--card-bg)';
-              let borderColor = 'rgba(0,0,0,0.1)';
-              let textColor = 'var(--text-color)';
+            <AlertTriangle size={48} color="#facc15" />
+            <h2>Вкладка свёрнута</h2>
+            <p style={{ opacity: 0.8, maxWidth: '350px' }}>Тест продолжается. Вернитесь обратно, чтобы продолжить прохождение.</p>
+          </div>
+        )}
 
-              if (chosen !== undefined) {
-                if (isFirstAttempt) {
-                  // Exam mode: just highlight selected in purple
-                  if (isSelected) {
-                    bgColor = 'rgba(99, 102, 241, 0.1)';
-                    borderColor = 'var(--primary-color)';
-                  }
-                } else {
-                  // Learning mode: show Green/Red feedback
-                  if (isCorrect) {
-                    bgColor = 'rgba(74, 222, 128, 0.2)';
-                    borderColor = '#4ade80';
-                  } else if (isSelected) {
-                    bgColor = 'rgba(248, 113, 113, 0.2)';
-                    borderColor = '#f87171';
-                  }
-                }
+        {/* STICKY TIMER (first attempt only) */}
+        {isFirstAttempt && timeLeft !== null && !showResult && (
+          <div style={{
+            position: 'sticky', top: 0, zIndex: 100,
+            background: 'var(--card-bg)',
+            borderBottom: `3px solid ${timerColor}`,
+            padding: '10px 20px',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+            boxShadow: '0 2px 12px rgba(0,0,0,0.1)',
+            transition: 'border-color 0.5s'
+          }}>
+            <Clock size={18} color={timerColor} />
+            <span style={{ fontWeight: '700', fontSize: '1.1rem', color: timerColor, fontVariantNumeric: 'tabular-nums', transition: 'color 0.5s' }}>
+              {formatTime(timeLeft)}
+            </span>
+            <span style={{ opacity: 0.5, fontSize: '0.85rem' }}>— Оставшееся время</span>
+            {/* Mini progress bar */}
+            <div style={{ flex: 1, maxWidth: '200px', height: '6px', background: 'rgba(0,0,0,0.08)', borderRadius: '10px', overflow: 'hidden', marginLeft: '10px' }}>
+              <div style={{ width: `${timerPercent * 100}%`, height: '100%', background: timerColor, transition: 'width 1s linear, background 0.5s' }} />
+            </div>
+          </div>
+        )}
+
+        <div
+          className="container animate quiz-page-content"
+          style={{
+            maxWidth: '800px',
+            padding: '60px 20px',
+            paddingBottom: '20px',
+            position: 'relative',
+            userSelect: 'none',
+            WebkitUserSelect: 'none',
+            MozUserSelect: 'none',
+            msUserSelect: 'none',
+          }}
+        >
+          {/* Exit button */}
+          <button
+            onClick={handleExit}
+            className="flex-center"
+            style={{ position: 'absolute', top: '20px', right: '20px', width: '40px', height: '40px', borderRadius: '12px', background: 'rgba(255,0,0,0.05)', color: 'red', padding: 0, boxShadow: 'none', zIndex: 10 }}
+            title="Выйти из теста"
+          >
+            <X size={20} />
+          </button>
+
+          <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '20px', opacity: 0.6, paddingRight: '50px' }}>
+            <span style={{ whiteSpace: 'nowrap', fontSize: '0.9rem', fontWeight: '500' }}>Вопрос {currentIdx + 1} из {questions.length}</span>
+            <div className="flex-center" style={{ gap: '10px', flex: 1, justifyContent: 'flex-end', marginLeft: '20px', minWidth: 0 }}>
+              {quiz.quiz_sections?.book_url && (
+                <a href={quiz.quiz_sections.book_url} target="_blank" rel="noopener noreferrer"
+                  style={{ color: 'var(--primary-color)', flexShrink: 0, display: 'flex' }} title="Открыть учебник">
+                  <Book size={20} />
+                </a>
+              )}
+              <h3 style={{ fontSize: '0.95rem', fontWeight: '600', margin: 0, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {quiz.title}
+              </h3>
+            </div>
+          </div>
+
+          <div style={{ width: '100%', height: '8px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', marginBottom: '20px', overflow: 'hidden' }}>
+            <div style={{ width: `${(Object.keys(answers).length / questions.length) * 100}%`, height: '100%', background: 'var(--primary-color)', transition: 'width 0.3s' }} />
+          </div>
+
+          {/* QUESTION NAVIGATOR (DOTS) */}
+          <div className="flex-center" style={{ gap: '8px', marginBottom: '30px', flexWrap: 'wrap', justifyContent: 'center' }}>
+            {questions.map((q, idx) => {
+              const isCurrent = idx === currentIdx;
+              const hasAns = answers[idx] !== undefined;
+              const isCorrect = hasAns && answers[idx] === q.correctIndex;
+              
+              let dotColor = 'rgba(0,0,0,0.1)';
+              if (isFirstAttempt) {
+                if (hasAns) dotColor = 'var(--primary-color)';
+              } else {
+                if (hasAns) dotColor = isCorrect ? '#4ade80' : '#f87171';
               }
 
               return (
-                <button key={idx} onClick={() => handleSelect(idx)}
+                <button
+                  key={idx}
+                  onClick={() => setCurrentIdx(idx)}
                   style={{
-                    textAlign: 'left', background: bgColor, color: textColor,
-                    border: `2px solid ${borderColor}`, padding: '18px 25px', borderRadius: '18px',
-                    fontSize: '1.05rem', position: 'relative', boxShadow: 'none', transition: 'all 0.2s',
-                    height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center',
-                    userSelect: 'none', WebkitUserSelect: 'none',
-                  }}>
-                  <div className="flex-center" style={{ justifyContent: 'space-between', gap: '10px' }}>
-                    <span>{opt}</span>
-                    <div style={{ flexShrink: 0 }}>
-                      {!isFirstAttempt && chosen !== undefined && isCorrect && <CheckCircle size={20} color="#4ade80" />}
-                      {!isFirstAttempt && chosen !== undefined && isSelected && !isCorrect && <XCircle size={20} color="#f87171" />}
-                    </div>
-                  </div>
-                </button>
+                    width: '12px', height: '12px', borderRadius: '50%', padding: 0, minWidth: 0, boxShadow: 'none',
+                    background: dotColor,
+                    transform: isCurrent ? 'scale(1.3)' : 'scale(1)',
+                    border: isCurrent ? '2px solid var(--text-color)' : 'none',
+                    transition: 'all 0.2s', cursor: 'pointer'
+                  }}
+                  title={`Вопрос ${idx + 1}`}
+                />
               );
             })}
           </div>
 
-          {/* Learning Mode Explanation */}
-          {!isFirstAttempt && chosen !== undefined && currentQ.explanation && (
-            <div style={{ 
-              background: 'rgba(99, 102, 241, 0.05)', borderRadius: '20px', border: '1.5px dashed rgba(99, 102, 241, 0.2)',
-              overflow: 'hidden', padding: '0 20px',
-              animation: 'slideDownFade 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards'
-            }}>
-              <div 
-                className="flex-center" 
-                onClick={toggleExplanation}
-                style={{ justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none', padding: '20px 0' }}
-              >
-                <div className="flex-center" style={{ gap: '10px', color: 'var(--primary-color)' }}>
-                  <Zap size={18} />
-                  <span style={{ fontSize: '0.85rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px' }}>Пояснение</span>
+          <div className="card animate" key={currentIdx} style={{ minHeight: '450px', display: 'flex', flexDirection: 'column' }}>
+            {currentQ.images && currentQ.images.length > 0 && (
+              <div style={{ marginBottom: '25px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <div style={{ position: 'relative', width: '100%', display: 'flex', justifyContent: 'center' }}>
+                  <img 
+                    src={resolveImgUrl(currentQ.images[currentImageIdx])} 
+                    style={{ maxWidth: '100%', maxHeight: '40vh', objectFit: 'contain', borderRadius: '12px', userSelect: 'none', WebkitUserSelect: 'none' }} 
+                    alt={`Изображение ${currentImageIdx+1}`}
+                    onContextMenu={(e) => e.preventDefault()}
+                    onDragStart={(e) => e.preventDefault()}
+                  />
+                  
+                  {currentQ.images.length > 1 && (
+                    <>
+                      <button 
+                        onClick={() => setCurrentImageIdx(p => p === 0 ? currentQ.images.length - 1 : p - 1)}
+                        style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', background: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', padding: '8px', cursor: 'pointer', boxShadow: 'none' }}
+                        className="flex-center"
+                      >
+                        <ChevronLeft size={20} />
+                      </button>
+                      <button 
+                        onClick={() => setCurrentImageIdx(p => p === currentQ.images.length - 1 ? 0 : p + 1)}
+                        style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', padding: '8px', cursor: 'pointer', boxShadow: 'none' }}
+                        className="flex-center"
+                      >
+                        <ChevronRight size={20} />
+                      </button>
+                    </>
+                  )}
                 </div>
-                {isExplanationExpanded ? <ChevronUp size={18} opacity={0.5} /> : <ChevronDown size={18} opacity={0.5} />}
+                {currentQ.images.length > 1 && (
+                  <div style={{ marginTop: '10px', fontSize: '0.85rem', opacity: 0.6, fontWeight: 'bold' }}>
+                    {currentImageIdx + 1} / {currentQ.images.length}
+                  </div>
+                )}
               </div>
-              
+            )}
+            
+            <h2 style={{ marginBottom: '40px', fontSize: (currentQ.images && currentQ.images.length > 0) ? '1.4rem' : '1.7rem', lineHeight: '1.4' }}>{currentQ.question}</h2>
+
+            <div style={{
+              display: 'grid', gap: '12px', marginTop: 'auto',
+              gridTemplateColumns: currentQ.options.some(opt => opt.length > 39) ? '1fr' : 'repeat(auto-fit, minmax(320px, 1fr))',
+              justifyContent: 'center', alignItems: 'stretch'
+            }}>
+              {currentQ.options.map((opt, idx) => {
+                const chosen = answers[currentIdx];
+                const isCorrect = idx === currentQ.correctIndex;
+                const isSelected = chosen === idx;
+                
+                let bgColor = 'var(--card-bg)';
+                let borderColor = 'rgba(0,0,0,0.1)';
+                let textColor = 'var(--text-color)';
+
+                if (chosen !== undefined) {
+                  if (isFirstAttempt) {
+                    if (isSelected) {
+                      bgColor = 'rgba(99, 102, 241, 0.1)';
+                      borderColor = 'var(--primary-color)';
+                    }
+                  } else {
+                    if (isCorrect) {
+                      bgColor = 'rgba(74, 222, 128, 0.2)';
+                      borderColor = '#4ade80';
+                    } else if (isSelected) {
+                      bgColor = 'rgba(248, 113, 113, 0.2)';
+                      borderColor = '#f87171';
+                    }
+                  }
+                }
+
+                return (
+                  <button key={idx} onClick={() => handleSelect(idx)}
+                    style={{
+                      textAlign: 'left', background: bgColor, color: textColor,
+                      border: `2px solid ${borderColor}`, padding: '18px 25px', borderRadius: '18px',
+                      fontSize: '1.05rem', position: 'relative', boxShadow: 'none', transition: 'all 0.2s',
+                      height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center',
+                      userSelect: 'none', WebkitUserSelect: 'none',
+                    }}>
+                    <div className="flex-center" style={{ justifyContent: 'space-between', gap: '10px' }}>
+                      <span>{opt}</span>
+                      <div style={{ flexShrink: 0 }}>
+                        {!isFirstAttempt && chosen !== undefined && isCorrect && <CheckCircle size={20} color="#4ade80" />}
+                        {!isFirstAttempt && chosen !== undefined && isSelected && !isCorrect && <XCircle size={20} color="#f87171" />}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {!isFirstAttempt && answers[currentIdx] !== undefined && currentQ.explanation && (
               <div style={{ 
-                maxHeight: isExplanationExpanded ? '1000px' : '0', 
-                overflow: 'hidden', 
-                transition: 'max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s',
-                opacity: isExplanationExpanded ? 1 : 0
+                background: 'rgba(99, 102, 241, 0.05)', borderRadius: '20px', border: '1.5px dashed rgba(99, 102, 241, 0.2)',
+                overflow: 'hidden', padding: '0 20px',
+                animation: 'slideDownFade 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards'
               }}>
-                <div style={{ paddingBottom: '20px', fontSize: '1.05rem', lineHeight: '1.6', opacity: 0.9 }}>
+                <div 
+                  className="flex-center" 
+                  onClick={toggleExplanation}
+                  style={{ justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none', padding: '20px 0' }}
+                >
+                  <div className="flex-center" style={{ gap: '10px', color: 'var(--primary-color)' }}>
+                    <Zap size={18} />
+                    <span style={{ fontSize: '0.85rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px' }}>Пояснение</span>
+                  </div>
+                  {isExplanationExpanded ? <ChevronUp size={18} opacity={0.5} /> : <ChevronDown size={18} opacity={0.5} />}
+                </div>
+                
+                <div style={{ 
+                  maxHeight: isExplanationExpanded ? '1000px' : '0', 
+                  overflow: 'hidden', 
+                  transition: 'max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s',
+                  opacity: isExplanationExpanded ? 1 : 0
+                }}>
+                  <div style={{ paddingBottom: '20px', fontSize: '1.05rem', lineHeight: '1.6', opacity: 0.9 }}>
                   {currentQ.explanation}
                 </div>
               </div>
@@ -1067,7 +1083,68 @@ const QuizView = ({ session, profile }) => {
           )}
         </div>
 
-        <div className="flex-center" style={{ justifyContent: 'space-between', marginTop: '30px', gap: '15px' }}>
+        {/* Navigation Buttons (Desktop) */}
+        {!isMobile && (
+          <div className="quiz-nav-container flex-center" style={{ 
+            justifyContent: 'space-between', 
+            gap: '15px',
+            maxWidth: '800px',
+            margin: '30px auto 0',
+            width: '100%',
+            padding: '0 20px',
+            paddingBottom: '60px'
+          }}>
+            <button onClick={() => setCurrentIdx(prev => prev - 1)} disabled={currentIdx === 0} className="flex-center"
+              style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', opacity: currentIdx === 0 ? 0.3 : 1, padding: '12px 25px', fontSize: '1.1rem', fontWeight: '600', gap: '8px', flex: 1, maxWidth: '200px' }}>
+              <ChevronLeft size={24} /> <span>Назад</span>
+            </button>
+            <button onClick={currentIdx < questions.length - 1 ? () => setCurrentIdx(prev => prev + 1) : () => finishQuiz()} className="flex-center"
+              style={{ padding: '12px 25px', fontSize: '1.1rem', fontWeight: '600', gap: '8px', flex: 1, maxWidth: '250px' }}>
+              <span>{currentIdx === questions.length - 1 ? 'Завершить' : 'Далее'}</span> <ChevronRight size={24} />
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+
+      {showExitModal && createPortal(
+        <div className="modal-overlay" onClick={() => setShowExitModal(false)}>
+          <div className="modal-content animate" onClick={e => e.stopPropagation()}>
+            <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: pastGrace ? 'rgba(250, 204, 21, 0.1)' : 'rgba(248, 113, 113, 0.1)', color: pastGrace ? '#ca8a04' : '#f87171', margin: '0 auto 25px' }}>
+              <AlertTriangle size={32} />
+            </div>
+            <h2 style={{ marginBottom: '15px' }}>{isFirstAttempt ? 'Выйти из теста?' : 'Прервать тест?'}</h2>
+            <p style={{ opacity: 0.7, marginBottom: '30px', lineHeight: '1.6' }}>
+              {isFirstAttempt 
+                ? <>Ваши текущие ответы <strong>сохранены</strong>, но таймер продолжает идти в фоне даже после выхода. <br /> Вы сможете вернуться и завершить тест, пока время не вышло.</>
+                : elapsed >= EXIT_GRACE_SECONDS 
+                  ? <>Вы прошли более {EXIT_GRACE_SECONDS} секунд. <br /> Ваш <strong>текущий результат будет сохранён</strong>, а на неотвеченные вопросы будет засчитана ошибка.</>
+                  : (!isFirstAttempt && answeredCount > 2)
+                    ? <>Вы ответили на {answeredCount} вопроса. <br /> Ваш <strong>прогресс будет сохранён</strong> в статистике.</>
+                    : <>Вы выходите слишком рано. <br /> Ваш прогресс <strong>не будет сохранён</strong>. Вы действительно хотите выйти?</>
+              }
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+              <button onClick={cancelExit} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>Вернуться</button>
+              <button onClick={confirmExit} style={{ background: (pastGrace || isFirstAttempt) ? '#ca8a04' : '#f87171', color: 'white', padding: '15px' }}>
+                {(pastGrace || isFirstAttempt) ? 'Сохранить и выйти' : 'Да, выйти'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {isMobile && createPortal(
+        <div className="quiz-nav-container flex-center" style={{ 
+          justifyContent: 'space-between', 
+          gap: '15px',
+          maxWidth: '800px',
+          margin: '0 auto',
+          width: '100%',
+          padding: '0 20px',
+          paddingBottom: '60px'
+        }}>
           <button onClick={() => setCurrentIdx(prev => prev - 1)} disabled={currentIdx === 0} className="flex-center"
             style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', opacity: currentIdx === 0 ? 0.3 : 1, padding: '12px 25px', fontSize: '1.1rem', fontWeight: '600', gap: '8px', flex: 1, maxWidth: '200px' }}>
             <ChevronLeft size={24} /> <span>Назад</span>
@@ -1076,38 +1153,10 @@ const QuizView = ({ session, profile }) => {
             style={{ padding: '12px 25px', fontSize: '1.1rem', fontWeight: '600', gap: '8px', flex: 1, maxWidth: '250px' }}>
             <span>{currentIdx === questions.length - 1 ? 'Завершить' : 'Далее'}</span> <ChevronRight size={24} />
           </button>
-        </div>
-      </div>
-
-      {/* EXIT MODAL */}
-        {showExitModal && (
-          <div className="modal-overlay" onClick={() => setShowExitModal(false)}>
-            <div className="modal-content animate" onClick={e => e.stopPropagation()}>
-              <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: pastGrace ? 'rgba(250, 204, 21, 0.1)' : 'rgba(248, 113, 113, 0.1)', color: pastGrace ? '#ca8a04' : '#f87171', margin: '0 auto 25px' }}>
-                <AlertTriangle size={32} />
-              </div>
-              <h2 style={{ marginBottom: '15px' }}>{isFirstAttempt ? 'Выйти из теста?' : 'Прервать тест?'}</h2>
-              <p style={{ opacity: 0.7, marginBottom: '30px', lineHeight: '1.6' }}>
-                {isFirstAttempt 
-                  ? <>Ваши текущие ответы <strong>сохранены</strong>, но таймер продолжает идти в фоне даже после выхода. <br /> Вы сможете вернуться и завершить тест, пока время не вышло.</>
-                  : elapsed >= EXIT_GRACE_SECONDS 
-                    ? <>Вы прошли более {EXIT_GRACE_SECONDS} секунд. <br /> Ваш <strong>текущий результат будет сохранён</strong>, а на неотвеченные вопросы будет засчитана ошибка.</>
-                    : (!isFirstAttempt && answeredCount > 2)
-                      ? <>Вы ответили на {answeredCount} вопроса. <br /> Ваш <strong>прогресс будет сохранён</strong> в статистике.</>
-                      : <>Вы выходите слишком рано. <br /> Ваш прогресс <strong>не будет сохранён</strong>. Вы действительно хотите выйти?</>
-                }
-              </p>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                <button onClick={cancelExit} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>Вернуться</button>
-                <button onClick={confirmExit} style={{ background: (pastGrace || isFirstAttempt) ? '#ca8a04' : '#f87171', color: 'white', padding: '15px' }}>
-                  {(pastGrace || isFirstAttempt) ? 'Сохранить и выйти' : 'Да, выйти'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-    </div>
+        </div>,
+        document.body
+      )}
+    </>
   );
 };
 
