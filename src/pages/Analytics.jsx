@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { fetchWithCache, useCacheSync } from '../lib/cache';
+import { fetchWithCache, useCacheSync, getCachedData } from '../lib/cache';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { resolveImgUrl } from '../lib/imageUtils';
@@ -12,16 +12,19 @@ const Analytics = () => {
   const navigate = useNavigate();
   const quizId = searchParams.get('id');
 
-  const [quiz, setQuiz] = useState(null);
-  const [results, setResults] = useState([]);
+  const [quiz, setQuiz] = useState(() => getCachedData(`an_quiz_${quizId}`));
+  const [results, setResults] = useState(() => getCachedData(`an_results_processed_${quizId}`) || []);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState(null);
   const [deletingQuizMode, setDeletingQuizMode] = useState(false);
+  const [cities, setCities] = useState(() => getCachedData('cities') || []);
+  const [schools, setSchools] = useState(() => getCachedData('schools') || []);
+  const [classes, setClasses] = useState(() => getCachedData('classes') || []);
   const [showEditBlockedModal, setShowEditBlockedModal] = useState(false);
-  const [profile, setProfile] = useState(null);
+  const [profile, setProfile] = useState(() => getCachedData('profile'));
   const [quizAuthorRole, setQuizAuthorRole] = useState(null);
-  const [teacherClasses, setTeacherClasses] = useState([]); // Array of class IDs
-  
+  const [teacherClasses, setTeacherClasses] = useState(() => getCachedData('teacher_classes') || []); // Array of class IDs
+
   const [showObservers, setShowObservers] = useState(sessionStorage.getItem('an_show_observers') === 'true');
   const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
   const [sortConfig, setSortConfig] = useState('date_desc'); // default
@@ -52,10 +55,6 @@ const Analytics = () => {
     }
   }, [searchParams]);
 
-  // Структура для фильтров
-  const [cities, setCities] = useState([]);
-  const [schools, setSchools] = useState([]);
-  const [classes, setClasses] = useState([]);
   const [filterCity, setFilterCity] = useState(sessionStorage.getItem('f_city') || 'all');
   const [filterSchool, setFilterSchool] = useState(sessionStorage.getItem('f_school') || 'all');
   const [filterClass, setFilterClass] = useState(sessionStorage.getItem('f_class') || 'all');
@@ -74,12 +73,12 @@ const Analytics = () => {
   const fetchProfile = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-      const { data: p } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+      const p = await fetchWithCache('profile', () => supabase.from('profiles').select('*').eq('id', user.id).single().then(res => res.data));
       setProfile(p);
       
       if (p.role === 'teacher') {
-        const { data: tc } = await supabase.from('class_teachers').select('class_id').eq('email', user.email.toLowerCase());
-        if (tc) setTeacherClasses(tc.map(row => row.class_id));
+        const tc = await fetchWithCache('teacher_classes', () => supabase.from('class_teachers').select('class_id').eq('email', user.email.toLowerCase()).then(res => res.data.map(row => row.class_id)));
+        if (tc) setTeacherClasses(tc);
       }
       
       fetchStructure(p);
@@ -87,23 +86,23 @@ const Analytics = () => {
   };
 
   const fetchStructure = async (p = profile) => {
-    const [ { data: c }, { data: s }, { data: cl } ] = await Promise.all([
-      supabase.from('cities').select('*').order('name'),
-      supabase.from('schools').select('*').order('name'),
-      supabase.from('classes').select('*').order('name')
+    const [c, s, cl] = await Promise.all([
+      fetchWithCache('cities', () => supabase.from('cities').select('*').order('name').then(res => res.data)),
+      fetchWithCache('schools', () => supabase.from('schools').select('*').order('name').then(res => res.data)),
+      fetchWithCache('classes', () => supabase.from('classes').select('*').order('name').then(res => res.data))
     ]);
-    if (c) setCities(c); 
-    if (s) setSchools(s); 
+    if (c) setCities(c);
+    if (s) setSchools(s);
     if (cl) setClasses(cl);
 
     // Automated Filtering Defaults
     if (p && (p.role === 'teacher' || p.role === 'admin' || p.role === 'creator')) {
       const sCity = sessionStorage.getItem('f_city');
       const sSchool = sessionStorage.getItem('f_school');
-      
+
       if ((!sCity || sCity === 'all') && p.city_id) setFilterCity(p.city_id);
       if ((!sSchool || sSchool === 'all') && p.school_id) setFilterSchool(p.school_id);
-      
+
       // Force-lock teacher filters
       if (p.role === 'teacher') {
         if (p.city_id) setFilterCity(p.city_id);
@@ -112,10 +111,55 @@ const Analytics = () => {
     }
   };
 
+  useCacheSync('cities', setCities);
+  useCacheSync('schools', setSchools);
+  useCacheSync('classes', setClasses);
+  useCacheSync('profile', setProfile);
+  useCacheSync('teacher_classes', setTeacherClasses);
+  useCacheSync(`an_quiz_${quizId}`, (q) => { if (q) { setQuiz(q); setQuizAuthorRole(q.profiles?.role); } });
+  
+  // Custom sync for results to handle processing
+  useCacheSync(`an_results_${quizId}`, async (r) => {
+    if (r && r.length > 0) {
+      const attempts = await fetchWithCache(`an_attempts_${quizId}`, () => supabase.from('quiz_attempts').select('user_id, is_suspicious, is_passed, is_incomplete, score, max_score, created_at').eq('quiz_id', quizId).order('created_at', { ascending: true }).then(res => res.data));
+      const userIds = [...new Set(r.map(res => res.user_id))];
+      const { data: profs } = await supabase.from('profiles').select('*').in('id', userIds);
+      
+      const processResults = (rData, attemptsData, profilesData) => {
+        const statsMap = {};
+        const latestStatusMap = {};
+        if (attemptsData) {
+          attemptsData.forEach(att => {
+            if (!statsMap[att.user_id]) statsMap[att.user_id] = { total: 0, suspicious: 0, failed: 0 };
+            statsMap[att.user_id].total++;
+            if (att.is_suspicious) statsMap[att.user_id].suspicious++;
+            if (!att.is_passed && !att.is_incomplete) statsMap[att.user_id].failed++;
+            if (!latestStatusMap[att.user_id] || new Date(att.created_at) > new Date(latestStatusMap[att.user_id].created_at)) {
+              latestStatusMap[att.user_id] = att;
+            }
+          });
+        }
+        return rData.map(res => {
+          const stats = statsMap[res.user_id] || { total: 0, suspicious: 0, failed: 0 };
+          const lStatus = latestStatusMap[res.user_id] || {};
+          const isSuspiciousUserAvg = stats.total > 0 && (stats.suspicious / stats.total) > 0.4;
+          const is_incomplete_user = !!lStatus.is_incomplete;
+          const is_suspicious_user = !!lStatus.is_suspicious || isSuspiciousUserAvg;
+          const is_underperforming_user = !!lStatus.is_underperforming;
+          return { ...res, profiles: profilesData?.find(p => p.id === res.user_id), is_passed: !!lStatus.is_passed, is_incomplete_user, is_suspicious_user, is_underperforming_user };
+        });
+      };
+      const processed = processResults(r, attempts, profs);
+      setResults(processed);
+      setCachedData(`an_results_processed_${quizId}`, processed);
+    }
+    setLoading(false);
+  });
+
   const fetchQuizData = async () => {
-    setLoading(true);
-    
-    const [ q, r ] = await Promise.all([
+    if (!quiz) setLoading(true);
+
+    const [q, r] = await Promise.all([
       fetchWithCache(`an_quiz_${quizId}`, () => supabase.from('quizzes').select('*, profiles(role)').eq('id', quizId).single().then(res => res.data)),
       fetchWithCache(`an_results_${quizId}`, () => supabase.from('quiz_results').select('*').eq('quiz_id', quizId).order('completed_at', { ascending: false }).then(res => res.data))
     ]);
@@ -124,7 +168,7 @@ const Analytics = () => {
       setQuiz(q);
       setQuizAuthorRole(q.profiles?.role);
     }
-    
+
     if (r && r.length > 0) {
       // Fetch fresh attempts to calculate behavioral stats
       const attempts = await fetchWithCache(`an_attempts_${quizId}`, () => supabase
@@ -138,7 +182,7 @@ const Analytics = () => {
       const processResults = (rData, attemptsData, profilesData) => {
         const statsMap = {};
         const latestStatusMap = {};
-        
+
         if (attemptsData) {
           attemptsData.forEach(att => {
             if (!statsMap[att.user_id]) statsMap[att.user_id] = { total: 0, suspicious: 0, failed: 0 };
@@ -158,9 +202,9 @@ const Analytics = () => {
         return rData.map(res => {
           const stats = statsMap[res.user_id] || { total: 0, suspicious: 0, failed: 0 };
           const lStatus = latestStatusMap[res.user_id] || {};
-          
+
           const isSuspiciousUserAvg = stats.total > 0 && (stats.suspicious / stats.total) > 0.4;
-          
+
           const is_incomplete_user = !!lStatus.is_incomplete;
           const is_suspicious_user = !!lStatus.is_suspicious || isSuspiciousUserAvg;
           const is_underperforming_user = !!lStatus.is_underperforming;
@@ -225,14 +269,23 @@ const Analytics = () => {
 
   const isTeacher = profile?.role === 'teacher';
 
-  // Логика фильтрации
+  // Логика разрешенных объектов для учителя
+  const teacherClassObjects = classes.filter(c => teacherClasses.includes(c.id));
+  const teacherSchoolIds = [...new Set(teacherClassObjects.map(c => c.school_id))];
+  const teacherCityIds = [...new Set(schools.filter(s => teacherSchoolIds.includes(s.id)).map(s => s.city_id))];
+
+  const availableCities = cities.filter(c => {
+    if (isTeacher && quiz?.author_id !== profile?.id) return teacherCityIds.includes(c.id);
+    return true;
+  });
+
   const availableSchools = schools.filter(s => {
-    if (profile?.role === 'teacher' && quiz?.author_id !== profile?.id) return s.id === profile.school_id;
+    if (isTeacher && quiz?.author_id !== profile?.id) return teacherSchoolIds.includes(s.id);
     return filterCity === 'all' || s.city_id === filterCity;
   });
-  
+
   const availableClasses = classes.filter(c => {
-    if (profile?.role === 'teacher' && quiz?.author_id !== profile?.id) return teacherClasses.includes(c.id);
+    if (isTeacher && quiz?.author_id !== profile?.id) return teacherClasses.includes(c.id);
     return filterSchool === 'all' || c.school_id === filterSchool;
   });
 
@@ -282,28 +335,28 @@ const Analytics = () => {
 
   const sortedResults = [...filteredResults].sort((a, b) => {
     if (!sortConfig) return 0;
-    
+
     if (sortConfig.includes('name')) {
       const nameA = `${a.profiles?.last_name || ''} ${a.profiles?.first_name || ''}`.trim().toLowerCase() || 'яяя';
       const nameB = `${b.profiles?.last_name || ''} ${b.profiles?.first_name || ''}`.trim().toLowerCase() || 'яяя';
       if (sortConfig === 'name_asc') return nameA.localeCompare(nameB, 'ru');
       return nameB.localeCompare(nameA, 'ru');
     }
-    
+
     if (sortConfig.includes('date')) {
       const dateA = new Date(a.completed_at).getTime();
       const dateB = new Date(b.completed_at).getTime();
       if (sortConfig === 'date_asc') return dateA - dateB;
       return dateB - dateA;
     }
-    
+
     return 0;
   });
 
   // Логика прав на удаление
   const isPrivileged = profile?.role === 'creator' || profile?.role === 'admin';
   const isSystemCreator = profile?.role === 'creator';
-  
+
   // Проверяем наличие РЕЗУЛЬТАТОВ ДРУГИХ ПОЛЬЗОВАТЕЛЕЙ (не автора)
   const hasForeignResults = results.length > 0 && results.some(r => r.user_id !== quiz?.author_id);
 
@@ -312,7 +365,7 @@ const Analytics = () => {
 
   // Автор может удалять, только если НЕТ чужих результатов
   const canDelete = canDeleteEverything || (isAuthor && !hasForeignResults);
-  
+
   // Флаг для отображения поясняющего текста
   const showRestrictionMessage = isAuthor && hasForeignResults && !canDeleteEverything;
 
@@ -339,7 +392,7 @@ const Analytics = () => {
         const hasName = p?.first_name || p?.last_name;
         const displayName = p?.is_anonymous ? 'Анонимный профиль' : (hasName ? `${p.last_name || ''} ${p.first_name || ''}`.trim() : (p?.email || 'Неизвестный ученик'));
         const institution = [cities.find(c => c.id === p?.city_id)?.name, schools.find(s => s.id === p?.school_id)?.name, classes.find(c => c.id === p?.class_id)?.name].filter(Boolean).join(' / ') || '—';
-        
+
         return [displayName, institution, `${res.score} / ${res.total_questions}`, `${res.first_score} / ${res.total_questions}`, new Date(res.completed_at).toLocaleDateString()];
       });
 
@@ -368,348 +421,348 @@ const Analytics = () => {
   return (
     <>
       <div className="container animate" style={{ padding: '40px 20px' }}>
-      <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '30px' }}>
-        <button onClick={() => navigate(-1)} className="flex-center" style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', boxShadow: 'none', padding: '10px 20px' }}>
-          <ChevronLeft size={20} /> Назад
-        </button>
-        <div className="flex-center" style={{ gap: '10px' }}>
-          {canDelete && (
-            <button
-              onClick={() => {
-                if (results.length > 0) setShowEditBlockedModal(true);
-                else navigate(`/redactor?id=${quizId}`);
-              }}
-              className="flex-center"
-              style={{ background: 'rgba(99, 102, 241, 0.05)', color: 'var(--primary-color)', boxShadow: 'none', padding: '10px 20px' }}>
-              <Pencil size={18} style={{ marginRight: '8px' }} /> Редактировать
-            </button>
-          )}
-          {canDelete && (
-            <button onClick={() => setDeletingQuizMode(true)} className="flex-center" style={{ background: 'rgba(255,0,0,0.05)', color: 'red', boxShadow: 'none', padding: '10px 20px' }}>
-              <Trash2 size={18} style={{ marginRight: '8px' }} /> Удалить тест
-            </button>
-          )}
-          {showRestrictionMessage && (
-            <div className="flex-center" style={{ gap: '8px', padding: '10px 15px', background: 'rgba(255, 107, 107, 0.05)', color: '#ff6b6b', borderRadius: '12px', fontSize: '0.85rem', maxWidth: '300px' }}>
-              <Lock size={16} />
-              <span>Для удаления теста или результатов обратитесь к администратору (есть результаты других учеников)</span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '40px', flexWrap: 'wrap', gap: '20px' }}>
-        <div>
-          <h2 style={{ fontSize: '2rem', marginBottom: '10px' }}>{quiz.title}</h2>
-          <p style={{ opacity: 0.6 }}>Подробная статистика прохождений {isTeacher && quiz.author_id !== profile?.id ? '(Только ваша школа)' : ''}</p>
-        </div>
-
-        <div className="flex-center" style={{ gap: '15px' }}>
-          <div className="card flex-center" style={{ padding: '5px', gap: '5px', marginBottom: 0, borderRadius: '15px', background: 'rgba(0,0,0,0.03)' }}>
-            <button 
-              onClick={() => setUseFirstResults(true)} 
-              title="Статистика по первой попытке"
-              style={{ 
-                padding: '8px 15px', 
-                fontSize: '0.75rem', 
-                borderRadius: '12px',
-                background: useFirstResults ? 'var(--primary-color)' : 'transparent',
-                color: useFirstResults ? 'white' : 'var(--text-color)',
-                boxShadow: useFirstResults ? '0 4px 10px rgba(99, 102, 241, 0.3)' : 'none',
-                fontWeight: 'bold',
-                border: 'none'
-              }}
-            >
-              1-я попытка
-            </button>
-            <button 
-              onClick={() => setUseFirstResults(false)} 
-              title="Статистика по текущему (лучшему) результату"
-              style={{ 
-                padding: '8px 15px', 
-                fontSize: '0.75rem', 
-                borderRadius: '12px',
-                background: !useFirstResults ? 'var(--primary-color)' : 'transparent',
-                color: !useFirstResults ? 'white' : 'var(--text-color)',
-                boxShadow: !useFirstResults ? '0 4px 10px rgba(99, 102, 241, 0.3)' : 'none',
-                fontWeight: 'bold',
-                border: 'none'
-              }}
-            >
-              Текущий
-            </button>
-          </div>
-          <button onClick={generatePDF} className="flex-center card" style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none', padding: '15px 20px', marginBottom: 0, cursor: 'pointer', border: 'none', fontWeight: 'bold' }}>
-            <Download size={20} style={{ marginRight: '8px' }} /> Отчет PDF
+        <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '30px' }}>
+          <button onClick={() => navigate(-1)} className="flex-center" style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', boxShadow: 'none', padding: '10px 20px' }}>
+            <ChevronLeft size={20} /> Назад
           </button>
-          <StatMini label="Участников" value={filteredResults.length} icon={<User size={18} />} />
-          <StatMini label="Ср. результат" value={`${avgScore}% (${totalEarnedScore}/${totalPotentialScore})`} icon={<BarChart size={18} />} />
-        </div>
-      </div>
-
-      {/* Фильтры и инструменты */}
-      <div className="flex-center" style={{ gap: '15px', marginBottom: '30px', flexWrap: 'wrap', justifyContent: 'space-between' }}>
-        <div className="card" style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'center', marginBottom: 0, flex: 1 }}>
-          <Filter size={20} style={{ opacity: 0.5 }} />
-          <select 
-            id="analytics-filter-city"
-            name="city"
-            value={filterCity} 
-            onChange={e => { setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all'); }} 
-            style={{ width: 'auto', flex: 1, minWidth: '150px' }} 
-            disabled={isTeacher}
-          >
-            <option value="all">Все города</option>
-            {cities.map(c => (
-              <option key={c.id} value={c.id} disabled={!cityCounts[c.id]}>
-                {c.name} {!cityCounts[c.id] ? '(0)' : ''}
-              </option>
-            ))}
-          </select>
-          <select 
-            id="analytics-filter-school"
-            name="school"
-            value={filterSchool} 
-            onChange={e => { setFilterSchool(e.target.value); setFilterClass('all'); }} 
-            style={{ width: 'auto', flex: 1, minWidth: '150px' }} 
-            disabled={isTeacher}
-          >
-            <option value="all">Все школы</option>
-            {availableSchools.map(s => (
-              <option key={s.id} value={s.id} disabled={!schoolCounts[s.id]}>
-                {s.name} {!schoolCounts[s.id] ? '(0)' : ''}
-              </option>
-            ))}
-          </select>
-          <select 
-            id="analytics-filter-class"
-            name="class"
-            value={filterClass} 
-            onChange={e => setFilterClass(e.target.value)} 
-            style={{ width: 'auto', flex: 1, minWidth: '150px' }}
-          >
-            <option value="all">Все классы</option>
-            {availableClasses.map(c => (
-              <option key={c.id} value={c.id} disabled={!classCounts[c.id]}>
-                {c.name} {!classCounts[c.id] ? '(0)' : ''}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="flex-center" style={{ gap: '10px' }}>
-          <button 
-            onClick={() => setShowObservers(!showObservers)} 
-            className="flex-center" 
-            style={{ 
-              background: showObservers ? 'rgba(250, 204, 21, 0.15)' : 'rgba(0,0,0,0.05)', 
-              color: showObservers ? '#ca8a04' : 'inherit', 
-              boxShadow: 'none', 
-              padding: '10px 20px',
-              border: 'none',
-              fontWeight: 'bold'
-            }}
-          >
-            {showObservers ? <Shield size={18} style={{ marginRight: '8px' }} /> : <EyeOff size={18} style={{ marginRight: '8px' }} />}
-            {showObservers ? 'Скрыть наблюдателей' : 'Показать наблюдателей'}
-          </button>
-
-          {canDelete && (
-            <button 
-              onClick={() => setShowDeleteAllModal(true)} 
-              disabled={results.length === 0}
-              className="flex-center" 
-              style={{ background: 'rgba(255,0,0,0.05)', color: 'red', boxShadow: 'none', padding: '10px 20px', fontWeight: 'bold', border: 'none', opacity: results.length === 0 ? 0.4 : 1 }}
-            >
-              <Trash2 size={18} style={{ marginRight: '8px' }} /> Удалить все
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Успеваемость по вопросам (Инфографика) */}
-      {filteredResults.length > 0 && quiz.content?.questions && (
-        <div className="card" style={{ marginBottom: '40px' }}>
-          <h3 style={{ marginBottom: '25px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <BarChart size={20} /> Успеваемость по вопросам (с учетом фильтров)
-          </h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-            {quiz.content.questions.map((q, idx) => {
-              const correctAnswers = filteredResults.reduce((acc, r) => {
-                const answers = useFirstResults ? (r.first_answers_array || r.answers_array) : (r.answers_array || r.answers_map);
-                if (!answers || !answers[idx]) return acc;
-                return acc + 1;
-              }, 0);
-              const percent = Math.round((correctAnswers / filteredResults.length) * 100);
-              const isExpanded = !!expandedQuestions[idx];
-
-              return (
-                <div key={idx}>
-                  <div 
-                    className="flex-center" 
-                    style={{ justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.9rem', gap: '15px' }}
-                  >
-                    <div className="flex-center" style={{ gap: '10px', flex: 1, minWidth: 0 }}>
-                      <span 
-                        className="animate"
-                        style={{ 
-                          opacity: 0.8, 
-                          overflow: 'hidden', 
-                          textOverflow: isExpanded ? 'unset' : 'ellipsis', 
-                          whiteSpace: isExpanded ? 'normal' : 'nowrap', 
-                          display: 'block',
-                          lineHeight: '1.4',
-                          cursor: 'pointer',
-                          flex: 1
-                        }}
-                        onClick={() => setExpandedQuestions(p => ({ ...p, [idx]: !p[idx] }))}
-                      >
-                        {idx + 1}. {q.question}
-                      </span>
-                      {q.images && q.images.length > 0 && (
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); setImagePreviewModal({ isOpen: true, images: q.images, currentIdx: 0 }); }}
-                          className="flex-center"
-                          style={{ padding: '4px 8px', background: 'rgba(99,102,241,0.1)', color: 'var(--primary-color)', borderRadius: '6px', boxShadow: 'none', flexShrink: 0, gap: '4px' }}
-                          title="Посмотреть картинку"
-                        >
-                          <ImageIcon size={14} />
-                          <span style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>{q.images.length}</span>
-                        </button>
-                      )}
-                    </div>
-                    <span style={{ fontWeight: '700', whiteSpace: 'nowrap', color: percent > 70 ? '#4ade80' : (percent > 40 ? '#facc15' : '#f87171') }}>
-                      {percent}% ({correctAnswers}/{filteredResults.length})
-                    </span>
-                  </div>
-                  <div style={{ width: '100%', height: '8px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', overflow: 'hidden' }}>
-                    <div style={{ width: `${percent}%`, height: '100%', background: percent > 70 ? '#4ade80' : (percent > 40 ? '#facc15' : '#f87171'), transition: 'width 0.5s ease' }} />
-                  </div>
-                </div>
-              );
-            })}
+          <div className="flex-center" style={{ gap: '10px' }}>
+            {canDelete && (
+              <button
+                onClick={() => {
+                  if (results.length > 0) setShowEditBlockedModal(true);
+                  else navigate(`/redactor?id=${quizId}`);
+                }}
+                className="flex-center"
+                style={{ background: 'rgba(99, 102, 241, 0.05)', color: 'var(--primary-color)', boxShadow: 'none', padding: '10px 20px' }}>
+                <Pencil size={18} style={{ marginRight: '8px' }} /> Редактировать
+              </button>
+            )}
+            {canDelete && (
+              <button onClick={() => setDeletingQuizMode(true)} className="flex-center" style={{ background: 'rgba(255,0,0,0.05)', color: 'red', boxShadow: 'none', padding: '10px 20px' }}>
+                <Trash2 size={18} style={{ marginRight: '8px' }} /> Удалить тест
+              </button>
+            )}
+            {showRestrictionMessage && (
+              <div className="flex-center" style={{ gap: '8px', padding: '10px 15px', background: 'rgba(255, 107, 107, 0.05)', color: '#ff6b6b', borderRadius: '12px', fontSize: '0.85rem', maxWidth: '300px' }}>
+                <Lock size={16} />
+                <span>Для удаления теста или результатов обратитесь к администратору (есть результаты других учеников)</span>
+              </div>
+            )}
           </div>
         </div>
-      )}
 
-      {/* Таблица результатов */}
-      <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
-        
-        {/* HEADER & SORTING */}
-        <div className="flex-center" style={{ padding: '20px 25px', background: 'rgba(99, 102, 241, 0.04)', borderBottom: '1px solid rgba(0,0,0,0.05)', justifyContent: 'space-between', flexWrap: 'wrap', gap: '15px' }}>
+        <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '40px', flexWrap: 'wrap', gap: '20px' }}>
+          <div>
+            <h2 style={{ fontSize: '2rem', marginBottom: '10px' }}>{quiz.title}</h2>
+            <p style={{ opacity: 0.6 }}>Подробная статистика прохождений {isTeacher && quiz.author_id !== profile?.id ? '(Только ваша школа)' : ''}</p>
+          </div>
+
           <div className="flex-center" style={{ gap: '15px' }}>
-            <span style={{ fontWeight: 'bold', fontSize: '1.2rem', color: 'var(--primary-color)' }}>Результаты учеников</span>
-            <div className="flex-center" style={{ background: 'var(--card-bg)', borderRadius: '12px', padding: '4px', border: '1px solid rgba(0,0,0,0.05)', gap: '4px' }}>
-              <button 
-                onClick={() => setSortConfig(sortConfig === 'name_asc' ? 'name_desc' : 'name_asc')}
-                style={{ 
-                  background: sortConfig.includes('name') ? 'rgba(99, 102, 241, 0.1)' : 'transparent',
-                  color: sortConfig.includes('name') ? 'var(--primary-color)' : 'var(--text-color)',
-                  padding: '6px 12px', fontSize: '0.8rem', boxShadow: 'none', borderRadius: '8px', opacity: sortConfig.includes('name') ? 1 : 0.6
-                }} className="flex-center">
-                Алфавит {sortConfig === 'name_asc' && <ArrowDown size={14} style={{ marginLeft: '4px' }}/>} {sortConfig === 'name_desc' && <ArrowUp size={14} style={{ marginLeft: '4px' }}/>}
+            <div className="card flex-center" style={{ padding: '5px', gap: '5px', marginBottom: 0, borderRadius: '15px', background: 'rgba(0,0,0,0.03)' }}>
+              <button
+                onClick={() => setUseFirstResults(true)}
+                title="Статистика по первой попытке"
+                style={{
+                  padding: '8px 15px',
+                  fontSize: '0.75rem',
+                  borderRadius: '12px',
+                  background: useFirstResults ? 'var(--primary-color)' : 'transparent',
+                  color: useFirstResults ? 'white' : 'var(--text-color)',
+                  boxShadow: useFirstResults ? '0 4px 10px rgba(99, 102, 241, 0.3)' : 'none',
+                  fontWeight: 'bold',
+                  border: 'none'
+                }}
+              >
+                1-я попытка
               </button>
-              <button 
-                onClick={() => setSortConfig(sortConfig === 'date_desc' ? 'date_asc' : 'date_desc')}
-                style={{ 
-                  background: sortConfig.includes('date') ? 'rgba(99, 102, 241, 0.1)' : 'transparent',
-                  color: sortConfig.includes('date') ? 'var(--primary-color)' : 'var(--text-color)',
-                  padding: '6px 12px', fontSize: '0.8rem', boxShadow: 'none', borderRadius: '8px', opacity: sortConfig.includes('date') ? 1 : 0.6
-                }} className="flex-center">
-                Дата {sortConfig === 'date_desc' && <ArrowDown size={14} style={{ marginLeft: '4px' }}/>} {sortConfig === 'date_asc' && <ArrowUp size={14} style={{ marginLeft: '4px' }}/>}
+              <button
+                onClick={() => setUseFirstResults(false)}
+                title="Статистика по текущему (лучшему) результату"
+                style={{
+                  padding: '8px 15px',
+                  fontSize: '0.75rem',
+                  borderRadius: '12px',
+                  background: !useFirstResults ? 'var(--primary-color)' : 'transparent',
+                  color: !useFirstResults ? 'white' : 'var(--text-color)',
+                  boxShadow: !useFirstResults ? '0 4px 10px rgba(99, 102, 241, 0.3)' : 'none',
+                  fontWeight: 'bold',
+                  border: 'none'
+                }}
+              >
+                Текущий
               </button>
             </div>
-          </div>
-          
-          <div className="flex-center" style={{ gap: '8px', opacity: 0.6, fontSize: '0.8rem', maxWidth: '350px' }}>
-            <Info size={24} style={{ flexShrink: 0, color: 'var(--primary-color)' }} />
-            <span>Если ученика нет в списке, убедитесь, что его аккаунт привязан к правильному классу, а не находится в режиме наблюдателя.</span>
+            <button onClick={generatePDF} className="flex-center card" style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none', padding: '15px 20px', marginBottom: 0, cursor: 'pointer', border: 'none', fontWeight: 'bold' }}>
+              <Download size={20} style={{ marginRight: '8px' }} /> Отчет PDF
+            </button>
+            <StatMini label="Участников" value={filteredResults.length} icon={<User size={18} />} />
+            <StatMini label="Ср. результат" value={`${avgScore}% (${totalEarnedScore}/${totalPotentialScore})`} icon={<BarChart size={18} />} />
           </div>
         </div>
 
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '800px' }}>
-            <thead style={{ background: 'rgba(0,0,0,0.02)', fontSize: '0.9rem', opacity: 0.7 }}>
-            <tr>
-              <th style={{ padding: '20px' }}>Ученик</th>
-              <th style={{ padding: '20px' }}>Учебное заведение</th>
-              <th style={{ padding: '20px' }}>Результат (Тек/1-й)</th>
-              <th style={{ padding: '20px' }}>Баллы</th>
-              <th style={{ padding: '20px' }}>Действия</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sortedResults.map((res) => {
-              const p = res.profiles;
-              const hasName = p?.first_name || p?.last_name;
-              const displayName = p?.is_anonymous ? 'Анонимный профиль' : (hasName ? `${p.last_name || ''} ${p.first_name || ''}` : (p?.email || 'Неизвестный ученик'));
-              const cityName = cities.find(c => c.id === p?.city_id)?.name || '';
-              const schoolName = schools.find(s => s.id === p?.school_id)?.name || '';
-              const className = classes.find(c => c.id === p?.class_id)?.name || '';
+        {/* Фильтры и инструменты */}
+        <div className="flex-center" style={{ gap: '15px', marginBottom: '30px', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+          <div className="card" style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'center', marginBottom: 0, flex: 1 }}>
+            <Filter size={20} style={{ opacity: 0.5 }} />
+            <select
+              id="analytics-filter-city"
+              name="city"
+              value={filterCity}
+              onChange={e => { setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all'); }}
+              style={{ width: 'auto', flex: 1, minWidth: '150px' }}
+              disabled={isTeacher && availableCities.length <= 1 && quiz?.author_id !== profile?.id}
+            >
+              <option value="all">Все города</option>
+              {availableCities.map(c => (
+                <option key={c.id} value={c.id} disabled={!cityCounts[c.id]}>
+                  {c.name} {!cityCounts[c.id] ? '(нет результатов)' : ''}
+                </option>
+              ))}
+            </select>
+            <select
+              id="analytics-filter-school"
+              name="school"
+              value={filterSchool}
+              onChange={e => { setFilterSchool(e.target.value); setFilterClass('all'); }}
+              style={{ width: 'auto', flex: 1, minWidth: '150px' }}
+              disabled={isTeacher && availableSchools.length <= 1 && quiz?.author_id !== profile?.id}
+            >
+              <option value="all">Все школы</option>
+              {availableSchools.map(s => (
+                <option key={s.id} value={s.id} disabled={!schoolCounts[s.id]}>
+                  {s.name} {!schoolCounts[s.id] ? '(нет результатов)' : ''}
+                </option>
+              ))}
+            </select>
+            <select
+              id="analytics-filter-class"
+              name="class"
+              value={filterClass}
+              onChange={e => setFilterClass(e.target.value)}
+              style={{ width: 'auto', flex: 1, minWidth: '150px' }}
+            >
+              <option value="all">Все классы</option>
+              {availableClasses.map(c => (
+                <option key={c.id} value={c.id} disabled={!classCounts[c.id]}>
+                  {c.name} {!classCounts[c.id] ? '(нет результатов)' : `(${classCounts[c.id]})`}
+                </option>
+              ))}
+            </select>
+          </div>
 
-              return (
-                <tr key={res.id} style={{ 
-                  borderBottom: '1px solid rgba(0,0,0,0.01)',
-                  background: res.is_incomplete_user ? 'rgba(156, 163, 175, 0.15)' : (res.is_suspicious_user ? 'rgba(239, 68, 68, 0.08)' : (res.is_underperforming_user ? 'rgba(250, 204, 21, 0.08)' : 'transparent'))
-                }}>
-                  <td style={{ padding: '20px' }}>
-                    <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '8px' }}>
-                      <div style={{ fontWeight: '600', color: res.is_incomplete_user ? '#6b7280' : (res.is_suspicious_user ? '#ef4444' : 'inherit') }}>{displayName}</div>
-                      {p?.is_observer && <span style={{ padding: '2px 8px', background: 'rgba(250, 204, 21, 0.1)', color: '#ca8a04', borderRadius: '50px', fontSize: '0.65rem', fontWeight: 'bold' }}>НАБЛЮДАТЕЛЬ</span>}
-                      {p?.is_hidden && <span style={{ background: 'rgba(0,0,0,0.05)', color: 'rgba(0,0,0,0.5)', padding: '2px 8px', borderRadius: '50px', fontSize: '0.65rem' }} title="Скрытый пользователь"><EyeOff size={10} /></span>}
-                    </div>
-                    {p?.email && !p.is_anonymous && (
-                      <div style={{ fontSize: '0.8rem', opacity: 0.5, display: 'flex', alignItems: 'center', gap: '4px' }}><Mail size={12} /> {p.email}</div>
-                    )}
-                  </td>
-                  <td style={{ padding: '20px', fontSize: '0.85rem', opacity: 0.7 }}>
-                    <div>{cityName}</div>
-                    <div>{schoolName}</div>
-                    <div style={{ fontWeight: 'bold' }}>{className}</div>
-                  </td>
-                  <td style={{ padding: '20px' }}>
-                    <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px' }}>
-                      <div style={{ position: 'relative', width: '60px', height: '14px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', overflow: 'hidden' }}>
-                        <div style={{ width: `${(res.score / res.total_questions) * 100}%`, height: '100%', background: res.is_incomplete_user ? '#9ca3af' : (res.is_passed ? '#4ade80' : '#f87171') }} />
-                        <span style={{ position: 'absolute', width: '100%', left: 0, top: 0, fontSize: '0.6rem', textAlign: 'center', fontWeight: 'bold', color: 'var(--text-color)', lineHeight: '14px' }}>{res.score}/{res.total_questions}</span>
+          <div className="flex-center" style={{ gap: '10px' }}>
+            <button
+              onClick={() => setShowObservers(!showObservers)}
+              className="flex-center"
+              style={{
+                background: showObservers ? 'rgba(250, 204, 21, 0.15)' : 'rgba(0,0,0,0.05)',
+                color: showObservers ? '#ca8a04' : 'inherit',
+                boxShadow: 'none',
+                padding: '10px 20px',
+                border: 'none',
+                fontWeight: 'bold'
+              }}
+            >
+              {showObservers ? <Shield size={18} style={{ marginRight: '8px' }} /> : <EyeOff size={18} style={{ marginRight: '8px' }} />}
+              {showObservers ? 'Скрыть наблюдателей' : 'Показать наблюдателей'}
+            </button>
+
+            {canDelete && (
+              <button
+                onClick={() => setShowDeleteAllModal(true)}
+                disabled={results.length === 0}
+                className="flex-center"
+                style={{ background: 'rgba(255,0,0,0.05)', color: 'red', boxShadow: 'none', padding: '10px 20px', fontWeight: 'bold', border: 'none', opacity: results.length === 0 ? 0.4 : 1 }}
+              >
+                <Trash2 size={18} style={{ marginRight: '8px' }} /> Удалить все
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Успеваемость по вопросам (Инфографика) */}
+        {filteredResults.length > 0 && quiz.content?.questions && (
+          <div className="card" style={{ marginBottom: '40px' }}>
+            <h3 style={{ marginBottom: '25px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <BarChart size={20} /> Успеваемость по вопросам (с учетом фильтров)
+            </h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+              {quiz.content.questions.map((q, idx) => {
+                const correctAnswers = filteredResults.reduce((acc, r) => {
+                  const answers = useFirstResults ? (r.first_answers_array || r.answers_array) : (r.answers_array || r.answers_map);
+                  if (!answers || !answers[idx]) return acc;
+                  return acc + 1;
+                }, 0);
+                const percent = Math.round((correctAnswers / filteredResults.length) * 100);
+                const isExpanded = !!expandedQuestions[idx];
+
+                return (
+                  <div key={idx}>
+                    <div
+                      className="flex-center"
+                      style={{ justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.9rem', gap: '15px' }}
+                    >
+                      <div className="flex-center" style={{ gap: '10px', flex: 1, minWidth: 0 }}>
+                        <span
+                          className="animate"
+                          style={{
+                            opacity: 0.8,
+                            overflow: 'hidden',
+                            textOverflow: isExpanded ? 'unset' : 'ellipsis',
+                            whiteSpace: isExpanded ? 'normal' : 'nowrap',
+                            display: 'block',
+                            lineHeight: '1.4',
+                            cursor: 'pointer',
+                            flex: 1
+                          }}
+                          onClick={() => setExpandedQuestions(p => ({ ...p, [idx]: !p[idx] }))}
+                        >
+                          {idx + 1}. {q.question}
+                        </span>
+                        {q.images && q.images.length > 0 && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setImagePreviewModal({ isOpen: true, images: q.images, currentIdx: 0 }); }}
+                            className="flex-center"
+                            style={{ padding: '4px 8px', background: 'rgba(99,102,241,0.1)', color: 'var(--primary-color)', borderRadius: '6px', boxShadow: 'none', flexShrink: 0, gap: '4px' }}
+                            title="Посмотреть картинку"
+                          >
+                            <ImageIcon size={14} />
+                            <span style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>{q.images.length}</span>
+                          </button>
+                        )}
                       </div>
-                      <span style={{ fontSize: '0.8rem', opacity: 0.5 }}>/</span>
-                      <div style={{ position: 'relative', width: '40px', height: '10px', background: 'rgba(0,0,0,0.03)', borderRadius: '10px', overflow: 'hidden' }}>
-                        <div style={{ width: `${(res.first_score / res.total_questions) * 100}%`, height: '100%', background: 'var(--primary-color)', opacity: 0.5 }} />
-                        <span style={{ position: 'absolute', width: '100%', left: 0, top: 0, fontSize: '0.5rem', textAlign: 'center', fontWeight: 'bold', color: 'black', lineHeight: '10px' }}>{res.first_score}/{res.total_questions}</span>
-                      </div>
+                      <span style={{ fontWeight: '700', whiteSpace: 'nowrap', color: percent > 70 ? '#4ade80' : (percent > 40 ? '#facc15' : '#f87171') }}>
+                        {percent}% ({correctAnswers}/{filteredResults.length})
+                      </span>
                     </div>
-                  </td>
-                  <td style={{ padding: '20px', fontWeight: 'bold', color: res.is_incomplete_user ? '#6b7280' : (res.is_suspicious_user ? '#ef4444' : 'inherit') }}>
-                    {res.score} / {res.total_questions}
-                  </td>
-                  <td style={{ padding: '20px' }}>
-                    <div className="flex-center" style={{ gap: '10px', justifyContent: 'flex-start' }}>
-                      <button 
-                        onClick={() => navigate(`/analytics-details?quizId=${quizId}&userId=${res.user_id}`)} 
-                        style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', padding: '8px', borderRadius: '10px', boxShadow: 'none' }} 
-                        title="Подробная аналитика попыток"
-                      >
-                        <Info size={18} />
-                      </button>
-                      {canDelete && (
-                        <button onClick={() => setDeletingId(res.id)} style={{ background: 'rgba(255,0,0,0.05)', color: 'red', padding: '8px', borderRadius: '10px', boxShadow: 'none' }}>
-                          <Trash2 size={18} />
-                        </button>
-                      )}
+                    <div style={{ width: '100%', height: '8px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', overflow: 'hidden' }}>
+                      <div style={{ width: `${percent}%`, height: '100%', background: percent > 70 ? '#4ade80' : (percent > 40 ? '#facc15' : '#f87171'), transition: 'width 0.5s ease' }} />
                     </div>
-                  </td>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Таблица результатов */}
+        <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
+
+          {/* HEADER & SORTING */}
+          <div className="flex-center" style={{ padding: '20px 25px', background: 'rgba(99, 102, 241, 0.04)', borderBottom: '1px solid rgba(0,0,0,0.05)', justifyContent: 'space-between', flexWrap: 'wrap', gap: '15px' }}>
+            <div className="flex-center" style={{ gap: '15px' }}>
+              <span style={{ fontWeight: 'bold', fontSize: '1.2rem', color: 'var(--primary-color)' }}>Результаты учеников</span>
+              <div className="flex-center" style={{ background: 'var(--card-bg)', borderRadius: '12px', padding: '4px', border: '1px solid rgba(0,0,0,0.05)', gap: '4px' }}>
+                <button
+                  onClick={() => setSortConfig(sortConfig === 'name_asc' ? 'name_desc' : 'name_asc')}
+                  style={{
+                    background: sortConfig.includes('name') ? 'rgba(99, 102, 241, 0.1)' : 'transparent',
+                    color: sortConfig.includes('name') ? 'var(--primary-color)' : 'var(--text-color)',
+                    padding: '6px 12px', fontSize: '0.8rem', boxShadow: 'none', borderRadius: '8px', opacity: sortConfig.includes('name') ? 1 : 0.6
+                  }} className="flex-center">
+                  Алфавит {sortConfig === 'name_asc' && <ArrowDown size={14} style={{ marginLeft: '4px' }} />} {sortConfig === 'name_desc' && <ArrowUp size={14} style={{ marginLeft: '4px' }} />}
+                </button>
+                <button
+                  onClick={() => setSortConfig(sortConfig === 'date_desc' ? 'date_asc' : 'date_desc')}
+                  style={{
+                    background: sortConfig.includes('date') ? 'rgba(99, 102, 241, 0.1)' : 'transparent',
+                    color: sortConfig.includes('date') ? 'var(--primary-color)' : 'var(--text-color)',
+                    padding: '6px 12px', fontSize: '0.8rem', boxShadow: 'none', borderRadius: '8px', opacity: sortConfig.includes('date') ? 1 : 0.6
+                  }} className="flex-center">
+                  Дата {sortConfig === 'date_desc' && <ArrowDown size={14} style={{ marginLeft: '4px' }} />} {sortConfig === 'date_asc' && <ArrowUp size={14} style={{ marginLeft: '4px' }} />}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-center" style={{ gap: '8px', opacity: 0.6, fontSize: '0.8rem', maxWidth: '350px' }}>
+              <Info size={24} style={{ flexShrink: 0, color: 'var(--primary-color)' }} />
+              <span>Если ученика нет в списке, убедитесь, что его аккаунт привязан к правильному классу, а не находится в режиме наблюдателя.</span>
+            </div>
+          </div>
+
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '800px' }}>
+              <thead style={{ background: 'rgba(0,0,0,0.02)', fontSize: '0.9rem', opacity: 0.7 }}>
+                <tr>
+                  <th style={{ padding: '20px' }}>Ученик</th>
+                  <th style={{ padding: '20px' }}>Учебное заведение</th>
+                  <th style={{ padding: '20px' }}>Результат (Тек/1-й)</th>
+                  <th style={{ padding: '20px' }}>Баллы</th>
+                  <th style={{ padding: '20px' }}>Действия</th>
                 </tr>
-              );
-            })}
-            {sortedResults.length === 0 && <tr><td colSpan="5" style={{ padding: '60px', textAlign: 'center', opacity: 0.5 }}>Прохождений пока нет.</td></tr>}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
+              </thead>
+              <tbody>
+                {sortedResults.map((res) => {
+                  const p = res.profiles;
+                  const hasName = p?.first_name || p?.last_name;
+                  const displayName = p?.is_anonymous ? 'Анонимный профиль' : (hasName ? `${p.last_name || ''} ${p.first_name || ''}` : (p?.email || 'Неизвестный ученик'));
+                  const cityName = cities.find(c => c.id === p?.city_id)?.name || '';
+                  const schoolName = schools.find(s => s.id === p?.school_id)?.name || '';
+                  const className = classes.find(c => c.id === p?.class_id)?.name || '';
 
-  {/* ─── MODALS ─── */}
+                  return (
+                    <tr key={res.id} style={{
+                      borderBottom: '1px solid rgba(0,0,0,0.01)',
+                      background: res.is_incomplete_user ? 'rgba(156, 163, 175, 0.15)' : (res.is_suspicious_user ? 'rgba(239, 68, 68, 0.08)' : (res.is_underperforming_user ? 'rgba(250, 204, 21, 0.08)' : 'transparent'))
+                    }}>
+                      <td style={{ padding: '20px' }}>
+                        <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '8px' }}>
+                          <div style={{ fontWeight: '600', color: res.is_incomplete_user ? '#6b7280' : (res.is_suspicious_user ? '#ef4444' : 'inherit') }}>{displayName}</div>
+                          {p?.is_observer && <span style={{ padding: '2px 8px', background: 'rgba(250, 204, 21, 0.1)', color: '#ca8a04', borderRadius: '50px', fontSize: '0.65rem', fontWeight: 'bold' }}>НАБЛЮДАТЕЛЬ</span>}
+                          {p?.is_hidden && <span style={{ background: 'rgba(0,0,0,0.05)', color: 'rgba(0,0,0,0.5)', padding: '2px 8px', borderRadius: '50px', fontSize: '0.65rem' }} title="Скрытый пользователь"><EyeOff size={10} /></span>}
+                        </div>
+                        {p?.email && !p.is_anonymous && (
+                          <div style={{ fontSize: '0.8rem', opacity: 0.5, display: 'flex', alignItems: 'center', gap: '4px' }}><Mail size={12} /> {p.email}</div>
+                        )}
+                      </td>
+                      <td style={{ padding: '20px', fontSize: '0.85rem', opacity: 0.7 }}>
+                        <div>{cityName}</div>
+                        <div>{schoolName}</div>
+                        <div style={{ fontWeight: 'bold' }}>{className}</div>
+                      </td>
+                      <td style={{ padding: '20px' }}>
+                        <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px' }}>
+                          <div style={{ position: 'relative', width: '60px', height: '14px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', overflow: 'hidden' }}>
+                            <div style={{ width: `${(res.score / res.total_questions) * 100}%`, height: '100%', background: res.is_incomplete_user ? '#9ca3af' : (res.is_passed ? '#4ade80' : '#f87171') }} />
+                            <span style={{ position: 'absolute', width: '100%', left: 0, top: 0, fontSize: '0.6rem', textAlign: 'center', fontWeight: 'bold', color: 'var(--text-color)', lineHeight: '14px' }}>{res.score}/{res.total_questions}</span>
+                          </div>
+                          <span style={{ fontSize: '0.8rem', opacity: 0.5 }}>/</span>
+                          <div style={{ position: 'relative', width: '40px', height: '10px', background: 'rgba(0,0,0,0.03)', borderRadius: '10px', overflow: 'hidden' }}>
+                            <div style={{ width: `${(res.first_score / res.total_questions) * 100}%`, height: '100%', background: 'var(--primary-color)', opacity: 0.5 }} />
+                            <span style={{ position: 'absolute', width: '100%', left: 0, top: 0, fontSize: '0.5rem', textAlign: 'center', fontWeight: 'bold', color: 'black', lineHeight: '10px' }}>{res.first_score}/{res.total_questions}</span>
+                          </div>
+                        </div>
+                      </td>
+                      <td style={{ padding: '20px', fontWeight: 'bold', color: res.is_incomplete_user ? '#6b7280' : (res.is_suspicious_user ? '#ef4444' : 'inherit') }}>
+                        {res.score} / {res.total_questions}
+                      </td>
+                      <td style={{ padding: '20px' }}>
+                        <div className="flex-center" style={{ gap: '10px', justifyContent: 'flex-start' }}>
+                          <button
+                            onClick={() => navigate(`/analytics-details?quizId=${quizId}&userId=${res.user_id}`)}
+                            style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', padding: '8px', borderRadius: '10px', boxShadow: 'none' }}
+                            title="Подробная аналитика попыток"
+                          >
+                            <Info size={18} />
+                          </button>
+                          {canDelete && (
+                            <button onClick={() => setDeletingId(res.id)} style={{ background: 'rgba(255,0,0,0.05)', color: 'red', padding: '8px', borderRadius: '10px', boxShadow: 'none' }}>
+                              <Trash2 size={18} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {sortedResults.length === 0 && <tr><td colSpan="5" style={{ padding: '60px', textAlign: 'center', opacity: 0.5 }}>Прохождений пока нет.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {/* ─── MODALS ─── */}
 
       {/* Модальное окно: удаление результата */}
       {deletingId && (
@@ -781,7 +834,7 @@ const Analytics = () => {
       {imagePreviewModal.isOpen && imagePreviewModal.images.length > 0 && (
         <div className="modal-overlay" style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 99999 }} onClick={() => setImagePreviewModal({ isOpen: false, images: [], currentIdx: 0 })}>
           <div className="animate" style={{ position: 'relative', maxWidth: '90vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
-            <button 
+            <button
               onClick={() => setImagePreviewModal({ isOpen: false, images: [], currentIdx: 0 })}
               style={{ position: 'absolute', top: '-40px', right: '-40px', background: 'rgba(255,255,255,0.1)', color: 'white', padding: '10px', borderRadius: '50%', boxShadow: 'none', zIndex: 10 }}
             >
@@ -789,16 +842,16 @@ const Analytics = () => {
             </button>
             <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%' }}>
               <img src={resolveImgUrl(imagePreviewModal.images[imagePreviewModal.currentIdx])} alt="Preview" style={{ maxWidth: '100%', maxHeight: '85vh', objectFit: 'contain', borderRadius: '12px', border: '2px solid rgba(255,255,255,0.1)' }} />
-              
+
               {imagePreviewModal.images.length > 1 && (
                 <>
-                  <button 
+                  <button
                     onClick={(e) => { e.stopPropagation(); setImagePreviewModal(p => ({ ...p, currentIdx: p.currentIdx === 0 ? p.images.length - 1 : p.currentIdx - 1 })); }}
                     style={{ position: 'absolute', left: '-50px', background: 'rgba(255,255,255,0.1)', color: 'white', border: 'none', borderRadius: '50%', padding: '12px', cursor: 'pointer', boxShadow: 'none' }}
                   >
                     <ChevronLeft size={24} />
                   </button>
-                  <button 
+                  <button
                     onClick={(e) => { e.stopPropagation(); setImagePreviewModal(p => ({ ...p, currentIdx: p.currentIdx === p.images.length - 1 ? 0 : p.currentIdx + 1 })); }}
                     style={{ position: 'absolute', right: '-50px', background: 'rgba(255,255,255,0.1)', color: 'white', border: 'none', borderRadius: '50%', padding: '12px', cursor: 'pointer', boxShadow: 'none' }}
                   >
