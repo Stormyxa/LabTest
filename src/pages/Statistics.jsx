@@ -46,10 +46,13 @@ const Statistics = ({ session, profile }) => {
         // Force-lock for restricted roles to prevent seeing "All"
         if (profile.city_id) setFilterCity(profile.city_id);
         if (profile.school_id) setFilterSchool(profile.school_id);
+        // Players are additionally locked to their own class only
+        if (profile.role === 'player' && profile.class_id) setFilterClass(profile.class_id);
       } else {
         // Defaults for privileged roles (Persistence within session)
         if (!hasStoredCity && profile.city_id) setFilterCity(profile.city_id);
         if (!hasStoredSchool && profile.school_id) setFilterSchool(profile.school_id);
+        // Admins/creators: class stays at 'all' by default — they can change freely
       }
     }
   }, [profile]);
