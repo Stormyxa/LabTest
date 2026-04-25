@@ -411,26 +411,53 @@ const Dashboard = ({ session, profile }) => {
   };
 
   const fetchClassApplications = async (cid) => {
-    const { data } = await supabase.from('class_applications')
-      .select('*, profiles(id, first_name, last_name, patronymic, email)')
+    console.log("DEBUG: Fetching applications for class:", cid);
+    const { data, error } = await supabase.from('class_applications')
+      .select('*, profiles(id, first_name, last_name, patronymic)')
       .eq('class_id', cid)
       .eq('status', 'pending');
+    
+    if (error) {
+      console.error("DEBUG: Error fetching applications:", error);
+    }
+    console.log("DEBUG: Applications raw data from DB:", data);
+    
     if (data) setClassApplications(prev => ({ ...prev, [cid]: data }));
+    else setClassApplications(prev => ({ ...prev, [cid]: [] }));
   };
 
   const handleApplication = async (app, status) => {
-    const { error } = await supabase.from('class_applications').update({ status }).eq('id', app.id);
-    if (!error) {
-      if (status === 'accepted') {
-        await supabase.from('profiles').update({ class_id: app.class_id, pending_class_id: null, is_observer: false }).eq('id', app.user_id);
-      } else {
-        await supabase.from('profiles').update({ pending_class_id: null }).eq('id', app.user_id);
-      }
-      fetchClassApplications(app.class_id);
-      fetchUsers();
+    console.log(`DEBUG: Handling application ${app.id} for user ${app.user_id} with status: ${status}`);
+    
+    // 1. Update Profile first
+    let profileUpdate;
+    if (status === 'accepted') {
+      profileUpdate = await supabase.from('profiles')
+        .update({ class_id: app.class_id, pending_class_id: null, is_observer: false })
+        .eq('id', app.user_id);
     } else {
-      alert(error.message);
+      profileUpdate = await supabase.from('profiles')
+        .update({ pending_class_id: null })
+        .eq('id', app.user_id);
     }
+
+    if (profileUpdate.error) {
+      console.error("DEBUG: Profile update error:", profileUpdate.error);
+      alert(`Ошибка при обновлении профиля ученика: ${profileUpdate.error.message}`);
+      return;
+    }
+
+    // 2. Delete the application record to avoid "duplicate key" issues later
+    const { error: deleteError } = await supabase.from('class_applications').delete().eq('id', app.id);
+    
+    if (deleteError) {
+      console.error("DEBUG: Application deletion error:", deleteError);
+    }
+
+    console.log("DEBUG: Application processed successfully");
+    fetchClassApplications(app.class_id);
+    fetchClassStudents(app.class_id);
+    fetchUsers();
   };
 
   const fetchClassLists = async (cid, type) => {
@@ -660,7 +687,7 @@ const Dashboard = ({ session, profile }) => {
               const city = cities.find(c => c.id === school.city_id);
 
               return (
-                <div key={school.id} style={{ background: 'rgba(0,0,0,0.02)', borderRadius: '20px', border: '1px solid rgba(0,0,0,0.05)', marginBottom: '15px', overflow: 'hidden' }}>
+                <div key={school.id} style={{ background: 'rgba(var(--primary-color-rgb), 0.03)', borderRadius: '20px', border: '1px solid var(--border-color)', marginBottom: '15px', overflow: 'hidden' }}>
                   <div className="flex-center" style={{ padding: '15px 25px', justifyContent: 'space-between' }}>
                     <div onClick={() => setExpandedSchools(prev => ({ ...prev, [school.id]: !prev[school.id] }))} style={{ cursor: 'pointer', flex: 1, display: 'flex', alignItems: 'center', gap: '15px' }}>
                       {isSchoolExpanded ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
@@ -700,7 +727,7 @@ const Dashboard = ({ session, profile }) => {
                   </div>
 
                   {isSchoolExpanded && (
-                    <div style={{ padding: '15px', background: 'rgba(0,0,0,0.005)' }}>
+                    <div style={{ padding: '15px', background: 'rgba(0,0,0,0.03)' }}>
                       <div style={{ display: 'grid', gap: '10px' }}>
                         {schoolClasses.map(cls => {
                           const isClassExpanded = expandedClasses[cls.id];
@@ -709,7 +736,7 @@ const Dashboard = ({ session, profile }) => {
                           const canManage = isTeacherRole ? teacherClasses.includes(cls.id) : true;
 
                           return (
-                            <div key={cls.id} style={{ background: 'white', border: '1px solid rgba(0,0,0,0.05)', borderRadius: '12px', overflow: 'hidden' }}>
+                            <div key={cls.id} style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '12px', overflow: 'hidden', margin: '5px 0' }}>
                               <div className="flex-center" style={{ justifyContent: 'space-between', padding: '12px 20px' }}>
                                 <div onClick={() => {
                                   if (isClassExpanded) {
@@ -777,7 +804,7 @@ const Dashboard = ({ session, profile }) => {
                               </div>
 
                               {isClassExpanded && (
-                                <div className="animate" style={{ borderTop: '1px solid rgba(0,0,0,0.03)', background: 'rgba(0,0,0,0.005)' }}>
+                                <div className="animate" style={{ borderTop: '1px solid var(--border-color)', background: 'rgba(var(--primary-color-rgb), 0.02)' }}>
                                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px', marginBottom: '15px', padding: '0 25px' }}>
                                     <div style={{ fontSize: '0.85rem', fontWeight: 'bold', opacity: 0.6 }}>Список учеников</div>
                                     <button 
@@ -790,16 +817,15 @@ const Dashboard = ({ session, profile }) => {
 
                                   {/* APPLICATIONS SECTION */}
                                   {classApplications[cls.id]?.length > 0 && (
-                                    <div style={{ margin: '0 25px 20px', padding: '15px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '15px', border: '1px dashed var(--primary-color)' }}>
+                                    <div style={{ margin: '0 25px 20px', padding: '15px', background: 'var(--primary-soft)', borderRadius: '15px', border: '1px dashed var(--primary-color)' }}>
                                       <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--primary-color)', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '5px' }}>
                                         <UserPlus size={14} /> НОВЫЕ ЗАЯВКИ ({classApplications[cls.id].length})
                                       </div>
                                       <div style={{ display: 'grid', gap: '10px' }}>
                                         {classApplications[cls.id].map(app => (
-                                          <div key={app.id} className="flex-center" style={{ justifyContent: 'space-between', background: 'white', padding: '10px 15px', borderRadius: '10px' }}>
+                                          <div key={app.id} className="flex-center" style={{ justifyContent: 'space-between', background: 'var(--card-bg)', padding: '10px 15px', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
                                             <div style={{ fontSize: '0.85rem' }}>
                                               <strong>{app.profiles?.last_name} {app.profiles?.first_name}</strong>
-                                              <div style={{ opacity: 0.5, fontSize: '0.75rem' }}>{app.profiles?.email}</div>
                                             </div>
                                             <div className="flex-center" style={{ gap: '10px' }}>
                                               <button onClick={() => handleApplication(app, 'accepted')} style={{ padding: '5px 12px', fontSize: '0.75rem', background: '#22c55e', color: 'white' }}>Принять</button>
@@ -816,7 +842,7 @@ const Dashboard = ({ session, profile }) => {
                                     ) : classStudents[cls.id]?.length > 0 ? (
                                       <div style={{ display: 'grid', gap: '8px' }}>
                                         {classStudents[cls.id].sort((a, b) => (a.last_name || '').localeCompare(b.last_name || '')).map(s => (
-                                          <div key={s.id} className="flex-center" style={{ justifyContent: 'space-between', background: 'white', padding: '10px 15px', borderRadius: '10px', border: '1px solid rgba(0,0,0,0.03)' }}>
+                                          <div key={s.id} className="flex-center" style={{ justifyContent: 'space-between', background: 'var(--card-bg)', padding: '10px 15px', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
                                             <div>
                                               <div style={{ fontWeight: '500' }}>{s.last_name} {s.first_name} {s.patronymic}</div>
                                               <div style={{ fontSize: '0.75rem', opacity: 0.5 }}>{s.email}</div>
