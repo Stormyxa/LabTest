@@ -40,6 +40,62 @@ const SidebarUserList = React.memo(({
   scrollRef, validSections, validQuizzes, isFolderEmpty, isSectionEmpty,
   profile, cities, schools, classes, teacherClasses, navigate, setSidebarOpen
 }) => {
+  const isTeacher = profile?.role === 'teacher';
+  let canChangeCity = !isTeacher;
+  let canChangeSchool = !isTeacher;
+  let canChangeClass = !isTeacher;
+
+  if (isTeacher && classes.length > 0 && schools.length > 0) {
+    const myClasses = classes.filter(c => teacherClasses.includes(c.id));
+    const mySchoolIds = [...new Set(myClasses.map(c => c.school_id))];
+    const mySchools = schools.filter(s => mySchoolIds.includes(s.id));
+    const myCityIds = [...new Set(mySchools.map(s => s.city_id))];
+
+    if (myClasses.length > 1) {
+      if (mySchoolIds.length === 1) {
+        canChangeClass = true; // Multiple classes in 1 school
+      } else if (myCityIds.length === 1) {
+        canChangeClass = true;
+        canChangeSchool = true; // Multiple schools in 1 city
+      } else {
+        canChangeClass = true;
+        canChangeSchool = true;
+        canChangeCity = true; // Multiple cities
+      }
+    }
+  }
+
+  // Filter out options the teacher has no access to
+  const availableCities = isTeacher
+    ? cities.filter(c => {
+        const myCityIds = schools.filter(s => classes.some(cl => teacherClasses.includes(cl.id) && cl.school_id === s.id)).map(s => s.city_id);
+        return myCityIds.includes(c.id);
+      })
+    : cities;
+
+  const availableSchools = isTeacher
+    ? schools.filter(s => {
+        const mySchoolIds = classes.filter(cl => teacherClasses.includes(cl.id)).map(cl => cl.school_id);
+        return mySchoolIds.includes(s.id) && (filterCity === 'all' || s.city_id === filterCity);
+      })
+    : schools.filter(s => filterCity === 'all' || s.city_id === filterCity);
+
+  const availableClasses = isTeacher
+    ? classes.filter(c => teacherClasses.includes(c.id) && (filterSchool === 'all' || c.school_id === filterSchool))
+    : classes.filter(c => filterSchool === 'all' || c.school_id === filterSchool);
+
+  // Compute total possible users based on class max_students limit
+  const totalPossibleUsers = classes.filter(c => {
+    if (filterClass !== 'all' && c.id !== filterClass) return false;
+    if (filterSchool !== 'all' && c.school_id !== filterSchool) return false;
+    if (filterCity !== 'all') {
+      const school = schools.find(s => s.id === c.school_id);
+      if (!school || school.city_id !== filterCity) return false;
+    }
+    if (isTeacher && !teacherClasses.includes(c.id)) return false;
+    return true;
+  }).reduce((sum, c) => sum + (c.max_students || 0), 0);
+
   return (
     <div style={{ padding: '20px', width: '320px', display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '15px' }}>
@@ -112,37 +168,34 @@ const SidebarUserList = React.memo(({
             <>
               <label htmlFor="ad-city" style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '10px', display: 'block' }}>Фильтры Учеников</label>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '15px' }}>
-                <select id="ad-city" value={filterCity} onChange={e => { setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all'); }} style={{ padding: '6px', fontSize: '0.85rem' }} disabled={profile?.role === 'teacher'}>
+                <select id="ad-city" value={filterCity} onChange={e => { setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all'); }} style={{ padding: '6px', fontSize: '0.85rem' }} disabled={!canChangeCity}>
                   <option value="all">Все города</option>
-                  {cities.map(c => {
+                  {availableCities.map(c => {
                     const hasResults = users.some(u => u.city_id === c.id);
                     return (
-                      <option key={c.id} value={c.id} disabled={!hasResults}>
+                      <option key={c.id} value={c.id} disabled={!hasResults && !isTeacher}>
                         {c.name} {!hasResults ? '(нет результатов)' : ''}
                       </option>
                     );
                   })}
                 </select>
-                <select id="ad-school" value={filterSchool} onChange={e => { setFilterSchool(e.target.value); setFilterClass('all'); }} disabled={profile?.role === 'teacher'} style={{ padding: '6px', fontSize: '0.85rem' }} aria-label="Школа">
+                <select id="ad-school" value={filterSchool} onChange={e => { setFilterSchool(e.target.value); setFilterClass('all'); }} disabled={!canChangeSchool} style={{ padding: '6px', fontSize: '0.85rem' }} aria-label="Школа">
                   <option value="all">Все школы</option>
-                  {schools.filter(s => filterCity === 'all' || s.city_id === filterCity).map(s => {
+                  {availableSchools.map(s => {
                     const hasResults = users.some(u => u.school_id === s.id);
                     return (
-                      <option key={s.id} value={s.id} disabled={!hasResults}>
+                      <option key={s.id} value={s.id} disabled={!hasResults && !isTeacher}>
                         {s.name} {!hasResults ? '(нет результатов)' : ''}
                       </option>
                     );
                   })}
                 </select>
-                <select id="ad-class" value={filterClass} onChange={e => setFilterClass(e.target.value)} style={{ padding: '6px', fontSize: '0.85rem' }} aria-label="Класс">
+                <select id="ad-class" value={filterClass} onChange={e => setFilterClass(e.target.value)} style={{ padding: '6px', fontSize: '0.85rem' }} aria-label="Класс" disabled={!canChangeClass}>
                   <option value="all">Все классы</option>
-                  {classes.filter(c => {
-                    if (profile?.role === 'teacher') return teacherClasses.includes(c.id);
-                    return filterSchool === 'all' || c.school_id === filterSchool;
-                  }).map(c => {
+                  {availableClasses.map(c => {
                     const hasResults = users.some(u => u.class_id === c.id);
                     return (
-                      <option key={c.id} value={c.id} disabled={!hasResults}>
+                      <option key={c.id} value={c.id} disabled={!hasResults && !isTeacher}>
                         {c.name} {!hasResults ? '(нет результатов)' : ''}
                       </option>
                     );
@@ -155,7 +208,10 @@ const SidebarUserList = React.memo(({
                 </div>
               </div>
 
-              <label style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '10px', display: 'block' }}>Ученики ({filteredUsers.length})</label>
+              <label style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '10px', display: 'block', display: 'flex', flexDirection: 'column' }}>
+                <span>Ученики</span>
+                <span style={{ fontSize: '0.7rem', opacity: 0.7 }}>(выполнили хотя бы раз: {filteredUsers.length} / общее возможное: {totalPossibleUsers})</span>
+              </label>
               <div ref={scrollRef} onScroll={handleScroll} style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '5px', paddingRight: '5px' }}>
                 {filteredUsers.map(u => (
                   <UserListItem
@@ -592,10 +648,36 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
       if (s) setSchools(s);
       if (cl) setClasses(cl);
 
-      // Automated Filtering Defaults for Teacher (since they are restricted)
+      // Default Filters logic
+      const savedCity = sessionStorage.getItem('f_city');
+      const savedSchool = sessionStorage.getItem('f_school');
+      const savedClass = sessionStorage.getItem('f_class');
+
       if (p.role === 'teacher') {
-        if (p.city_id) setFilterCity(p.city_id);
-        if (p.school_id) setFilterSchool(p.school_id);
+        const tClasses = cl.filter(c => targetTeacherClasses.includes(c.id));
+        const tSchoolIds = [...new Set(tClasses.map(c => c.school_id))];
+        const tSchools = s.filter(sch => tSchoolIds.includes(sch.id));
+        const tCityIds = [...new Set(tSchools.map(sch => sch.city_id))];
+
+        if (tClasses.length === 1) {
+          setFilterCity(tSchools[0]?.city_id || 'all');
+          setFilterSchool(tSchoolIds[0] || 'all');
+          setFilterClass(tClasses[0]?.id || 'all');
+        } else if (tSchoolIds.length === 1) {
+          setFilterCity(tSchools[0]?.city_id || 'all');
+          setFilterSchool(tSchoolIds[0] || 'all');
+          if (!savedClass) setFilterClass('all');
+        } else if (tCityIds.length === 1) {
+          setFilterCity(tCityIds[0] || 'all');
+          if (!savedSchool) setFilterSchool('all');
+        }
+      } else if (p.role === 'admin' || p.role === 'creator') {
+        if (!savedCity) {
+          if (p.city_id) setFilterCity(p.city_id);
+        }
+        if (!savedSchool) {
+          if (p.school_id) setFilterSchool(p.school_id);
+        }
       }
 
       const targetQuizId = quizIdParam || sessionStorage.getItem('ad_t_quiz');

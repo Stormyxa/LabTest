@@ -20,6 +20,7 @@ const Analytics = () => {
   const [cities, setCities] = useState(() => getCachedData('cities') || []);
   const [schools, setSchools] = useState(() => getCachedData('schools') || []);
   const [classes, setClasses] = useState(() => getCachedData('classes') || []);
+  const [allStudents, setAllStudents] = useState(() => getCachedData('all_students_map') || []);
   const [showEditBlockedModal, setShowEditBlockedModal] = useState(false);
   const [profile, setProfile] = useState(() => getCachedData('profile'));
   const [quizAuthorRole, setQuizAuthorRole] = useState(null);
@@ -86,7 +87,7 @@ const Analytics = () => {
   };
 
   const fetchStructure = async (p = profile) => {
-    const [c, s, cl] = await Promise.all([
+    const [c, s, cl, studentsMap] = await Promise.all([
       fetchWithCache('cities', () => supabase.from('cities').select('*').order('name').then(res => res.data)),
       fetchWithCache('schools', () => supabase.from('schools').select('*').order('name').then(res => res.data)),
       fetchWithCache('classes', () => supabase.from('classes').select('*').order('name').then(res => res.data))
@@ -94,19 +95,19 @@ const Analytics = () => {
     if (c) setCities(c);
     if (s) setSchools(s);
     if (cl) setClasses(cl);
+    if (studentsMap) setAllStudents(studentsMap);
 
     // Automated Filtering Defaults
     if (p && (p.role === 'teacher' || p.role === 'admin' || p.role === 'creator')) {
       const sCity = sessionStorage.getItem('f_city');
       const sSchool = sessionStorage.getItem('f_school');
+      const sClass = sessionStorage.getItem('f_class');
 
-      if ((!sCity || sCity === 'all') && p.city_id) setFilterCity(p.city_id);
-      if ((!sSchool || sSchool === 'all') && p.school_id) setFilterSchool(p.school_id);
-
-      // Force-lock teacher filters
       if (p.role === 'teacher') {
-        if (p.city_id) setFilterCity(p.city_id);
-        if (p.school_id) setFilterSchool(p.school_id);
+        // Teacher defaults are handled dynamically by the effect later
+      } else {
+        if ((!sCity || sCity === 'all') && p.city_id) setFilterCity(p.city_id);
+        if ((!sSchool || sSchool === 'all') && p.school_id) setFilterSchool(p.school_id);
       }
     }
   };
@@ -114,6 +115,7 @@ const Analytics = () => {
   useCacheSync('cities', setCities);
   useCacheSync('schools', setSchools);
   useCacheSync('classes', setClasses);
+  useCacheSync('all_students_map', setAllStudents);
   useCacheSync('profile', setProfile);
   useCacheSync('teacher_classes', setTeacherClasses);
   useCacheSync(`an_quiz_${quizId}`, (q) => { if (q) { setQuiz(q); setQuizAuthorRole(q.profiles?.role); } });
@@ -268,34 +270,90 @@ const Analytics = () => {
   };
 
   const isTeacher = profile?.role === 'teacher';
+  let canChangeCity = !isTeacher || quiz?.author_id === profile?.id;
+  let canChangeSchool = !isTeacher || quiz?.author_id === profile?.id;
+  let canChangeClass = !isTeacher || quiz?.author_id === profile?.id;
+
+  const isTeacherViewer = isTeacher && quiz?.author_id !== profile?.id;
+
+  if (isTeacherViewer && classes.length > 0 && schools.length > 0) {
+    const myClasses = classes.filter(c => teacherClasses.includes(c.id));
+    const mySchoolIds = [...new Set(myClasses.map(c => c.school_id))];
+    const mySchools = schools.filter(s => mySchoolIds.includes(s.id));
+    const myCityIds = [...new Set(mySchools.map(s => s.city_id))];
+
+    if (myClasses.length > 1) {
+      if (mySchoolIds.length === 1) {
+        canChangeClass = true;
+      } else if (myCityIds.length === 1) {
+        canChangeClass = true;
+        canChangeSchool = true;
+      } else {
+        canChangeClass = true;
+        canChangeSchool = true;
+        canChangeCity = true;
+      }
+    }
+  }
 
   // Логика разрешенных объектов для учителя
-  const teacherClassObjects = classes.filter(c => teacherClasses.includes(c.id));
-  const teacherSchoolIds = [...new Set(teacherClassObjects.map(c => c.school_id))];
-  const teacherCityIds = [...new Set(schools.filter(s => teacherSchoolIds.includes(s.id)).map(s => s.city_id))];
-
   const availableCities = cities.filter(c => {
-    if (isTeacher && quiz?.author_id !== profile?.id) return teacherCityIds.includes(c.id);
+    if (isTeacherViewer) {
+      const myCityIds = schools.filter(s => classes.some(cl => teacherClasses.includes(cl.id) && cl.school_id === s.id)).map(s => s.city_id);
+      return myCityIds.includes(c.id);
+    }
     return true;
   });
 
   const availableSchools = schools.filter(s => {
-    if (isTeacher && quiz?.author_id !== profile?.id) return teacherSchoolIds.includes(s.id);
+    if (isTeacherViewer) {
+      const mySchoolIds = classes.filter(cl => teacherClasses.includes(cl.id)).map(cl => cl.school_id);
+      return mySchoolIds.includes(s.id) && (filterCity === 'all' || s.city_id === filterCity);
+    }
     return filterCity === 'all' || s.city_id === filterCity;
   });
 
   const availableClasses = classes.filter(c => {
-    if (isTeacher && quiz?.author_id !== profile?.id) return teacherClasses.includes(c.id);
+    if (isTeacherViewer) {
+      return teacherClasses.includes(c.id) && (filterSchool === 'all' || c.school_id === filterSchool);
+    }
     return filterSchool === 'all' || c.school_id === filterSchool;
   });
 
   useEffect(() => {
-    if (isTeacher && quiz?.author_id !== profile?.id) {
-      if (availableCities.length === 1 && filterCity === 'all') setFilterCity(availableCities[0].id);
-      if (availableSchools.length === 1 && filterSchool === 'all') setFilterSchool(availableSchools[0].id);
-      if (availableClasses.length === 1 && filterClass === 'all') setFilterClass(availableClasses[0].id);
+    if (isTeacherViewer && classes.length > 0) {
+      const myClasses = classes.filter(c => teacherClasses.includes(c.id));
+      const mySchoolIds = [...new Set(myClasses.map(c => c.school_id))];
+      const mySchools = schools.filter(s => mySchoolIds.includes(s.id));
+      const myCityIds = [...new Set(mySchools.map(s => s.city_id))];
+
+      const savedClass = sessionStorage.getItem('f_class');
+      
+      if (myClasses.length === 1) {
+        setFilterCity(mySchools[0]?.city_id || 'all');
+        setFilterSchool(mySchoolIds[0] || 'all');
+        setFilterClass(myClasses[0]?.id || 'all');
+      } else if (mySchoolIds.length === 1) {
+        setFilterCity(mySchools[0]?.city_id || 'all');
+        setFilterSchool(mySchoolIds[0] || 'all');
+        if (!savedClass) setFilterClass('all');
+      } else if (myCityIds.length === 1) {
+        setFilterCity(myCityIds[0] || 'all');
+        if (!sessionStorage.getItem('f_school')) setFilterSchool('all');
+      }
     }
-  }, [isTeacher, quiz, profile, availableCities, availableSchools, availableClasses, filterCity, filterSchool, filterClass]);
+  }, [isTeacherViewer, classes, teacherClasses, schools]);
+
+  const totalPossibleUsers = classes.filter(c => {
+    if (filterClass !== 'all' && c.id !== filterClass) return false;
+    if (filterSchool !== 'all' && c.school_id !== filterSchool) return false;
+    if (filterCity !== 'all') {
+      const school = schools.find(s => s.id === c.school_id);
+      if (!school || school.city_id !== filterCity) return false;
+    }
+    if (isTeacherViewer && !teacherClasses.includes(c.id)) return false;
+    return true;
+  }).reduce((sum, c) => sum + (c.max_students || 0), 0);
 
 
   const filteredResults = results.filter(res => {
@@ -504,7 +562,7 @@ const Analytics = () => {
             <button onClick={generatePDF} className="flex-center card" style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none', padding: '15px 20px', marginBottom: 0, cursor: 'pointer', border: 'none', fontWeight: 'bold' }}>
               <Download size={20} style={{ marginRight: '8px' }} /> Отчет PDF
             </button>
-            <StatMini label="Участников" value={filteredResults.length} icon={<User size={18} />} />
+            <StatMini label="Участников" value={`${filteredResults.length} / ${totalPossibleUsers}`} icon={<User size={18} />} />
             <StatMini label="Ср. результат" value={`${avgScore}% (${totalEarnedScore}/${totalPotentialScore})`} icon={<BarChart size={18} />} />
           </div>
         </div>
@@ -519,11 +577,11 @@ const Analytics = () => {
               value={filterCity}
               onChange={e => { setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all'); }}
               style={{ width: 'auto', flex: 1, minWidth: '150px' }}
-              disabled={isTeacher && availableCities.length <= 1 && quiz?.author_id !== profile?.id}
+              disabled={!canChangeCity}
             >
               <option value="all">Все города</option>
               {availableCities.map(c => (
-                <option key={c.id} value={c.id} disabled={!cityCounts[c.id]}>
+                <option key={c.id} value={c.id} disabled={!cityCounts[c.id] && !isTeacher}>
                   {c.name} {!cityCounts[c.id] ? '(нет результатов)' : ''}
                 </option>
               ))}
@@ -534,11 +592,11 @@ const Analytics = () => {
               value={filterSchool}
               onChange={e => { setFilterSchool(e.target.value); setFilterClass('all'); }}
               style={{ width: 'auto', flex: 1, minWidth: '150px' }}
-              disabled={isTeacher && availableSchools.length <= 1 && quiz?.author_id !== profile?.id}
+              disabled={!canChangeSchool}
             >
               <option value="all">Все школы</option>
               {availableSchools.map(s => (
-                <option key={s.id} value={s.id} disabled={!schoolCounts[s.id]}>
+                <option key={s.id} value={s.id} disabled={!schoolCounts[s.id] && !isTeacher}>
                   {s.name} {!schoolCounts[s.id] ? '(нет результатов)' : ''}
                 </option>
               ))}
@@ -549,10 +607,11 @@ const Analytics = () => {
               value={filterClass}
               onChange={e => setFilterClass(e.target.value)}
               style={{ width: 'auto', flex: 1, minWidth: '150px' }}
+              disabled={!canChangeClass}
             >
               <option value="all">Все классы</option>
               {availableClasses.map(c => (
-                <option key={c.id} value={c.id} disabled={!classCounts[c.id]}>
+                <option key={c.id} value={c.id} disabled={!classCounts[c.id] && !isTeacher}>
                   {c.name} {!classCounts[c.id] ? '(нет результатов)' : `(${classCounts[c.id]})`}
                 </option>
               ))}
