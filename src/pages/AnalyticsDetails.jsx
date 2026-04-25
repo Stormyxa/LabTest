@@ -537,9 +537,13 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
     if (p) {
       setProfile(p);
       
+      let targetTeacherClasses = [];
       if (p.role === 'teacher') {
         const { data: tc } = await supabase.from('class_teachers').select('class_id').eq('email', session.user.email.toLowerCase());
-        if (tc) setTeacherClasses(tc.map(row => row.class_id));
+        if (tc) {
+          targetTeacherClasses = tc.map(row => row.class_id);
+          setTeacherClasses(targetTeacherClasses);
+        }
       }
 
       const isPrivileged = p.role === 'admin' || p.role === 'creator' || p.role === 'teacher' || p.role === 'editor';
@@ -607,7 +611,7 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
           }
         }
         
-        fetchUsersForQuiz(targetQuizId, p, userIdParam);
+        fetchUsersForQuiz(targetQuizId, p, userIdParam, targetTeacherClasses);
       } else if (p.role === 'player' && !targetQuizId) {
         // If player but no quiz selected, they just see empty state
       }
@@ -694,7 +698,7 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
   useCacheSync('schools', (data) => { if (data) setSchools(data); });
   useCacheSync('classes', (data) => { if (data) setClasses(data); });
 
-  const fetchUsersForQuiz = useCallback(async (qId, currentUserProfile, targetUserId = null) => {
+  const fetchUsersForQuiz = useCallback(async (qId, currentUserProfile, targetUserId = null, overrideTeacherClasses = null) => {
     const cacheKey = `ad_users_${qId}`;
     
     const userList = await fetchWithCache(cacheKey, async () => {
@@ -728,7 +732,8 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
         let validProfs = profs.filter(p => (p.first_name?.trim() || p.last_name?.trim()));
 
         if (isTeacher && currentQuizObj?.author_id !== currentUserProfile?.id) {
-          validProfs = validProfs.filter(p => teacherClasses.includes(p.class_id));
+          const activeTeacherClasses = overrideTeacherClasses || teacherClasses;
+          validProfs = validProfs.filter(p => activeTeacherClasses.includes(p.class_id));
         }
 
         const uList = validProfs.map(p => {

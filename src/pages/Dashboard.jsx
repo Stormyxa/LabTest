@@ -687,7 +687,7 @@ const Dashboard = ({ session, profile }) => {
               const city = cities.find(c => c.id === school.city_id);
 
               return (
-                <div key={school.id} style={{ background: 'rgba(var(--primary-color-rgb), 0.03)', borderRadius: '20px', border: '1px solid var(--border-color)', marginBottom: '15px', overflow: 'hidden' }}>
+                <div key={school.id} className="card animate" style={{ background: 'var(--card-bg)', borderRadius: '24px', border: '1px solid rgba(99, 102, 241, 0.1)', marginBottom: '15px', overflow: 'hidden', boxShadow: 'var(--soft-shadow)' }}>
                   <div className="flex-center" style={{ padding: '15px 25px', justifyContent: 'space-between' }}>
                     <div onClick={() => setExpandedSchools(prev => ({ ...prev, [school.id]: !prev[school.id] }))} style={{ cursor: 'pointer', flex: 1, display: 'flex', alignItems: 'center', gap: '15px' }}>
                       {isSchoolExpanded ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
@@ -727,7 +727,7 @@ const Dashboard = ({ session, profile }) => {
                   </div>
 
                   {isSchoolExpanded && (
-                    <div style={{ padding: '15px', background: 'rgba(0,0,0,0.03)' }}>
+                    <div style={{ padding: '15px', background: 'rgba(99, 102, 241, 0.02)' }}>
                       <div style={{ display: 'grid', gap: '10px' }}>
                         {schoolClasses.map(cls => {
                           const isClassExpanded = expandedClasses[cls.id];
@@ -736,7 +736,7 @@ const Dashboard = ({ session, profile }) => {
                           const canManage = isTeacherRole ? teacherClasses.includes(cls.id) : true;
 
                           return (
-                            <div key={cls.id} style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '12px', overflow: 'hidden', margin: '5px 0' }}>
+                            <div key={cls.id} className="animate" style={{ background: 'var(--card-bg)', border: '1px solid rgba(99, 102, 241, 0.1)', borderRadius: '16px', overflow: 'hidden', margin: '8px 0', boxShadow: 'var(--soft-shadow)' }}>
                               <div className="flex-center" style={{ justifyContent: 'space-between', padding: '12px 20px' }}>
                                 <div onClick={() => {
                                   if (isClassExpanded) {
@@ -766,7 +766,7 @@ const Dashboard = ({ session, profile }) => {
                                   {profile?.role === 'creator' && (
                                     <button 
                                       onClick={() => { setShowTeachersModal(cls); fetchClassTeachers(cls.id); }} 
-                                      style={{ background: '#f59e0b', color: 'white', padding: '6px 12px', borderRadius: '8px', boxShadow: 'none', display: 'flex', gap: '5px', alignItems: 'center', fontSize: '0.85rem' }}
+                                      style={{ background: '#f59e0b', color: 'var(--card-bg)', padding: '6px 12px', borderRadius: '8px', boxShadow: 'none', display: 'flex', gap: '5px', alignItems: 'center', fontSize: '0.85rem' }}
                                     >
                                       <Shield size={16} /> Учителя
                                     </button>
@@ -804,7 +804,7 @@ const Dashboard = ({ session, profile }) => {
                               </div>
 
                               {isClassExpanded && (
-                                <div className="animate" style={{ borderTop: '1px solid var(--border-color)', background: 'rgba(var(--primary-color-rgb), 0.02)' }}>
+                                <div className="animate" style={{ borderTop: '1px solid rgba(99, 102, 241, 0.1)', background: 'rgba(99, 102, 241, 0.01)' }}>
                                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px', marginBottom: '15px', padding: '0 25px' }}>
                                     <div style={{ fontSize: '0.85rem', fontWeight: 'bold', opacity: 0.6 }}>Список учеников</div>
                                     <button 
@@ -817,7 +817,7 @@ const Dashboard = ({ session, profile }) => {
 
                                   {/* APPLICATIONS SECTION */}
                                   {classApplications[cls.id]?.length > 0 && (
-                                    <div style={{ margin: '0 25px 20px', padding: '15px', background: 'var(--primary-soft)', borderRadius: '15px', border: '1px dashed var(--primary-color)' }}>
+                                    <div style={{ margin: '0 25px 20px', padding: '15px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '15px', border: '1px dashed var(--primary-color)' }}>
                                       <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--primary-color)', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '5px' }}>
                                         <UserPlus size={14} /> НОВЫЕ ЗАЯВКИ ({classApplications[cls.id].length})
                                       </div>
@@ -842,7 +842,7 @@ const Dashboard = ({ session, profile }) => {
                                     ) : classStudents[cls.id]?.length > 0 ? (
                                       <div style={{ display: 'grid', gap: '8px' }}>
                                         {classStudents[cls.id].sort((a, b) => (a.last_name || '').localeCompare(b.last_name || '')).map(s => (
-                                          <div key={s.id} className="flex-center" style={{ justifyContent: 'space-between', background: 'var(--card-bg)', padding: '10px 15px', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                                          <div key={s.id} className="flex-center" style={{ justifyContent: 'space-between', background: 'var(--card-bg)', padding: '12px 15px', borderRadius: '12px', border: '1px solid rgba(99, 102, 241, 0.05)' }}>
                                             <div>
                                               <div style={{ fontWeight: '500' }}>{s.last_name} {s.first_name} {s.patronymic}</div>
                                               <div style={{ fontSize: '0.75rem', opacity: 0.5 }}>{s.email}</div>
