@@ -745,18 +745,27 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
     const cacheKey = `ad_users_${qId}`;
 
     const userList = await fetchWithCache(cacheKey, async () => {
-      const [{ data: results }, { data: currentQuizObj }] = await Promise.all([
+      const [{ data: results }, { data: attemptsRaw }, { data: currentQuizObj }] = await Promise.all([
         supabase.from('quiz_results').select('user_id, score, total_questions').eq('quiz_id', qId),
+        supabase.from('quiz_attempts').select('user_id, is_suspicious, is_passed, is_incomplete, score, max_score, created_at').eq('quiz_id', qId).order('created_at', { ascending: true }),
         supabase.from('quizzes').select('author_id').eq('id', qId).single()
       ]);
 
-      if (!results || results.length === 0) return [];
+      // Merge user IDs from both tables — quiz_attempts is written immediately on submit,
+      // quiz_results may come later via the evaluation system. Without this merge,
+      // first-time completers are invisible until evaluation runs.
+      const resultUserIds = new Set((results || []).map(r => r.user_id));
+      const attemptUserIds = new Set((attemptsRaw || []).map(a => a.user_id));
+      const allUserIds = [...new Set([...resultUserIds, ...attemptUserIds])];
 
-      const userIds = [...new Set(results.map(r => r.user_id))];
-      const [{ data: profs }, { data: attemptsData }] = await Promise.all([
-        supabase.from('profiles').select('id, first_name, last_name, city_id, school_id, class_id, is_observer').in('id', userIds),
-        supabase.from('quiz_attempts').select('user_id, is_suspicious, is_passed, is_incomplete, score, max_score, created_at').eq('quiz_id', qId).order('created_at', { ascending: true })
-      ]);
+      if (allUserIds.length === 0) return [];
+
+      const { data: profs } = await supabase
+        .from('profiles')
+        .select('id, first_name, last_name, city_id, school_id, class_id, is_observer')
+        .in('id', allUserIds);
+
+      const attemptsData = attemptsRaw;
 
       const latestStatusMap = {};
       if (attemptsData) {
@@ -780,8 +789,14 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
         }
 
         const uList = validProfs.map(p => {
-          const userResults = results.filter(r => r.user_id === p.id);
-          const maxScore = userResults.length > 0 ? Math.max(...userResults.map(r => r.score)) : 0;
+          // Prefer quiz_results score (final evaluated), fall back to best attempt score
+          const userResults = (results || []).filter(r => r.user_id === p.id);
+          const userAttempts = (attemptsData || []).filter(a => a.user_id === p.id);
+          const maxScore = userResults.length > 0
+            ? Math.max(...userResults.map(r => r.score))
+            : userAttempts.length > 0
+              ? Math.max(...userAttempts.map(a => a.score || 0))
+              : 0;
           const lStatus = latestStatusMap[p.id] || {};
           return {
             ...p,
