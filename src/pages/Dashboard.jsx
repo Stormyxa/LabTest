@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { fetchWithCache, useCacheSync } from '../lib/cache';
-import { User, Shield, Search, Edit3, Trash2, Mail, X, AlertTriangle, MapPin, Building, GraduationCap, Plus, History, Ban, ShieldAlert, Unlock, Eye, EyeOff, Zap, ChevronDown, ChevronRight, Settings, Users, UserPlus, UserMinus, ArrowUp, ArrowDown, UserCheck } from 'lucide-react';
+import { User, Shield, Search, Edit3, Trash2, Mail, X, AlertTriangle, MapPin, Building, GraduationCap, Plus, History, Ban, ShieldAlert, Unlock, Eye, EyeOff, Zap, ChevronDown, ChevronRight, Settings, Users, UserPlus, UserMinus, ArrowUp, ArrowDown, UserCheck, CheckCircle, XCircle } from 'lucide-react';
 import { useScrollRestoration } from '../lib/useScrollRestoration';
 
 const DashboardSkeleton = () => (
@@ -73,6 +73,7 @@ const Dashboard = ({ session, profile }) => {
   const [showNewPassword, setShowNewPassword] = useState(false); // Глазик для пароля
 
   const [deletingStructure, setDeletingStructure] = useState(null);
+  const [actionFeedback, setActionFeedback] = useState(null);
 
   const [cities, setCities] = useState([]);
   const [schools, setSchools] = useState([]);
@@ -371,12 +372,23 @@ const Dashboard = ({ session, profile }) => {
     if (!removingStudent) return;
     const { error } = await supabase.from('profiles').update({ class_id: null }).eq('id', removingStudent.id);
     if (!error) {
-      await logAction(`Удаление из класса`, removingStudent.id, `Удален из состава ${classesList.find(c => c.id === expandedClassId)?.name}`);
-      setClassStudents(prev => prev.filter(s => s.id !== removingStudent.id));
+      await logAction(`Удаление из класса`, removingStudent.id, `Удален из состава класса`);
+      
+      // Update local state without crashing
+      setClassStudents(prev => {
+        const updated = { ...prev };
+        Object.keys(updated).forEach(key => {
+          updated[key] = updated[key].filter(s => s.id !== removingStudent.id);
+        });
+        return updated;
+      });
+      
       setRemovingStudent(null);
       fetchUsers();
+      setActionFeedback({ type: 'success', message: 'Ученик успешно удален из класса!' });
     } else {
-      alert("Ошибка при удалении ученика: " + error.message);
+      setRemovingStudent(null);
+      setActionFeedback({ type: 'error', message: "Ошибка при удалении ученика: " + error.message });
     }
   };
 
@@ -1413,6 +1425,21 @@ const Dashboard = ({ session, profile }) => {
                 <button type="submit" style={{ background: 'var(--primary-color)', color: 'white' }}>Сохранить</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* ФИДБЕК МОДАЛКА О РЕЗУЛЬТАТЕ */}
+      {actionFeedback && (
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; setActionFeedback(null); }}}>
+          <div className="modal-content animate" style={{ width: '400px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+            <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '50%', background: actionFeedback.type === 'success' ? 'rgba(74, 222, 128, 0.1)' : 'rgba(239, 68, 68, 0.1)', color: actionFeedback.type === 'success' ? '#4ade80' : '#ef4444', margin: '0 auto 25px' }}>
+              {actionFeedback.type === 'success' ? <CheckCircle size={32} /> : <XCircle size={32} />}
+            </div>
+            <h2 style={{ marginBottom: '15px' }}>{actionFeedback.type === 'success' ? 'Успешно!' : 'Ошибка'}</h2>
+            <p style={{ opacity: 0.7, marginBottom: '25px', lineHeight: '1.5' }}>
+              {actionFeedback.message}
+            </p>
+            <button onClick={() => setActionFeedback(null)} style={{ width: '100%', background: 'var(--primary-color)', color: 'white' }}>ОК</button>
           </div>
         </div>
       )}
