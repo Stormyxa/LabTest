@@ -1079,7 +1079,7 @@ const QuizCatalog = ({ profile }) => {
       )}
 
       {selectedQuiz && (
-        <div className="modal-overlay" onClick={() => setSelectedQuiz(null)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setSelectedQuiz(null))(e); }}}>
           <div className="modal-content animate" onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', margin: '0 auto 25px' }}><Award size={32} /></div>
             {isFromShare && <div style={{ fontSize: '0.8rem', color: 'var(--primary-color)', fontWeight: 'bold', marginBottom: '10px' }}>Вы перешли по ссылке на этот предмет</div>}
@@ -1094,7 +1094,7 @@ const QuizCatalog = ({ profile }) => {
       )}
 
       {randomQuizModal && (
-        <div className="modal-overlay" onClick={() => setRandomQuizModal(null)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setRandomQuizModal(null))(e); }}}>
           <div className="modal-content animate" onClick={e => e.stopPropagation()} style={{ width: '450px' }}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(168, 85, 247, 0.1) 100%)', color: 'var(--primary-color)', margin: '0 auto 25px' }}>
               <Dices size={32} />
@@ -1116,7 +1116,7 @@ const QuizCatalog = ({ profile }) => {
       )}
 
       {renamingItem && (
-        <div className="modal-overlay" onClick={() => setRenamingItem(null)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setRenamingItem(null))(e); }}}>
           <div className="modal-content animate" onClick={e => e.stopPropagation()} style={{ width: '400px' }}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '15px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', margin: '0 auto 20px' }}>
               <Pencil size={32} />
@@ -1147,7 +1147,7 @@ const QuizCatalog = ({ profile }) => {
       )}
 
       {hideModal && (
-        <div className="modal-overlay" onClick={() => setHideModal(null)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setHideModal(null))(e); }}}>
           <div className="modal-content animate" style={{ width: '430px' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '55px', height: '55px', background: 'rgba(250,204,21,0.1)', color: '#ca8a04', borderRadius: '15px', margin: '0 auto 20px' }}><AlertTriangle size={26} /></div>
             <h3 style={{ marginBottom: '10px', textAlign: 'center' }}>Скрыть тест?</h3>

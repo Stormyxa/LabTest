@@ -978,7 +978,7 @@ const Dashboard = ({ session, profile }) => {
 
       {/* МОДАЛКА ИСКЛЮЧЕНИЯ УЧЕНИКА ИЗ КЛАССА */}
       {removingStudent && (
-        <div className="modal-overlay" onClick={() => setRemovingStudent(null)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setRemovingStudent(null))(e); }}}>
           <div className="modal-content animate" style={{ width: '450px' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '50%', background: 'rgba(255, 0, 0, 0.1)', color: 'red', margin: '0 auto 25px' }}><X size={32} /></div>
             <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>Исключить из класса?</h2>
@@ -1000,7 +1000,7 @@ const Dashboard = ({ session, profile }) => {
         const isOverLimit = newLimit > maxAllowed;
         
         return (
-          <div className="modal-overlay" onClick={() => setEditingClassLimit(null)}>
+          <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setEditingClassLimit(null))(e); }}}>
             <div className="modal-content animate" style={{ width: '400px' }} onClick={e => e.stopPropagation()}>
               <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '50%', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', margin: '0 auto 25px' }}><Edit3 size={32} /></div>
               <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>Лимит учеников</h2>
@@ -1037,7 +1037,7 @@ const Dashboard = ({ session, profile }) => {
 
       {/* МОДАЛКА РАЗБЛОКИРОВКИ */}
       {unblockingEmail && (
-        <div className="modal-overlay" onClick={() => setUnblockingEmail(null)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setUnblockingEmail(null))(e); }}}>
           <div className="modal-content animate" style={{ width: '450px' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '50%', background: 'rgba(74, 222, 128, 0.1)', color: '#4ade80', margin: '0 auto 25px' }}><Unlock size={32} /></div>
             <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>Разблокировать почту?</h2>
@@ -1055,7 +1055,7 @@ const Dashboard = ({ session, profile }) => {
 
       {/* РЕДАКТИРОВАНИЕ ПОЛЬЗОВАТЕЛЯ */}
       {editingUser && (
-        <div className="modal-overlay" onClick={() => setEditingUser(null)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setEditingUser(null))(e); }}}>
           <div className="modal-content animate" style={{ width: '500px', textAlign: 'left', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '25px' }}>
               <h3 style={{ margin: 0 }}>Редактирование {editingUser.first_name}</h3>
@@ -1151,7 +1151,7 @@ const Dashboard = ({ session, profile }) => {
       )}
 
       {deletingUser && (
-        <div className="modal-overlay" onClick={() => setDeletingUser(null)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setDeletingUser(null))(e); }}}>
           <div className="modal-content animate modal-content-danger" style={{ width: '450px' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '50%', background: 'rgba(248, 113, 113, 0.1)', color: '#f87171', margin: '0 auto 25px' }}><Trash2 size={32} /></div>
             <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>Удалить пользователя?</h2>
@@ -1168,7 +1168,7 @@ const Dashboard = ({ session, profile }) => {
       )}
 
       {blockingUser && (
-        <div className="modal-overlay" onClick={() => setBlockingUser(null)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setBlockingUser(null))(e); }}}>
           <div className="modal-content animate modal-content-danger" style={{ width: '450px' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '50%', background: 'rgba(255, 0, 0, 0.1)', color: 'red', margin: '0 auto 25px' }}><Ban size={32} /></div>
             <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>Заблокировать пользователя?</h2>
@@ -1185,7 +1185,7 @@ const Dashboard = ({ session, profile }) => {
       )}
 
       {deletingStructure && (
-        <div className="modal-overlay" onClick={() => setDeletingStructure(null)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setDeletingStructure(null))(e); }}}>
           <div className="modal-content animate modal-content-danger" style={{ width: '450px' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '50%', background: 'rgba(248, 113, 113, 0.1)', color: '#f87171', margin: '0 auto 25px' }}><AlertTriangle size={32} /></div>
             <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>Удалить {deletingStructure.typeLabel}?</h2>
@@ -1203,7 +1203,7 @@ const Dashboard = ({ session, profile }) => {
 
       {/* МОДАЛКА УПРАВЛЕНИЯ УЧИТЕЛЯМИ КЛАССА */}
       {showTeachersModal && (
-        <div className="modal-overlay" onClick={() => setShowTeachersModal(null)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setShowTeachersModal(null))(e); }}}>
           <div className="modal-content animate" style={{ width: '500px' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '25px' }}>
               <div>
@@ -1248,7 +1248,7 @@ const Dashboard = ({ session, profile }) => {
       
       {/* МОДАЛКА ЗАЯВОК В КЛАСС */}
       {showApplicationsModal && (
-        <div className="modal-overlay" onClick={() => setShowApplicationsModal(null)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setShowApplicationsModal(null))(e); }}}>
           <div className="modal-content animate" style={{ width: '500px' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '25px' }}>
               <div>
@@ -1281,7 +1281,7 @@ const Dashboard = ({ session, profile }) => {
 
       {/* МОДАЛКА БЕЛОГО/ЧЕРНОГО СПИСКА */}
       {showListsModal && (
-        <div className="modal-overlay" onClick={() => setShowListsModal(null)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setShowListsModal(null))(e); }}}>
           <div className="modal-content animate" style={{ width: '450px' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '25px' }}>
               <div>
@@ -1322,7 +1322,7 @@ const Dashboard = ({ session, profile }) => {
 
       {/* НОВЫЕ МОДАЛКИ СТРУКТУРЫ */}
       {addingCity && (
-        <div className="modal-overlay" onClick={() => setAddingCity(false)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setAddingCity(false))(e); }}}>
           <div className="modal-content animate" style={{ width: '400px' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '25px' }}>
               <h3 style={{ margin: 0 }}>Добавить город</h3>
@@ -1340,7 +1340,7 @@ const Dashboard = ({ session, profile }) => {
       )}
 
       {addingSchool && (
-        <div className="modal-overlay" onClick={() => setAddingSchool(false)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setAddingSchool(false))(e); }}}>
           <div className="modal-content animate" style={{ width: '400px' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '25px' }}>
               <h3 style={{ margin: 0 }}>Добавить школу</h3>
@@ -1365,7 +1365,7 @@ const Dashboard = ({ session, profile }) => {
       )}
 
       {addingClass && (
-        <div className="modal-overlay" onClick={() => setAddingClass(false)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setAddingClass(false))(e); }}}>
           <div className="modal-content animate" style={{ width: '400px' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '25px' }}>
               <h3 style={{ margin: 0 }}>Добавить класс</h3>
@@ -1397,7 +1397,7 @@ const Dashboard = ({ session, profile }) => {
       )}
 
       {renamingStructure && (
-        <div className="modal-overlay" onClick={() => setRenamingStructure(null)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setRenamingStructure(null))(e); }}}>
           <div className="modal-content animate" style={{ width: '400px' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '25px' }}>
               <h3 style={{ margin: 0 }}>Переименовать {renamingStructure.typeLabel}</h3>

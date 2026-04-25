@@ -834,7 +834,7 @@ const Analytics = () => {
 
       {/* Модальное окно: удаление результата */}
       {deletingId && (
-        <div className="modal-overlay" onClick={() => setDeletingId(null)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setDeletingId(null))(e); }}}>
           <div className="modal-content animate" style={{ width: '400px' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '50px', height: '50px', background: 'rgba(255,0,0,0.1)', color: 'red', borderRadius: '15px', margin: '0 auto 20px' }}><AlertTriangle size={24} /></div>
             <h3 style={{ marginBottom: '10px', textAlign: 'center' }}>Удалить результат?</h3>
@@ -849,7 +849,7 @@ const Analytics = () => {
 
       {/* Модальное окно: удаление теста */}
       {deletingQuizMode && (
-        <div className="modal-overlay" onClick={() => setDeletingQuizMode(false)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setDeletingQuizMode(false))(e); }}}>
           <div className="modal-content animate" style={{ width: '400px' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '50px', height: '50px', background: 'rgba(255,0,0,0.1)', color: 'red', borderRadius: '15px', margin: '0 auto 20px' }}><AlertTriangle size={24} /></div>
             <h3 style={{ marginBottom: '10px', textAlign: 'center' }}>Удалить весь тест?</h3>
@@ -864,7 +864,7 @@ const Analytics = () => {
 
       {/* Модальное окно: удаление всех результатов */}
       {showDeleteAllModal && (
-        <div className="modal-overlay" onClick={() => setShowDeleteAllModal(false)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setShowDeleteAllModal(false))(e); }}}>
           <div className="modal-content animate" style={{ width: '450px' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(255, 0, 0, 0.1)', color: 'red', margin: '0 auto 25px' }}><AlertTriangle size={32} /></div>
             <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>Удалить ВСЕ результаты?</h2>
@@ -882,7 +882,7 @@ const Analytics = () => {
 
       {/* Модальное окно: блокировка редактирования */}
       {showEditBlockedModal && (
-        <div className="modal-overlay" onClick={() => setShowEditBlockedModal(false)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setShowEditBlockedModal(false))(e); }}}>
           <div className="modal-content animate" style={{ width: '450px' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(255, 204, 21, 0.1)', color: '#ca8a04', margin: '0 auto 25px' }}><AlertTriangle size={32} /></div>
             <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>Редактирование заблокировано</h2>
@@ -900,7 +900,7 @@ const Analytics = () => {
 
       {/* Модальное окно: Просмотр изображений */}
       {imagePreviewModal.isOpen && imagePreviewModal.images.length > 0 && (
-        <div className="modal-overlay" style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 99999 }} onClick={() => setImagePreviewModal({ isOpen: false, images: [], currentIdx: 0 })}>
+        <div className="modal-overlay" style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 99999 }} onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setImagePreviewModal({ isOpen: false, images: [], currentIdx: 0 }))(e); }}}>
           <div className="animate" style={{ position: 'relative', maxWidth: '90vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
             <button
               onClick={() => setImagePreviewModal({ isOpen: false, images: [], currentIdx: 0 })}

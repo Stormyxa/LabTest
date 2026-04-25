@@ -768,7 +768,7 @@ const QuizView = ({ session, profile }) => {
 
         {/* DETAILED IMAGE MODAL (GALLERY) FOR RESULTS */}
         {detailedImageModal.isOpen && detailedImageModal.images && detailedImageModal.images.length > 0 && (
-          <div className="modal-overlay" style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 99999, padding: '20px' }} onClick={() => setDetailedImageModal({ isOpen: false, images: [], currentImgIdx: 0 })}>
+          <div className="modal-overlay" style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 99999, padding: '20px' }} onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setDetailedImageModal({ isOpen: false, images: [], currentImgIdx: 0 }))(e); }}}>
             <div className="animate" style={{ position: 'relative', width: '100%', maxWidth: '900px', maxHeight: 'max-content', display: 'flex', flexDirection: 'column', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
               <button 
                 onClick={() => setDetailedImageModal({ isOpen: false, images: [], currentImgIdx: 0 })}
@@ -1119,7 +1119,7 @@ const QuizView = ({ session, profile }) => {
     </div>
 
       {showExitModal && createPortal(
-        <div className="modal-overlay" onClick={() => setShowExitModal(false)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setShowExitModal(false))(e); }}}>
           <div className="modal-content animate" onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: pastGrace ? 'rgba(250, 204, 21, 0.1)' : 'rgba(248, 113, 113, 0.1)', color: pastGrace ? '#ca8a04' : '#f87171', margin: '0 auto 25px' }}>
               <AlertTriangle size={32} />

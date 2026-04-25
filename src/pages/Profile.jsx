@@ -522,7 +522,7 @@ const Profile = ({ session, profile, refreshProfile }) => {
     </div>
 
       {showNoClassModal && (
-        <div className="modal-overlay" onClick={() => setShowNoClassModal(false)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setShowNoClassModal(false))(e); }}}>
           <div className="modal-content animate" style={{ width: '450px' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(250, 204, 21, 0.1)', color: '#ca8a04', margin: '0 auto 25px' }}>
               <Shield size={32} />
@@ -552,7 +552,7 @@ const Profile = ({ session, profile, refreshProfile }) => {
       )}
       {/* МОДАЛКА ПОДТВЕРЖДЕНИЯ ОБНОВЛЕНИЯ */}
       {showConfirmModal && (
-        <div className="modal-overlay" onClick={() => setShowConfirmModal(false)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setShowConfirmModal(false))(e); }}}>
           <div className="modal-content animate" style={{ width: '450px' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '50%', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', margin: '0 auto 25px' }}><Shield size={32} /></div>
             <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>Обновить данные?</h2>
@@ -569,7 +569,7 @@ const Profile = ({ session, profile, refreshProfile }) => {
       )}
       {/* МОДАЛКА УСПЕХА / ОШИБКИ */}
       {showSuccessModal && (
-        <div className="modal-overlay" onClick={() => setShowSuccessModal(false)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setShowSuccessModal(false))(e); }}}>
           <div className="modal-content animate" style={{ width: '450px' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ 
               justifyContent: 'center', width: '60px', height: '60px', borderRadius: '50%', 

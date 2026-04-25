@@ -100,7 +100,7 @@ const Home = ({ session, profile }) => {
 
       {/* Info Modal */}
       {showInfo && (
-        <div className="modal-overlay" onClick={() => setShowInfo(false)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setShowInfo(false))(e); }}}>
           <div className="modal-content animate" onClick={e => e.stopPropagation()}>
             <h2 style={{ marginBottom: '20px' }}>О проекте</h2>
             <p style={{ marginBottom: '15px', lineHeight: '1.6', textAlign: 'left' }}>
@@ -145,7 +145,7 @@ const Home = ({ session, profile }) => {
 
       {/* Team Modal */}
       {showTeam && (
-        <div className="modal-overlay" onClick={() => setShowTeam(false)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setShowTeam(false))(e); }}}>
           <div className="modal-content animate" style={{ maxWidth: '600px' }} onClick={e => e.stopPropagation()}>
             <h2 style={{ marginBottom: '15px' }}>Стань частью команды</h2>
             <p style={{ opacity: 0.7, marginBottom: '30px', textAlign: 'left' }}>

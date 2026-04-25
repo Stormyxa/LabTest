@@ -1033,7 +1033,7 @@ const Editor = ({ session, profile }) => {
 
       {/* SUCCESS JSON LOAD MODAL */}
       {successLoadedQuiz && (
-        <div className="modal-overlay" onClick={() => setSuccessLoadedQuiz(null)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setSuccessLoadedQuiz(null))(e); }}}>
           <div className="modal-content animate" onClick={e => e.stopPropagation()} style={{ width: '400px' }}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '15px', background: 'rgba(74, 222, 128, 0.1)', color: '#4ade80', margin: '0 auto 20px' }}>
               <CheckCircle size={32} />
@@ -1052,7 +1052,7 @@ const Editor = ({ session, profile }) => {
 
       {/* PENDING EMPTY QUIZ MODAL */}
       {pendingEmptyQuiz && (
-        <div className="modal-overlay" onClick={() => setPendingEmptyQuiz(null)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setPendingEmptyQuiz(null))(e); }}}>
           <div className="modal-content animate" onClick={e => e.stopPropagation()} style={{ width: '450px' }}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '15px', background: 'rgba(250, 204, 21, 0.1)', color: '#ca8a04', margin: '0 auto 20px' }}>
               <AlertTriangle size={32} />
@@ -1071,7 +1071,7 @@ const Editor = ({ session, profile }) => {
 
       {/* МОДАЛКА ПЕРЕИМЕНОВАНИЯ КЛАССА / СЕКЦИИ */}
       {renamingItem && (
-        <div className="modal-overlay" onClick={() => setRenamingItem(null)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setRenamingItem(null))(e); }}}>
           <div className="modal-content animate" onClick={e => e.stopPropagation()} style={{ width: '400px' }}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '15px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', margin: '0 auto 20px' }}>
               <Pencil size={32} />
@@ -1102,7 +1102,7 @@ const Editor = ({ session, profile }) => {
       )}
 
       {editSectionLink && (
-        <div className="modal-overlay" onClick={() => setEditSectionLink(null)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setEditSectionLink(null))(e); }}}>
           <div className="modal-content animate" onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', margin: '0 auto 25px' }}>
               <Book size={32} />
@@ -1129,7 +1129,7 @@ const Editor = ({ session, profile }) => {
       )}
 
       {deleteId && (
-        <div className="modal-overlay" onClick={() => setDeleteId(null)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setDeleteId(null))(e); }}}>
           <div className="modal-content animate modal-content-danger" onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(248, 113, 113, 0.1)', color: '#f87171', margin: '0 auto 25px' }}><AlertTriangle size={32} /></div>
             <h2 style={{ marginBottom: '15px' }}>Удалить тест?</h2>
@@ -1142,7 +1142,7 @@ const Editor = ({ session, profile }) => {
       )}
 
       {deleteSectionId && (
-        <div className="modal-overlay" onClick={() => setDeleteSectionId(null)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setDeleteSectionId(null))(e); }}}>
           <div className="modal-content animate modal-content-danger" onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(248, 113, 113, 0.1)', color: '#f87171', margin: '0 auto 25px' }}><AlertTriangle size={32} /></div>
             <h2 style={{ marginBottom: '15px' }}>Удалить предмет?</h2>
@@ -1155,7 +1155,7 @@ const Editor = ({ session, profile }) => {
       )}
 
       {deleteClassId && (
-        <div className="modal-overlay" onClick={() => setDeleteClassId(null)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setDeleteClassId(null))(e); }}}>
           <div className="modal-content animate modal-content-danger" onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(248, 113, 113, 0.1)', color: '#f87171', margin: '0 auto 25px' }}><AlertTriangle size={32} /></div>
             <h2 style={{ marginBottom: '15px' }}>Удалить Класс/Папку?</h2>

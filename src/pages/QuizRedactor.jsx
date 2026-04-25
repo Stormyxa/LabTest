@@ -688,7 +688,7 @@ const QuizRedactor = () => {
       <>
         {/* Delete question modal */}
         {deleteQModal !== null && (
-          <div className="modal-overlay" onClick={() => setDeleteQModal(null)}>
+          <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setDeleteQModal(null))(e); }}}>
             <div className="modal-content animate" style={{ width: '420px' }} onClick={e => e.stopPropagation()}>
               <div className="flex-center" style={{ justifyContent: 'center', width: '55px', height: '55px', background: 'rgba(248,113,113,0.1)', color: '#f87171', borderRadius: '15px', margin: '0 auto 20px' }}><AlertTriangle size={26} /></div>
               <h3 style={{ marginBottom: '10px', textAlign: 'center' }}>Удалить вопрос {deleteQModal + 1}?</h3>
@@ -705,7 +705,7 @@ const QuizRedactor = () => {
 
         {/* Save confirmation modal */}
         {showSaveModal && (
-          <div className="modal-overlay" onClick={() => setShowSaveModal(false)}>
+          <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setShowSaveModal(false))(e); }}}>
             <div className="modal-content animate" style={{ width: '420px' }} onClick={e => e.stopPropagation()}>
               <div className="flex-center" style={{ justifyContent: 'center', width: '55px', height: '55px', background: 'rgba(99,102,241,0.1)', color: 'var(--primary-color)', borderRadius: '15px', margin: '0 auto 20px' }}><Check size={26} /></div>
               <h3 style={{ marginBottom: '10px', textAlign: 'center' }}>Сохранить изменения?</h3>
@@ -722,7 +722,7 @@ const QuizRedactor = () => {
 
         {/* Formatting Warning modal */}
         {showFormattingWarning && (
-          <div className="modal-overlay" onClick={() => setShowFormattingWarning(false)}>
+          <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setShowFormattingWarning(false))(e); }}}>
             <div className="modal-content animate" style={{ width: '450px' }} onClick={e => e.stopPropagation()}>
               <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', background: 'rgba(250, 204, 21, 0.1)', color: '#ca8a04', borderRadius: '20px', margin: '0 auto 20px' }}><AlertTriangle size={30} /></div>
               <h3 style={{ marginBottom: '15px', textAlign: 'center' }}>Внимание к форматированию</h3>
@@ -746,7 +746,7 @@ const QuizRedactor = () => {
 
         {/* Cancel confirmation modal */}
         {showCancelModal && (
-          <div className="modal-overlay" onClick={() => setShowCancelModal(false)}>
+          <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setShowCancelModal(false))(e); }}}>
             <div className="modal-content animate" style={{ width: '420px' }} onClick={e => e.stopPropagation()}>
               <div className="flex-center" style={{ justifyContent: 'center', width: '55px', height: '55px', background: 'rgba(255,200,0,0.1)', color: '#facc15', borderRadius: '15px', margin: '0 auto 20px' }}><AlertTriangle size={26} /></div>
               <h3 style={{ marginBottom: '10px', textAlign: 'center' }}>Отменить изменения?</h3>
@@ -763,7 +763,7 @@ const QuizRedactor = () => {
 
         {/* DELETE MODAL */}
         {showDeleteModal && (
-          <div className="modal-overlay" onClick={() => setShowDeleteModal(false)}>
+          <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setShowDeleteModal(false))(e); }}}>
             <div className="modal-content animate" style={{ width: '450px' }} onClick={e => e.stopPropagation()}>
               <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', margin: '0 auto 25px' }}>
                 <Trash2 size={32} />
@@ -788,7 +788,7 @@ const QuizRedactor = () => {
         )}
 
         {showSuccessUpdateModal && (
-          <div className="modal-overlay" onClick={() => setShowSuccessUpdateModal(false)}>
+          <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setShowSuccessUpdateModal(false))(e); }}}>
             <div className="modal-content animate" style={{ width: '400px' }} onClick={e => e.stopPropagation()}>
               <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(74, 222, 128, 0.1)', color: '#4ade80', margin: '0 auto 20px' }}>
                 <Check size={32} />
@@ -800,7 +800,7 @@ const QuizRedactor = () => {
           </div>
         )}
         {showDeleteResultsModal && (
-          <div className="modal-overlay" onClick={() => setShowDeleteResultsModal(false)}>
+          <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setShowDeleteResultsModal(false))(e); }}}>
             <div className="modal-content animate modal-content-danger" onClick={e => e.stopPropagation()} style={{ width: '450px' }}>
               <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', margin: '0 auto 25px' }}>
                 <AlertTriangle size={32} />
@@ -824,7 +824,7 @@ const QuizRedactor = () => {
           </div>
         )}
         {imageInputModal.isOpen && (
-          <div className="modal-overlay" onClick={() => setImageInputModal({ isOpen: false, qIdx: null, mode: 'upload', url: '', file: null, uploading: false })}>
+          <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setImageInputModal({ isOpen: false, qIdx: null, mode: 'upload', url: '', file: null, uploading: false }))(e); }}}>
             <div className="modal-content animate" style={{ width: '500px' }} onClick={e => e.stopPropagation()}>
               <div style={{ display: 'flex', borderBottom: '1px solid rgba(0,0,0,0.1)', marginBottom: '20px' }}>
                 <button 
@@ -907,7 +907,7 @@ const QuizRedactor = () => {
         )}
 
         {imagePreviewModal.isOpen && (
-          <div className="modal-overlay" style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)' }} onClick={() => setImagePreviewModal({ isOpen: false, url: '', qIdx: null, imgIdx: null })}>
+          <div className="modal-overlay" style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)' }} onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setImagePreviewModal({ isOpen: false, url: '', qIdx: null, imgIdx: null }))(e); }}}>
             <div className="animate" style={{ position: 'relative', maxWidth: '90vw', maxHeight: '90vh' }} onClick={e => e.stopPropagation()}>
               <button 
                 onClick={() => setImagePreviewModal({ isOpen: false, url: '', qIdx: null, imgIdx: null })}

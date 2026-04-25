@@ -291,7 +291,7 @@ const Auth = () => {
       
     {/* МОДАЛЬНОЕ ОКНО */}
     {modal.isOpen && (
-      <div className="modal-overlay" onClick={() => setModal({ ...modal, isOpen: false })}>
+      <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setModal({ ...modal, isOpen: false }))(e); }}}>
           <div className="modal-content animate" style={{ width: '400px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{
               justifyContent: 'center', width: '70px', height: '70px', borderRadius: '50%', margin: '0 auto 20px',

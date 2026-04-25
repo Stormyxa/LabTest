@@ -1221,7 +1221,7 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
 
       {/* DETAILED IMAGE MODAL (GALLERY) */}
       {detailedImageModal.isOpen && detailedImageModal.images && detailedImageModal.images.length > 0 && (
-        <div className="modal-overlay" style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 99999, padding: '20px' }} onClick={() => setDetailedImageModal({ isOpen: false, images: [], currentImgIdx: 0 })}>
+        <div className="modal-overlay" style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 99999, padding: '20px' }} onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setDetailedImageModal({ isOpen: false, images: [], currentImgIdx: 0 }))(e); }}}>
           <div className="animate" style={{ position: 'relative', width: '100%', maxWidth: '900px', maxHeight: 'max-content', display: 'flex', flexDirection: 'column', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
             <button
               onClick={() => setDetailedImageModal({ isOpen: false, images: [], currentImgIdx: 0 })}
