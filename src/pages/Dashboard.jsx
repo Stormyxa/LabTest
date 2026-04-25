@@ -83,6 +83,18 @@ const Dashboard = ({ session, profile }) => {
   const [newSchoolCityId, setNewSchoolCityId] = useState('');
   const [newClass, setNewClass] = useState('');
   const [newClassSchoolId, setNewClassSchoolId] = useState('');
+  const [newClassCityId, setNewClassCityId] = useState('');
+
+  // Modal visibility states
+  const [addingCity, setAddingCity] = useState(false);
+  const [addingSchool, setAddingSchool] = useState(false);
+  const [addingClass, setAddingClass] = useState(false);
+  const [renamingStructure, setRenamingStructure] = useState(null); // { table, id, currentName, typeLabel }
+
+  const [expandedCities, setExpandedCities] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('dash_expanded_cities')) || {}; } catch (e) { return {}; }
+  });
+  useEffect(() => { localStorage.setItem('dash_expanded_cities', JSON.stringify(expandedCities)); }, [expandedCities]);
 
   const [blacklist, setBlacklist] = useState([]);
   const [newBlacklistEmail, setNewBlacklistEmail] = useState('');
@@ -300,17 +312,43 @@ const Dashboard = ({ session, profile }) => {
     await supabase.from('audit_logs').insert({ admin_id: session.user.id, action, target_id: targetId, reason });
   };
 
-  const handleCreateCity = async () => { if (!newCity) return; await supabase.from('cities').insert({ name: newCity }); setNewCity(''); fetchStructure(); };
-  const handleCreateSchool = async () => { if (!newSchool || !newSchoolCityId) return; await supabase.from('schools').insert({ name: newSchool, city_id: newSchoolCityId }); setNewSchool(''); fetchStructure(); };
-  const handleCreateClass = async (maxStudents) => {
-    if (!newClass || !newClassSchoolId) return;
+  const handleCreateCity = async (e) => { 
+    e.preventDefault();
+    if (!newCity.trim()) return; 
+    await supabase.from('cities').insert({ name: newCity.trim() }); 
+    setNewCity(''); 
+    setAddingCity(false);
+    fetchStructure(); 
+  };
+
+  const handleCreateSchool = async (e) => { 
+    e.preventDefault();
+    if (!newSchool.trim() || !newSchoolCityId) return; 
+    await supabase.from('schools').insert({ name: newSchool.trim(), city_id: newSchoolCityId, order_index: schools.length }); 
+    setNewSchool(''); 
+    setAddingSchool(false);
+    fetchStructure(); 
+  };
+
+  const handleCreateClass = async (e) => {
+    e.preventDefault();
+    if (!newClass.trim() || !newClassSchoolId) return;
     await supabase.from('classes').insert({
-      name: newClass,
+      name: newClass.trim(),
       school_id: newClassSchoolId,
-      max_students: parseInt(maxStudents) || 50
+      order_index: classesList.length,
+      max_students: 50
     });
     setNewClass('');
+    setAddingClass(false);
     fetchStructure();
+  };
+
+  const submitRenameStructure = async (e) => {
+    e.preventDefault();
+    if (!renamingStructure || !renamingStructure.currentName.trim()) return;
+    await handleRenameStructure(renamingStructure.table, renamingStructure.id, renamingStructure.currentName);
+    setRenamingStructure(null);
   };
 
   const confirmDeleteStructure = async () => {
@@ -670,228 +708,248 @@ const Dashboard = ({ session, profile }) => {
       {activeTab === 'structure' && (
         <div className="animate">
           <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '30px' }}>
-            <h3 style={{ margin: 0 }}>Список школ</h3>
+            <h3 style={{ margin: 0 }}>Структура</h3>
             {profile?.role === 'creator' && (
-              <button onClick={() => {
-                const name = prompt("Введите название новой школы:");
-                const cityId = prompt("Введите ID города (или выберите из списка):", cities[0]?.id);
-                if (name && cityId) supabase.from('schools').insert({ name, city_id: cityId, order_index: schools.length }).then(() => fetchStructure());
-              }} className="flex-center" style={{ gap: '8px' }}>
-                <Plus size={18} /> Добавить школу
+              <button onClick={() => setAddingCity(true)} className="flex-center" style={{ gap: '8px' }}>
+                <Plus size={18} /> Добавить город
               </button>
             )}
           </div>
 
           <div style={{ display: 'grid', gap: '20px' }}>
-            {schools.map(school => {
-              const isSchoolExpanded = expandedSchools[school.id];
-              const schoolClasses = classesList.filter(c => c.school_id === school.id);
-              const city = cities.find(c => c.id === school.city_id);
+            {cities.map(city => {
+              const isCityExpanded = expandedCities[city.id];
+              const citySchools = schools.filter(s => s.city_id === city.id);
 
               return (
-                <div key={school.id} className="card animate" style={{ background: 'var(--card-bg)', borderRadius: '24px', border: '1px solid rgba(99, 102, 241, 0.1)', marginBottom: '15px', overflow: 'hidden', boxShadow: 'var(--soft-shadow)' }}>
-                  <div className="flex-center" style={{ padding: '15px 25px', justifyContent: 'space-between' }}>
-                    <div onClick={() => setExpandedSchools(prev => ({ ...prev, [school.id]: !prev[school.id] }))} style={{ cursor: 'pointer', flex: 1, display: 'flex', alignItems: 'center', gap: '15px' }}>
-                      {isSchoolExpanded ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
+                <div key={city.id} className="card animate" style={{ background: 'var(--card-bg)', borderRadius: '24px', border: '1px solid rgba(99, 102, 241, 0.2)', marginBottom: '15px', overflow: 'hidden', boxShadow: 'var(--soft-shadow)' }}>
+                  <div className="flex-center" style={{ padding: '15px 25px', justifyContent: 'space-between', background: 'rgba(99, 102, 241, 0.05)' }}>
+                    <div onClick={() => setExpandedCities(prev => ({ ...prev, [city.id]: !prev[city.id] }))} style={{ cursor: 'pointer', flex: 1, display: 'flex', alignItems: 'center', gap: '15px' }}>
+                      {isCityExpanded ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
                       <div>
-                        <div style={{ fontSize: '0.75rem', opacity: 0.5 }}>г. {city?.name}</div>
-                        <h4 style={{ margin: 0 }}>{school.name}</h4>
+                        <div style={{ fontSize: '0.75rem', opacity: 0.5 }}>Город</div>
+                        <h4 style={{ margin: 0, fontSize: '1.2rem' }}>{city.name}</h4>
                       </div>
-                      <span style={{ padding: '2px 10px', background: 'rgba(0,0,0,0.05)', borderRadius: '50px', fontSize: '0.75rem', opacity: 0.6 }}>{schoolClasses.length} классов</span>
+                      <span style={{ padding: '2px 10px', background: 'rgba(0,0,0,0.05)', borderRadius: '50px', fontSize: '0.75rem', opacity: 0.6 }}>{citySchools.length} школ</span>
                     </div>
                     
                     {profile?.role === 'creator' && (
                       <div className="flex-center" style={{ gap: '10px' }}>
+                        <button onClick={() => setRenamingStructure({ table: 'cities', id: city.id, currentName: city.name, typeLabel: 'город' })} style={{ background: 'transparent', padding: '5px', color: 'var(--primary-color)', boxShadow: 'none' }} title="Переименовать город"><Edit3 size={18} /></button>
                         <button onClick={() => {
-                          const newName = prompt("Переименовать школу:", school.name);
-                          if (newName) handleRenameStructure('schools', school.id, newName);
-                        }} style={{ background: 'transparent', padding: '5px', color: 'var(--primary-color)', boxShadow: 'none' }}><Edit3 size={18} /></button>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                          <button onClick={() => handleMoveStructure('schools', school.id, 'up', schools)} style={{ background: 'transparent', padding: '2px', color: 'inherit', boxShadow: 'none' }}><ArrowUp size={14} /></button>
-                          <button onClick={() => handleMoveStructure('schools', school.id, 'down', schools)} style={{ background: 'transparent', padding: '2px', color: 'inherit', boxShadow: 'none' }}><ArrowDown size={14} /></button>
-                        </div>
-                        <button onClick={() => {
-                          if (schoolClasses.length > 0) return alert("Нельзя удалить школу, в которой есть классы!");
-                          if (confirm(`Удалить школу "${school.name}"?`)) {
-                            supabase.from('schools').delete().eq('id', school.id).then(() => fetchStructure());
-                          }
-                        }} style={{ background: 'transparent', padding: '5px', color: 'red', boxShadow: 'none' }}><Trash2 size={18} /></button>
+                          if (citySchools.length > 0) return alert("Нельзя удалить город, в котором есть школы!");
+                          setDeletingStructure({ table: 'cities', id: city.id, name: city.name, typeLabel: 'город' });
+                        }} style={{ background: 'transparent', padding: '5px', color: 'red', boxShadow: 'none' }} title="Удалить город"><Trash2 size={18} /></button>
+                        <button onClick={() => { setNewSchoolCityId(city.id); setAddingSchool(true); }} style={{ marginLeft: '15px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', padding: '8px 15px', boxShadow: 'none', borderRadius: '12px' }} title="Добавить школу в этот город">
+                          <Plus size={16} /> Школа
+                        </button>
                       </div>
-                    )}
-                    {profile?.role === 'creator' && (
-                      <button onClick={() => {
-                        const name = prompt(`Добавить класс в школу "${school.name}":`);
-                        if (name) supabase.from('classes').insert({ name, school_id: school.id, order_index: schoolClasses.length }).then(() => fetchStructure());
-                      }} style={{ marginLeft: '15px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', padding: '8px 15px', boxShadow: 'none' }}>
-                        <Plus size={16} />
-                      </button>
                     )}
                   </div>
 
-                  {isSchoolExpanded && (
-                    <div style={{ padding: '15px', background: 'rgba(99, 102, 241, 0.02)' }}>
-                      <div style={{ display: 'grid', gap: '10px' }}>
-                        {schoolClasses.map(cls => {
-                          const isClassExpanded = expandedClasses[cls.id];
-                          const studentsCount = users.filter(u => u.class_id === cls.id).length;
-                          const isTeacherRole = profile?.role === 'teacher';
-                          const canManage = isTeacherRole ? teacherClasses.includes(cls.id) : true;
+                  {isCityExpanded && (
+                    <div style={{ padding: '15px', background: 'var(--card-bg)' }}>
+                      <div style={{ display: 'grid', gap: '15px' }}>
+                        {citySchools.map(school => {
+                          const isSchoolExpanded = expandedSchools[school.id];
+                          const schoolClasses = classesList.filter(c => c.school_id === school.id);
 
                           return (
-                            <div key={cls.id} className="animate" style={{ background: 'var(--card-bg)', border: '1px solid rgba(99, 102, 241, 0.1)', borderRadius: '16px', overflow: 'hidden', margin: '8px 0', boxShadow: 'var(--soft-shadow)' }}>
-                              <div className="flex-center" style={{ justifyContent: 'space-between', padding: '12px 20px' }}>
-                                <div onClick={() => {
-                                  if (isClassExpanded) {
-                                    setExpandedClasses(prev => {
-                                      const next = { ...prev };
-                                      delete next[cls.id];
-                                      return next;
-                                    });
-                                  } else {
-                                    setExpandedClasses(prev => ({ ...prev, [cls.id]: true }));
-                                    fetchClassStudents(cls.id);
-                                    fetchClassApplications(cls.id);
-                                  }
-                                }} style={{ cursor: 'pointer', flex: 1 }}>
-                                  <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px' }}>
-                                    {isClassExpanded ? <ChevronDown size={16} opacity={0.5} /> : <ChevronRight size={16} opacity={0.5} />}
-                                    <span style={{ fontWeight: '600' }}>{cls.name}</span>
-                                    <div className="flex-center" style={{ gap: '5px', opacity: 0.5, fontSize: '0.8rem' }}>
-                                      <Users size={14} /> {studentsCount} / {cls.max_students || 50}
-                                      {cls.max_students && studentsCount > cls.max_students && <AlertTriangle size={14} color="red" />}
-                                    </div>
+                            <div key={school.id} className="animate" style={{ background: 'var(--card-bg)', borderRadius: '20px', border: '1px solid rgba(0, 0, 0, 0.05)', overflow: 'hidden' }}>
+                              <div className="flex-center" style={{ padding: '12px 20px', justifyContent: 'space-between', background: 'rgba(0,0,0,0.02)' }}>
+                                <div onClick={() => setExpandedSchools(prev => ({ ...prev, [school.id]: !prev[school.id] }))} style={{ cursor: 'pointer', flex: 1, display: 'flex', alignItems: 'center', gap: '15px' }}>
+                                  {isSchoolExpanded ? <ChevronDown size={18} opacity={0.7} /> : <ChevronRight size={18} opacity={0.7} />}
+                                  <div>
+                                    <div style={{ fontSize: '0.7rem', opacity: 0.5 }}>Школа</div>
+                                    <h4 style={{ margin: 0, fontSize: '1.05rem' }}>{school.name}</h4>
                                   </div>
+                                  <span style={{ padding: '2px 10px', background: 'rgba(0,0,0,0.05)', borderRadius: '50px', fontSize: '0.75rem', opacity: 0.6 }}>{schoolClasses.length} классов</span>
                                 </div>
-
-                                <div className="flex-center" style={{ gap: '10px' }}>
-                                  {/* Orange Shield for Teacher Management */}
-                                  {profile?.role === 'creator' && (
-                                    <button 
-                                      onClick={() => { setShowTeachersModal(cls); fetchClassTeachers(cls.id); }} 
-                                      style={{ background: '#f59e0b', color: 'var(--card-bg)', padding: '6px 12px', borderRadius: '8px', boxShadow: 'none', display: 'flex', gap: '5px', alignItems: 'center', fontSize: '0.85rem' }}
-                                    >
-                                      <Shield size={16} /> Учителя
+                                
+                                {profile?.role === 'creator' && (
+                                  <div className="flex-center" style={{ gap: '10px' }}>
+                                    <button onClick={() => setRenamingStructure({ table: 'schools', id: school.id, currentName: school.name, typeLabel: 'школу' })} style={{ background: 'transparent', padding: '5px', color: 'var(--primary-color)', boxShadow: 'none' }} title="Переименовать школу"><Edit3 size={16} /></button>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                      <button onClick={() => handleMoveStructure('schools', school.id, 'up', citySchools)} style={{ background: 'transparent', padding: '2px', color: 'inherit', boxShadow: 'none' }}><ArrowUp size={14} /></button>
+                                      <button onClick={() => handleMoveStructure('schools', school.id, 'down', citySchools)} style={{ background: 'transparent', padding: '2px', color: 'inherit', boxShadow: 'none' }}><ArrowDown size={14} /></button>
+                                    </div>
+                                    <button onClick={() => {
+                                      if (schoolClasses.length > 0) return alert("Нельзя удалить школу, в которой есть классы!");
+                                      setDeletingStructure({ table: 'schools', id: school.id, name: school.name, typeLabel: 'школу' });
+                                    }} style={{ background: 'transparent', padding: '5px', color: 'red', boxShadow: 'none' }} title="Удалить школу"><Trash2 size={16} /></button>
+                                    <button onClick={() => { setNewClassCityId(city.id); setNewClassSchoolId(school.id); setAddingClass(true); }} style={{ marginLeft: '10px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', padding: '6px 12px', boxShadow: 'none', borderRadius: '10px', fontSize: '0.85rem' }} title="Добавить класс">
+                                      <Plus size={14} /> Класс
                                     </button>
-                                  )}
-
-                                  {canManage && (
-                                    <>
-                                      <button onClick={() => { setShowApplicationsModal(cls); fetchClassApplications(cls.id); }} style={{ background: 'rgba(99,102,241,0.1)', color: 'var(--primary-color)', padding: '6px 12px', borderRadius: '8px', boxShadow: 'none', display: 'flex', gap: '5px', alignItems: 'center', fontSize: '0.85rem' }}>
-                                        <UserPlus size={16} /> Заявки
-                                      </button>
-                                      <button onClick={() => { setShowListsModal({ class: cls, type: 'white' }); fetchClassLists(cls.id, 'white'); }} style={{ background: 'rgba(34,197,94,0.1)', color: '#16a34a', padding: '6px', borderRadius: '8px', boxShadow: 'none' }} title="Белый список"><UserCheck size={18} /></button>
-                                      <button onClick={() => { setShowListsModal({ class: cls, type: 'black' }); fetchClassLists(cls.id, 'black'); }} style={{ background: 'rgba(239,68,68,0.1)', color: '#dc2626', padding: '6px', borderRadius: '8px', boxShadow: 'none' }} title="Черный список"><Ban size={18} /></button>
-                                    </>
-                                  )}
-
-                                  {profile?.role === 'creator' && (
-                                    <>
-                                      <button onClick={() => {
-                                        const newName = prompt("Переименовать класс:", cls.name);
-                                        if (newName) handleRenameStructure('classes', cls.id, newName);
-                                      }} style={{ background: 'transparent', padding: '5px', color: 'var(--primary-color)', boxShadow: 'none' }}><Edit3 size={18} /></button>
-                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                        <button onClick={() => handleMoveStructure('classes', cls.id, 'up', schoolClasses)} style={{ background: 'transparent', padding: '2px', color: 'inherit', boxShadow: 'none' }}><ArrowUp size={14} /></button>
-                                        <button onClick={() => handleMoveStructure('classes', cls.id, 'down', schoolClasses)} style={{ background: 'transparent', padding: '2px', color: 'inherit', boxShadow: 'none' }}><ArrowDown size={14} /></button>
-                                      </div>
-                                      <button onClick={() => {
-                                        if (studentsCount > 0) return alert("Нельзя удалить класс, в котором есть ученики!");
-                                        if (confirm(`Удалить класс "${cls.name}"?`)) {
-                                          supabase.from('classes').delete().eq('id', cls.id).then(() => fetchStructure());
-                                        }
-                                      }} style={{ background: 'transparent', padding: '5px', color: 'red', boxShadow: 'none' }}><Trash2 size={18} /></button>
-                                    </>
-                                  )}
-                                </div>
+                                  </div>
+                                )}
                               </div>
 
-                              {isClassExpanded && (
-                                <div className="animate" style={{ borderTop: '1px solid rgba(99, 102, 241, 0.1)', background: 'rgba(99, 102, 241, 0.01)' }}>
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px', marginBottom: '15px', padding: '0 25px' }}>
-                                    <div style={{ fontSize: '0.85rem', fontWeight: 'bold', opacity: 0.6 }}>Список учеников</div>
-                                    <button 
-                                      onClick={() => { setNewLimit(cls.max_students || 50); setEditingClassLimit(cls); }}
-                                      style={{ background: 'transparent', color: 'var(--primary-color)', fontSize: '0.85rem', padding: '5px 10px', border: '1px solid var(--primary-color)', borderRadius: '8px', boxShadow: 'none' }}
-                                    >
-                                      Лимит: {cls.max_students || 50}
-                                    </button>
-                                  </div>
+                              {isSchoolExpanded && (
+                                <div style={{ padding: '10px 15px', background: 'var(--card-bg)' }}>
+                                  <div style={{ display: 'grid', gap: '8px' }}>
+                                    {schoolClasses.map(cls => {
+                                      const isClassExpanded = expandedClasses[cls.id];
+                                      const studentsCount = users.filter(u => u.class_id === cls.id).length;
+                                      const isTeacherRole = profile?.role === 'teacher';
+                                      const canManage = isTeacherRole ? teacherClasses.includes(cls.id) : true;
 
-                                  {/* APPLICATIONS SECTION */}
-                                  {classApplications[cls.id]?.length > 0 && (
-                                    <div style={{ margin: '0 25px 20px', padding: '15px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '15px', border: '1px dashed var(--primary-color)' }}>
-                                      <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--primary-color)', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                        <UserPlus size={14} /> НОВЫЕ ЗАЯВКИ ({classApplications[cls.id].length})
-                                      </div>
-                                      <div style={{ display: 'grid', gap: '10px' }}>
-                                        {classApplications[cls.id].map(app => (
-                                          <div key={app.id} className="flex-center" style={{ justifyContent: 'space-between', background: 'var(--card-bg)', padding: '10px 15px', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
-                                            <div style={{ fontSize: '0.85rem' }}>
-                                              <strong>{app.profiles?.last_name} {app.profiles?.first_name}</strong>
+                                      return (
+                                        <div key={cls.id} className="animate" style={{ background: 'var(--card-bg)', border: '1px solid rgba(99, 102, 241, 0.1)', borderRadius: '12px', overflow: 'hidden' }}>
+                                          <div className="flex-center" style={{ justifyContent: 'space-between', padding: '10px 15px' }}>
+                                            <div onClick={() => {
+                                              if (isClassExpanded) {
+                                                setExpandedClasses(prev => {
+                                                  const next = { ...prev };
+                                                  delete next[cls.id];
+                                                  return next;
+                                                });
+                                              } else {
+                                                setExpandedClasses(prev => ({ ...prev, [cls.id]: true }));
+                                                fetchClassStudents(cls.id);
+                                                fetchClassApplications(cls.id);
+                                              }
+                                            }} style={{ cursor: 'pointer', flex: 1 }}>
+                                              <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px' }}>
+                                                {isClassExpanded ? <ChevronDown size={14} opacity={0.5} /> : <ChevronRight size={14} opacity={0.5} />}
+                                                <span style={{ fontWeight: '600', fontSize: '0.95rem' }}>{cls.name}</span>
+                                                <div className="flex-center" style={{ gap: '5px', opacity: 0.5, fontSize: '0.75rem' }}>
+                                                  <Users size={12} /> {studentsCount} / {cls.max_students || 50}
+                                                  {cls.max_students && studentsCount > cls.max_students && <AlertTriangle size={12} color="red" />}
+                                                </div>
+                                              </div>
                                             </div>
-                                            <div className="flex-center" style={{ gap: '10px' }}>
-                                              <button onClick={() => handleApplication(app, 'accepted')} style={{ padding: '5px 12px', fontSize: '0.75rem', background: '#22c55e', color: 'white' }}>Принять</button>
-                                              <button onClick={() => handleApplication(app, 'rejected')} style={{ padding: '5px 12px', fontSize: '0.75rem', background: 'rgba(0,0,0,0.05)', color: 'red', boxShadow: 'none' }}>Отклонить</button>
-                                            </div>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  )}
-                                  <div style={{ padding: '0 25px 20px' }}>
-                                    {loadingStudents && !classStudents[cls.id] ? (
-                                      <div style={{ textAlign: 'center', padding: '20px', opacity: 0.5 }}>Загрузка...</div>
-                                    ) : classStudents[cls.id]?.length > 0 ? (
-                                      <div style={{ display: 'grid', gap: '8px' }}>
-                                        {classStudents[cls.id].sort((a, b) => (a.last_name || '').localeCompare(b.last_name || '')).map(s => (
-                                          <div key={s.id} className="flex-center" style={{ justifyContent: 'space-between', background: 'var(--card-bg)', padding: '12px 15px', borderRadius: '12px', border: '1px solid rgba(99, 102, 241, 0.05)' }}>
-                                            <div>
-                                              <div style={{ fontWeight: '500' }}>{s.last_name} {s.first_name} {s.patronymic}</div>
-                                              <div style={{ fontSize: '0.75rem', opacity: 0.5 }}>{s.email}</div>
-                                            </div>
+
                                             <div className="flex-center" style={{ gap: '8px' }}>
-                                              <button 
-                                                onClick={() => navigate(`/user-analytics?userId=${s.id}`)}
-                                                style={{ background: 'transparent', color: 'var(--primary-color)', padding: '5px', boxShadow: 'none' }} 
-                                                title="Аналитика ученика"
-                                              >
-                                                <Eye size={16} />
-                                              </button>
-                                              
-                                              {/* Restricted actions for teachers on admins/creators */}
-                                              {!(profile?.role === 'teacher' && (s.role === 'admin' || s.role === 'creator')) ? (
+                                              {profile?.role === 'creator' && (
+                                                <button 
+                                                  onClick={() => { setShowTeachersModal(cls); fetchClassTeachers(cls.id); }} 
+                                                  style={{ background: '#f59e0b', color: 'white', padding: '4px 10px', borderRadius: '8px', boxShadow: 'none', display: 'flex', gap: '5px', alignItems: 'center', fontSize: '0.75rem' }}
+                                                >
+                                                  <Shield size={14} /> Учителя
+                                                </button>
+                                              )}
+
+                                              {canManage && (
                                                 <>
-                                                  <button onClick={() => openEditModal(s)} style={{ background: 'transparent', color: 'var(--primary-color)', padding: '5px', boxShadow: 'none' }} title="Изменить ФИО"><Edit3 size={16} /></button>
-                                                  <button onClick={() => setRemovingStudent(s)} style={{ background: 'transparent', color: 'red', padding: '5px', boxShadow: 'none' }} title="Удалить из класса"><UserMinus size={16} /></button>
-                                                  <button onClick={() => setBlockingUser(s)} style={{ background: 'transparent', color: '#dc2626', padding: '5px', boxShadow: 'none' }} title="Исключить и заблокировать"><Ban size={16} /></button>
+                                                  <button onClick={() => { setShowApplicationsModal(cls); fetchClassApplications(cls.id); }} style={{ background: 'rgba(99,102,241,0.1)', color: 'var(--primary-color)', padding: '4px 10px', borderRadius: '8px', boxShadow: 'none', display: 'flex', gap: '5px', alignItems: 'center', fontSize: '0.75rem' }}>
+                                                    <UserPlus size={14} /> Заявки
+                                                  </button>
+                                                  <button onClick={() => { setShowListsModal({ class: cls, type: 'white' }); fetchClassLists(cls.id, 'white'); }} style={{ background: 'rgba(34,197,94,0.1)', color: '#16a34a', padding: '4px', borderRadius: '8px', boxShadow: 'none' }} title="Белый список"><UserCheck size={16} /></button>
+                                                  <button onClick={() => { setShowListsModal({ class: cls, type: 'black' }); fetchClassLists(cls.id, 'black'); }} style={{ background: 'rgba(239,68,68,0.1)', color: '#dc2626', padding: '4px', borderRadius: '8px', boxShadow: 'none' }} title="Черный список"><Ban size={16} /></button>
                                                 </>
-                                              ) : (
-                                                <div title="Защищенный профиль" style={{ opacity: 0.3, padding: '5px' }}><Shield size={16} /></div>
+                                              )}
+
+                                              {profile?.role === 'creator' && (
+                                                <>
+                                                  <button onClick={() => setRenamingStructure({ table: 'classes', id: cls.id, currentName: cls.name, typeLabel: 'класс' })} style={{ background: 'transparent', padding: '4px', color: 'var(--primary-color)', boxShadow: 'none' }} title="Переименовать класс"><Edit3 size={16} /></button>
+                                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                    <button onClick={() => handleMoveStructure('classes', cls.id, 'up', schoolClasses)} style={{ background: 'transparent', padding: '1px', color: 'inherit', boxShadow: 'none' }}><ArrowUp size={12} /></button>
+                                                    <button onClick={() => handleMoveStructure('classes', cls.id, 'down', schoolClasses)} style={{ background: 'transparent', padding: '1px', color: 'inherit', boxShadow: 'none' }}><ArrowDown size={12} /></button>
+                                                  </div>
+                                                  <button onClick={() => {
+                                                    if (studentsCount > 0) return alert("Нельзя удалить класс, в котором есть ученики!");
+                                                    setDeletingStructure({ table: 'classes', id: cls.id, name: cls.name, typeLabel: 'класс' });
+                                                  }} style={{ background: 'transparent', padding: '4px', color: 'red', boxShadow: 'none' }} title="Удалить класс"><Trash2 size={16} /></button>
+                                                </>
                                               )}
                                             </div>
                                           </div>
-                                        ))}
-                                      </div>
-                                    ) : (
-                                      <div style={{ textAlign: 'center', padding: '20px', opacity: 0.4, fontSize: '0.9rem' }}>В классе пока нет учеников</div>
-                                    )}
+
+                                          {/* ... children render of Class (students and applications) will be same as before ... */}
+                                          {isClassExpanded && (
+                                            <div className="animate" style={{ borderTop: '1px solid rgba(99, 102, 241, 0.1)', background: 'rgba(99, 102, 241, 0.01)' }}>
+                                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px', marginBottom: '15px', padding: '0 20px' }}>
+                                                <div style={{ fontSize: '0.85rem', fontWeight: 'bold', opacity: 0.6 }}>Список учеников</div>
+                                                <button 
+                                                  onClick={() => { setNewLimit(cls.max_students || 50); setEditingClassLimit(cls); }}
+                                                  style={{ background: 'transparent', color: 'var(--primary-color)', fontSize: '0.85rem', padding: '4px 8px', border: '1px solid var(--primary-color)', borderRadius: '6px', boxShadow: 'none' }}
+                                                >
+                                                  Лимит: {cls.max_students || 50}
+                                                </button>
+                                              </div>
+
+                                              {/* APPLICATIONS SECTION */}
+                                              {classApplications[cls.id]?.length > 0 && (
+                                                <div style={{ margin: '0 20px 15px', padding: '12px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '12px', border: '1px dashed var(--primary-color)' }}>
+                                                  <div style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--primary-color)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                    <UserPlus size={12} /> НОВЫЕ ЗАЯВКИ ({classApplications[cls.id].length})
+                                                  </div>
+                                                  <div style={{ display: 'grid', gap: '8px' }}>
+                                                    {classApplications[cls.id].map(app => (
+                                                      <div key={app.id} className="flex-center" style={{ justifyContent: 'space-between', background: 'var(--card-bg)', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                                                        <div style={{ fontSize: '0.8rem' }}>
+                                                          <strong>{app.profiles?.last_name} {app.profiles?.first_name}</strong>
+                                                        </div>
+                                                        <div className="flex-center" style={{ gap: '8px' }}>
+                                                          <button onClick={() => handleApplication(app, 'accepted')} style={{ padding: '4px 10px', fontSize: '0.7rem', background: '#22c55e', color: 'white' }}>Принять</button>
+                                                          <button onClick={() => handleApplication(app, 'rejected')} style={{ padding: '4px 10px', fontSize: '0.7rem', background: 'rgba(0,0,0,0.05)', color: 'red', boxShadow: 'none' }}>Отклонить</button>
+                                                        </div>
+                                                      </div>
+                                                    ))}
+                                                  </div>
+                                                </div>
+                                              )}
+                                              <div style={{ padding: '0 20px 15px' }}>
+                                                {loadingStudents && !classStudents[cls.id] ? (
+                                                  <div style={{ textAlign: 'center', padding: '15px', opacity: 0.5 }}>Загрузка...</div>
+                                                ) : classStudents[cls.id]?.length > 0 ? (
+                                                  <div style={{ display: 'grid', gap: '6px' }}>
+                                                    {classStudents[cls.id].sort((a, b) => (a.last_name || '').localeCompare(b.last_name || '')).map(s => (
+                                                      <div key={s.id} className="flex-center" style={{ justifyContent: 'space-between', background: 'var(--card-bg)', padding: '10px 15px', borderRadius: '10px', border: '1px solid rgba(99, 102, 241, 0.05)' }}>
+                                                        <div>
+                                                          <div style={{ fontWeight: '500', fontSize: '0.9rem' }}>{s.last_name} {s.first_name} {s.patronymic}</div>
+                                                          <div style={{ fontSize: '0.7rem', opacity: 0.5 }}>{s.email}</div>
+                                                        </div>
+                                                        <div className="flex-center" style={{ gap: '8px' }}>
+                                                          <button 
+                                                            onClick={() => navigate(`/user-analytics?userId=${s.id}`)}
+                                                            style={{ background: 'transparent', color: 'var(--primary-color)', padding: '4px', boxShadow: 'none' }} 
+                                                            title="Аналитика ученика"
+                                                          >
+                                                            <Eye size={16} />
+                                                          </button>
+                                                          
+                                                          {/* Restricted actions for teachers on admins/creators */}
+                                                          {!(profile?.role === 'teacher' && (s.role === 'admin' || s.role === 'creator')) ? (
+                                                            <>
+                                                              <button onClick={() => openEditModal(s)} style={{ background: 'transparent', color: 'var(--primary-color)', padding: '4px', boxShadow: 'none' }} title="Изменить ФИО"><Edit3 size={16} /></button>
+                                                              <button onClick={() => setRemovingStudent(s)} style={{ background: 'transparent', color: 'red', padding: '4px', boxShadow: 'none' }} title="Удалить из класса"><UserMinus size={16} /></button>
+                                                              <button onClick={() => setBlockingUser(s)} style={{ background: 'transparent', color: '#dc2626', padding: '4px', boxShadow: 'none' }} title="Исключить и заблокировать"><Ban size={16} /></button>
+                                                            </>
+                                                          ) : (
+                                                            <div title="Защищенный профиль" style={{ opacity: 0.3, padding: '4px' }}><Shield size={16} /></div>
+                                                          )}
+                                                        </div>
+                                                      </div>
+                                                    ))}
+                                                  </div>
+                                                ) : (
+                                                  <div style={{ textAlign: 'center', padding: '15px', opacity: 0.4, fontSize: '0.85rem' }}>В классе пока нет учеников</div>
+                                                )}
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                    {schoolClasses.length === 0 && <div style={{ textAlign: 'center', padding: '15px', opacity: 0.4, fontSize: '0.9rem' }}>Нет добавленных классов</div>}
                                   </div>
                                 </div>
                               )}
                             </div>
                           );
                         })}
-                        {schoolClasses.length === 0 && <div style={{ textAlign: 'center', padding: '20px', opacity: 0.4 }}>Нет добавленных классов</div>}
+                        {citySchools.length === 0 && <div style={{ textAlign: 'center', padding: '15px', opacity: 0.4, fontSize: '0.95rem' }}>Нет добавленных школ</div>}
                       </div>
                     </div>
                   )}
                 </div>
               );
             })}
-            {schools.length === 0 && (
+            {cities.length === 0 && (
               <div className="card flex-center" style={{ height: '200px', flexDirection: 'column', gap: '15px' }}>
                 <Building size={48} opacity={0.2} />
-                <div style={{ opacity: 0.5 }}>Список школ пуст</div>
+                <div style={{ opacity: 0.5 }}>Список городов пуст</div>
               </div>
             )}
           </div>
@@ -1176,7 +1234,7 @@ const Dashboard = ({ session, profile }) => {
 
             <div style={{ display: 'grid', gap: '12px', maxHeight: '450px', overflowY: 'auto' }}>
               {(classApplications[showApplicationsModal.id] || []).map(app => (
-                <div key={app.id} className="card" style={{ padding: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white' }}>
+                <div key={app.id} className="card" style={{ padding: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--card-bg)' }}>
                   <div>
                     <div style={{ fontWeight: '600' }}>{app.profiles?.last_name} {app.profiles?.first_name}</div>
                     <div style={{ fontSize: '0.8rem', opacity: 0.5 }}>{app.profiles?.email}</div>
@@ -1232,6 +1290,103 @@ const Dashboard = ({ session, profile }) => {
               ))}
               {classListItems.length === 0 && <div style={{ textAlign: 'center', padding: '20px', opacity: 0.4 }}>Список пуст</div>}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* НОВЫЕ МОДАЛКИ СТРУКТУРЫ */}
+      {addingCity && (
+        <div className="modal-overlay" onClick={() => setAddingCity(false)}>
+          <div className="modal-content animate" style={{ width: '400px' }} onClick={e => e.stopPropagation()}>
+            <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '25px' }}>
+              <h3 style={{ margin: 0 }}>Добавить город</h3>
+              <button onClick={() => setAddingCity(false)} style={{ background: 'transparent', color: 'inherit', padding: 0 }}><X size={24} /></button>
+            </div>
+            <form onSubmit={handleCreateCity}>
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ fontSize: '0.85rem', opacity: 0.5, display: 'block', marginBottom: '8px' }}>Название города</label>
+                <input type="text" placeholder="Например: Москва" value={newCity} onChange={e => setNewCity(e.target.value)} required autoFocus />
+              </div>
+              <button type="submit" style={{ width: '100%' }}>Добавить</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {addingSchool && (
+        <div className="modal-overlay" onClick={() => setAddingSchool(false)}>
+          <div className="modal-content animate" style={{ width: '400px' }} onClick={e => e.stopPropagation()}>
+            <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '25px' }}>
+              <h3 style={{ margin: 0 }}>Добавить школу</h3>
+              <button onClick={() => setAddingSchool(false)} style={{ background: 'transparent', color: 'inherit', padding: 0 }}><X size={24} /></button>
+            </div>
+            <form onSubmit={handleCreateSchool}>
+              <div style={{ marginBottom: '15px' }}>
+                <label style={{ fontSize: '0.85rem', opacity: 0.5, display: 'block', marginBottom: '8px' }}>Город</label>
+                <select value={newSchoolCityId} onChange={e => setNewSchoolCityId(e.target.value)} required>
+                  <option value="" disabled>Выберите город...</option>
+                  {cities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ fontSize: '0.85rem', opacity: 0.5, display: 'block', marginBottom: '8px' }}>Название школы</label>
+                <input type="text" placeholder="Например: Школа №1" value={newSchool} onChange={e => setNewSchool(e.target.value)} required autoFocus />
+              </div>
+              <button type="submit" style={{ width: '100%' }}>Добавить</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {addingClass && (
+        <div className="modal-overlay" onClick={() => setAddingClass(false)}>
+          <div className="modal-content animate" style={{ width: '400px' }} onClick={e => e.stopPropagation()}>
+            <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '25px' }}>
+              <h3 style={{ margin: 0 }}>Добавить класс</h3>
+              <button onClick={() => setAddingClass(false)} style={{ background: 'transparent', color: 'inherit', padding: 0 }}><X size={24} /></button>
+            </div>
+            <form onSubmit={handleCreateClass}>
+              <div style={{ marginBottom: '15px' }}>
+                <label style={{ fontSize: '0.85rem', opacity: 0.5, display: 'block', marginBottom: '8px' }}>Город</label>
+                <select value={newClassCityId} onChange={e => { setNewClassCityId(e.target.value); setNewClassSchoolId(''); }} required>
+                  <option value="" disabled>Выберите город...</option>
+                  {cities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+              <div style={{ marginBottom: '15px' }}>
+                <label style={{ fontSize: '0.85rem', opacity: 0.5, display: 'block', marginBottom: '8px' }}>Школа</label>
+                <select value={newClassSchoolId} onChange={e => setNewClassSchoolId(e.target.value)} required disabled={!newClassCityId}>
+                  <option value="" disabled>Выберите школу...</option>
+                  {schools.filter(s => s.city_id === newClassCityId).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ fontSize: '0.85rem', opacity: 0.5, display: 'block', marginBottom: '8px' }}>Название класса</label>
+                <input type="text" placeholder="Например: 11А" value={newClass} onChange={e => setNewClass(e.target.value)} required autoFocus />
+              </div>
+              <button type="submit" style={{ width: '100%' }}>Добавить</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {renamingStructure && (
+        <div className="modal-overlay" onClick={() => setRenamingStructure(null)}>
+          <div className="modal-content animate" style={{ width: '400px' }} onClick={e => e.stopPropagation()}>
+            <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '25px' }}>
+              <h3 style={{ margin: 0 }}>Переименовать {renamingStructure.typeLabel}</h3>
+              <button onClick={() => setRenamingStructure(null)} style={{ background: 'transparent', color: 'inherit', padding: 0 }}><X size={24} /></button>
+            </div>
+            <form onSubmit={submitRenameStructure}>
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ fontSize: '0.85rem', opacity: 0.5, display: 'block', marginBottom: '8px' }}>Новое название</label>
+                <input type="text" value={renamingStructure.currentName} onChange={e => setRenamingStructure({ ...renamingStructure, currentName: e.target.value })} required autoFocus />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                <button type="button" onClick={() => setRenamingStructure(null)} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>Отмена</button>
+                <button type="submit" style={{ background: 'var(--primary-color)', color: 'white' }}>Сохранить</button>
+              </div>
+            </form>
           </div>
         </div>
       )}
