@@ -744,6 +744,16 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
   const fetchUsersForQuiz = useCallback(async (qId, currentUserProfile, targetUserId = null, overrideTeacherClasses = null) => {
     const cacheKey = `ad_users_${qId}`;
 
+    // If we're navigating to a specific user (e.g. from UserAnalytics) and they're NOT
+    // in the cached user list, invalidate the cache so we get fresh data from DB.
+    // This handles the case where a student completed the test after the cache was built.
+    if (targetUserId && targetUserId !== 'none') {
+      const cached = getCachedData(cacheKey);
+      if (cached && !cached.some(u => u.id === targetUserId)) {
+        localStorage.removeItem(`labtest_cache_${cacheKey}`);
+      }
+    }
+
     const userList = await fetchWithCache(cacheKey, async () => {
       const [{ data: results }, { data: attemptsRaw }, { data: currentQuizObj }] = await Promise.all([
         supabase.from('quiz_results').select('user_id, score, total_questions').eq('quiz_id', qId),
