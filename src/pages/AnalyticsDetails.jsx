@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { fetchWithCache, useCacheSync, getCachedData } from '../lib/cache';
+import { fetchWithCache, useCacheSync } from '../lib/cache';
 import { resolveImgUrl } from '../lib/imageUtils';
 import { ChevronLeft, BarChart2, Clock, CheckCircle, XCircle, Search, Filter, AlertTriangle, Menu, Pencil, Trash2, Eye, X, ChevronRight } from 'lucide-react';
 
@@ -38,37 +38,8 @@ const SidebarUserList = React.memo(({
   filterCity, setFilterCity, filterSchool, setFilterSchool, filterClass, setFilterClass,
   searchQuery, setSearchQuery, showObservers, setShowObservers, handleUserSelect, handleScroll,
   scrollRef, validSections, validQuizzes, isFolderEmpty, isSectionEmpty,
-  profile, cities, schools, classes, teacherClasses, navigate, setSidebarOpen, targetQuiz
+  profile, cities, schools, classes, teacherClasses, navigate, setSidebarOpen
 }) => {
-  // Multi-school logic for teachers
-  const isTeacher = profile?.role === 'teacher';
-  const teacherClassObjects = classes.filter(c => teacherClasses.includes(c.id));
-  const teacherSchoolIds = [...new Set(teacherClassObjects.map(c => c.school_id))];
-  const teacherCityIds = [...new Set(schools.filter(s => teacherSchoolIds.includes(s.id)).map(s => s.city_id))];
-
-  const availableCities = cities.filter(c => {
-    if (isTeacher && targetQuiz?.author_id !== profile?.id) return teacherCityIds.includes(c.id);
-    return true;
-  });
-  const availableSchools = schools.filter(s => {
-    if (isTeacher && targetQuiz?.author_id !== profile?.id) return teacherSchoolIds.includes(s.id);
-    return filterCity === 'all' || s.city_id === filterCity;
-  });
-
-  const availableClasses = classes.filter(c => {
-    if (isTeacher && targetQuiz?.author_id !== profile?.id) return teacherClasses.includes(c.id);
-    return filterSchool === 'all' || c.school_id === filterSchool;
-  });
-
-  React.useEffect(() => {
-    if (isTeacher && targetQuiz?.author_id !== profile?.id) {
-      if (availableCities.length === 1 && filterCity === 'all') setFilterCity(availableCities[0].id);
-      if (availableSchools.length === 1 && filterSchool === 'all') setFilterSchool(availableSchools[0].id);
-      if (availableClasses.length === 1 && filterClass === 'all') setFilterClass(availableClasses[0].id);
-    }
-  }, [isTeacher, targetQuiz, profile, availableCities, availableSchools, availableClasses, filterCity, filterSchool, filterClass, setFilterCity, setFilterSchool, setFilterClass]);
-
-
   return (
     <div style={{ padding: '20px', width: '320px', display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '15px' }}>
@@ -141,9 +112,9 @@ const SidebarUserList = React.memo(({
             <>
               <label htmlFor="ad-city" style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '10px', display: 'block' }}>Фильтры Учеников</label>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '15px' }}>
-                <select id="ad-city" value={filterCity} onChange={e => { setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all'); }} style={{ padding: '6px', fontSize: '0.85rem' }} disabled={isTeacher && availableCities.length <= 1 && targetQuiz?.author_id !== profile?.id}>
+                <select id="ad-city" value={filterCity} onChange={e => { setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all'); }} style={{ padding: '6px', fontSize: '0.85rem' }} disabled={profile?.role === 'teacher'}>
                   <option value="all">Все города</option>
-                  {availableCities.map(c => {
+                  {cities.map(c => {
                     const hasResults = users.some(u => u.city_id === c.id);
                     return (
                       <option key={c.id} value={c.id} disabled={!hasResults}>
@@ -152,9 +123,9 @@ const SidebarUserList = React.memo(({
                     );
                   })}
                 </select>
-                <select id="ad-school" value={filterSchool} onChange={e => { setFilterSchool(e.target.value); setFilterClass('all'); }} disabled={isTeacher && availableSchools.length <= 1 && targetQuiz?.author_id !== profile?.id} style={{ padding: '6px', fontSize: '0.85rem' }} aria-label="Школа">
+                <select id="ad-school" value={filterSchool} onChange={e => { setFilterSchool(e.target.value); setFilterClass('all'); }} disabled={profile?.role === 'teacher'} style={{ padding: '6px', fontSize: '0.85rem' }} aria-label="Школа">
                   <option value="all">Все школы</option>
-                  {availableSchools.filter(s => filterCity === 'all' || s.city_id === filterCity).map(s => {
+                  {schools.filter(s => filterCity === 'all' || s.city_id === filterCity).map(s => {
                     const hasResults = users.some(u => u.school_id === s.id);
                     return (
                       <option key={s.id} value={s.id} disabled={!hasResults}>
@@ -522,12 +493,12 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
   const [quizFolders, setQuizFolders] = useState([]);
   const [sections, setSections] = useState([]);
   const [quizzes, setQuizzes] = useState([]);
-  const [users, setUsers] = useState(() => getCachedData(`ad_users_${quizIdParam || sessionStorage.getItem('ad_t_quiz')}`) || []); // users who took the selected quiz
-  const [teacherClasses, setTeacherClasses] = useState(() => getCachedData('teacher_classes') || []); // Array of class IDs
+  const [users, setUsers] = useState([]); // users who took the selected quiz
+  const [teacherClasses, setTeacherClasses] = useState([]); // Array of class IDs
 
-  const [cities, setCities] = useState(() => getCachedData('cities') || []);
-  const [schools, setSchools] = useState(() => getCachedData('schools') || []);
-  const [classes, setClasses] = useState(() => getCachedData('classes') || []);
+  const [cities, setCities] = useState([]);
+  const [schools, setSchools] = useState([]);
+  const [classes, setClasses] = useState([]);
   // Quiz-specific sections for test filters
   const [quizSections, setQuizSections] = useState([]);
 
@@ -571,7 +542,7 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
 
   // Data for main content
   const [targetUser, setTargetUser] = useState(null);
-  const [targetQuiz, setTargetQuiz] = useState(() => getCachedData(`an_quiz_${quizIdParam || sessionStorage.getItem('ad_t_quiz')}`));
+  const [targetQuiz, setTargetQuiz] = useState(null);
   const [attempts, setAttempts] = useState([]);
   const [selectedAttempt, setSelectedAttempt] = useState(null);
 
@@ -587,11 +558,11 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
     if (p) {
       setProfile(p);
 
-      let targetTeacherClasses = teacherClasses;
+      let targetTeacherClasses = [];
       if (p.role === 'teacher') {
-        const tc = await fetchWithCache('teacher_classes', () => supabase.from('class_teachers').select('class_id').eq('email', session.user.email.toLowerCase()).then(res => res.data.map(row => row.class_id)));
+        const { data: tc } = await supabase.from('class_teachers').select('class_id').eq('email', session.user.email.toLowerCase());
         if (tc) {
-          targetTeacherClasses = tc;
+          targetTeacherClasses = tc.map(row => row.class_id);
           setTeacherClasses(targetTeacherClasses);
         }
       }
@@ -629,7 +600,6 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
 
       const targetQuizId = quizIdParam || sessionStorage.getItem('ad_t_quiz');
       if (targetQuizId && qs) {
-        if (!targetQuiz) setTargetQuiz(qs.find(q => q.id === targetQuizId));
         setFilterQuiz(targetQuizId);
 
         // Auto-select folder/section from active quiz
@@ -737,45 +707,26 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
   useCacheSync('quiz_classes', (data) => { if (data) setQuizFolders(data); });
   useCacheSync('quiz_sections', (data) => { if (data) setSections(data); });
   useCacheSync(`catalog_struct_quizzes_analytics_${profile?.role === 'editor' ? profile?.id : 'all'}`, (data) => { if (data) setQuizzes(data); });
-  useCacheSync('cities', setCities);
-  useCacheSync('schools', setSchools);
-  useCacheSync('classes', setClasses);
+  useCacheSync('cities', (data) => { if (data) setCities(data); });
+  useCacheSync('schools', (data) => { if (data) setSchools(data); });
+  useCacheSync('classes', (data) => { if (data) setClasses(data); });
 
   const fetchUsersForQuiz = useCallback(async (qId, currentUserProfile, targetUserId = null, overrideTeacherClasses = null) => {
     const cacheKey = `ad_users_${qId}`;
 
-    // If we're navigating to a specific user (e.g. from UserAnalytics) and they're NOT
-    // in the cached user list, invalidate the cache so we get fresh data from DB.
-    // This handles the case where a student completed the test after the cache was built.
-    if (targetUserId && targetUserId !== 'none') {
-      const cached = getCachedData(cacheKey);
-      if (cached && !cached.some(u => u.id === targetUserId)) {
-        localStorage.removeItem(`labtest_cache_${cacheKey}`);
-      }
-    }
-
     const userList = await fetchWithCache(cacheKey, async () => {
-      const [{ data: results }, { data: attemptsRaw }, { data: currentQuizObj }] = await Promise.all([
+      const [{ data: results }, { data: currentQuizObj }] = await Promise.all([
         supabase.from('quiz_results').select('user_id, score, total_questions').eq('quiz_id', qId),
-        supabase.from('quiz_attempts').select('user_id, is_suspicious, is_passed, is_incomplete, score, max_score, created_at').eq('quiz_id', qId).order('created_at', { ascending: true }),
         supabase.from('quizzes').select('author_id').eq('id', qId).single()
       ]);
 
-      // Merge user IDs from both tables — quiz_attempts is written immediately on submit,
-      // quiz_results may come later via the evaluation system. Without this merge,
-      // first-time completers are invisible until evaluation runs.
-      const resultUserIds = new Set((results || []).map(r => r.user_id));
-      const attemptUserIds = new Set((attemptsRaw || []).map(a => a.user_id));
-      const allUserIds = [...new Set([...resultUserIds, ...attemptUserIds])];
+      if (!results || results.length === 0) return [];
 
-      if (allUserIds.length === 0) return [];
-
-      const { data: profs } = await supabase
-        .from('profiles')
-        .select('id, first_name, last_name, city_id, school_id, class_id, is_observer')
-        .in('id', allUserIds);
-
-      const attemptsData = attemptsRaw;
+      const userIds = [...new Set(results.map(r => r.user_id))];
+      const [{ data: profs }, { data: attemptsData }] = await Promise.all([
+        supabase.from('profiles').select('id, first_name, last_name, city_id, school_id, class_id, is_observer').in('id', userIds),
+        supabase.from('quiz_attempts').select('user_id, is_suspicious, is_passed, is_incomplete, score, max_score, created_at').eq('quiz_id', qId).order('created_at', { ascending: true })
+      ]);
 
       const latestStatusMap = {};
       if (attemptsData) {
@@ -799,14 +750,8 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
         }
 
         const uList = validProfs.map(p => {
-          // Prefer quiz_results score (final evaluated), fall back to best attempt score
-          const userResults = (results || []).filter(r => r.user_id === p.id);
-          const userAttempts = (attemptsData || []).filter(a => a.user_id === p.id);
-          const maxScore = userResults.length > 0
-            ? Math.max(...userResults.map(r => r.score))
-            : userAttempts.length > 0
-              ? Math.max(...userAttempts.map(a => a.score || 0))
-              : 0;
+          const userResults = results.filter(r => r.user_id === p.id);
+          const maxScore = userResults.length > 0 ? Math.max(...userResults.map(r => r.score)) : 0;
           const lStatus = latestStatusMap[p.id] || {};
           return {
             ...p,
@@ -827,7 +772,6 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
           return (a.first_name || '').trim().localeCompare((b.first_name || '').trim(), 'ru');
         });
 
-        setCachedData(cacheKey, uList);
         return uList;
       }
       return [];
@@ -1003,10 +947,6 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
 
   const isPrivileged = profile?.role === 'admin' || profile?.role === 'creator' || profile?.role === 'teacher' || profile?.role === 'editor';
 
-  if (loading && !targetQuiz && !targetUser) {
-    return <div className="flex-center" style={{ height: '80vh' }}><div className="loader" /></div>;
-  }
-
   return (
     <div style={{ display: 'flex', height: 'calc(100vh - 70px)', overflow: 'hidden' }}>
       <div
@@ -1042,7 +982,6 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
             isFolderEmpty={isFolderEmpty} isSectionEmpty={isSectionEmpty}
             profile={profile} cities={cities} schools={schools} classes={classes} teacherClasses={teacherClasses} navigate={navigate}
             setSidebarOpen={setSidebarOpen}
-            targetQuiz={targetQuiz}
           />
         </div>
       )}
