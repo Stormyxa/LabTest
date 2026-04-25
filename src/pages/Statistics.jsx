@@ -39,8 +39,6 @@ const Statistics = ({ session, profile }) => {
     // Set defaults from profile if not already set in session
     if (profile) {
       const isRestricted = profile.role === 'teacher' || profile.role === 'player';
-      const hasStoredCity = sessionStorage.getItem('f_city');
-      const hasStoredSchool = sessionStorage.getItem('f_school');
       
       if (isRestricted) {
         // Force-lock for restricted roles to prevent seeing "All"
@@ -49,10 +47,12 @@ const Statistics = ({ session, profile }) => {
         // Players are additionally locked to their own class only
         if (profile.role === 'player' && profile.class_id) setFilterClass(profile.class_id);
       } else {
-        // Defaults for privileged roles (Persistence within session)
-        if (!hasStoredCity && profile.city_id) setFilterCity(profile.city_id);
-        if (!hasStoredSchool && profile.school_id) setFilterSchool(profile.school_id);
-        // Admins/creators: class stays at 'all' by default — they can change freely
+        // For admins/creators/editors: pre-select their city/school only if user hasn't changed it yet
+        // We check === 'all' because sessionStorage save effects fire before this effect,
+        // making the old !hasStoredCity check always falsy.
+        if (filterCity === 'all' && profile.city_id) setFilterCity(profile.city_id);
+        if (filterSchool === 'all' && profile.school_id) setFilterSchool(profile.school_id);
+        // Class stays at 'all' — they can change freely
       }
     }
   }, [profile]);
