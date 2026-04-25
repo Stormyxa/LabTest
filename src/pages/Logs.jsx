@@ -15,11 +15,22 @@ const Logs = ({ profile }) => {
 
   const fetchLogs = async () => {
     setLoading(true);
-    const { data, error } = await supabase
+    // Пробуем разные варианты связи с profiles, так как admin_id - кастомный FK
+    let { data, error } = await supabase
       .from('audit_logs')
-      .select('*, profiles(first_name, last_name, email, role)')
+      .select('*, profiles!admin_id(first_name, last_name, email, role)')
       .order('created_at', { ascending: false })
       .limit(100);
+
+    if (error) {
+      console.warn("Попытка 1 провалилась, используем запасной запрос...", error);
+      const fallback = await supabase
+        .from('audit_logs')
+        .select('*, profiles(*)')
+        .order('created_at', { ascending: false })
+        .limit(100);
+      data = fallback.data;
+    }
 
     if (data) setLogs(data);
     setLoading(false);
@@ -55,6 +66,15 @@ const Logs = ({ profile }) => {
 
   if (loading) return <LogSkeleton />;
 
+  // Группировка логов по датам в формате ДД.ММ.ГГ
+  const groupedLogs = logs.reduce((acc, log) => {
+    const dateObj = new Date(log.created_at);
+    const dateStr = dateObj.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' });
+    if (!acc[dateStr]) acc[dateStr] = [];
+    acc[dateStr].push(log);
+    return acc;
+  }, {});
+
   return (
     <div className="container animate" style={{ padding: '40px 20px' }}>
       <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '40px' }}>
@@ -70,42 +90,53 @@ const Logs = ({ profile }) => {
       </div>
 
       <div className="grid-2" style={{ gridTemplateColumns: '1fr', gap: '15px' }}>
-        {logs.map(log => (
-          <div key={log.id} className="card" style={{ padding: '20px 30px', display: 'flex', alignItems: 'flex-start', gap: '20px', background: 'var(--card-bg)' }}>
-            <div style={{ padding: '12px', background: 'rgba(0,0,0,0.03)', borderRadius: '12px', color: 'var(--primary-color)', marginTop: '5px' }}>
-              <Clock size={24} />
+        {Object.entries(groupedLogs).map(([date, dayLogs], index) => (
+          <React.Fragment key={date}>
+            <div style={{ padding: '10px 0', borderBottom: '2px solid rgba(0,0,0,0.05)', marginTop: index === 0 ? '0' : '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+               <div style={{ height: '10px', width: '4px', background: 'var(--primary-color)', borderRadius: '2px' }} />
+               <h3 style={{ margin: 0, opacity: 0.6, fontSize: '1rem', fontWeight: 'bold' }}>{date}</h3>
             </div>
+            
+            {dayLogs.map(log => (
+              <div key={log.id} className="card" style={{ padding: '20px 30px', display: 'flex', alignItems: 'flex-start', gap: '20px', background: 'var(--card-bg)' }}>
+                <div style={{ padding: '12px', background: 'rgba(0,0,0,0.03)', borderRadius: '12px', color: 'var(--primary-color)', marginTop: '5px' }}>
+                  <Clock size={24} />
+                </div>
 
-            <div style={{ flex: 1 }}>
-              <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '10px', flexWrap: 'wrap' }}>
-                <h4 style={{ margin: 0, fontSize: '1.1rem', color: log.action.includes('Удаление') || log.action.includes('Удален') ? '#f87171' : 'inherit' }}>
-                  {log.action}
-                </h4>
-                <div className="flex-center" style={{ gap: '15px' }}>
-                  <span style={{ fontSize: '0.8rem', opacity: 0.5 }}>{new Date(log.created_at).toLocaleString()}</span>
-                  {profile?.role === 'creator' && (
-                    <button onClick={() => deleteLog(log.id)} style={{ background: 'transparent', padding: '5px', color: 'red', boxShadow: 'none' }} title="Удалить запись">
-                      <Trash2 size={16} />
-                    </button>
+                <div style={{ flex: 1 }}>
+                  <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '10px', flexWrap: 'wrap' }}>
+                    <h4 style={{ margin: 0, fontSize: '1.1rem', color: log.action.includes('Удаление') || log.action.includes('Удален') || log.action.includes('Полное удаление') ? '#f87171' : 'inherit' }}>
+                      {log.action}
+                    </h4>
+                    <div className="flex-center" style={{ gap: '15px' }}>
+                      <span style={{ fontSize: '0.8rem', opacity: 0.5 }}>
+                        {new Date(log.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                      {profile?.role === 'creator' && (
+                        <button onClick={() => deleteLog(log.id)} style={{ background: 'transparent', padding: '5px', color: 'red', boxShadow: 'none' }} title="Удалить запись">
+                          <Trash2 size={16} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <p style={{ fontSize: '0.9rem', opacity: 0.7, marginBottom: '5px' }}>
+                    Исполнитель: <strong>{log.profiles?.last_name || 'Неизвестно'} {log.profiles?.first_name || ''}</strong> {log.profiles?.email ? `(${log.profiles.email})` : ''}
+                    {log.profiles?.role && <span style={{ marginLeft: '10px', padding: '2px 8px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', fontSize: '0.7rem' }}>{log.profiles.role}</span>}
+                  </p>
+                  {log.reason && (
+                    <div style={{ marginTop: '10px', fontSize: '0.85rem', padding: '12px 15px', background: 'rgba(99, 102, 241, 0.05)', borderLeft: '3px solid var(--primary-color)', borderRadius: '0 8px 8px 0' }}>
+                      <strong style={{ opacity: 0.7 }}>Детали:</strong> <br />{log.reason}
+                    </div>
                   )}
                 </div>
               </div>
-              <p style={{ fontSize: '0.9rem', opacity: 0.7, marginBottom: '5px' }}>
-                Исполнитель: <strong>{log.profiles?.last_name} {log.profiles?.first_name}</strong> ({log.profiles?.email})
-                <span style={{ marginLeft: '10px', padding: '2px 8px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', fontSize: '0.7rem' }}>{log.profiles?.role}</span>
-              </p>
-              {log.reason && (
-                <div style={{ marginTop: '10px', fontSize: '0.85rem', padding: '12px 15px', background: 'rgba(99, 102, 241, 0.05)', borderLeft: '3px solid var(--primary-color)', borderRadius: '0 8px 8px 0' }}>
-                  <strong style={{ opacity: 0.7 }}>Детали:</strong> <br />{log.reason}
-                </div>
-              )}
-            </div>
-          </div>
+            ))}
+          </React.Fragment>
         ))}
 
         {logs.length === 0 && (
           <div className="card" style={{ textAlign: 'center', padding: '60px' }}>
-            <AlertCircle size={48} style={{ opacity: 0.1, marginBottom: '20px' }} />
+            <AlertCircle size={48} style={{ opacity: 0.1, marginBottom: '20px', margin: '0 auto' }} />
             <p style={{ opacity: 0.5 }}>Логов пока нет. Здесь фиксируются удаления тестов, результатов и пользователей.</p>
           </div>
         )}

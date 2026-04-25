@@ -491,9 +491,11 @@ const Dashboard = ({ session, profile }) => {
             <h2 style={{ fontSize: '2rem', marginBottom: '5px' }}>Панель управления</h2>
             <p style={{ opacity: 0.5, margin: 0 }}>Управление доступом, пользователями и структурой</p>
           </div>
-          <button onClick={() => navigate('/logs')} className="flex-center" style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', padding: '10px 20px', boxShadow: 'none' }}>
-            <History size={18} style={{ marginRight: '8px' }} /> Журнал логов
-          </button>
+          {(profile?.role === 'admin' || profile?.role === 'creator') && (
+            <button onClick={() => navigate('/logs')} className="flex-center" style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', padding: '10px 20px', boxShadow: 'none' }}>
+              <History size={18} style={{ marginRight: '8px' }} /> Журнал логов
+            </button>
+          )}
         </div>
 
         <div className="flex-center" style={{ gap: '20px' }}>
