@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { fetchWithCache, useCacheSync } from '../lib/cache';
+import { fetchWithCache, useCacheSync, getCachedData } from '../lib/cache';
 import { ChevronLeft, BarChart2, Search, Filter, Shield, EyeOff, AlertTriangle, Menu, X, Clock, Calendar } from 'lucide-react';
 
 const UserListItem = React.memo(({ u, isSelected, onSelect }) => (
@@ -133,14 +133,14 @@ const UserAnalytics = ({ session, profile: initialProfile }) => {
 
   const [loading, setLoading] = useState(true);
   const [contentLoading, setContentLoading] = useState(false);
-  const [profile, setProfile] = useState(null);
+  const [profile, setProfile] = useState(initialProfile);
   
   // Sidebar data
-  const [cities, setCities] = useState([]);
-  const [schools, setSchools] = useState([]);
-  const [classes, setClasses] = useState([]);
-  const [users, setUsers] = useState([]);
-  const [teacherClasses, setTeacherClasses] = useState([]); // Array of class IDs
+  const [cities, setCities] = useState(() => getCachedData('cities') || []);
+  const [schools, setSchools] = useState(() => getCachedData('schools') || []);
+  const [classes, setClasses] = useState(() => getCachedData('classes') || []);
+  const [users, setUsers] = useState(() => getCachedData(`ua_users_${initialProfile?.role === 'teacher' ? initialProfile?.school_id : 'all'}`) || []);
+  const [teacherClasses, setTeacherClasses] = useState(() => getCachedData('teacher_classes') || []); // Array of class IDs
   
   // Filters
   const [filterCity, setFilterCity] = useState(sessionStorage.getItem('f_city') || 'all');
@@ -184,8 +184,8 @@ const UserAnalytics = ({ session, profile: initialProfile }) => {
       setProfile(p);
       
       if (p.role === 'teacher') {
-        const { data: tc } = await supabase.from('class_teachers').select('class_id').eq('email', session.user.email.toLowerCase());
-        if (tc) setTeacherClasses(tc.map(row => row.class_id));
+        const tc = await fetchWithCache('teacher_classes', () => supabase.from('class_teachers').select('class_id').eq('email', session.user.email.toLowerCase()).then(res => res.data.map(row => row.class_id)));
+        if (tc) setTeacherClasses(tc);
       }
 
       const isPrivileged = p.role === 'admin' || p.role === 'creator' || p.role === 'teacher' || p.role === 'editor';
@@ -407,6 +407,10 @@ const UserAnalytics = ({ session, profile: initialProfile }) => {
     }
   });
 
+  useCacheSync('cities', setCities);
+  useCacheSync('schools', setSchools);
+  useCacheSync('classes', setClasses);
+  useCacheSync('teacher_classes', setTeacherClasses);
   useCacheSync(`ua_users_${profile?.role === 'teacher' ? profile?.school_id : 'all'}`, (cachedUsers) => {
     if (cachedUsers && cachedUsers.length > 0) setUsers(cachedUsers);
   });
@@ -427,10 +431,49 @@ const UserAnalytics = ({ session, profile: initialProfile }) => {
     fetchUserAnalytics(uId);
   }, [fetchUserAnalytics, setSearchParams, users]);
 
+  const isTeacher = profile?.role === 'teacher';
+  const teacherClassObjects = classes.filter(c => teacherClasses.includes(c.id));
+  const teacherSchoolIds = [...new Set(teacherClassObjects.map(c => c.school_id))];
+  const teacherCityIds = [...new Set(schools.filter(s => teacherSchoolIds.includes(s.id)).map(s => s.city_id))];
+
+  const availableCities = useMemo(() => {
+    return cities.filter(c => {
+      if (isTeacher) return teacherCityIds.includes(c.id);
+      return true;
+    });
+  }, [cities, isTeacher, teacherCityIds]);
+
+  const availableSchools = useMemo(() => {
+    return schools.filter(s => {
+      if (isTeacher) return teacherSchoolIds.includes(s.id);
+      return filterCity === 'all' || s.city_id === filterCity;
+    });
+  }, [schools, isTeacher, teacherSchoolIds, filterCity]);
+
+  const availableClasses = useMemo(() => {
+    return classes.filter(c => {
+      if (isTeacher) return teacherClasses.includes(c.id);
+      return filterSchool === 'all' || c.school_id === filterSchool;
+    });
+  }, [classes, isTeacher, teacherClasses, filterSchool]);
+
+  useEffect(() => {
+    if (isTeacher) {
+      if (availableCities.length === 1 && filterCity === 'all') setFilterCity(availableCities[0].id);
+      if (availableSchools.length === 1 && filterSchool === 'all') setFilterSchool(availableSchools[0].id);
+      if (availableClasses.length === 1 && filterClass === 'all') setFilterClass(availableClasses[0].id);
+    }
+  }, [isTeacher, availableCities, availableSchools, availableClasses, filterCity, filterSchool, filterClass]);
+
+
   const filteredUsers = useMemo(() => {
     return users.filter(u => {
       if (!u.first_name?.trim() && !u.last_name?.trim()) return false;
       if (!showObservers && u.is_observer) return false;
+      
+      // Strict isolation for teachers (already handled by available lists, but extra safety)
+      if (isTeacher && !teacherClasses.includes(u.class_id)) return false;
+
       if (filterCity !== 'all' && u.city_id !== filterCity) return false;
       if (filterSchool !== 'all' && u.school_id !== filterSchool) return false;
       if (filterClass !== 'all' && u.class_id !== filterClass) return false;
@@ -440,7 +483,7 @@ const UserAnalytics = ({ session, profile: initialProfile }) => {
       }
       return true;
     });
-  }, [users, showObservers, filterCity, filterSchool, filterClass, searchQuery]);
+  }, [users, showObservers, filterCity, filterSchool, filterClass, searchQuery, isTeacher, teacherClasses]);
 
   const selectedDayAttempts = useMemo(() => {
     if (!selectedDay || !allUserAttempts.length) return [];
@@ -586,20 +629,17 @@ const UserAnalytics = ({ session, profile: initialProfile }) => {
                 <>
                   <label htmlFor="ua-city" style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '10px', display: 'block' }}>Фильтры</label>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '15px' }}>
-                    <select id="ua-city" value={filterCity} onChange={e => {setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all');}} style={{ padding: '6px', fontSize: '0.85rem' }} disabled={profile?.role === 'teacher'}>
+                    <select id="ua-city" value={filterCity} onChange={e => {setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all');}} style={{ padding: '6px', fontSize: '0.85rem' }} disabled={isTeacher && availableCities.length <= 1}>
                       <option value="all">Все города</option>
-                      {cities.map(c => <option key={c.id} value={c.id} disabled={!users.some(u => u.city_id === c.id)}>{c.name}</option>)}
+                      {availableCities.map(c => <option key={c.id} value={c.id} disabled={!users.some(u => u.city_id === c.id)}>{c.name}</option>)}
                     </select>
-                    <select id="ua-school" value={filterSchool} onChange={e => {setFilterSchool(e.target.value); setFilterClass('all');}} disabled={profile?.role === 'teacher'} style={{ padding: '6px', fontSize: '0.85rem' }} aria-label="Школа">
+                    <select id="ua-school" value={filterSchool} onChange={e => {setFilterSchool(e.target.value); setFilterClass('all');}} disabled={isTeacher && availableSchools.length <= 1} style={{ padding: '6px', fontSize: '0.85rem' }} aria-label="Школа">
                       <option value="all">Все школы</option>
-                      {schools.filter(s => filterCity==='all' || s.city_id === filterCity).map(s => <option key={s.id} value={s.id} disabled={!users.some(u => u.school_id === s.id)}>{s.name}</option>)}
+                      {availableSchools.map(s => <option key={s.id} value={s.id} disabled={!users.some(u => u.school_id === s.id)}>{s.name}</option>)}
                     </select>
-                    <select id="ua-class" value={filterClass} onChange={e => setFilterClass(e.target.value)} style={{ padding: '6px', fontSize: '0.85rem' }} aria-label="Класс">
+                    <select id="ua-class" value={filterClass} onChange={e => setFilterClass(e.target.value)} style={{ padding: '6px', fontSize: '0.85rem' }} disabled={isTeacher && availableClasses.length <= 1} aria-label="Класс">
                       <option value="all">Все классы</option>
-                      {classes.filter(c => {
-                        if (profile?.role === 'teacher') return teacherClasses.includes(c.id);
-                        return filterSchool === 'all' || c.school_id === filterSchool;
-                      }).map(c => <option key={c.id} value={c.id} disabled={!users.some(u => u.class_id === c.id)}>{c.name}</option>)}
+                      {availableClasses.map(c => <option key={c.id} value={c.id} disabled={!users.some(u => u.class_id === c.id)}>{c.name}</option>)}
                     </select>
                     <div style={{ position: 'relative' }}>
                       <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', opacity: 0.5 }} />

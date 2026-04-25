@@ -289,6 +289,15 @@ const Analytics = () => {
     return filterSchool === 'all' || c.school_id === filterSchool;
   });
 
+  useEffect(() => {
+    if (isTeacher && quiz?.author_id !== profile?.id) {
+      if (availableCities.length === 1 && filterCity === 'all') setFilterCity(availableCities[0].id);
+      if (availableSchools.length === 1 && filterSchool === 'all') setFilterSchool(availableSchools[0].id);
+      if (availableClasses.length === 1 && filterClass === 'all') setFilterClass(availableClasses[0].id);
+    }
+  }, [isTeacher, quiz, profile, availableCities, availableSchools, availableClasses, filterCity, filterSchool, filterClass]);
+
+
   const filteredResults = results.filter(res => {
     const p = res.profiles;
     if (!p) return false;

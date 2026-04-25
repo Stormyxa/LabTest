@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { fetchWithCache, useCacheSync } from '../lib/cache';
+import { fetchWithCache, useCacheSync, getCachedData } from '../lib/cache';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Trophy, Download, Users, School, Filter, AlertTriangle, MapPin, Building, Info } from 'lucide-react';
@@ -11,10 +11,15 @@ const Statistics = ({ session, profile }) => {
   const navigate = useNavigate();
   const [stats, setStats] = useState([]);
 
-  const [cities, setCities] = useState([]);
-  const [schools, setSchools] = useState([]);
-  const [classes, setClasses] = useState([]);
-  const [teacherClasses, setTeacherClasses] = useState([]);
+  const [cities, setCities] = useState(() => getCachedData('cities') || []);
+  const [schools, setSchools] = useState(() => getCachedData('schools') || []);
+  const [classes, setClasses] = useState(() => getCachedData('classes') || []);
+  const [teacherClasses, setTeacherClasses] = useState(() => getCachedData('teacher_classes') || []);
+
+  useCacheSync('cities', setCities);
+  useCacheSync('schools', setSchools);
+  useCacheSync('classes', setClasses);
+  useCacheSync('teacher_classes', setTeacherClasses);
 
   const [loading, setLoading] = useState(true);
 
@@ -60,13 +65,13 @@ const Statistics = ({ session, profile }) => {
         .from('profiles')
         .select('*, quiz_results(score, total_questions, is_passed, quiz_id), quiz_attempts(is_suspicious, is_passed, quiz_id)')
         .then(r => r.data)),
-      profile?.role === 'teacher' ? supabase.from('class_teachers').select('class_id').eq('email', session.user.email.toLowerCase()).then(r => r.data) : Promise.resolve([])
+      profile?.role === 'teacher' ? fetchWithCache('teacher_classes', () => supabase.from('class_teachers').select('class_id').eq('email', session.user.email.toLowerCase()).then(r => r.data.map(row => row.class_id))) : Promise.resolve([])
     ]);
 
     if (c) setCities(c); 
     if (s) setSchools(s); 
     if (cl) setClasses(cl);
-    if (tClassesData) setTeacherClasses(tClassesData.map(tc => tc.class_id));
+    if (tClassesData) setTeacherClasses(tClassesData);
 
     const processProfiles = (profilesData) => {
       return profilesData.map(u => {
@@ -164,15 +169,35 @@ const Statistics = ({ session, profile }) => {
     // Original Processing is now inside processProfiles
 
 
+  const isTeacher = profile?.role === 'teacher';
+  const isPlayer = profile?.role === 'player';
+  const teacherClassObjects = classes.filter(c => teacherClasses.includes(c.id));
+  const teacherSchoolIds = [...new Set(teacherClassObjects.map(c => c.school_id))];
+  const teacherCityIds = [...new Set(schools.filter(s => teacherSchoolIds.includes(s.id)).map(s => s.city_id))];
+
+  const availableCities = cities.filter(c => {
+    if (isTeacher) return teacherCityIds.includes(c.id);
+    return true;
+  });
+
   const availableSchools = schools.filter(s => {
-    if (profile?.role === 'teacher') return s.id === profile.school_id;
+    if (isTeacher) return teacherSchoolIds.includes(s.id);
     return filterCity === 'all' || s.city_id === filterCity;
   });
-  
+
   const availableClasses = classes.filter(c => {
-    if (profile?.role === 'teacher') return teacherClasses.includes(c.id);
+    if (isTeacher) return teacherClasses.includes(c.id);
     return filterSchool === 'all' || c.school_id === filterSchool;
   });
+
+  useEffect(() => {
+    if (isTeacher) {
+      if (availableCities.length === 1 && filterCity === 'all') setFilterCity(availableCities[0].id);
+      if (availableSchools.length === 1 && filterSchool === 'all') setFilterSchool(availableSchools[0].id);
+      if (availableClasses.length === 1 && filterClass === 'all') setFilterClass(availableClasses[0].id);
+    }
+  }, [isTeacher, availableCities, availableSchools, availableClasses, filterCity, filterSchool, filterClass]);
+
 
   const filteredStats = stats
     .filter(u => {
@@ -294,10 +319,10 @@ const Statistics = ({ session, profile }) => {
           value={filterCity}
           onChange={e => { setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all'); }}
           style={{ width: 'auto', flex: 1, minWidth: '150px' }}
-          disabled={!hasAccess || profile?.role === 'teacher' || profile?.role === 'player'}
+          disabled={!hasAccess || isPlayer || (isTeacher && availableCities.length <= 1)}
         >
           <option value="all">Все города</option>
-          {cities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          {availableCities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
 
         <select
@@ -306,7 +331,7 @@ const Statistics = ({ session, profile }) => {
           value={filterSchool}
           onChange={e => { setFilterSchool(e.target.value); setFilterClass('all'); }}
           style={{ width: 'auto', flex: 1, minWidth: '150px' }}
-          disabled={!hasAccess || profile?.role === 'teacher' || profile?.role === 'player'}
+          disabled={!hasAccess || isPlayer || (isTeacher && availableSchools.length <= 1)}
         >
           <option value="all">Все школы</option>
           {availableSchools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -318,7 +343,7 @@ const Statistics = ({ session, profile }) => {
           value={filterClass}
           onChange={e => setFilterClass(e.target.value)}
           style={{ width: 'auto', flex: 1, minWidth: '150px' }}
-          disabled={!hasAccess}
+          disabled={!hasAccess || isPlayer || (isTeacher && availableClasses.length <= 1)}
         >
           <option value="all">Все классы</option>
           {availableClasses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}

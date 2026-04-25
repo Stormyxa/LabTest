@@ -55,6 +55,20 @@ const SidebarUserList = React.memo(({
     return filterCity === 'all' || s.city_id === filterCity;
   });
 
+  const availableClasses = classes.filter(c => {
+    if (isTeacher && targetQuiz?.author_id !== profile?.id) return teacherClasses.includes(c.id);
+    return filterSchool === 'all' || c.school_id === filterSchool;
+  });
+
+  React.useEffect(() => {
+    if (isTeacher && targetQuiz?.author_id !== profile?.id) {
+      if (availableCities.length === 1 && filterCity === 'all') setFilterCity(availableCities[0].id);
+      if (availableSchools.length === 1 && filterSchool === 'all') setFilterSchool(availableSchools[0].id);
+      if (availableClasses.length === 1 && filterClass === 'all') setFilterClass(availableClasses[0].id);
+    }
+  }, [isTeacher, targetQuiz, profile, availableCities, availableSchools, availableClasses, filterCity, filterSchool, filterClass, setFilterCity, setFilterSchool, setFilterClass]);
+
+
   return (
     <div style={{ padding: '20px', width: '320px', display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '15px' }}>
