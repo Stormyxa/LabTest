@@ -222,6 +222,28 @@ const Dashboard = ({ session, profile }) => {
     }
   });
   useCacheSync(`dashboard_users_${cacheSuffix}`, (data) => { if (data) setUsers(data); });
+  // --- REALTIME SUBSCRIPTIONS ---
+  useEffect(() => {
+    if (!profile) return;
+    
+    // Подписка на новые заявки
+    const appsChannel = supabase.channel('class_apps_realtime')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'class_applications' }, (payload) => {
+        const newApp = payload.new;
+        // Если заявка в класс этого учителя (или он админ)
+        if (profile.role === 'admin' || profile.role === 'creator' || teacherClasses.includes(newApp.class_id)) {
+           // Перезагружаем список заявок для этого класса
+           fetchClassApplications(newApp.class_id);
+           setActionFeedback({ type: 'success', message: 'Получена новая заявка в класс!' });
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(appsChannel);
+    };
+  }, [profile, teacherClasses]);
+
 
   const fetchBlacklist = async () => {
     const { data } = await supabase.from('blacklisted_emails').select('*').order('created_at', { ascending: false });
@@ -370,9 +392,49 @@ const Dashboard = ({ session, profile }) => {
 
   const removeStudentFromClass = async () => {
     if (!removingStudent) return;
+    
+    const cid = removingStudent.class_id;
+    let email = removingStudent.email;
+    const isBlacklist = removingStudent.blacklist;
+
+    // Свежая проверка почты
+    if (isBlacklist && !email) {
+      const { data: fresh } = await supabase.from('profiles').select('email').eq('id', removingStudent.id).single();
+      if (fresh?.email) email = fresh.email;
+    }
+
+    if (isBlacklist && !email) {
+       setRemovingStudent(null);
+       setActionFeedback({ type: 'error', message: 'Ошибка: Почта ученика не найдена. Бан невозможен.' });
+       return;
+    }
+
+    // 1. Убираем из состава
     const { error } = await supabase.from('profiles').update({ class_id: null }).eq('id', removingStudent.id);
+    
+    if (error) {
+      setActionFeedback({ type: 'error', message: 'Ошибка при удалении: ' + error.message });
+      return;
+    }
+
+    // 2. Бан
+    if (isBlacklist && cid && email) {
+      const { error: blockError } = await supabase.from('class_black_list').insert({ class_id: cid, email: email.toLowerCase() });
+      if (blockError) {
+        console.error("Blacklist Error Details:", blockError);
+        // Выводим детальную ошибку, чтобы понять причину (RLS, дубликат или структура)
+        const errorMsg = blockError.message || (typeof blockError === 'object' ? JSON.stringify(blockError) : String(blockError));
+        setActionFeedback({ type: 'error', message: 'Сам бан не удался: ' + errorMsg });
+      } else {
+        setActionFeedback({ type: 'success', message: 'Ученик исключен и занесен в черный список.' });
+      }
+    } else {
+      setActionFeedback({ type: 'success', message: 'Ученик успешно убран из состава.' });
+    }
+
     if (!error) {
-      await logAction(`Удаление из класса`, removingStudent.id, `Удален из состава класса`);
+      await logAction(isBlacklist ? `Бан в классе` : `Удаление из класса`, removingStudent.id, 
+        isBlacklist ? `Исключен и заблокирован в классе` : `Убран из состава класса`);
       
       // Update local state without crashing
       setClassStudents(prev => {
@@ -385,10 +447,15 @@ const Dashboard = ({ session, profile }) => {
       
       setRemovingStudent(null);
       fetchUsers();
-      setActionFeedback({ type: 'success', message: 'Ученик успешно удален из класса!' });
+      setActionFeedback({ 
+        type: 'success', 
+        message: isBlacklist 
+          ? 'Ученик исключен и занесен в черный список класса!' 
+          : 'Ученик успешно убран из состава класса!' 
+      });
     } else {
       setRemovingStudent(null);
-      setActionFeedback({ type: 'error', message: "Ошибка при удалении ученика: " + error.message });
+      setActionFeedback({ type: 'error', message: "Ошибка: " + error.message });
     }
   };
 
@@ -940,8 +1007,12 @@ const Dashboard = ({ session, profile }) => {
                                                           {!(profile?.role === 'teacher' && (s.role === 'admin' || s.role === 'creator')) ? (
                                                             <>
                                                               <button onClick={() => openEditModal(s)} style={{ background: 'transparent', color: 'var(--primary-color)', padding: '4px', boxShadow: 'none' }} title="Изменить ФИО"><Edit3 size={16} /></button>
-                                                              <button onClick={() => setRemovingStudent(s)} style={{ background: 'transparent', color: 'red', padding: '4px', boxShadow: 'none' }} title="Удалить из класса"><UserMinus size={16} /></button>
-                                                              <button onClick={() => setBlockingUser(s)} style={{ background: 'transparent', color: '#dc2626', padding: '4px', boxShadow: 'none' }} title="Исключить и заблокировать"><Ban size={16} /></button>
+                                                                                                                             <button onClick={() => setRemovingStudent({ ...s, blacklist: false })} style={{ background: 'transparent', color: 'var(--primary-color)', padding: '4px', boxShadow: 'none' }} title="Убрать из состава"><UserMinus size={16} /></button>
+                                                               <button onClick={() => setRemovingStudent({ ...s, blacklist: true })} style={{ background: 'transparent', color: 'red', padding: '4px', boxShadow: 'none' }} title="Исключить и заблокировать в классе"><Ban size={16} /></button>
+                                                               {(profile?.role === 'admin' || profile?.role === 'creator') && (
+                                                                 <button onClick={() => setBlockingUser(s)} style={{ background: 'transparent', color: '#dc2626', padding: '4px', boxShadow: 'none' }} title="Полная блокировка (удаление аккаунта)"><ShieldAlert size={16} /></button>
+                                                               )}
+                                                              
                                                             </>
                                                           ) : (
                                                             <div title="Защищенный профиль" style={{ opacity: 0.3, padding: '4px' }}><Shield size={16} /></div>
@@ -993,10 +1064,14 @@ const Dashboard = ({ session, profile }) => {
         <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setRemovingStudent(null))(e); }}}>
           <div className="modal-content animate" style={{ width: '450px' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '50%', background: 'rgba(255, 0, 0, 0.1)', color: 'red', margin: '0 auto 25px' }}><X size={32} /></div>
-            <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>Исключить из класса?</h2>
+            <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>
+              {removingStudent.blacklist ? 'Исключить и заблокировать?' : 'Убрать из состава?'}
+            </h2>
             <p style={{ opacity: 0.7, marginBottom: '30px', lineHeight: '1.6', textAlign: 'center' }}>
-              Вы собираетесь исключить <strong>{removingStudent.last_name} {removingStudent.first_name}</strong> из этого класса.<br />
-              Аккаунт пользователя сохранится, но он перестанет числиться в данном классе.
+              Вы собираетесь {removingStudent.blacklist ? 'исключить и заблокировать в этом классе' : 'убрать из состава класса'} <strong>{removingStudent.last_name} {removingStudent.first_name}</strong>.<br />
+              {removingStudent.blacklist 
+                ? 'Он больше не сможет подавать заявки в этот класс.' 
+                : 'Он сможет подать заявку в этот класс снова.'}
             </p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
               <button onClick={() => setRemovingStudent(null)} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>Отмена</button>
@@ -1305,7 +1380,7 @@ const Dashboard = ({ session, profile }) => {
 
             <form onSubmit={(e) => { 
               e.preventDefault(); 
-              const email = e.target.email.value;
+              const email = e.target.email.value.toLowerCase();
               const table = showListsModal.type === 'white' ? 'class_white_list' : 'class_black_list';
               supabase.from(table).insert({ class_id: showListsModal.class.id, email }).then(() => {
                 e.target.reset();

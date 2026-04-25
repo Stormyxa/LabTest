@@ -38,6 +38,7 @@ const Profile = ({ session, profile, refreshProfile }) => {
   const [classStudentCounts, setClassStudentCounts] = useState({});
   const [application, setApplication] = useState(null);
   const [isEmailConfirmed, setIsEmailConfirmed] = useState(true); // Default to true, will check session
+  const [userBlacklistedClasses, setUserBlacklistedClasses] = useState([]);
 
   useEffect(() => {
     localStorage.setItem('quiz_auto_advance', autoAdvance);
@@ -47,6 +48,7 @@ const Profile = ({ session, profile, refreshProfile }) => {
     fetchStructure();
     fetchStats();
     fetchApplication();
+    fetchBlacklist();
     if (session?.user) {
       // Simple check for confirmation (Supabase specific)
       setIsEmailConfirmed(!!session.user.email_confirmed_at || !!session.user.confirmed_at);
@@ -100,6 +102,13 @@ const Profile = ({ session, profile, refreshProfile }) => {
   const fetchApplication = async () => {
     const { data } = await supabase.from('class_applications').select('*, classes(name, school_id)').eq('user_id', session.user.id).eq('status', 'pending').order('created_at', { ascending: false }).limit(1).maybeSingle();
     setApplication(data || null);
+  };
+
+  const fetchBlacklist = async () => {
+    if (session?.user?.email) {
+      const { data } = await supabase.from('class_black_list').select('class_id').ilike('email', session.user.email);
+      if (data) setUserBlacklistedClasses(data.map(d => d.class_id));
+    }
   };
 
   const fetchStats = async () => {
@@ -184,11 +193,18 @@ const Profile = ({ session, profile, refreshProfile }) => {
       // User is trying to join a NEW class
       const cls = classes.find(c => c.id === classId);
       const currentCount = classStudentCounts[classId] || 0;
+      
+      // Check blacklist
+      if (userBlacklistedClasses.includes(classId)) {
+        setMsg('Ошибка: Вы были исключены из этого класса и занесены в черный список. Подача заявок невозможна.');
+        return;
+      }
+
       if (cls && cls.max_students && currentCount >= cls.max_students) {
         setMsg('Ошибка: В выбранном классе нет свободных мест.');
         return;
       }
-      
+
       // Send application
       setLoading(true);
       // console.log("DEBUG: Sending application for user:", session.user.id, "to class:", classId);
@@ -487,9 +503,10 @@ const Profile = ({ session, profile, refreshProfile }) => {
               {availableClasses.map(c => {
                 const count = classStudentCounts[c.id] || 0;
                 const isFull = c.max_students && count >= c.max_students;
+                const isBlacklisted = userBlacklistedClasses.includes(c.id);
                 return (
-                  <option key={c.id} value={c.id} disabled={isFull} style={{ color: isFull ? '#999' : 'inherit' }}>
-                    {c.name} {isFull ? '(заполнен)' : `(${count}/${c.max_students || 50})`}
+                  <option key={c.id} value={c.id} disabled={isFull || isBlacklisted} style={{ color: (isFull || isBlacklisted) ? '#999' : 'inherit' }}>
+                    {c.name} {isBlacklisted ? '(исключён)' : (isFull ? '(заполнен)' : `(${count}/${c.max_students || 50})`)}
                   </option>
                 );
               })}
