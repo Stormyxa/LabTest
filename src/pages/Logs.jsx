@@ -15,24 +15,24 @@ const Logs = ({ profile }) => {
 
   const fetchLogs = async () => {
     setLoading(true);
-    // Пробуем разные варианты связи с profiles, так как admin_id - кастомный FK
-    let { data, error } = await supabase
+    const { data, error } = await supabase
       .from('audit_logs')
-      .select('*, profiles!admin_id(first_name, last_name, email, role)')
+      .select('*, profiles!admin_id(*)')
       .order('created_at', { ascending: false })
       .limit(100);
 
     if (error) {
-      console.warn("Попытка 1 провалилась, используем запасной запрос...", error);
-      const fallback = await supabase
-        .from('audit_logs')
-        .select('*, profiles(*)')
-        .order('created_at', { ascending: false })
-        .limit(100);
-      data = fallback.data;
+       console.error("Ошибка при получении логов:", error);
+       // Если вдруг profiles!admin_id не сработает (на всякий случай)
+       const fallback = await supabase
+         .from('audit_logs')
+         .select('*, profiles(*)')
+         .order('created_at', { ascending: false })
+         .limit(100);
+       if (fallback.data) setLogs(fallback.data);
+    } else if (data) {
+       setLogs(data);
     }
-
-    if (data) setLogs(data);
     setLoading(false);
   };
 
