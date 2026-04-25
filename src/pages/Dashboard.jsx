@@ -382,9 +382,24 @@ const Dashboard = ({ session, profile }) => {
 
   const updateClassLimit = async () => {
     if (!editingClassLimit) return;
+    
+    let finalLimit = newLimit;
+    
+    // Если ввели 0 (или очистили поле), по умолчанию ставим 50
+    if (finalLimit === 0) {
+      finalLimit = 50;
+    } else {
+      // Ограничения по ролям
+      if (profile?.role === 'teacher') {
+        finalLimit = Math.min(50, finalLimit);
+      } else if (profile?.role === 'admin' || profile?.role === 'creator') {
+        finalLimit = Math.min(500, finalLimit);
+      }
+    }
+
     const { error } = await supabase.rpc('update_class_limit', { 
       p_class_id: editingClassLimit.id, 
-      p_new_limit: newLimit 
+      p_new_limit: finalLimit 
     });
     
     if (!error) {
@@ -980,34 +995,45 @@ const Dashboard = ({ session, profile }) => {
       )}
 
       {/* МОДАЛКА ИЗМЕНЕНИЯ ЛИМИТА КЛАССА */}
-      {editingClassLimit && (
-        <div className="modal-overlay" onClick={() => setEditingClassLimit(null)}>
-          <div className="modal-content animate" style={{ width: '400px' }} onClick={e => e.stopPropagation()}>
-            <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '50%', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', margin: '0 auto 25px' }}><Edit3 size={32} /></div>
-            <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>Лимит учеников</h2>
-            <p style={{ opacity: 0.7, marginBottom: '20px', textAlign: 'center' }}>
-              Класс: <strong>{editingClassLimit.name}</strong><br/>
-              Тип: {availableSchools.find(s => s.id === editingClassLimit.school_id)?.name}
-            </p>
-            <div style={{ marginBottom: '25px' }}>
-              <label htmlFor="class-limit-input" style={{ fontSize: '0.85rem', opacity: 0.5, display: 'block', marginBottom: '8px' }}>Новый лимит (учеников)</label>
-              <input 
-                id="class-limit-input"
-                name="max_students"
-                type="number" 
-                value={newLimit} 
-                onChange={(e) => setNewLimit(parseInt(e.target.value) || 0)} 
-                min="1"
-                style={{ width: '100%', fontSize: '1.2rem', textAlign: 'center' }} 
-              />
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-              <button onClick={() => setEditingClassLimit(null)} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>Отмена</button>
-              <button onClick={updateClassLimit} style={{ background: 'var(--primary-color)', color: 'white' }}>Сохранить</button>
+      {editingClassLimit && (() => {
+        const maxAllowed = (profile?.role === 'admin' || profile?.role === 'creator') ? 500 : 50;
+        const isOverLimit = newLimit > maxAllowed;
+        
+        return (
+          <div className="modal-overlay" onClick={() => setEditingClassLimit(null)}>
+            <div className="modal-content animate" style={{ width: '400px' }} onClick={e => e.stopPropagation()}>
+              <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '50%', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', margin: '0 auto 25px' }}><Edit3 size={32} /></div>
+              <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>Лимит учеников</h2>
+              <p style={{ opacity: 0.7, marginBottom: '20px', textAlign: 'center' }}>
+                Класс: <strong>{editingClassLimit.name}</strong><br/>
+                Тип: {availableSchools.find(s => s.id === editingClassLimit.school_id)?.name}
+              </p>
+              <div style={{ marginBottom: '25px' }}>
+                <label htmlFor="class-limit-input" style={{ fontSize: '0.85rem', opacity: 0.5, display: 'block', marginBottom: '8px' }}>Новый лимит (учеников)</label>
+                <input 
+                  id="class-limit-input"
+                  name="max_students"
+                  type="number" 
+                  value={newLimit} 
+                  onChange={(e) => setNewLimit(parseInt(e.target.value) || 0)} 
+                  min="1"
+                  max={maxAllowed}
+                  style={{ width: '100%', fontSize: '1.2rem', textAlign: 'center', borderColor: isOverLimit ? '#ef4444' : 'var(--border-color)', color: isOverLimit ? '#ef4444' : 'inherit' }} 
+                />
+                {isOverLimit && (
+                  <div className="animate" style={{ fontSize: '0.8rem', color: '#ef4444', marginTop: '12px', textAlign: 'center', background: 'rgba(239, 68, 68, 0.1)', padding: '10px', borderRadius: '8px', lineHeight: '1.4' }}>
+                    Для вашей роли максимальный лимит составляет <strong>{maxAllowed}</strong> учеников.<br/>Измените значение, чтобы сохранить.
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                <button onClick={() => setEditingClassLimit(null)} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>Отмена</button>
+                <button onClick={updateClassLimit} disabled={isOverLimit} style={{ background: isOverLimit ? 'rgba(0,0,0,0.05)' : 'var(--primary-color)', color: isOverLimit ? 'rgba(0,0,0,0.3)' : 'white', cursor: isOverLimit ? 'not-allowed' : 'pointer' }}>Сохранить</button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* МОДАЛКА РАЗБЛОКИРОВКИ */}
       {unblockingEmail && (
