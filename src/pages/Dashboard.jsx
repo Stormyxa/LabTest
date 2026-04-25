@@ -411,23 +411,23 @@ const Dashboard = ({ session, profile }) => {
   };
 
   const fetchClassApplications = async (cid) => {
-    console.log("DEBUG: Fetching applications for class:", cid);
+    // console.log("DEBUG: Fetching applications for class:", cid);
     const { data, error } = await supabase.from('class_applications')
       .select('*, profiles(id, first_name, last_name, patronymic)')
       .eq('class_id', cid)
       .eq('status', 'pending');
     
     if (error) {
-      console.error("DEBUG: Error fetching applications:", error);
+      // console.error("DEBUG: Error fetching applications:", error);
     }
-    console.log("DEBUG: Applications raw data from DB:", data);
+    // console.log("DEBUG: Applications raw data from DB:", data);
     
     if (data) setClassApplications(prev => ({ ...prev, [cid]: data }));
     else setClassApplications(prev => ({ ...prev, [cid]: [] }));
   };
 
   const handleApplication = async (app, status) => {
-    console.log(`DEBUG: Handling application ${app.id} for user ${app.user_id} with status: ${status}`);
+    // console.log(`DEBUG: Handling application ${app.id} for user ${app.user_id} with status: ${status}`);
     
     // 1. Update Profile first
     let profileUpdate;
@@ -442,7 +442,7 @@ const Dashboard = ({ session, profile }) => {
     }
 
     if (profileUpdate.error) {
-      console.error("DEBUG: Profile update error:", profileUpdate.error);
+      // console.error("DEBUG: Profile update error:", profileUpdate.error);
       alert(`Ошибка при обновлении профиля ученика: ${profileUpdate.error.message}`);
       return;
     }
@@ -451,10 +451,10 @@ const Dashboard = ({ session, profile }) => {
     const { error: deleteError } = await supabase.from('class_applications').delete().eq('id', app.id);
     
     if (deleteError) {
-      console.error("DEBUG: Application deletion error:", deleteError);
+      // console.error("DEBUG: Application deletion error:", deleteError);
     }
 
-    console.log("DEBUG: Application processed successfully");
+    // console.log("DEBUG: Application processed successfully");
     fetchClassApplications(app.class_id);
     fetchClassStudents(app.class_id);
     fetchUsers();

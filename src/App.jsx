@@ -55,20 +55,21 @@ function App() {
       keysToRemove.forEach(k => localStorage.removeItem(k));
       localStorage.setItem('labtest_cache_version', CACHE_VERSION);
       console.log('Stale cache cleared (New version: ' + CACHE_VERSION + ')');
+      // console.log('Stale cache cleared (New version: ' + CACHE_VERSION + ')');
     }
 
     return () => subscription.unsubscribe();
   }, []);
 
   const fetchProfile = async (id, currentSession = null) => {
-    console.log("DEBUG: Fetching profile for ID:", id);
+    // console.log("DEBUG: Fetching profile for ID:", id);
     const { data, error } = await supabase
       .from('profiles')
       .select('*, classes!class_id(name)')
       .eq('id', id)
       .single();
 
-    console.log("DEBUG: Data:", data);
+    // console.log("DEBUG: Data:", data);
     if (error) console.error("DEBUG: Error:", error);
 
     if (data) {

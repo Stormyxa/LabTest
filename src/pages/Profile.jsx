@@ -191,7 +191,7 @@ const Profile = ({ session, profile, refreshProfile }) => {
       
       // Send application
       setLoading(true);
-      console.log("DEBUG: Sending application for user:", session.user.id, "to class:", classId);
+      // console.log("DEBUG: Sending application for user:", session.user.id, "to class:", classId);
       const { error } = await supabase.from('class_applications').upsert({ 
         user_id: session.user.id, 
         class_id: classId, 
@@ -199,10 +199,10 @@ const Profile = ({ session, profile, refreshProfile }) => {
       }, { onConflict: 'user_id, class_id' });
       
       if (error) {
-        console.error("DEBUG: Application upsert error:", error);
+        // console.error("DEBUG: Application upsert error:", error);
         setMsg(`Ошибка при подаче заявки: ${error.message}`);
       } else {
-        console.log("DEBUG: Application sent successfully!");
+        // console.log("DEBUG: Application sent successfully!");
         await supabase.from('profiles').update({ 
           pending_class_id: classId,
           last_class_application_change: new Date().toISOString()

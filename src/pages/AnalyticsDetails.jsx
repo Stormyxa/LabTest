@@ -11,15 +11,15 @@ const UserListItem = React.memo(({ u, isSelected, onSelect }) => {
       onClick={() => onSelect(u.id)}
       style={{
         textAlign: 'left', padding: '10px',
-        background: isSelected ? 'var(--primary-color)' : 
-          (u.is_incomplete_user ? 'rgba(156, 163, 175, 0.15)' : 
-          (u.is_suspicious_user ? 'rgba(239, 68, 68, 0.08)' : 
-          (u.is_underperforming_user ? 'rgba(250, 204, 21, 0.08)' : 
-          (u.is_observer ? 'rgba(234, 179, 8, 0.05)' : 'rgba(0,0,0,0.02)')))),
+        background: isSelected ? 'var(--primary-color)' :
+          (u.is_incomplete_user ? 'rgba(156, 163, 175, 0.15)' :
+            (u.is_suspicious_user ? 'rgba(239, 68, 68, 0.08)' :
+              (u.is_underperforming_user ? 'rgba(250, 204, 21, 0.08)' :
+                (u.is_observer ? 'rgba(234, 179, 8, 0.05)' : 'rgba(0,0,0,0.02)')))),
         color: isSelected ? 'white' : 'var(--text-color)',
-        borderRadius: '8px', border: isSelected ? 'none' : 
-          (u.is_suspicious_user ? '1px solid rgba(239, 68, 68, 0.2)' : 
-          (u.is_observer ? '1px dashed #eab308' : 'none')),
+        borderRadius: '8px', border: isSelected ? 'none' :
+          (u.is_suspicious_user ? '1px solid rgba(239, 68, 68, 0.2)' :
+            (u.is_observer ? '1px dashed #eab308' : 'none')),
         cursor: 'pointer',
         fontSize: '0.85rem', width: '100%'
       }}>
@@ -114,18 +114,39 @@ const SidebarUserList = React.memo(({
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '15px' }}>
                 <select id="ad-city" value={filterCity} onChange={e => { setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all'); }} style={{ padding: '6px', fontSize: '0.85rem' }} disabled={profile?.role === 'teacher'}>
                   <option value="all">Все города</option>
-                  {cities.map(c => <option key={c.id} value={c.id} disabled={!users.some(u => u.city_id === c.id)}>{c.name}</option>)}
+                  {cities.map(c => {
+                    const hasResults = users.some(u => u.city_id === c.id);
+                    return (
+                      <option key={c.id} value={c.id} disabled={!hasResults}>
+                        {c.name} {!hasResults ? '(нет результатов)' : ''}
+                      </option>
+                    );
+                  })}
                 </select>
                 <select id="ad-school" value={filterSchool} onChange={e => { setFilterSchool(e.target.value); setFilterClass('all'); }} disabled={profile?.role === 'teacher'} style={{ padding: '6px', fontSize: '0.85rem' }} aria-label="Школа">
                   <option value="all">Все школы</option>
-                  {schools.filter(s => filterCity === 'all' || s.city_id === filterCity).map(s => <option key={s.id} value={s.id} disabled={!users.some(u => u.school_id === s.id)}>{s.name}</option>)}
+                  {schools.filter(s => filterCity === 'all' || s.city_id === filterCity).map(s => {
+                    const hasResults = users.some(u => u.school_id === s.id);
+                    return (
+                      <option key={s.id} value={s.id} disabled={!hasResults}>
+                        {s.name} {!hasResults ? '(нет результатов)' : ''}
+                      </option>
+                    );
+                  })}
                 </select>
                 <select id="ad-class" value={filterClass} onChange={e => setFilterClass(e.target.value)} style={{ padding: '6px', fontSize: '0.85rem' }} aria-label="Класс">
                   <option value="all">Все классы</option>
                   {classes.filter(c => {
                     if (profile?.role === 'teacher') return teacherClasses.includes(c.id);
                     return filterSchool === 'all' || c.school_id === filterSchool;
-                  }).map(c => <option key={c.id} value={c.id} disabled={!users.some(u => u.class_id === c.id)}>{c.name}</option>)}
+                  }).map(c => {
+                    const hasResults = users.some(u => u.class_id === c.id);
+                    return (
+                      <option key={c.id} value={c.id} disabled={!hasResults}>
+                        {c.name} {!hasResults ? '(нет результатов)' : ''}
+                      </option>
+                    );
+                  })}
                 </select>
                 <div style={{ position: 'relative' }}>
                   <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', opacity: 0.5 }} />
@@ -137,11 +158,11 @@ const SidebarUserList = React.memo(({
               <label style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '10px', display: 'block' }}>Ученики ({filteredUsers.length})</label>
               <div ref={scrollRef} onScroll={handleScroll} style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '5px', paddingRight: '5px' }}>
                 {filteredUsers.map(u => (
-                  <UserListItem 
-                    key={u.id} 
-                    u={u} 
-                    isSelected={targetUser?.id === u.id} 
-                    onSelect={handleUserSelect} 
+                  <UserListItem
+                    key={u.id}
+                    u={u}
+                    isSelected={targetUser?.id === u.id}
+                    onSelect={handleUserSelect}
                   />
                 ))}
                 {filteredUsers.length === 0 && <div style={{ fontSize: '0.8rem', opacity: 0.5, textAlign: 'center', marginTop: '10px' }}>Нет учеников по фильтру</div>}
@@ -184,7 +205,7 @@ const AttemptChart = React.memo(({
   if (attempts.length > 0) {
     const firstAtt = attempts[0];
     let color = firstAtt.is_incomplete ? '#9ca3af' : (firstAtt.is_suspicious ? '#ef4444' : '#3b82f6');
-    
+
     chartBars.push({
       label: '1-я попытка',
       score: firstAtt.score,
@@ -266,7 +287,7 @@ const AttemptChart = React.memo(({
                     borderRadius: '6px 6px 0 0', flexShrink: 0, position: 'relative'
                   }}>
                     {bar.isFirst && !isZero && (heightPercent > 10) && (
-                      <div style={{ 
+                      <div style={{
                         position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
                         background: 'white', color: bar.color, width: '16px', height: '16px', borderRadius: '50%',
                         fontSize: '0.65rem', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -397,7 +418,7 @@ const AttemptDetailsView = React.memo(({
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '20px', flexWrap: 'wrap' }}>
                 <div style={{ flex: 1, minWidth: '200px' }}>
                   <h4 style={{ marginBottom: '10px', fontSize: '1.1rem' }}>{i + 1}. {originQ.question}</h4>
-                  
+
                   <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '5px' }}>
                     <span style={{ opacity: 0.6, fontSize: '0.9rem' }}>Ваш ответ:</span>
                     <strong style={{ color: ans.isCorrect ? '#4ade80' : '#ef4444', fontSize: '0.95rem' }}>
@@ -431,16 +452,16 @@ const AttemptDetailsView = React.memo(({
                 </div>
 
                 {qImages.length > 0 && (
-                  <div 
+                  <div
                     onClick={openModal}
-                    style={{ 
-                      width: '100px', height: '100px', borderRadius: '12px', overflow: 'hidden', 
-                      cursor: 'pointer', border: '1px solid rgba(0,0,0,0.1)', position: 'relative' 
+                    style={{
+                      width: '100px', height: '100px', borderRadius: '12px', overflow: 'hidden',
+                      cursor: 'pointer', border: '1px solid rgba(0,0,0,0.1)', position: 'relative'
                     }}
                   >
                     <img src={resolveImgUrl(qImages[0])} alt="Question" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0, transition: 'opacity 0.2s' }} onMouseEnter={e => e.currentTarget.style.opacity = 1} onMouseLeave={e => e.currentTarget.style.opacity = 0}>
-                       <Eye size={20} color="white" />
+                      <Eye size={20} color="white" />
                     </div>
                     {qImages.length > 1 && (
                       <div style={{ position: 'absolute', bottom: '5px', right: '5px', background: 'rgba(0,0,0,0.6)', color: 'white', padding: '2px 6px', borderRadius: '4px', fontSize: '0.7rem' }}>
@@ -487,8 +508,8 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
   const [filterQuiz, setFilterQuiz] = useState(quizIdParam || sessionStorage.getItem('ad_t_quiz') || '');
 
   // User Filters
-  const [filterCity, setFilterCity] = useState(sessionStorage.getItem('f_city') || 'all');
-  const [filterSchool, setFilterSchool] = useState(sessionStorage.getItem('f_school') || 'all');
+  const [filterCity, setFilterCity] = useState(sessionStorage.getItem('f_city') || initialProfile?.city_id || 'all');
+  const [filterSchool, setFilterSchool] = useState(sessionStorage.getItem('f_school') || initialProfile?.school_id || 'all');
   const [filterClass, setFilterClass] = useState(sessionStorage.getItem('f_class') || 'all');
   const [searchQuery, setSearchQuery] = useState('');
   const [showObservers, setShowObservers] = useState(sessionStorage.getItem('an_show_observers') === 'true');
@@ -536,7 +557,7 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
     const p = initialProfile;
     if (p) {
       setProfile(p);
-      
+
       let targetTeacherClasses = [];
       if (p.role === 'teacher') {
         const { data: tc } = await supabase.from('class_teachers').select('class_id').eq('email', session.user.email.toLowerCase());
@@ -571,24 +592,16 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
       if (s) setSchools(s);
       if (cl) setClasses(cl);
 
-      // Automated Filtering Defaults
-      if (p.role === 'teacher' || p.role === 'admin' || p.role === 'creator') {
-        const sCity = sessionStorage.getItem('f_city');
-        const sSchool = sessionStorage.getItem('f_school');
-        
-        if ((!sCity || sCity === 'all') && p.city_id) setFilterCity(p.city_id);
-        if ((!sSchool || sSchool === 'all') && p.school_id) setFilterSchool(p.school_id);
-
-        if (p.role === 'teacher') {
-          if (p.city_id) setFilterCity(p.city_id);
-          if (p.school_id) setFilterSchool(p.school_id);
-        }
+      // Automated Filtering Defaults for Teacher (since they are restricted)
+      if (p.role === 'teacher') {
+        if (p.city_id) setFilterCity(p.city_id);
+        if (p.school_id) setFilterSchool(p.school_id);
       }
 
       const targetQuizId = quizIdParam || sessionStorage.getItem('ad_t_quiz');
       if (targetQuizId && qs) {
         setFilterQuiz(targetQuizId);
-        
+
         // Auto-select folder/section from active quiz
         const found = qs.find(q => q.id === targetQuizId);
         if (found && found.section_id && secs) {
@@ -596,21 +609,21 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
           if (section) {
             setFilterFolder(section.class_id);
             setFilterSection(section.id);
-            
+
             // Update memory from URL params immediately
             const fMem = { ...JSON.parse(sessionStorage.getItem('ad_folder_to_section') || '{}'), [section.class_id]: section.id };
             const sMem = { ...JSON.parse(sessionStorage.getItem('ad_section_to_quiz') || '{}'), [section.id]: targetQuizId };
             const qMem = userIdParam ? { ...JSON.parse(sessionStorage.getItem('ad_quiz_to_user') || '{}'), [targetQuizId]: userIdParam } : JSON.parse(sessionStorage.getItem('ad_quiz_to_user') || '{}');
-            
-            folderMemory.current = fMem; 
-            sectionMemory.current = sMem; 
+
+            folderMemory.current = fMem;
+            sectionMemory.current = sMem;
             quizMemory.current = qMem;
             sessionStorage.setItem('ad_folder_to_section', JSON.stringify(fMem));
             sessionStorage.setItem('ad_section_to_quiz', JSON.stringify(sMem));
             sessionStorage.setItem('ad_quiz_to_user', JSON.stringify(qMem));
           }
         }
-        
+
         fetchUsersForQuiz(targetQuizId, p, userIdParam, targetTeacherClasses);
       } else if (p.role === 'player' && !targetQuizId) {
         // If player but no quiz selected, they just see empty state
@@ -661,7 +674,7 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
       setAttempts([]);
       setSelectedAttempt(null);
     }
-    
+
     setContentLoading(false);
   }, [parseAttemptsData]);
 
@@ -700,7 +713,7 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
 
   const fetchUsersForQuiz = useCallback(async (qId, currentUserProfile, targetUserId = null, overrideTeacherClasses = null) => {
     const cacheKey = `ad_users_${qId}`;
-    
+
     const userList = await fetchWithCache(cacheKey, async () => {
       const [{ data: results }, { data: currentQuizObj }] = await Promise.all([
         supabase.from('quiz_results').select('user_id, score, total_questions').eq('quiz_id', qId),
@@ -710,7 +723,7 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
       if (!results || results.length === 0) return [];
 
       const userIds = [...new Set(results.map(r => r.user_id))];
-      const [ { data: profs }, { data: attemptsData } ] = await Promise.all([
+      const [{ data: profs }, { data: attemptsData }] = await Promise.all([
         supabase.from('profiles').select('id, first_name, last_name, city_id, school_id, class_id, is_observer').in('id', userIds),
         supabase.from('quiz_attempts').select('user_id, is_suspicious, is_passed, is_incomplete, score, max_score, created_at').eq('quiz_id', qId).order('created_at', { ascending: true })
       ]);
@@ -748,7 +761,7 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
             is_underperforming_user: !!lStatus.is_underperforming
           };
         });
-        
+
         uList.sort((a, b) => {
           const lnA = (a.last_name || '').trim();
           const lnB = (b.last_name || '').trim();
@@ -758,7 +771,7 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
           if (res !== 0) return res;
           return (a.first_name || '').trim().localeCompare((b.first_name || '').trim(), 'ru');
         });
-        
+
         return uList;
       }
       return [];
@@ -773,33 +786,33 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
 
     setUsers(userList);
 
-      // Restoration Logic
-      const finalTargetId = targetUserId || userIdParam;
-      
-      if (finalTargetId) {
-        const tu = userList.find(u => u.id === finalTargetId);
-        if (tu) {
-          fetchAttempts(qId, tu.id);
-        } else {
-          setTargetUser(null);
-          setAttempts([]);
-        }
-      } else if (currentUserProfile?.role === 'player' || currentUserProfile?.is_observer) {
-        const self = userList.find(u => u.id === currentUserProfile.id);
-        if (self) handleUserSelect(self.id);
+    // Restoration Logic
+    const finalTargetId = targetUserId || userIdParam;
+
+    if (finalTargetId) {
+      const tu = userList.find(u => u.id === finalTargetId);
+      if (tu) {
+        fetchAttempts(qId, tu.id);
       } else {
         setTargetUser(null);
         setAttempts([]);
       }
+    } else if (currentUserProfile?.role === 'player' || currentUserProfile?.is_observer) {
+      const self = userList.find(u => u.id === currentUserProfile.id);
+      if (self) handleUserSelect(self.id);
+    } else {
+      setTargetUser(null);
+      setAttempts([]);
+    }
   }, [userIdParam, fetchAttempts, handleUserSelect]);
 
   useCacheSync(`ad_users_${filterQuiz}`, (freshUsers) => {
-     if (freshUsers) setUsers(freshUsers);
+    if (freshUsers) setUsers(freshUsers);
   });
 
   const handleQuizSelect = useCallback((qId, overrideUserId = null, sId = null, isAutomated = false) => {
     const currentSId = sId || filterSection;
-    
+
     // 1. Save to memory ONLY if manual selection and we have a valid context
     if (!isAutomated && currentSId !== 'all' && qId) {
       sectionMemory.current[currentSId] = qId;
@@ -807,15 +820,15 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
     }
 
     setFilterQuiz(qId);
-    
+
     // 2. Determine target user (use provided quizMemory Ref)
     const targetUId = overrideUserId || quizMemory.current[qId] || 'none';
-    
+
     setSearchParams(qId ? (targetUId !== 'none' ? { quizId: qId, userId: targetUId } : { quizId: qId }) : {});
     setTargetUser(null);
     setTargetQuiz(null); // Clear the quiz info as well
     setAttempts([]);
-    
+
     if (qId) {
       fetchUsersForQuiz(qId, profile, targetUId === 'none' ? null : targetUId);
     } else {
@@ -838,7 +851,7 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
     }
 
     setFilterSection(sId);
-    
+
     // 2. Restore quiz for new section (read from ref)
     const rememberedQuiz = sId === 'all' ? '' : (sectionMemory.current[sId] || '');
     handleQuizSelect(rememberedQuiz, null, sId, true);
@@ -936,7 +949,7 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
 
   return (
     <div style={{ display: 'flex', height: 'calc(100vh - 70px)', overflow: 'hidden' }}>
-      <div 
+      <div
         className={`sidebar-overlay ${sidebarOpen ? 'active' : ''}`}
         onClick={() => setSidebarOpen(false)}
       />
@@ -975,8 +988,8 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
 
       <div className="main-content" style={{ flex: 1, padding: '40px 60px', overflowY: 'auto', position: 'relative', height: '100%' }}>
         {isPrivileged && !sidebarOpen && (
-          <button 
-            onClick={() => setSidebarOpen(true)} 
+          <button
+            onClick={() => setSidebarOpen(true)}
             className="flex-center sidebar-toggle-btn"
             style={{ position: 'absolute', left: '20px', top: '40px', background: 'var(--card-bg)', color: 'inherit', padding: '10px', borderRadius: '10px', zIndex: 10 }}
           >
@@ -991,15 +1004,15 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             {(profile?.role === 'admin' || profile?.role === 'creator' || profile?.role === 'teacher' || targetQuiz?.author_id === profile?.id) && (
               <>
-                <button 
-                  onClick={() => navigate(`/analytics?id=${filterQuiz}`)} 
+                <button
+                  onClick={() => navigate(`/analytics?id=${filterQuiz}`)}
                   title="Общая аналитика"
                   style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', padding: '10px', borderRadius: '10px' }}
                 >
                   <BarChart2 size={20} />
                 </button>
-                <button 
-                  onClick={() => navigate(`/redactor?id=${filterQuiz}`)} 
+                <button
+                  onClick={() => navigate(`/redactor?id=${filterQuiz}`)}
                   title="Редактор"
                   style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', padding: '10px', borderRadius: '10px' }}
                 >
@@ -1128,7 +1141,7 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
       {detailedImageModal.isOpen && detailedImageModal.images && detailedImageModal.images.length > 0 && (
         <div className="modal-overlay" style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 99999, padding: '20px' }} onClick={() => setDetailedImageModal({ isOpen: false, images: [], currentImgIdx: 0 })}>
           <div className="animate" style={{ position: 'relative', width: '100%', maxWidth: '900px', maxHeight: 'max-content', display: 'flex', flexDirection: 'column', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
-            <button 
+            <button
               onClick={() => setDetailedImageModal({ isOpen: false, images: [], currentImgIdx: 0 })}
               style={{ position: 'absolute', top: '10px', right: '10px', background: 'rgba(0,0,0,0.5)', color: 'white', padding: '10px', borderRadius: '50%', boxShadow: '0 4px 10px rgba(0,0,0,0.3)', zIndex: 50, cursor: 'pointer', border: 'none' }}
               className="flex-center"
@@ -1140,14 +1153,14 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
                 <img src={resolveImgUrl(detailedImageModal.images[detailedImageModal.currentImgIdx])} alt="Preview" style={{ maxWidth: '100%', maxHeight: '55vh', objectFit: 'contain', borderRadius: '12px', border: '2px solid rgba(255,255,255,0.1)' }} />
                 {detailedImageModal.images.length > 1 && (
                   <>
-                    <button 
+                    <button
                       onClick={(e) => { e.stopPropagation(); setDetailedImageModal(p => ({ ...p, currentImgIdx: p.currentImgIdx === 0 ? p.images.length - 1 : p.currentImgIdx - 1 })); }}
                       style={{ position: 'absolute', left: '-10px', top: '50%', transform: 'translateY(-50%)', background: 'rgba(0,0,0,0.6)', color: 'white', border: 'none', borderRadius: '50%', padding: '15px', cursor: 'pointer', boxShadow: 'none' }}
                       className="flex-center"
                     >
                       <ChevronLeft size={24} />
                     </button>
-                    <button 
+                    <button
                       onClick={(e) => { e.stopPropagation(); setDetailedImageModal(p => ({ ...p, currentImgIdx: p.currentImgIdx === p.images.length - 1 ? 0 : p.currentImgIdx + 1 })); }}
                       style={{ position: 'absolute', right: '-10px', top: '50%', transform: 'translateY(-50%)', background: 'rgba(0,0,0,0.6)', color: 'white', border: 'none', borderRadius: '50%', padding: '15px', cursor: 'pointer', boxShadow: 'none' }}
                       className="flex-center"
@@ -1163,41 +1176,41 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
                 )}
               </div>
               <div style={{ background: 'var(--card-bg)', color: 'var(--text-color)', padding: '25px', borderRadius: '20px', marginTop: '15px', width: '100%', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-                  <h4 style={{ margin: '0 0 15px 0', fontSize: '1.2rem', lineHeight: '1.4' }}>{detailedImageModal.question}</h4>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <div style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ opacity: 0.6 }}>Ответ:</span>
-                      <strong style={{ color: detailedImageModal.isCorrect ? '#4ade80' : '#f87171' }}>
-                        {detailedImageModal.userAnswer}
-                      </strong>
-                      {detailedImageModal.isCorrect ? <CheckCircle size={18} color="#4ade80" /> : <XCircle size={18} color="#f87171" />}
-                    </div>
-                    {!detailedImageModal.isCorrect && detailedImageModal.correctAnswer && (
-                      <div style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: 'rgba(74, 222, 128, 0.05)', borderRadius: '10px', marginTop: '5px' }}>
-                        <span style={{ opacity: 0.6 }}>Правильный:</span>
-                        <strong style={{ color: '#4ade80' }}>
-                          {detailedImageModal.correctAnswer}
-                        </strong>
-                      </div>
-                    )}
-                    
-                    <div style={{ display: 'flex', gap: '20px', fontSize: '0.9rem', opacity: 0.8, background: 'rgba(0,0,0,0.02)', padding: '10px 15px', borderRadius: '8px', marginTop: '10px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Clock size={16} /> Эта попытка: <strong style={{ color: detailedImageModal.timeSpent > detailedImageModal.avgQTime * 1.5 ? '#facc15' : 'inherit' }}>{detailedImageModal.timeSpent}с</strong>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <BarChart2 size={16} /> Среднее: <strong>{detailedImageModal.avgQTime}с</strong>
-                      </div>
-                    </div>
-
-                    {detailedImageModal.explanation && (
-                      <div style={{ marginTop: '15px', padding: '15px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '15px', border: '1px dashed rgba(99, 102, 241, 0.2)' }}>
-                        <div style={{ fontSize: '0.8rem', opacity: 0.5, fontWeight: '700', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px', color: 'var(--primary-color)' }}>Пояснение</div>
-                        <div style={{ fontSize: '1rem', lineHeight: '1.5', opacity: 0.9 }}>{detailedImageModal.explanation}</div>
-                      </div>
-                    )}
-                    
+                <h4 style={{ margin: '0 0 15px 0', fontSize: '1.2rem', lineHeight: '1.4' }}>{detailedImageModal.question}</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ opacity: 0.6 }}>Ответ:</span>
+                    <strong style={{ color: detailedImageModal.isCorrect ? '#4ade80' : '#f87171' }}>
+                      {detailedImageModal.userAnswer}
+                    </strong>
+                    {detailedImageModal.isCorrect ? <CheckCircle size={18} color="#4ade80" /> : <XCircle size={18} color="#f87171" />}
                   </div>
+                  {!detailedImageModal.isCorrect && detailedImageModal.correctAnswer && (
+                    <div style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: 'rgba(74, 222, 128, 0.05)', borderRadius: '10px', marginTop: '5px' }}>
+                      <span style={{ opacity: 0.6 }}>Правильный:</span>
+                      <strong style={{ color: '#4ade80' }}>
+                        {detailedImageModal.correctAnswer}
+                      </strong>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', gap: '20px', fontSize: '0.9rem', opacity: 0.8, background: 'rgba(0,0,0,0.02)', padding: '10px 15px', borderRadius: '8px', marginTop: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Clock size={16} /> Эта попытка: <strong style={{ color: detailedImageModal.timeSpent > detailedImageModal.avgQTime * 1.5 ? '#facc15' : 'inherit' }}>{detailedImageModal.timeSpent}с</strong>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <BarChart2 size={16} /> Среднее: <strong>{detailedImageModal.avgQTime}с</strong>
+                    </div>
+                  </div>
+
+                  {detailedImageModal.explanation && (
+                    <div style={{ marginTop: '15px', padding: '15px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '15px', border: '1px dashed rgba(99, 102, 241, 0.2)' }}>
+                      <div style={{ fontSize: '0.8rem', opacity: 0.5, fontWeight: '700', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px', color: 'var(--primary-color)' }}>Пояснение</div>
+                      <div style={{ fontSize: '1rem', lineHeight: '1.5', opacity: 0.9 }}>{detailedImageModal.explanation}</div>
+                    </div>
+                  )}
+
+                </div>
               </div>
             </div>
           </div>
