@@ -762,7 +762,21 @@ export const buildDetailedQuizPrompt = async (userId, quizId, viewerRole = 'stud
       return { instruction: msg, data: { status: 'not_enough_data', count: allAttempts.length }, filename: `detailed_${displayName.replace(/\s+/g, '_')}.json` };
     }
 
-    // 3. Process attempt data
+    // 3. Process attempt data & Build Question Dictionary
+    const qDict = {}; // hash -> { key, text, correct }
+    let qCounter = 1;
+
+    const getQKey = (qText, cAns) => {
+      const hash = `${qText}|${cAns}`;
+      if (!qDict[hash]) {
+        const key = `Q${qCounter++}`;
+        qDict[hash] = { key, text: qText, correct: cAns };
+      }
+      return qDict[hash].key;
+    };
+
+    const quizQuestions = quiz.content?.questions || [];
+
     const processedAttempts = allAttempts.map(a => {
       const answers = Array.isArray(a.answers_data) ? a.answers_data : [];
       return {
@@ -773,24 +787,49 @@ export const buildDetailedQuizPrompt = async (userId, quizId, viewerRole = 'stud
         is_passed: a.is_passed,
         ic: a.is_incomplete,
         s: a.is_suspicious,
-        ans: answers.map((ans, idx) => ({
-          idx: idx + 1,
-          ok: ans.is_correct,
-          t: ans.time_spent || 0,
-          u_ans: typeof ans.user_answer === 'string' ? ans.user_answer.slice(0, 50) : ans.user_answer,
-          c_ans: typeof ans.correct_answer === 'string' ? ans.correct_answer.slice(0, 50) : ans.correct_answer
-        }))
+        ans: answers.map(ans => {
+          // Resolve question data from index if string is missing
+          const qObj = (ans.originalIndex !== undefined) ? quizQuestions[ans.originalIndex] : null;
+          const qText = ans.question || qObj?.question || '—';
+          
+          let cText = ans.correct_answer;
+          if (!cText && qObj) {
+            const cIdx = ans.correctIndex !== undefined ? ans.correctIndex : qObj.correctIndex;
+            cText = qObj.options?.[cIdx] || '—';
+          }
+          if (!cText) cText = '—';
+
+          let uText = ans.user_answer;
+          if (!uText && qObj && ans.chosenIndex !== undefined) {
+            uText = qObj.options?.[ans.chosenIndex] || '—';
+          }
+          if (!uText) uText = '—';
+
+          const qKey = getQKey(qText, cText);
+          return {
+            qid: qKey,
+            ok: !!ans.is_correct,
+            t: ans.time_spent || 0,
+            u: uText
+          };
+        })
       };
     });
 
-    // 4. Compute global question stats
+    // 4. Final questions dictionary for JSON
+    const questions = {};
+    Object.values(qDict).forEach(q => {
+      questions[q.key] = { text: q.text, correct: q.correct };
+    });
+
+    // 5. Compute global question stats
     const qStats = {};
     processedAttempts.forEach(a => {
       a.ans.forEach(ans => {
-        if (!qStats[ans.idx]) qStats[ans.idx] = { ok: 0, total: 0, t: 0 };
-        qStats[ans.idx].total++;
-        if (ans.ok) qStats[ans.idx].ok++;
-        qStats[ans.idx].t += ans.t;
+        if (!qStats[ans.qid]) qStats[ans.qid] = { ok: 0, total: 0, t: 0 };
+        qStats[ans.qid].total++;
+        if (ans.ok) qStats[ans.qid].ok++;
+        qStats[ans.qid].t += ans.t;
       });
     });
 
@@ -798,11 +837,12 @@ export const buildDetailedQuizPrompt = async (userId, quizId, viewerRole = 'stud
       meta: { v: 1, generated: new Date().toLocaleString('ru-RU', { timeZone: 'Asia/Almaty' }), limit: '1st+Best+Last10' },
       student: { n: fullName, id: userId.slice(0, 8) },
       quiz: { tn: quiz.title, q_count: quiz.total_questions, c_avg: quiz.avg_success_rate || 0 },
+      questions,
       attempts: processedAttempts,
-      q_summary: Object.keys(qStats).map(idx => ({
-        idx: parseInt(idx),
-        'avg_ok%': Math.round((qStats[idx].ok / qStats[idx].total) * 100),
-        avg_t: Math.round(qStats[idx].t / qStats[idx].total)
+      q_summary: Object.keys(qStats).map(qid => ({
+        qid,
+        'ok%': Math.round((qStats[qid].ok / qStats[qid].total) * 100),
+        avg_t: Math.round(qStats[qid].t / qStats[qid].total)
       }))
     };
 
@@ -813,11 +853,16 @@ export const buildDetailedQuizPrompt = async (userId, quizId, viewerRole = 'stud
 
 **Цель**: Провести без подобострастия и угодничества глубокий педагогический анализ прогресса ученика **${fullName}** в конкретном тесте «${quiz.title}».
 
+## Расшифровка мнемоники
+- **questions**: Словарь вопросов. Ключ (Q1, Q2...) -> { text, correct }.
+- **attempts**: Список попыток. ts — время, sc — баллы, dur — длительность (сек), s — подозрительно, ic — не до конца.
+- **ans**: Ответы в попытке. qid — ссылка на вопрос из словаря, ok — верно/неверно, t — время на вопрос, u — ответ ученика.
+
 ## Задание
 На основе хронологии попыток из JSON-файла выполни:
 1. **Динамика обучения**: Как менялся результат от первой попытки к последней? Есть ли реальное усвоение материала или «зазубривание»?
 2. **Анализ времени**: Соответствует ли время выполнения сложности вопросов? Где ученик «зависает», а где отвечает слишком быстро (подозрение на угадывание)?
-3. **Паттерны ошибок**: Какие конкретно вопросы вызывают стабильное затруднение? Ошибки случайны или системны?
+3. **Паттерны ошибок**: Проанализируй неверные ответы (u) в сравнении с правильными (correct) из словаря. Ошибки случайны или системны?
 4. **Честность**: Оцени попытки с флагом s (suspicious) и ic (incomplete).
 5. **Рекомендации**: Дай учителю ${teacherName} конкретные советы, на что обратить внимание при работе с этим учеником по данной теме.
 
@@ -828,10 +873,15 @@ export const buildDetailedQuizPrompt = async (userId, quizId, viewerRole = 'stud
 
 **Цель**: Провести без подобострастия и угодничества честный и глубокий разбор твоих попыток в тесте «${quiz.title}». Ты — персональный ментор.
 
+## Расшифровка мнемоники
+- **questions**: Словарь вопросов. Ключ (Q1, Q2...) -> { text, correct }.
+- **attempts**: Список попыток. ts — время, sc — баллы, dur — длительность (сек), s — подозрительно, ic — не до конца.
+- **ans**: Ответы в попытке. qid — ссылка на вопрос из словаря, ok — верно/неверно, t — время на вопрос, u — твой ответ.
+
 ## Задание
 На основе твоей истории попыток из JSON-файла выполни:
 1. **Твой прогресс**: Похвали за реальные успехи и честно укажи на слабые места. Как изменилось твое понимание темы?
-2. **Работа над ошибками**: Почему ты ошибаешься в одних и тех же вопросах? Это невнимательность или непонимание сути?
+2. **Работа над ошибками**: Проанализируй неверные ответы (u) в сравнении с правильными (correct). В чем суть твоих заблуждений?
 3. **Тайм-менеджмент**: На какие вопросы ты тратишь слишком много времени? Как оптимизировать процесс?
 4. **Стратегия**: Конкретный план из 3 шагов: что повторить и как подойти к следующей попытке, чтобы улучшить результат.
 
