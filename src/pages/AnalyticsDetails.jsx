@@ -3,7 +3,8 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { fetchWithCache, useCacheSync } from '../lib/cache';
 import { resolveImgUrl } from '../lib/imageUtils';
-import { ChevronLeft, BarChart2, Clock, CheckCircle, XCircle, Search, Filter, AlertTriangle, Menu, Pencil, Trash2, Eye, X, ChevronRight } from 'lucide-react';
+import { ChevronLeft, BarChart2, Clock, CheckCircle, XCircle, Search, Filter, AlertTriangle, Menu, Pencil, Trash2, Eye, X, ChevronRight, Sparkles, Copy, Check, RefreshCw, FileText } from 'lucide-react';
+import { buildDetailedQuizPrompt, downloadJSON } from '../lib/aiPromptBuilder';
 
 const UserListItem = React.memo(({ u, isSelected, onSelect }) => {
   return (
@@ -534,6 +535,110 @@ const AttemptDetailsView = React.memo(({
     </div>
   );
 });
+
+// ─── AI Prompt Button Component ──────────────────────────────────
+const AiDetailedPromptButton = ({ userId, quizId, viewerProfile }) => {
+  const [status, setStatus] = useState('idle'); // 'idle' | 'loading_copy' | 'loading_file' | 'copied' | 'downloaded' | 'error'
+  const [count, setCount] = useState(null);
+  const isSelf = viewerProfile?.id === userId;
+  const viewerRole = isSelf ? 'student' : 'teacher';
+
+  useEffect(() => {
+    const fetchCount = async () => {
+      try {
+        const { count: c } = await supabase
+          .from('quiz_attempts')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', userId)
+          .eq('quiz_id', quizId);
+        setCount(c || 0);
+      } catch (e) {
+        setCount(0);
+      }
+    };
+    fetchCount();
+  }, [userId, quizId]);
+
+  const handleAction = async (type) => {
+    if (count < 5) return;
+    setStatus(type === 'copy' ? 'loading_copy' : 'loading_file');
+    try {
+      const result = await buildDetailedQuizPrompt(userId, quizId, viewerRole, isSelf ? null : viewerProfile);
+      if (result) {
+        if (type === 'copy' && result.instruction) {
+          await navigator.clipboard.writeText(result.instruction);
+          setStatus('copied');
+        } else if (type === 'file' && result.data) {
+          downloadJSON(result.data, result.filename);
+          setStatus('downloaded');
+        } else {
+          setStatus('error');
+        }
+        setTimeout(() => setStatus('idle'), 2500);
+      } else {
+        setStatus('error');
+        setTimeout(() => setStatus('idle'), 3000);
+      }
+    } catch (e) {
+      console.error('AI action failed:', e);
+      setStatus('error');
+      setTimeout(() => setStatus('idle'), 3000);
+    }
+  };
+
+  if (count !== null && count < 5) {
+    return (
+      <div className="flex-center shake" style={{ 
+        padding: '8px 12px', borderRadius: '10px', background: 'rgba(239, 68, 68, 0.05)', 
+        border: '1px solid rgba(239, 68, 68, 0.2)', color: '#ef4444', gap: '8px',
+        fontSize: '0.75rem', fontWeight: 'bold'
+      }}>
+        <AlertTriangle size={14} />
+        {count === 0 ? 'Нет попыток' : `Мало попыток (${count}/5)`}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: '8px' }}>
+      <button
+        onClick={() => handleAction('copy')}
+        disabled={status.startsWith('loading') || count === null}
+        className="flex-center"
+        title="Скопировать промпт для детального ИИ-анализа"
+        style={{
+          padding: '8px 12px', borderRadius: '10px', fontSize: '0.8rem', fontWeight: 'bold',
+          background: status === 'copied' ? 'rgba(34, 197, 94, 0.12)' : 'linear-gradient(135deg, rgba(168, 85, 247, 0.1), rgba(99, 102, 241, 0.1))',
+          color: status === 'copied' ? '#16a34a' : '#a855f7',
+          border: '1px solid ' + (status === 'copied' ? '#16a34a33' : '#a855f733'),
+          boxShadow: 'none', gap: '6px', cursor: (status.startsWith('loading') || count === null) ? 'wait' : 'pointer',
+          transition: 'all 0.3s', flexShrink: 0, whiteSpace: 'nowrap'
+        }}
+      >
+        {status === 'loading_copy' ? <RefreshCw size={14} className="spinner" /> : status === 'copied' ? <Check size={14} /> : <Sparkles size={14} />}
+        {status === 'copied' ? 'Промпт скопирован' : 'ИИ-Разбор'}
+      </button>
+
+      <button
+        onClick={() => handleAction('file')}
+        disabled={status.startsWith('loading') || count === null}
+        className="flex-center"
+        title="Скачать историю попыток (JSON)"
+        style={{
+          padding: '8px 12px', borderRadius: '10px', fontSize: '0.8rem', fontWeight: 'bold',
+          background: status === 'downloaded' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(99, 102, 241, 0.05)',
+          color: status === 'downloaded' ? '#16a34a' : 'var(--primary-color)',
+          border: '1px solid ' + (status === 'downloaded' ? '#16a34a33' : 'rgba(99, 102, 241, 0.1)'),
+          boxShadow: 'none', gap: '6px', cursor: (status.startsWith('loading') || count === null) ? 'wait' : 'pointer',
+          transition: 'all 0.3s', flexShrink: 0, whiteSpace: 'nowrap'
+        }}
+      >
+        {status === 'loading_file' ? <RefreshCw size={14} className="spinner" /> : status === 'downloaded' ? <Check size={14} /> : <FileText size={14} />}
+        JSON
+      </button>
+    </div>
+  );
+};
 
 const AnalyticsDetails = ({ session, profile: initialProfile }) => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -1101,6 +1206,9 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
                   <Pencil size={20} />
                 </button>
               </>
+            )}
+            {targetUser && targetQuiz && (
+              <AiDetailedPromptButton userId={targetUser.id} quizId={targetQuiz.id} viewerProfile={profile} />
             )}
             {(profile?.role === 'admin' || profile?.role === 'creator') && targetUser && targetQuiz && (
               <button

@@ -411,9 +411,10 @@ const buildEmptyPrompt = (name, geo, viewerRole) => {
 
 // ─── Cache Key Helper ────────────────────────────────────────────
 
-export const getPromptCacheKey = (type, id, viewerRole = 'student') => {
+export const getPromptCacheKey = (type, id, viewerRole = 'student', quizId = null) => {
   switch (type) {
     case 'student': return `ai_prompt_student_${id}_${viewerRole}`;
+    case 'student_detailed': return `ai_prompt_student_detailed_${id}_${quizId}_${viewerRole}`;
     case 'quiz': return `ai_prompt_quiz_${id}`;
     case 'class': return `ai_prompt_class_${id}`;
     default: return `ai_prompt_${type}_${id}`;
@@ -715,3 +716,127 @@ export const buildClassPrompt = async (classId) => {
   }, PROMPT_TTL_HOURS);
 };
 
+/** 
+ * Builder: Detailed Quiz Attempt History for one student
+ * Fetches first, best, and last 10 attempts for a specific quiz.
+ */
+export const buildDetailedQuizPrompt = async (userId, quizId, viewerRole = 'student', viewerProfile = null) => {
+  return await fetchWithCache(getPromptCacheKey('student_detailed', userId, viewerRole, quizId), async () => {
+    // 1. Fetch Profile & Quiz info
+    const [ { data: profile }, { data: quiz } ] = await Promise.all([
+      supabase.from('profiles').select('*').eq('id', userId).single(),
+      supabase.from('quizzes').select('*, quiz_sections(name)').eq('id', quizId).single()
+    ]);
+
+    if (!profile || !quiz) return null;
+
+    const initials = [profile.first_name, profile.patronymic].filter(Boolean).map(n => n.charAt(0).toUpperCase() + '.').join(' ');
+    const displayName = `${profile.last_name || ''} ${initials}`.trim() || 'Ученик';
+    const fullName = `${profile.last_name || ''} ${profile.first_name || ''} ${profile.patronymic || ''}`.trim() || 'Ученик';
+
+    // 2. Fetch Attempts: First, Best, Last 10
+    const [ { data: first }, { data: best }, { data: last10 } ] = await Promise.all([
+      supabase.from('quiz_attempts').select('*').eq('user_id', userId).eq('quiz_id', quizId).order('created_at', { ascending: true }).limit(1).single(),
+      supabase.from('quiz_attempts').select('*').eq('user_id', userId).eq('quiz_id', quizId).order('score', { ascending: false }).order('time_spent', { ascending: true }).limit(1).single(),
+      supabase.from('quiz_attempts').select('*').eq('user_id', userId).eq('quiz_id', quizId).order('created_at', { ascending: false }).limit(10)
+    ]);
+
+    const allAttempts = [];
+    const seenIds = new Set();
+    [first, best, ...(last10 || [])].forEach(a => {
+      if (a && !seenIds.has(a.id)) {
+        allAttempts.push(a);
+        seenIds.add(a.id);
+      }
+    });
+
+    // Sort chronologically
+    allAttempts.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+    if (allAttempts.length < 5) {
+      const msg = viewerRole === 'teacher'
+        ? `У ученика ${displayName} слишком мало попыток прохождения этого теста для детального анализа (всего ${allAttempts.length}). Необходимо минимум 5 прохождений.`
+        : `У вас пока недостаточно попыток по этому тесту для детального ИИ-анализа (всего ${allAttempts.length}). Пройдите тест еще несколько раз (минимум 5), чтобы ИИ увидел ваш прогресс!`;
+      return { instruction: msg, data: { status: 'not_enough_data', count: allAttempts.length }, filename: `detailed_${displayName.replace(/\s+/g, '_')}.json` };
+    }
+
+    // 3. Process attempt data
+    const processedAttempts = allAttempts.map(a => {
+      const answers = Array.isArray(a.answers_data) ? a.answers_data : [];
+      return {
+        id: a.id.slice(0, 8),
+        ts: toKZTime(a.created_at) + ' ' + formatDateShort(toKZDate(a.created_at)),
+        sc: a.score,
+        dur: a.time_spent,
+        is_passed: a.is_passed,
+        ic: a.is_incomplete,
+        s: a.is_suspicious,
+        ans: answers.map((ans, idx) => ({
+          idx: idx + 1,
+          ok: ans.is_correct,
+          t: ans.time_spent || 0,
+          u_ans: typeof ans.user_answer === 'string' ? ans.user_answer.slice(0, 50) : ans.user_answer,
+          c_ans: typeof ans.correct_answer === 'string' ? ans.correct_answer.slice(0, 50) : ans.correct_answer
+        }))
+      };
+    });
+
+    // 4. Compute global question stats
+    const qStats = {};
+    processedAttempts.forEach(a => {
+      a.ans.forEach(ans => {
+        if (!qStats[ans.idx]) qStats[ans.idx] = { ok: 0, total: 0, t: 0 };
+        qStats[ans.idx].total++;
+        if (ans.ok) qStats[ans.idx].ok++;
+        qStats[ans.idx].t += ans.t;
+      });
+    });
+
+    const json = {
+      meta: { v: 1, generated: new Date().toLocaleString('ru-RU', { timeZone: 'Asia/Almaty' }), limit: '1st+Best+Last10' },
+      student: { n: fullName, id: userId.slice(0, 8) },
+      quiz: { tn: quiz.title, q_count: quiz.total_questions, c_avg: quiz.avg_success_rate || 0 },
+      attempts: processedAttempts,
+      q_summary: Object.keys(qStats).map(idx => ({
+        idx: parseInt(idx),
+        'avg_ok%': Math.round((qStats[idx].ok / qStats[idx].total) * 100),
+        avg_t: Math.round(qStats[idx].t / qStats[idx].total)
+      }))
+    };
+
+    const teacherName = viewerProfile ? `${viewerProfile.last_name || ''} ${viewerProfile.first_name || ''}`.trim() : 'учителя';
+
+    const instruction = viewerRole === 'teacher'
+      ? `# Инструкция для ИИ (Педагогический Аналитик — Детальный Разбор)
+
+**Цель**: Провести без подобострастия и угодничества глубокий педагогический анализ прогресса ученика **${fullName}** в конкретном тесте «${quiz.title}».
+
+## Задание
+На основе хронологии попыток из JSON-файла выполни:
+1. **Динамика обучения**: Как менялся результат от первой попытки к последней? Есть ли реальное усвоение материала или «зазубривание»?
+2. **Анализ времени**: Соответствует ли время выполнения сложности вопросов? Где ученик «зависает», а где отвечает слишком быстро (подозрение на угадывание)?
+3. **Паттерны ошибок**: Какие конкретно вопросы вызывают стабильное затруднение? Ошибки случайны или системны?
+4. **Честность**: Оцени попытки с флагом s (suspicious) и ic (incomplete).
+5. **Рекомендации**: Дай учителю ${teacherName} конкретные советы, на что обратить внимание при работе с этим учеником по данной теме.
+
+**Стиль**: Профессиональный, честный, педагогический. Обращайся к учителю на «вы».
+
+## Данные загружены из файла.`
+      : `# Инструкция для ИИ (Личный Наставник — Разбор Теста)
+
+**Цель**: Провести без подобострастия и угодничества честный и глубокий разбор твоих попыток в тесте «${quiz.title}». Ты — персональный ментор.
+
+## Задание
+На основе твоей истории попыток из JSON-файла выполни:
+1. **Твой прогресс**: Похвали за реальные успехи и честно укажи на слабые места. Как изменилось твое понимание темы?
+2. **Работа над ошибками**: Почему ты ошибаешься в одних и тех же вопросах? Это невнимательность или непонимание сути?
+3. **Тайм-менеджмент**: На какие вопросы ты тратишь слишком много времени? Как оптимизировать процесс?
+4. **Стратегия**: Конкретный план из 3 шагов: что повторить и как подойти к следующей попытке, чтобы улучшить результат.
+
+**Стиль**: Дружелюбный, но строгий и честный наставник. Мотивируй к осознанному обучению. Обращайся на «ты».
+
+## Данные загружены из файла.`;
+
+    return { instruction, data: json, filename: `detailed_${quiz.title.replace(/\s+/g, '_')}_${displayName.replace(/\s+/g, '_')}.json` };
+  }, PROMPT_TTL_HOURS);
+};
