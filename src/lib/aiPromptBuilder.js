@@ -3,7 +3,7 @@ import { fetchWithCache } from './cache';
 
 // ─── Constants ───────────────────────────────────────────────────
 const PROMPT_TTL_HOURS = 1;
-const DATA_PERIOD_DAYS = 30;
+const DATA_LIMIT_COUNT = 200;
 const KZ_OFFSET_HOURS = 5;
 
 // ─── Helpers ─────────────────────────────────────────────────────
@@ -144,16 +144,15 @@ export const buildStudentPrompt = async (userId, viewerRole = 'student', viewerP
       .join(' ');
     const displayName = `${profile.last_name || ''} ${initials}`.trim() || 'Ученик';
 
-    // ── 2. Fetch all attempts for last 30 days ──
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - DATA_PERIOD_DAYS);
-
-    const { data: attempts } = await supabase
+    // ── 2. Fetch last 200 attempts ──
+    const { data: fetchedAttempts } = await supabase
       .from('quiz_attempts')
       .select('*, quizzes(id, title, section_id, content, avg_success_rate)')
       .eq('user_id', userId)
-      .gte('created_at', cutoffDate.toISOString())
-      .order('created_at', { ascending: true });
+      .order('created_at', { ascending: false })
+      .limit(DATA_LIMIT_COUNT);
+
+    const attempts = fetchedAttempts ? fetchedAttempts.reverse() : [];
 
     if (!attempts || attempts.length === 0) {
       const empty = buildEmptyPrompt(displayName, `${cityName}, ${schoolName}, ${className}`, viewerRole);
@@ -580,18 +579,16 @@ export const buildClassPrompt = async (classId) => {
 
     const studentIds = students.map(s => s.id);
 
-    // 3. Fetch all quiz_results for these students (last 30 days)
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - DATA_PERIOD_DAYS);
-
+    // ── 3. Fetch last 200 results for these students ──
     const { data: results } = await supabase
       .from('quiz_results')
       .select('user_id, quiz_id, score, total_questions, is_passed, first_score, is_suspicious_user, is_incomplete_user, completed_at, quizzes(title, section_id, avg_success_rate)')
       .in('user_id', studentIds)
-      .gte('completed_at', cutoff.toISOString());
+      .order('completed_at', { ascending: false })
+      .limit(DATA_LIMIT_COUNT);
 
     if (!results || results.length === 0) {
-      const msg = `Класс ${cls.name} — нет результатов за последние ${DATA_PERIOD_DAYS} дней.`;
+      const msg = `Класс ${cls.name} — нет результатов попыток для анализа.`;
       return { instruction: msg, data: { status: 'no_data' }, filename: `class_${cls.name.replace(/\s+/g, '_')}.json` };
     }
 
