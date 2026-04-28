@@ -808,8 +808,8 @@ export const buildDetailedQuizPrompt = async (userId, quizId, viewerRole = 'stud
           const qKey = getQKey(qText, cText);
           return {
             qid: qKey,
-            ok: !!ans.is_correct,
-            t: ans.time_spent || 0,
+            ok: !!(ans.isCorrect ?? ans.is_correct),
+            t: (ans.timeSpent ?? ans.time_spent) || 0,
             u: uText
           };
         })
