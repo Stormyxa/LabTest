@@ -159,6 +159,13 @@ export const buildStudentPrompt = async (userId, viewerRole = 'student', viewerP
       return { instruction: empty, data: { status: 'no_data' }, filename: `analytics_${displayName.replace(/\s+/g, '_')}.json` };
     }
 
+    if (attempts.length < 10) {
+      const notEnough = viewerRole === 'teacher'
+        ? `У ученика ${displayName} слишком мало данных для глубокого педагогического анализа (всего ${attempts.length} попыток). Необходимо минимум 10 прохождений для выявления паттернов обучения.`
+        : `У вас пока недостаточно данных для ИИ-анализа (всего ${attempts.length} попыток). Пройдите еще несколько тестов (минимум 10), чтобы ИИ смог выявить ваши сильные и слабые стороны!`;
+      return { instruction: notEnough, data: { status: 'not_enough_data', count: attempts.length }, filename: `analytics_${displayName.replace(/\s+/g, '_')}.json` };
+    }
+
     // ── 3. Fetch section names for subjects ──
     const sectionIds = [...new Set(attempts.map(a => a.quizzes?.section_id).filter(Boolean))];
     let sectionsMap = {};
@@ -398,11 +405,10 @@ ${DICTIONARY_BLOCK}
 ## Данные для анализа загружены из файла.`;
 };
 
-/** Prompt for students with no data */
 const buildEmptyPrompt = (name, geo, viewerRole) => {
   return viewerRole === 'teacher'
-    ? `Ученик ${name} (${geo}) пока не проходил тесты за последние ${DATA_PERIOD_DAYS} дней. Данных для анализа нет.`
-    : `У вас пока нет данных о прохождении тестов за последние ${DATA_PERIOD_DAYS} дней. Пройдите несколько тестов, и здесь появится персональный анализ!`;
+    ? `Ученик ${name} (${geo}) еще не проходил тесты. Данных для анализа нет.`
+    : `У вас пока нет данных о прохождении тестов. Пройдите несколько тестов, и здесь появится персональный анализ!`;
 };
 
 // ─── Cache Key Helper ────────────────────────────────────────────
@@ -658,7 +664,7 @@ export const buildClassPrompt = async (classId) => {
       meta: {
         v: 1,
         generated: new Date().toLocaleString('ru-RU', { timeZone: 'Asia/Almaty' }) + ' (Алматы)',
-        period: `${DATA_PERIOD_DAYS}д`
+        limit_count: DATA_LIMIT_COUNT
       },
       class: {
         name: cls.name,
