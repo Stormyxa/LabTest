@@ -313,7 +313,7 @@ export const buildStudentPrompt = async (userId, viewerRole = 'student', viewerP
       meta: {
         v: 1,
         generated: new Date().toLocaleString('ru-RU', { timeZone: 'Asia/Almaty' }) + ' (Алматы)',
-        period: `${DATA_PERIOD_DAYS}д`
+        limit_count: DATA_LIMIT_COUNT
       },
       u: {
         n: displayName,
