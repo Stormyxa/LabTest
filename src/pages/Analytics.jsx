@@ -91,7 +91,8 @@ const Analytics = () => {
     const [c, s, cl, studentsMap] = await Promise.all([
       fetchWithCache('cities', () => supabase.from('cities').select('*').order('name').then(res => res.data)),
       fetchWithCache('schools', () => supabase.from('schools').select('*').order('name').then(res => res.data)),
-      fetchWithCache('classes', () => supabase.from('classes').select('*').order('name').then(res => res.data))
+      fetchWithCache('classes', () => supabase.from('classes').select('*').order('name').then(res => res.data)),
+      fetchWithCache('all_students_map', () => supabase.from('profiles').select('id, first_name, last_name, patronymic, city_id, school_id, class_id, is_observer').then(res => res.data))
     ]);
     if (c) setCities(c);
     if (s) setSchools(s);
@@ -563,7 +564,19 @@ const Analytics = () => {
             <button onClick={generatePDF} className="flex-center card" style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none', padding: '15px 20px', marginBottom: 0, cursor: 'pointer', border: 'none', fontWeight: 'bold' }}>
               <Download size={20} style={{ marginRight: '8px' }} /> Отчет PDF
             </button>
-            <AnalyticsAiButton quiz={quiz} filteredResults={filteredResults} cities={cities} schools={schools} classes={classes} filterCity={filterCity} filterSchool={filterSchool} filterClass={filterClass} />
+            <AnalyticsAiButton 
+              quiz={quiz} 
+              filteredResults={filteredResults} 
+              cities={cities} 
+              schools={schools} 
+              classes={classes} 
+              filterCity={filterCity} 
+              filterSchool={filterSchool} 
+              filterClass={filterClass} 
+              profile={profile}
+              teacherClasses={teacherClasses}
+              allStudents={allStudents}
+            />
             <StatMini label="Участников" value={`${filteredResults.length} / ${totalPossibleUsers}`} icon={<User size={18} />} />
             <StatMini label="Ср. результат" value={`${avgScore}% (${totalEarnedScore}/${totalPotentialScore})`} icon={<BarChart size={18} />} />
           </div>
@@ -975,7 +988,7 @@ const AnalyticsSkeleton = () => (
 );
 
 // ─── AI Prompt Button for Analytics ──────────────────────────────
-const AnalyticsAiButton = ({ quiz, filteredResults, cities, schools, classes, filterCity, filterSchool, filterClass }) => {
+const AnalyticsAiButton = ({ quiz, filteredResults, cities, schools, classes, filterCity, filterSchool, filterClass, profile, teacherClasses, allStudents }) => {
   const [status, setStatus] = React.useState('idle'); // 'idle' | 'loading_copy' | 'loading_file' | 'copied' | 'downloaded' | 'error'
 
   const handleAction = async (type) => {
@@ -997,7 +1010,33 @@ const AnalyticsAiButton = ({ quiz, filteredResults, cities, schools, classes, fi
       } else parts.push('Все классы');
       const scopeLabel = parts.join(', ');
 
-      const result = buildQuizPromptFromData({ quiz, filteredResults, scopeLabel, cities, schools, classes });
+      // Fetch missing students from local allStudents state (faster than DB query)
+      let missingStudents = [];
+      try {
+        if (allStudents && allStudents.length > 0) {
+          const takenIds = new Set(filteredResults.map(r => r.user_id));
+          
+          missingStudents = allStudents.filter(s => {
+            if (s.is_observer) return false;
+            
+            // Apply scope filters
+            if (filterCity !== 'all' && s.city_id !== filterCity) return false;
+            if (filterSchool !== 'all' && s.school_id !== filterSchool) return false;
+            if (filterClass !== 'all' && s.class_id !== filterClass) return false;
+            
+            // Role-based filtering for teachers
+            if (profile?.role === 'teacher' && quiz?.author_id !== profile?.id && filterClass === 'all') {
+              if (!teacherClasses.includes(s.class_id)) return false;
+            }
+            
+            return !takenIds.has(s.id);
+          });
+        }
+      } catch (err) {
+        console.error('Failed to process missing students locally:', err);
+      }
+
+      const result = buildQuizPromptFromData({ quiz, filteredResults, scopeLabel, cities, schools, classes, missingStudents });
       if (result) {
         if (type === 'copy' && result.instruction) {
           await navigator.clipboard.writeText(result.instruction);

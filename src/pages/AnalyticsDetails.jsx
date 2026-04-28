@@ -560,7 +560,7 @@ const AiDetailedPromptButton = ({ userId, quizId, viewerProfile }) => {
   }, [userId, quizId]);
 
   const handleAction = async (type) => {
-    if (count < 5) return;
+    if (count < 3) return;
     setStatus(type === 'copy' ? 'loading_copy' : 'loading_file');
     try {
       const result = await buildDetailedQuizPrompt(userId, quizId, viewerRole, isSelf ? null : viewerProfile);
@@ -586,7 +586,7 @@ const AiDetailedPromptButton = ({ userId, quizId, viewerProfile }) => {
     }
   };
 
-  if (count !== null && count < 5) {
+  if (count !== null && count < 3) {
     return (
       <div className="flex-center shake" style={{ 
         padding: '8px 12px', borderRadius: '10px', background: 'rgba(239, 68, 68, 0.05)', 
@@ -594,7 +594,7 @@ const AiDetailedPromptButton = ({ userId, quizId, viewerProfile }) => {
         fontSize: '0.75rem', fontWeight: 'bold'
       }}>
         <AlertTriangle size={14} />
-        {count === 0 ? 'Нет попыток' : `Мало попыток (${count}/5)`}
+        {count === 0 ? 'Нет попыток' : `Мало попыток (${count}/3)`}
       </div>
     );
   }
