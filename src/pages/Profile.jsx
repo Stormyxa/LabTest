@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { User, Mail, Calendar, GraduationCap, CheckCircle, Award, FileText, TrendingUp, Star, MapPin, Building, Shield, ShieldOff, Zap, BarChart2, Clock, XCircle, Info, AlertCircle, Check, AlertTriangle } from 'lucide-react';
+import { User, Mail, Calendar, GraduationCap, CheckCircle, Award, FileText, TrendingUp, Star, MapPin, Building, Shield, ShieldOff, Zap, BarChart2, Clock, XCircle, Info, AlertCircle, Check, AlertTriangle, Sparkles, Copy, RefreshCw } from 'lucide-react';
+import { buildStudentPrompt } from '../lib/aiPromptBuilder';
+import { getCachedData } from '../lib/cache';
 
 const Profile = ({ session, profile, refreshProfile }) => {
   const location = useLocation();
@@ -34,6 +36,13 @@ const Profile = ({ session, profile, refreshProfile }) => {
   const [msg, setMsg] = useState(location.state?.msg || '');
   const [stats, setStats] = useState({ passed: 0, perfect: 0, totalPoints: 0, created: 0 });
   const [autoAdvance, setAutoAdvance] = useState(localStorage.getItem('quiz_auto_advance') === 'true');
+
+  // AI Prompt states
+  const [aiPromptStatus, setAiPromptStatus] = useState('idle'); // 'idle' | 'loading' | 'copied' | 'error'
+  const [aiPromptLastUpdate, setAiPromptLastUpdate] = useState(() => {
+    const cached = getCachedData(`ai_prompt_student_${session?.user?.id}_student`);
+    return cached ? 'cached' : null;
+  });
   
   const [classStudentCounts, setClassStudentCounts] = useState({});
   const [application, setApplication] = useState(null);
@@ -420,6 +429,68 @@ const Profile = ({ session, profile, refreshProfile }) => {
           <button onClick={() => navigate(`/user-analytics?userId=${session.user.id}`)} className="flex-center" style={{ marginTop: '15px', width: '100%', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', padding: '15px', borderRadius: '15px', boxShadow: 'none', fontWeight: 'bold' }}>
             <BarChart2 size={18} style={{ marginRight: '8px' }} /> Детальная аналитика
           </button>
+
+          {/* AI Analyst Prompt Block */}
+          <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.05) 0%, rgba(99, 102, 241, 0.05) 100%)', borderRadius: '20px', border: '1px dashed rgba(168, 85, 247, 0.25)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '15px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
+                <div style={{ padding: '10px', background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.15), rgba(99, 102, 241, 0.15))', borderRadius: '12px', color: '#a855f7', flexShrink: 0 }}>
+                  <Sparkles size={20} />
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: '700' }}>ИИ-Аналитик</h4>
+                  <p style={{ margin: '4px 0 0 0', fontSize: '0.75rem', opacity: 0.6, lineHeight: '1.4' }}>Скопируйте промпт и вставьте в ChatGPT или Gemini для персонального разбора ваших результатов.</p>
+                </div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
+              <button
+                onClick={async () => {
+                  setAiPromptStatus('loading');
+                  try {
+                    const prompt = await buildStudentPrompt(session.user.id, 'student');
+                    if (prompt) {
+                      await navigator.clipboard.writeText(prompt);
+                      setAiPromptStatus('copied');
+                      setAiPromptLastUpdate('cached');
+                      setTimeout(() => setAiPromptStatus('idle'), 2500);
+                    } else {
+                      setAiPromptStatus('error');
+                      setTimeout(() => setAiPromptStatus('idle'), 3000);
+                    }
+                  } catch (e) {
+                    console.error('AI prompt copy failed:', e);
+                    setAiPromptStatus('error');
+                    setTimeout(() => setAiPromptStatus('idle'), 3000);
+                  }
+                }}
+                disabled={aiPromptStatus === 'loading'}
+                className="flex-center"
+                style={{
+                  flex: 1, padding: '12px', borderRadius: '12px', fontWeight: 'bold', fontSize: '0.85rem',
+                  background: aiPromptStatus === 'copied' ? 'rgba(34, 197, 94, 0.15)' : 'linear-gradient(135deg, rgba(168, 85, 247, 0.12), rgba(99, 102, 241, 0.12))',
+                  color: aiPromptStatus === 'copied' ? '#16a34a' : '#a855f7',
+                  boxShadow: 'none', border: 'none', gap: '8px',
+                  transition: 'all 0.3s'
+                }}
+              >
+                {aiPromptStatus === 'loading' ? (
+                  <><RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} /> Генерация...</>
+                ) : aiPromptStatus === 'copied' ? (
+                  <><Check size={16} /> Скопировано!</>
+                ) : aiPromptStatus === 'error' ? (
+                  <><AlertTriangle size={16} /> Ошибка</>
+                ) : (
+                  <><Copy size={16} /> Скопировать промпт</>
+                )}
+              </button>
+            </div>
+            {aiPromptLastUpdate && aiPromptStatus === 'idle' && (
+              <div style={{ marginTop: '8px', fontSize: '0.7rem', opacity: 0.4, textAlign: 'center' }}>
+                Данные обновляются автоматически каждый час
+              </div>
+            )}
+          </div>
 
           <div style={{ marginTop: '20px', padding: '20px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '20px', border: '1px dashed rgba(99, 102, 241, 0.2)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '15px' }}>

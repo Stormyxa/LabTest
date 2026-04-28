@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { fetchWithCache, useCacheSync } from '../lib/cache';
-import { User, Shield, Search, Edit3, Trash2, Mail, X, AlertTriangle, MapPin, Building, GraduationCap, Plus, History, Ban, ShieldAlert, Unlock, Eye, EyeOff, Zap, ChevronDown, ChevronRight, Settings, Users, UserPlus, UserMinus, ArrowUp, ArrowDown, UserCheck, CheckCircle, XCircle } from 'lucide-react';
+import { User, Shield, Search, Edit3, Trash2, Mail, X, AlertTriangle, MapPin, Building, GraduationCap, Plus, History, Ban, ShieldAlert, Unlock, Eye, EyeOff, Zap, ChevronDown, ChevronRight, Settings, Users, UserPlus, UserMinus, ArrowUp, ArrowDown, UserCheck, CheckCircle, XCircle, Sparkles, Check, RefreshCw } from 'lucide-react';
+import { buildClassPrompt } from '../lib/aiPromptBuilder';
 import { useScrollRestoration } from '../lib/useScrollRestoration';
 
 const DashboardSkeleton = () => (
@@ -953,7 +954,10 @@ const Dashboard = ({ session, profile }) => {
                                           {isClassExpanded && (
                                             <div className="animate" style={{ borderTop: '1px solid rgba(99, 102, 241, 0.1)', background: 'rgba(99, 102, 241, 0.01)' }}>
                                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px', marginBottom: '15px', padding: '0 20px' }}>
-                                                <div style={{ fontSize: '0.85rem', fontWeight: 'bold', opacity: 0.6 }}>Список учеников</div>
+                                                <div className="flex-center" style={{ gap: '10px' }}>
+                                                  <div style={{ fontSize: '0.85rem', fontWeight: 'bold', opacity: 0.6 }}>Список учеников</div>
+                                                  <DashboardAiButton classId={cls.id} className={cls.name} />
+                                                </div>
                                                 <button 
                                                   onClick={() => { setNewLimit(cls.max_students || 50); setEditingClassLimit(cls); }}
                                                   style={{ background: 'transparent', color: 'var(--primary-color)', fontSize: '0.85rem', padding: '4px 8px', border: '1px solid var(--primary-color)', borderRadius: '6px', boxShadow: 'none' }}
@@ -1519,6 +1523,59 @@ const Dashboard = ({ session, profile }) => {
         </div>
       )}
     </>
+  );
+};
+
+// ─── AI Prompt Button for Dashboard (Class Level) ────────────────
+const DashboardAiButton = ({ classId, className }) => {
+  const [status, setStatus] = useState('idle');
+
+  const handleCopy = async () => {
+    setStatus('loading');
+    try {
+      const prompt = await buildClassPrompt(classId);
+      if (prompt) {
+        await navigator.clipboard.writeText(prompt);
+        setStatus('copied');
+        setTimeout(() => setStatus('idle'), 2500);
+      } else {
+        setStatus('error');
+        setTimeout(() => setStatus('idle'), 3000);
+      }
+    } catch (e) {
+      console.error('AI class prompt copy failed:', e);
+      setStatus('error');
+      setTimeout(() => setStatus('idle'), 3000);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleCopy}
+      disabled={status === 'loading'}
+      className="flex-center"
+      title={`Скопировать промпт для ИИ-анализа класса ${className}`}
+      style={{
+        padding: '6px 12px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 'bold',
+        background: status === 'copied'
+          ? 'rgba(34, 197, 94, 0.12)'
+          : 'linear-gradient(135deg, rgba(168, 85, 247, 0.1), rgba(99, 102, 241, 0.1))',
+        color: status === 'copied' ? '#16a34a' : '#a855f7',
+        border: '1px dashed ' + (status === 'copied' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(168, 85, 247, 0.25)'),
+        boxShadow: 'none', gap: '6px', cursor: status === 'loading' ? 'wait' : 'pointer',
+        transition: 'all 0.3s', flexShrink: 0, whiteSpace: 'nowrap'
+      }}
+    >
+      {status === 'loading' ? (
+        <><RefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} /> Анализ...</>
+      ) : status === 'copied' ? (
+        <><Check size={14} /> Готово</>
+      ) : status === 'error' ? (
+        <><AlertTriangle size={14} /> Ошибка</>
+      ) : (
+        <><Sparkles size={14} /> ИИ-Аналитика</>
+      )}
+    </button>
   );
 };
 

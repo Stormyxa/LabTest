@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { fetchWithCache, useCacheSync, getCachedData } from '../lib/cache';
-import { ChevronLeft, BarChart2, Search, Filter, Shield, EyeOff, AlertTriangle, Menu, X, Clock, Calendar } from 'lucide-react';
+import { ChevronLeft, BarChart2, Search, Filter, Shield, EyeOff, AlertTriangle, Menu, X, Clock, Calendar, Sparkles, Copy, Check, RefreshCw } from 'lucide-react';
+import { buildStudentPrompt } from '../lib/aiPromptBuilder';
 
 const UserListItem = React.memo(({ u, isSelected, onSelect }) => (
   <button 
@@ -693,13 +694,18 @@ const UserAnalytics = ({ session, profile: initialProfile }) => {
           </div>
         ) : (
           <div className="animate">
-            <h2 style={{ fontSize: '2rem', marginBottom: '10px', color: targetUser.is_suspicious_profile ? '#ef4444' : (targetUser.is_underperforming_profile ? '#ca8a04' : 'inherit') }}>
-              {targetUser.last_name} {targetUser.first_name} 
-              {targetUser.is_suspicious_profile && <span style={{ marginLeft: '10px', fontSize: '0.9rem', background: '#ef4444', color: 'white', padding: '4px 12px', borderRadius: '20px', verticalAlign: 'middle' }}>Читер</span>}
-              {!targetUser.is_suspicious_profile && targetUser.is_underperforming_profile && <span style={{ marginLeft: '10px', fontSize: '0.8rem', background: 'rgba(250, 204, 21, 0.1)', color: '#ca8a04', padding: '4px 10px', borderRadius: '10px' }}>Низкая успеваемость</span>}
-              {targetUser.is_observer && <span style={{ marginLeft: '10px', fontSize: '0.8rem', background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', padding: '4px 10px', borderRadius: '10px' }}>Наблюдатель</span>}
-            </h2>
-            <h3 style={{ opacity: 0.6, fontSize: '1.2rem', marginBottom: '30px' }}>Общая успеваемость по тестам</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '15px' }}>
+              <div>
+                <h2 style={{ fontSize: '2rem', marginBottom: '10px', color: targetUser.is_suspicious_profile ? '#ef4444' : (targetUser.is_underperforming_profile ? '#ca8a04' : 'inherit') }}>
+                  {targetUser.last_name} {targetUser.first_name} 
+                  {targetUser.is_suspicious_profile && <span style={{ marginLeft: '10px', fontSize: '0.9rem', background: '#ef4444', color: 'white', padding: '4px 12px', borderRadius: '20px', verticalAlign: 'middle' }}>Читер</span>}
+                  {!targetUser.is_suspicious_profile && targetUser.is_underperforming_profile && <span style={{ marginLeft: '10px', fontSize: '0.8rem', background: 'rgba(250, 204, 21, 0.1)', color: '#ca8a04', padding: '4px 10px', borderRadius: '10px' }}>Низкая успеваемость</span>}
+                  {targetUser.is_observer && <span style={{ marginLeft: '10px', fontSize: '0.8rem', background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', padding: '4px 10px', borderRadius: '10px' }}>Наблюдатель</span>}
+                </h2>
+                <h3 style={{ opacity: 0.6, fontSize: '1.2rem', marginBottom: '30px' }}>Общая успеваемость по тестам</h3>
+              </div>
+              <AiPromptButton userId={targetUser.id} viewerUserId={session.user.id} viewerProfile={profile} />
+            </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '20px', marginBottom: '30px' }}>
                <div className="card" style={{ padding: '20px' }}>
@@ -1049,5 +1055,60 @@ if (typeof document !== 'undefined') {
   style.textContent = mobileStyles;
   document.head.append(style);
 }
+
+// ─── AI Prompt Button Component ──────────────────────────────────
+const AiPromptButton = ({ userId, viewerUserId, viewerProfile }) => {
+  const [status, setStatus] = useState('idle'); // 'idle' | 'loading' | 'copied' | 'error'
+  const isSelf = viewerUserId === userId;
+  const viewerRole = isSelf ? 'student' : 'teacher';
+
+  const handleCopy = async () => {
+    setStatus('loading');
+    try {
+      const prompt = await buildStudentPrompt(userId, viewerRole, isSelf ? null : viewerProfile);
+      if (prompt) {
+        await navigator.clipboard.writeText(prompt);
+        setStatus('copied');
+        setTimeout(() => setStatus('idle'), 2500);
+      } else {
+        setStatus('error');
+        setTimeout(() => setStatus('idle'), 3000);
+      }
+    } catch (e) {
+      console.error('AI prompt copy failed:', e);
+      setStatus('error');
+      setTimeout(() => setStatus('idle'), 3000);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleCopy}
+      disabled={status === 'loading'}
+      className="flex-center"
+      title={isSelf ? 'Скопировать промпт для ИИ-наставника' : 'Скопировать промпт педагогического анализа'}
+      style={{
+        padding: '10px 18px', borderRadius: '14px', fontSize: '0.85rem', fontWeight: 'bold',
+        background: status === 'copied'
+          ? 'rgba(34, 197, 94, 0.12)'
+          : 'linear-gradient(135deg, rgba(168, 85, 247, 0.1), rgba(99, 102, 241, 0.1))',
+        color: status === 'copied' ? '#16a34a' : '#a855f7',
+        border: '1px dashed ' + (status === 'copied' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(168, 85, 247, 0.25)'),
+        boxShadow: 'none', gap: '8px', cursor: status === 'loading' ? 'wait' : 'pointer',
+        transition: 'all 0.3s', flexShrink: 0, whiteSpace: 'nowrap'
+      }}
+    >
+      {status === 'loading' ? (
+        <><RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} /> Генерация...</>
+      ) : status === 'copied' ? (
+        <><Check size={16} /> Скопировано!</>
+      ) : status === 'error' ? (
+        <><AlertTriangle size={16} /> Ошибка</>
+      ) : (
+        <><Sparkles size={16} /> ИИ-Промпт</>
+      )}
+    </button>
+  );
+};
 
 export default UserAnalytics;

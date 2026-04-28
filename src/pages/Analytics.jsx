@@ -5,7 +5,8 @@ import { fetchWithCache, useCacheSync, getCachedData } from '../lib/cache';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { resolveImgUrl } from '../lib/imageUtils';
-import { ChevronLeft, User, BarChart, Calendar, CheckCircle, XCircle, Mail, Trash2, AlertTriangle, Filter, Download, Pencil, Shield, EyeOff, ArrowDown, ArrowUp, Info, Lock, Image as ImageIcon, ChevronRight, X } from 'lucide-react';
+import { ChevronLeft, User, BarChart, Calendar, CheckCircle, XCircle, Mail, Trash2, AlertTriangle, Filter, Download, Pencil, Shield, EyeOff, ArrowDown, ArrowUp, Info, Lock, Image as ImageIcon, ChevronRight, X, Sparkles, Copy, Check, RefreshCw } from 'lucide-react';
+import { buildQuizPromptFromData } from '../lib/aiPromptBuilder';
 
 const Analytics = () => {
   const [searchParams] = useSearchParams();
@@ -562,6 +563,7 @@ const Analytics = () => {
             <button onClick={generatePDF} className="flex-center card" style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none', padding: '15px 20px', marginBottom: 0, cursor: 'pointer', border: 'none', fontWeight: 'bold' }}>
               <Download size={20} style={{ marginRight: '8px' }} /> Отчет PDF
             </button>
+            <AnalyticsAiButton quiz={quiz} filteredResults={filteredResults} cities={cities} schools={schools} classes={classes} filterCity={filterCity} filterSchool={filterSchool} filterClass={filterClass} />
             <StatMini label="Участников" value={`${filteredResults.length} / ${totalPossibleUsers}`} icon={<User size={18} />} />
             <StatMini label="Ср. результат" value={`${avgScore}% (${totalEarnedScore}/${totalPotentialScore})`} icon={<BarChart size={18} />} />
           </div>
@@ -971,5 +973,70 @@ const AnalyticsSkeleton = () => (
     </div>
   </div>
 );
+
+// ─── AI Prompt Button for Analytics ──────────────────────────────
+const AnalyticsAiButton = ({ quiz, filteredResults, cities, schools, classes, filterCity, filterSchool, filterClass }) => {
+  const [status, setStatus] = React.useState('idle');
+
+  const handleCopy = async () => {
+    setStatus('loading');
+    try {
+      // Build scope label from current filters
+      const parts = [];
+      if (filterCity && filterCity !== 'all') {
+        const city = cities.find(c => c.id === filterCity);
+        if (city) parts.push(city.name);
+      } else parts.push('Все города');
+      if (filterSchool && filterSchool !== 'all') {
+        const school = schools.find(s => s.id === filterSchool);
+        if (school) parts.push(school.name);
+      } else parts.push('Все школы');
+      if (filterClass && filterClass !== 'all') {
+        const cls = classes.find(c => c.id === filterClass);
+        if (cls) parts.push(cls.name);
+      } else parts.push('Все классы');
+      const scopeLabel = parts.join(', ');
+
+      const prompt = buildQuizPromptFromData({ quiz, filteredResults, scopeLabel, cities, schools, classes });
+      await navigator.clipboard.writeText(prompt);
+      setStatus('copied');
+      setTimeout(() => setStatus('idle'), 2500);
+    } catch (e) {
+      console.error('AI quiz prompt copy failed:', e);
+      setStatus('error');
+      setTimeout(() => setStatus('idle'), 3000);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleCopy}
+      disabled={status === 'loading' || !filteredResults?.length}
+      className="flex-center card"
+      title="Скопировать промпт для ИИ-анализа теста"
+      style={{
+        background: status === 'copied'
+          ? 'rgba(34, 197, 94, 0.12)'
+          : 'linear-gradient(135deg, rgba(168, 85, 247, 0.1), rgba(99, 102, 241, 0.1))',
+        color: status === 'copied' ? '#16a34a' : '#a855f7',
+        boxShadow: 'none', padding: '15px 20px', marginBottom: 0,
+        cursor: !filteredResults?.length ? 'not-allowed' : 'pointer',
+        border: 'none', fontWeight: 'bold', gap: '8px',
+        opacity: !filteredResults?.length ? 0.4 : 1,
+        transition: 'all 0.3s'
+      }}
+    >
+      {status === 'loading' ? (
+        <><RefreshCw size={20} style={{ animation: 'spin 1s linear infinite' }} /> Генерация...</>
+      ) : status === 'copied' ? (
+        <><Check size={20} /> Скопировано!</>
+      ) : status === 'error' ? (
+        <><AlertTriangle size={20} /> Ошибка</>
+      ) : (
+        <><Sparkles size={20} /> ИИ-Промпт</>
+      )}
+    </button>
+  );
+};
 
 export default Analytics;
