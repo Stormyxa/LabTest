@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { fetchWithCache, useCacheSync } from '../lib/cache';
-import { User, Shield, Search, Edit3, Trash2, Mail, X, AlertTriangle, MapPin, Building, GraduationCap, Plus, History, Ban, ShieldAlert, Unlock, Eye, EyeOff, Zap, ChevronDown, ChevronRight, Settings, Users, UserPlus, UserMinus, ArrowUp, ArrowDown, UserCheck, CheckCircle, XCircle, Sparkles, Check, RefreshCw } from 'lucide-react';
-import { buildClassPrompt } from '../lib/aiPromptBuilder';
+import { User, Shield, Search, Edit3, Trash2, Mail, X, AlertTriangle, MapPin, Building, GraduationCap, Plus, History, Ban, ShieldAlert, Unlock, Eye, EyeOff, Zap, ChevronDown, ChevronRight, Settings, Users, UserPlus, UserMinus, ArrowUp, ArrowDown, UserCheck, CheckCircle, XCircle, Sparkles, Check, RefreshCw, FileText } from 'lucide-react';
+import { buildClassPrompt, downloadJSON } from '../lib/aiPromptBuilder';
 import { useScrollRestoration } from '../lib/useScrollRestoration';
 
 const DashboardSkeleton = () => (
@@ -1528,54 +1528,67 @@ const Dashboard = ({ session, profile }) => {
 
 // ─── AI Prompt Button for Dashboard (Class Level) ────────────────
 const DashboardAiButton = ({ classId, className }) => {
-  const [status, setStatus] = useState('idle');
+  const [status, setStatus] = useState('idle'); // 'idle' | 'loading_copy' | 'loading_file' | 'copied' | 'downloaded' | 'error'
 
-  const handleCopy = async () => {
-    setStatus('loading');
+  const handleAction = async (type) => {
+    setStatus(type === 'copy' ? 'loading_copy' : 'loading_file');
     try {
-      const prompt = await buildClassPrompt(classId);
-      if (prompt) {
-        await navigator.clipboard.writeText(prompt);
-        setStatus('copied');
+      const result = await buildClassPrompt(classId);
+      if (result) {
+        if (type === 'copy' && result.instruction) {
+          await navigator.clipboard.writeText(result.instruction);
+          setStatus('copied');
+        } else if (type === 'file' && result.data) {
+          downloadJSON(result.data, result.filename);
+          setStatus('downloaded');
+        } else setStatus('error');
         setTimeout(() => setStatus('idle'), 2500);
-      } else {
-        setStatus('error');
-        setTimeout(() => setStatus('idle'), 3000);
-      }
+      } else setStatus('error');
     } catch (e) {
-      console.error('AI class prompt copy failed:', e);
+      console.error('AI class action failed:', e);
       setStatus('error');
       setTimeout(() => setStatus('idle'), 3000);
     }
   };
 
   return (
-    <button
-      onClick={handleCopy}
-      disabled={status === 'loading'}
-      className="flex-center"
-      title={`Скопировать промпт для ИИ-анализа класса ${className}`}
-      style={{
-        padding: '6px 12px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 'bold',
-        background: status === 'copied'
-          ? 'rgba(34, 197, 94, 0.12)'
-          : 'linear-gradient(135deg, rgba(168, 85, 247, 0.1), rgba(99, 102, 241, 0.1))',
-        color: status === 'copied' ? '#16a34a' : '#a855f7',
-        border: '1px dashed ' + (status === 'copied' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(168, 85, 247, 0.25)'),
-        boxShadow: 'none', gap: '6px', cursor: status === 'loading' ? 'wait' : 'pointer',
-        transition: 'all 0.3s', flexShrink: 0, whiteSpace: 'nowrap'
-      }}
-    >
-      {status === 'loading' ? (
-        <><RefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} /> Анализ...</>
-      ) : status === 'copied' ? (
-        <><Check size={14} /> Готово</>
-      ) : status === 'error' ? (
-        <><AlertTriangle size={14} /> Ошибка</>
-      ) : (
-        <><Sparkles size={14} /> ИИ-Аналитика</>
-      )}
-    </button>
+    <div style={{ display: 'flex', gap: '6px' }}>
+      <button
+        onClick={() => handleAction('copy')}
+        disabled={status.startsWith('loading')}
+        className="flex-center"
+        title={`Скопировать промпт для ИИ-анализа класса ${className}`}
+        style={{
+          padding: '6px 12px', borderRadius: '8px', fontSize: '0.7rem', fontWeight: 'bold',
+          background: status === 'copied' ? 'rgba(34, 197, 94, 0.12)' : 'linear-gradient(135deg, rgba(168, 85, 247, 0.1), rgba(99, 102, 241, 0.1))',
+          color: status === 'copied' ? '#16a34a' : '#a855f7',
+          border: '1px solid ' + (status === 'copied' ? '#16a34a33' : '#a855f733'),
+          boxShadow: 'none', gap: '5px', cursor: status.startsWith('loading') ? 'wait' : 'pointer',
+          transition: 'all 0.3s', flexShrink: 0, whiteSpace: 'nowrap'
+        }}
+      >
+        {status === 'loading_copy' ? <RefreshCw size={12} className="spinner" /> : status === 'copied' ? <Check size={12} /> : <Sparkles size={12} />}
+        {status === 'copied' ? 'Готово' : 'Промпт'}
+      </button>
+
+      <button
+        onClick={() => handleAction('file')}
+        disabled={status.startsWith('loading')}
+        className="flex-center"
+        title="Скачать JSON данные класса"
+        style={{
+          padding: '6px 12px', borderRadius: '8px', fontSize: '0.7rem', fontWeight: 'bold',
+          background: status === 'downloaded' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(99, 102, 241, 0.05)',
+          color: status === 'downloaded' ? '#16a34a' : 'var(--primary-color)',
+          border: '1px solid ' + (status === 'downloaded' ? '#16a34a33' : 'rgba(99, 102, 241, 0.1)'),
+          boxShadow: 'none', gap: '5px', cursor: status.startsWith('loading') ? 'wait' : 'pointer',
+          transition: 'all 0.3s', flexShrink: 0, whiteSpace: 'nowrap'
+        }}
+      >
+        {status === 'loading_file' ? <RefreshCw size={12} className="spinner" /> : status === 'downloaded' ? <Check size={12} /> : <FileText size={12} />}
+        JSON
+      </button>
+    </div>
   );
 };
 

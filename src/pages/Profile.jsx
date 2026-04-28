@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { User, Mail, Calendar, GraduationCap, CheckCircle, Award, FileText, TrendingUp, Star, MapPin, Building, Shield, ShieldOff, Zap, BarChart2, Clock, XCircle, Info, AlertCircle, Check, AlertTriangle, Sparkles, Copy, RefreshCw } from 'lucide-react';
-import { buildStudentPrompt } from '../lib/aiPromptBuilder';
+import { buildStudentPrompt, downloadJSON } from '../lib/aiPromptBuilder';
 import { getCachedData } from '../lib/cache';
 
 const Profile = ({ session, profile, refreshProfile }) => {
@@ -439,53 +439,63 @@ const Profile = ({ session, profile, refreshProfile }) => {
                 </div>
                 <div style={{ minWidth: 0 }}>
                   <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: '700' }}>ИИ-Аналитик</h4>
-                  <p style={{ margin: '4px 0 0 0', fontSize: '0.75rem', opacity: 0.6, lineHeight: '1.4' }}>Скопируйте промпт и вставьте в ChatGPT или Gemini для персонального разбора ваших результатов.</p>
+                  <p style={{ margin: '4px 0 0 0', fontSize: '0.75rem', opacity: 0.6, lineHeight: '1.4' }}>Нажмите, чтобы скачать аналитику и скопировать инструкцию для ИИ-разбора.</p>
                 </div>
               </div>
             </div>
             <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
               <button
                 onClick={async () => {
-                  setAiPromptStatus('loading');
+                  setAiPromptStatus('loading_copy');
                   try {
-                    const prompt = await buildStudentPrompt(session.user.id, 'student');
-                    if (prompt) {
-                      await navigator.clipboard.writeText(prompt);
+                    const result = await buildStudentPrompt(session.user.id, 'student');
+                    if (result && result.instruction) {
+                      await navigator.clipboard.writeText(result.instruction);
                       setAiPromptStatus('copied');
-                      setAiPromptLastUpdate('cached');
                       setTimeout(() => setAiPromptStatus('idle'), 2500);
-                    } else {
-                      setAiPromptStatus('error');
-                      setTimeout(() => setAiPromptStatus('idle'), 3000);
-                    }
-                  } catch (e) {
-                    console.error('AI prompt copy failed:', e);
-                    setAiPromptStatus('error');
-                    setTimeout(() => setAiPromptStatus('idle'), 3000);
-                  }
+                    } else setAiPromptStatus('error');
+                  } catch (e) { setAiPromptStatus('error'); }
                 }}
-                disabled={aiPromptStatus === 'loading'}
+                disabled={aiPromptStatus.startsWith('loading')}
                 className="flex-center"
                 style={{
-                  flex: 1, padding: '12px', borderRadius: '12px', fontWeight: 'bold', fontSize: '0.85rem',
-                  background: aiPromptStatus === 'copied' ? 'rgba(34, 197, 94, 0.15)' : 'linear-gradient(135deg, rgba(168, 85, 247, 0.12), rgba(99, 102, 241, 0.12))',
+                  flex: 1.2, padding: '10px', borderRadius: '12px', fontWeight: 'bold', fontSize: '0.8rem',
+                  background: aiPromptStatus === 'copied' ? 'rgba(34, 197, 94, 0.1)' : 'linear-gradient(135deg, rgba(168, 85, 247, 0.1), rgba(99, 102, 241, 0.1))',
                   color: aiPromptStatus === 'copied' ? '#16a34a' : '#a855f7',
-                  boxShadow: 'none', border: 'none', gap: '8px',
-                  transition: 'all 0.3s'
+                  boxShadow: 'none', border: '1px solid ' + (aiPromptStatus === 'copied' ? '#16a34a33' : '#a855f733'), gap: '6px'
                 }}
               >
-                {aiPromptStatus === 'loading' ? (
-                  <><RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} /> Генерация...</>
-                ) : aiPromptStatus === 'copied' ? (
-                  <><Check size={16} /> Скопировано!</>
-                ) : aiPromptStatus === 'error' ? (
-                  <><AlertTriangle size={16} /> Ошибка</>
-                ) : (
-                  <><Copy size={16} /> Скопировать промпт</>
-                )}
+                {aiPromptStatus === 'loading_copy' ? <RefreshCw size={14} className="spinner" /> : aiPromptStatus === 'copied' ? <Check size={14} /> : <Copy size={14} />}
+                {aiPromptStatus === 'copied' ? 'Промпт скопирован' : 'Копировать промпт'}
+              </button>
+
+              <button
+                onClick={async () => {
+                  setAiPromptStatus('loading_file');
+                  try {
+                    const result = await buildStudentPrompt(session.user.id, 'student');
+                    if (result && result.data) {
+                      downloadJSON(result.data, result.filename);
+                      setAiPromptStatus('downloaded');
+                      setTimeout(() => setAiPromptStatus('idle'), 2500);
+                    } else setAiPromptStatus('error');
+                  } catch (e) { setAiPromptStatus('error'); }
+                }}
+                disabled={aiPromptStatus.startsWith('loading')}
+                className="flex-center"
+                style={{
+                  flex: 0.8, padding: '10px', borderRadius: '12px', fontWeight: 'bold', fontSize: '0.8rem',
+                  background: aiPromptStatus === 'downloaded' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(99, 102, 241, 0.05)',
+                  color: aiPromptStatus === 'downloaded' ? '#16a34a' : 'var(--primary-color)',
+                  boxShadow: 'none', border: '1px solid ' + (aiPromptStatus === 'downloaded' ? '#16a34a33' : 'rgba(99, 102, 241, 0.1)'), gap: '6px'
+                }}
+                title="Скачать данные в формате JSON"
+              >
+                {aiPromptStatus === 'loading_file' ? <RefreshCw size={14} className="spinner" /> : aiPromptStatus === 'downloaded' ? <Check size={14} /> : <FileText size={14} />}
+                JSON
               </button>
             </div>
-            {aiPromptLastUpdate && aiPromptStatus === 'idle' && (
+            {aiPromptLastUpdate && (
               <div style={{ marginTop: '8px', fontSize: '0.7rem', opacity: 0.4, textAlign: 'center' }}>
                 Данные обновляются автоматически каждый час
               </div>

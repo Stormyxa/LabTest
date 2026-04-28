@@ -139,6 +139,21 @@ select {
   }
 }
 
+.user-analytics-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 768px) {
+  .user-analytics-header {
+    flex-wrap: wrap-reverse;
+  }
+}
+
 .shake {
   animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both;
   transform: translate3d(0, 0, 0);

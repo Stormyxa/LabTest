@@ -5,8 +5,8 @@ import { fetchWithCache, useCacheSync, getCachedData } from '../lib/cache';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { resolveImgUrl } from '../lib/imageUtils';
-import { ChevronLeft, User, BarChart, Calendar, CheckCircle, XCircle, Mail, Trash2, AlertTriangle, Filter, Download, Pencil, Shield, EyeOff, ArrowDown, ArrowUp, Info, Lock, Image as ImageIcon, ChevronRight, X, Sparkles, Copy, Check, RefreshCw } from 'lucide-react';
-import { buildQuizPromptFromData } from '../lib/aiPromptBuilder';
+import { ChevronLeft, User, BarChart, Calendar, CheckCircle, XCircle, Mail, Trash2, AlertTriangle, Filter, Download, Pencil, Shield, EyeOff, ArrowDown, ArrowUp, Info, Lock, Image as ImageIcon, ChevronRight, X, Sparkles, Copy, Check, RefreshCw, FileText } from 'lucide-react';
+import { buildQuizPromptFromData, downloadJSON } from '../lib/aiPromptBuilder';
 
 const Analytics = () => {
   const [searchParams] = useSearchParams();
@@ -976,10 +976,10 @@ const AnalyticsSkeleton = () => (
 
 // ─── AI Prompt Button for Analytics ──────────────────────────────
 const AnalyticsAiButton = ({ quiz, filteredResults, cities, schools, classes, filterCity, filterSchool, filterClass }) => {
-  const [status, setStatus] = React.useState('idle');
+  const [status, setStatus] = React.useState('idle'); // 'idle' | 'loading_copy' | 'loading_file' | 'copied' | 'downloaded' | 'error'
 
-  const handleCopy = async () => {
-    setStatus('loading');
+  const handleAction = async (type) => {
+    setStatus(type === 'copy' ? 'loading_copy' : 'loading_file');
     try {
       // Build scope label from current filters
       const parts = [];
@@ -997,45 +997,65 @@ const AnalyticsAiButton = ({ quiz, filteredResults, cities, schools, classes, fi
       } else parts.push('Все классы');
       const scopeLabel = parts.join(', ');
 
-      const prompt = buildQuizPromptFromData({ quiz, filteredResults, scopeLabel, cities, schools, classes });
-      await navigator.clipboard.writeText(prompt);
-      setStatus('copied');
-      setTimeout(() => setStatus('idle'), 2500);
+      const result = buildQuizPromptFromData({ quiz, filteredResults, scopeLabel, cities, schools, classes });
+      if (result) {
+        if (type === 'copy' && result.instruction) {
+          await navigator.clipboard.writeText(result.instruction);
+          setStatus('copied');
+        } else if (type === 'file' && result.data) {
+          downloadJSON(result.data, result.filename);
+          setStatus('downloaded');
+        } else setStatus('error');
+        setTimeout(() => setStatus('idle'), 2500);
+      } else {
+        setStatus('error');
+        setTimeout(() => setStatus('idle'), 3000);
+      }
     } catch (e) {
-      console.error('AI quiz prompt copy failed:', e);
+      console.error('AI quiz action failed:', e);
       setStatus('error');
       setTimeout(() => setStatus('idle'), 3000);
     }
   };
 
+  if (!filteredResults?.length) return null;
+
   return (
-    <button
-      onClick={handleCopy}
-      disabled={status === 'loading' || !filteredResults?.length}
-      className="flex-center card"
-      title="Скопировать промпт для ИИ-анализа теста"
-      style={{
-        background: status === 'copied'
-          ? 'rgba(34, 197, 94, 0.12)'
-          : 'linear-gradient(135deg, rgba(168, 85, 247, 0.1), rgba(99, 102, 241, 0.1))',
-        color: status === 'copied' ? '#16a34a' : '#a855f7',
-        boxShadow: 'none', padding: '15px 20px', marginBottom: 0,
-        cursor: !filteredResults?.length ? 'not-allowed' : 'pointer',
-        border: 'none', fontWeight: 'bold', gap: '8px',
-        opacity: !filteredResults?.length ? 0.4 : 1,
-        transition: 'all 0.3s'
-      }}
-    >
-      {status === 'loading' ? (
-        <><RefreshCw size={20} style={{ animation: 'spin 1s linear infinite' }} /> Генерация...</>
-      ) : status === 'copied' ? (
-        <><Check size={20} /> Скопировано!</>
-      ) : status === 'error' ? (
-        <><AlertTriangle size={20} /> Ошибка</>
-      ) : (
-        <><Sparkles size={20} /> ИИ-Промпт</>
-      )}
-    </button>
+    <div className="flex-center" style={{ gap: '10px' }}>
+      <button
+        onClick={() => handleAction('copy')}
+        disabled={status.startsWith('loading')}
+        className="flex-center card"
+        title="Скопировать инструкцию для ИИ"
+        style={{
+          background: status === 'copied' ? 'rgba(34, 197, 94, 0.12)' : 'linear-gradient(135deg, rgba(168, 85, 247, 0.1), rgba(99, 102, 241, 0.1))',
+          color: status === 'copied' ? '#16a34a' : '#a855f7',
+          boxShadow: 'none', padding: '12px 18px', marginBottom: 0,
+          cursor: 'pointer', border: '1px solid ' + (status === 'copied' ? '#16a34a33' : '#a855f733'),
+          fontWeight: 'bold', gap: '8px', transition: 'all 0.3s'
+        }}
+      >
+        {status === 'loading_copy' ? <RefreshCw size={18} style={{ animation: 'spin 1s linear infinite' }} /> : status === 'copied' ? <Check size={18} /> : <Sparkles size={18} />}
+        {status === 'copied' ? 'Промпт скопирован' : 'ИИ-Промпт'}
+      </button>
+
+      <button
+        onClick={() => handleAction('file')}
+        disabled={status.startsWith('loading')}
+        className="flex-center card"
+        title="Скачать данные теста (JSON)"
+        style={{
+          background: status === 'downloaded' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(99, 102, 241, 0.05)',
+          color: status === 'downloaded' ? '#16a34a' : 'var(--primary-color)',
+          boxShadow: 'none', padding: '12px 18px', marginBottom: 0,
+          cursor: 'pointer', border: '1px solid ' + (status === 'downloaded' ? '#16a34a33' : 'rgba(99, 102, 241, 0.1)'),
+          fontWeight: 'bold', gap: '8px', transition: 'all 0.3s'
+        }}
+      >
+        {status === 'loading_file' ? <RefreshCw size={18} style={{ animation: 'spin 1s linear infinite' }} /> : status === 'downloaded' ? <Check size={18} /> : <FileText size={18} />}
+        JSON
+      </button>
+    </div>
   );
 };
 

@@ -2,8 +2,8 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { fetchWithCache, useCacheSync, getCachedData } from '../lib/cache';
-import { ChevronLeft, BarChart2, Search, Filter, Shield, EyeOff, AlertTriangle, Menu, X, Clock, Calendar, Sparkles, Copy, Check, RefreshCw } from 'lucide-react';
-import { buildStudentPrompt } from '../lib/aiPromptBuilder';
+import { ChevronLeft, BarChart2, Search, Filter, Shield, EyeOff, AlertTriangle, Menu, X, Clock, Calendar, Sparkles, Copy, Check, RefreshCw, FileText } from 'lucide-react';
+import { buildStudentPrompt, downloadJSON } from '../lib/aiPromptBuilder';
 
 const UserListItem = React.memo(({ u, isSelected, onSelect }) => (
   <button 
@@ -694,7 +694,7 @@ const UserAnalytics = ({ session, profile: initialProfile }) => {
           </div>
         ) : (
           <div className="animate">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '15px' }}>
+            <div className="user-analytics-header">
               <div>
                 <h2 style={{ fontSize: '2rem', marginBottom: '10px', color: targetUser.is_suspicious_profile ? '#ef4444' : (targetUser.is_underperforming_profile ? '#ca8a04' : 'inherit') }}>
                   {targetUser.last_name} {targetUser.first_name} 
@@ -1058,56 +1058,74 @@ if (typeof document !== 'undefined') {
 
 // ─── AI Prompt Button Component ──────────────────────────────────
 const AiPromptButton = ({ userId, viewerUserId, viewerProfile }) => {
-  const [status, setStatus] = useState('idle'); // 'idle' | 'loading' | 'copied' | 'error'
+  const [status, setStatus] = useState('idle'); // 'idle' | 'loading_copy' | 'loading_file' | 'copied' | 'downloaded' | 'error'
   const isSelf = viewerUserId === userId;
   const viewerRole = isSelf ? 'student' : 'teacher';
 
-  const handleCopy = async () => {
-    setStatus('loading');
+  const handleAction = async (type) => {
+    setStatus(type === 'copy' ? 'loading_copy' : 'loading_file');
     try {
-      const prompt = await buildStudentPrompt(userId, viewerRole, isSelf ? null : viewerProfile);
-      if (prompt) {
-        await navigator.clipboard.writeText(prompt);
-        setStatus('copied');
+      const result = await buildStudentPrompt(userId, viewerRole, isSelf ? null : viewerProfile);
+      if (result) {
+        if (type === 'copy' && result.instruction) {
+          await navigator.clipboard.writeText(result.instruction);
+          setStatus('copied');
+        } else if (type === 'file' && result.data) {
+          downloadJSON(result.data, result.filename);
+          setStatus('downloaded');
+        } else {
+          setStatus('error');
+        }
         setTimeout(() => setStatus('idle'), 2500);
       } else {
         setStatus('error');
         setTimeout(() => setStatus('idle'), 3000);
       }
     } catch (e) {
-      console.error('AI prompt copy failed:', e);
+      console.error('AI action failed:', e);
       setStatus('error');
       setTimeout(() => setStatus('idle'), 3000);
     }
   };
 
   return (
-    <button
-      onClick={handleCopy}
-      disabled={status === 'loading'}
-      className="flex-center"
-      title={isSelf ? 'Скопировать промпт для ИИ-наставника' : 'Скопировать промпт педагогического анализа'}
-      style={{
-        padding: '10px 18px', borderRadius: '14px', fontSize: '0.85rem', fontWeight: 'bold',
-        background: status === 'copied'
-          ? 'rgba(34, 197, 94, 0.12)'
-          : 'linear-gradient(135deg, rgba(168, 85, 247, 0.1), rgba(99, 102, 241, 0.1))',
-        color: status === 'copied' ? '#16a34a' : '#a855f7',
-        border: '1px dashed ' + (status === 'copied' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(168, 85, 247, 0.25)'),
-        boxShadow: 'none', gap: '8px', cursor: status === 'loading' ? 'wait' : 'pointer',
-        transition: 'all 0.3s', flexShrink: 0, whiteSpace: 'nowrap'
-      }}
-    >
-      {status === 'loading' ? (
-        <><RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} /> Генерация...</>
-      ) : status === 'copied' ? (
-        <><Check size={16} /> Скопировано!</>
-      ) : status === 'error' ? (
-        <><AlertTriangle size={16} /> Ошибка</>
-      ) : (
-        <><Sparkles size={16} /> ИИ-Промпт</>
-      )}
-    </button>
+    <div style={{ display: 'flex', gap: '8px' }}>
+      <button
+        onClick={() => handleAction('copy')}
+        disabled={status.startsWith('loading')}
+        className="flex-center"
+        title={isSelf ? 'Скопировать промпт для ИИ-наставника' : 'Скопировать промпт педагогического анализа'}
+        style={{
+          padding: '8px 14px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 'bold',
+          background: status === 'copied' ? 'rgba(34, 197, 94, 0.12)' : 'linear-gradient(135deg, rgba(168, 85, 247, 0.1), rgba(99, 102, 241, 0.1))',
+          color: status === 'copied' ? '#16a34a' : '#a855f7',
+          border: '1px solid ' + (status === 'copied' ? '#16a34a33' : '#a855f733'),
+          boxShadow: 'none', gap: '6px', cursor: status.startsWith('loading') ? 'wait' : 'pointer',
+          transition: 'all 0.3s', flexShrink: 0, whiteSpace: 'nowrap'
+        }}
+      >
+        {status === 'loading_copy' ? <RefreshCw size={14} className="spinner" /> : status === 'copied' ? <Check size={14} /> : <Sparkles size={14} />}
+        {status === 'copied' ? 'Промпт скопирован' : 'Промпт'}
+      </button>
+
+      <button
+        onClick={() => handleAction('file')}
+        disabled={status.startsWith('loading')}
+        className="flex-center"
+        title="Скачать данные аналитики (JSON)"
+        style={{
+          padding: '8px 14px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 'bold',
+          background: status === 'downloaded' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(99, 102, 241, 0.05)',
+          color: status === 'downloaded' ? '#16a34a' : 'var(--primary-color)',
+          border: '1px solid ' + (status === 'downloaded' ? '#16a34a33' : 'rgba(99, 102, 241, 0.1)'),
+          boxShadow: 'none', gap: '6px', cursor: status.startsWith('loading') ? 'wait' : 'pointer',
+          transition: 'all 0.3s', flexShrink: 0, whiteSpace: 'nowrap'
+        }}
+      >
+        {status === 'loading_file' ? <RefreshCw size={14} className="spinner" /> : status === 'downloaded' ? <Check size={14} /> : <FileText size={14} />}
+        JSON
+      </button>
+    </div>
   );
 };
 
