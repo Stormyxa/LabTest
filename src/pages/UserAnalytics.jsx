@@ -1059,10 +1059,27 @@ if (typeof document !== 'undefined') {
 // ─── AI Prompt Button Component ──────────────────────────────────
 const AiPromptButton = ({ userId, viewerUserId, viewerProfile }) => {
   const [status, setStatus] = useState('idle'); // 'idle' | 'loading_copy' | 'loading_file' | 'copied' | 'downloaded' | 'error'
+  const [count, setCount] = useState(null);
   const isSelf = viewerUserId === userId;
   const viewerRole = isSelf ? 'student' : 'teacher';
 
+  useEffect(() => {
+    const fetchCount = async () => {
+      try {
+        const { count: c } = await supabase
+          .from('quiz_attempts')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', userId);
+        setCount(c || 0);
+      } catch (e) {
+        setCount(0);
+      }
+    };
+    fetchCount();
+  }, [userId]);
+
   const handleAction = async (type) => {
+    if (count < 10) return;
     setStatus(type === 'copy' ? 'loading_copy' : 'loading_file');
     try {
       const result = await buildStudentPrompt(userId, viewerRole, isSelf ? null : viewerProfile);
@@ -1088,11 +1105,24 @@ const AiPromptButton = ({ userId, viewerUserId, viewerProfile }) => {
     }
   };
 
+  if (count !== null && count < 10) {
+    return (
+      <div className="flex-center shake" style={{ 
+        padding: '8px 15px', borderRadius: '12px', background: 'rgba(239, 68, 68, 0.05)', 
+        border: '1px solid rgba(239, 68, 68, 0.2)', color: '#ef4444', gap: '8px',
+        fontSize: '0.8rem', fontWeight: 'bold'
+      }}>
+        <AlertTriangle size={14} />
+        {count === 0 ? 'Нет данных' : `Мало данных (${count}/10)`}
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: 'flex', gap: '8px' }}>
       <button
         onClick={() => handleAction('copy')}
-        disabled={status.startsWith('loading')}
+        disabled={status.startsWith('loading') || count === null}
         className="flex-center"
         title={isSelf ? 'Скопировать промпт для ИИ-наставника' : 'Скопировать промпт педагогического анализа'}
         style={{
@@ -1100,7 +1130,7 @@ const AiPromptButton = ({ userId, viewerUserId, viewerProfile }) => {
           background: status === 'copied' ? 'rgba(34, 197, 94, 0.12)' : 'linear-gradient(135deg, rgba(168, 85, 247, 0.1), rgba(99, 102, 241, 0.1))',
           color: status === 'copied' ? '#16a34a' : '#a855f7',
           border: '1px solid ' + (status === 'copied' ? '#16a34a33' : '#a855f733'),
-          boxShadow: 'none', gap: '6px', cursor: status.startsWith('loading') ? 'wait' : 'pointer',
+          boxShadow: 'none', gap: '6px', cursor: (status.startsWith('loading') || count === null) ? 'wait' : 'pointer',
           transition: 'all 0.3s', flexShrink: 0, whiteSpace: 'nowrap'
         }}
       >
@@ -1110,7 +1140,7 @@ const AiPromptButton = ({ userId, viewerUserId, viewerProfile }) => {
 
       <button
         onClick={() => handleAction('file')}
-        disabled={status.startsWith('loading')}
+        disabled={status.startsWith('loading') || count === null}
         className="flex-center"
         title="Скачать данные аналитики (JSON)"
         style={{
@@ -1118,7 +1148,7 @@ const AiPromptButton = ({ userId, viewerUserId, viewerProfile }) => {
           background: status === 'downloaded' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(99, 102, 241, 0.05)',
           color: status === 'downloaded' ? '#16a34a' : 'var(--primary-color)',
           border: '1px solid ' + (status === 'downloaded' ? '#16a34a33' : 'rgba(99, 102, 241, 0.1)'),
-          boxShadow: 'none', gap: '6px', cursor: status.startsWith('loading') ? 'wait' : 'pointer',
+          boxShadow: 'none', gap: '6px', cursor: (status.startsWith('loading') || count === null) ? 'wait' : 'pointer',
           transition: 'all 0.3s', flexShrink: 0, whiteSpace: 'nowrap'
         }}
       >

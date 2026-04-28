@@ -43,6 +43,7 @@ const Profile = ({ session, profile, refreshProfile }) => {
     const cached = getCachedData(`ai_prompt_student_${session?.user?.id}_student`);
     return cached ? 'cached' : null;
   });
+  const [attemptCount, setAttemptCount] = useState(null);
   
   const [classStudentCounts, setClassStudentCounts] = useState({});
   const [application, setApplication] = useState(null);
@@ -61,11 +62,22 @@ const Profile = ({ session, profile, refreshProfile }) => {
     if (session?.user) {
       // Simple check for confirmation (Supabase specific)
       setIsEmailConfirmed(!!session.user.email_confirmed_at || !!session.user.confirmed_at);
+      fetchAttemptCount();
     }
     if (location.state?.from === '/catalog' && !profile?.is_profile_setup_completed) {
       onboardingRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, []);
+
+  const fetchAttemptCount = async () => {
+    try {
+      const { count } = await supabase
+        .from('quiz_attempts')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', session.user.id);
+      setAttemptCount(count || 0);
+    } catch (e) { setAttemptCount(0); }
+  };
 
   // Sync profile data to local state if state is empty (prevents accidental wiping on slow loads)
   useEffect(() => {
@@ -443,58 +455,71 @@ const Profile = ({ session, profile, refreshProfile }) => {
                 </div>
               </div>
             </div>
-            <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
-              <button
-                onClick={async () => {
-                  setAiPromptStatus('loading_copy');
-                  try {
-                    const result = await buildStudentPrompt(session.user.id, 'student');
-                    if (result && result.instruction) {
-                      await navigator.clipboard.writeText(result.instruction);
-                      setAiPromptStatus('copied');
-                      setTimeout(() => setAiPromptStatus('idle'), 2500);
-                    } else setAiPromptStatus('error');
-                  } catch (e) { setAiPromptStatus('error'); }
-                }}
-                disabled={aiPromptStatus.startsWith('loading')}
-                className="flex-center"
-                style={{
-                  flex: 1.2, padding: '10px', borderRadius: '12px', fontWeight: 'bold', fontSize: '0.8rem',
-                  background: aiPromptStatus === 'copied' ? 'rgba(34, 197, 94, 0.1)' : 'linear-gradient(135deg, rgba(168, 85, 247, 0.1), rgba(99, 102, 241, 0.1))',
-                  color: aiPromptStatus === 'copied' ? '#16a34a' : '#a855f7',
-                  boxShadow: 'none', border: '1px solid ' + (aiPromptStatus === 'copied' ? '#16a34a33' : '#a855f733'), gap: '6px'
-                }}
-              >
-                {aiPromptStatus === 'loading_copy' ? <RefreshCw size={14} className="spinner" /> : aiPromptStatus === 'copied' ? <Check size={14} /> : <Copy size={14} />}
-                {aiPromptStatus === 'copied' ? 'Промпт скопирован' : 'Копировать промпт'}
-              </button>
+            {attemptCount !== null && attemptCount < 10 ? (
+              <div className="flex-center shake" style={{ 
+                padding: '12px', borderRadius: '15px', background: 'rgba(239, 68, 68, 0.05)', 
+                border: '1px solid rgba(239, 68, 68, 0.2)', color: '#ef4444', gap: '10px',
+                fontSize: '0.85rem', fontWeight: 'bold', width: '100%', marginTop: '15px'
+              }}>
+                <AlertTriangle size={18} />
+                <span>Нужно 10+ попыток (у вас {attemptCount})</span>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
+                <button
+                  onClick={async () => {
+                    setAiPromptStatus('loading_copy');
+                    try {
+                      const result = await buildStudentPrompt(session.user.id, 'student');
+                      if (result && result.instruction) {
+                        await navigator.clipboard.writeText(result.instruction);
+                        setAiPromptStatus('copied');
+                        setTimeout(() => setAiPromptStatus('idle'), 2500);
+                      } else setAiPromptStatus('error');
+                    } catch (e) { setAiPromptStatus('error'); }
+                  }}
+                  disabled={aiPromptStatus.startsWith('loading') || attemptCount === null}
+                  className="flex-center"
+                  style={{
+                    flex: 1.2, padding: '10px', borderRadius: '12px', fontWeight: 'bold', fontSize: '0.8rem',
+                    background: aiPromptStatus === 'copied' ? 'rgba(34, 197, 94, 0.1)' : 'linear-gradient(135deg, rgba(168, 85, 247, 0.1), rgba(99, 102, 241, 0.1))',
+                    color: aiPromptStatus === 'copied' ? '#16a34a' : '#a855f7',
+                    boxShadow: 'none', border: '1px solid ' + (aiPromptStatus === 'copied' ? '#16a34a33' : '#a855f733'), gap: '6px',
+                    cursor: (aiPromptStatus.startsWith('loading') || attemptCount === null) ? 'wait' : 'pointer'
+                  }}
+                >
+                  {aiPromptStatus === 'loading_copy' ? <RefreshCw size={14} className="spinner" /> : aiPromptStatus === 'copied' ? <Check size={14} /> : <Copy size={14} />}
+                  {aiPromptStatus === 'copied' ? 'Промпт скопирован' : 'Копировать промпт'}
+                </button>
 
-              <button
-                onClick={async () => {
-                  setAiPromptStatus('loading_file');
-                  try {
-                    const result = await buildStudentPrompt(session.user.id, 'student');
-                    if (result && result.data) {
-                      downloadJSON(result.data, result.filename);
-                      setAiPromptStatus('downloaded');
-                      setTimeout(() => setAiPromptStatus('idle'), 2500);
-                    } else setAiPromptStatus('error');
-                  } catch (e) { setAiPromptStatus('error'); }
-                }}
-                disabled={aiPromptStatus.startsWith('loading')}
-                className="flex-center"
-                style={{
-                  flex: 0.8, padding: '10px', borderRadius: '12px', fontWeight: 'bold', fontSize: '0.8rem',
-                  background: aiPromptStatus === 'downloaded' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(99, 102, 241, 0.05)',
-                  color: aiPromptStatus === 'downloaded' ? '#16a34a' : 'var(--primary-color)',
-                  boxShadow: 'none', border: '1px solid ' + (aiPromptStatus === 'downloaded' ? '#16a34a33' : 'rgba(99, 102, 241, 0.1)'), gap: '6px'
-                }}
-                title="Скачать данные в формате JSON"
-              >
-                {aiPromptStatus === 'loading_file' ? <RefreshCw size={14} className="spinner" /> : aiPromptStatus === 'downloaded' ? <Check size={14} /> : <FileText size={14} />}
-                JSON
-              </button>
-            </div>
+                <button
+                  onClick={async () => {
+                    setAiPromptStatus('loading_file');
+                    try {
+                      const result = await buildStudentPrompt(session.user.id, 'student');
+                      if (result && result.data) {
+                        downloadJSON(result.data, result.filename);
+                        setAiPromptStatus('downloaded');
+                        setTimeout(() => setAiPromptStatus('idle'), 2500);
+                      } else setAiPromptStatus('error');
+                    } catch (e) { setAiPromptStatus('error'); }
+                  }}
+                  disabled={aiPromptStatus.startsWith('loading') || attemptCount === null}
+                  className="flex-center"
+                  style={{
+                    flex: 0.8, padding: '10px', borderRadius: '12px', fontWeight: 'bold', fontSize: '0.8rem',
+                    background: aiPromptStatus === 'downloaded' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(99, 102, 241, 0.05)',
+                    color: aiPromptStatus === 'downloaded' ? '#16a34a' : 'var(--primary-color)',
+                    boxShadow: 'none', border: '1px solid ' + (aiPromptStatus === 'downloaded' ? '#16a34a33' : 'rgba(99, 102, 241, 0.1)'), gap: '6px',
+                    cursor: (aiPromptStatus.startsWith('loading') || attemptCount === null) ? 'wait' : 'pointer'
+                  }}
+                  title="Скачать данные в формате JSON"
+                >
+                  {aiPromptStatus === 'loading_file' ? <RefreshCw size={14} className="spinner" /> : aiPromptStatus === 'downloaded' ? <Check size={14} /> : <FileText size={14} />}
+                  JSON
+                </button>
+              </div>
+            )}
             {aiPromptLastUpdate && (
               <div style={{ marginTop: '8px', fontSize: '0.7rem', opacity: 0.4, textAlign: 'center' }}>
                 Данные обновляются автоматически каждый час

@@ -329,10 +329,10 @@ export const buildStudentPrompt = async (userId, viewerRole = 'student', viewerP
       ? buildTeacherInstruction(viewerProfile)
       : buildStudentInstruction();
 
-    return { 
-      instruction, 
-      data: json, 
-      filename: `analytics_${displayName.replace(/\s+/g, '_')}.json` 
+    return {
+      instruction,
+      data: json,
+      filename: `analytics_${displayName.replace(/\s+/g, '_')}.json`
     };
   }, PROMPT_TTL_HOURS);
 };
@@ -361,7 +361,7 @@ const DICTIONARY_BLOCK = `## Расшифровка мнемоники (Слов
 
 const buildStudentInstruction = () => `# Инструкция для ИИ (Личный Наставник LabTest)
 
-**Цель**: Провести глубокий, дружелюбный анализ обучения ученика и дать персональные рекомендации. Ты — личный наставник, который видит полную картину.
+**Цель**: Провести без подобострастия и угодничества глубокий, честный анализ обучения ученика и дать персональные рекомендации. Ты — личный наставник, который видит полную картину.
 
 ${DICTIONARY_BLOCK}
 
@@ -386,7 +386,7 @@ const buildTeacherInstruction = (teacherProfile) => {
 
   return `# Инструкция для ИИ (Педагогический Аналитик LabTest)
 
-**Цель**: Провести профессиональный педагогический анализ данного ученика для учителя **${teacherName}**. Выявить проблемы, дать рекомендации по работе с учеником.
+**Цель**: Провести без подобострастия и угодничества профессиональный педагогический анализ данного ученика для учителя **${teacherName}**. Выявить проблемы, дать рекомендации по работе с учеником.
 
 ${DICTIONARY_BLOCK}
 
@@ -545,10 +545,10 @@ ${QUIZ_DICTIONARY_BLOCK}
 
 ## Данные для анализа загружены из файла.`;
 
-  return { 
-    instruction, 
-    data: json, 
-    filename: `test_${quiz.title.replace(/\s+/g, '_')}.json` 
+  return {
+    instruction,
+    data: json,
+    filename: `test_${quiz.title.replace(/\s+/g, '_')}.json`
   };
 };
 
@@ -685,7 +685,7 @@ export const buildClassPrompt = async (classId) => {
 
     const instruction = `# Инструкция для ИИ (Классный Аналитик LabTest)
 
-**Цель**: Провести комплексный анализ успеваемости всего класса. Помочь учителю увидеть общую картину, выявить системные проблемы и составить план работы.
+**Цель**: Провести без подобострастия и угодничества комплексный анализ успеваемости всего класса. Помочь учителю увидеть общую картину, выявить системные проблемы и составить план работы.
 
 ## Расшифровка мнемоники (Словарь)
 
@@ -709,10 +709,10 @@ export const buildClassPrompt = async (classId) => {
 
 ## Данные для анализа загружены из файла.`;
 
-    return { 
-      instruction, 
-      data: json, 
-      filename: `class_${cls.name.replace(/\s+/g, '_')}.json` 
+    return {
+      instruction,
+      data: json,
+      filename: `class_${cls.name.replace(/\s+/g, '_')}.json`
     };
   }, PROMPT_TTL_HOURS);
 };
