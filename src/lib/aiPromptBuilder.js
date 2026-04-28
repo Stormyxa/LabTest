@@ -137,12 +137,10 @@ export const buildStudentPrompt = async (userId, viewerRole = 'student', viewerP
     const schoolName = schoolRes.data?.name || '—';
     const className = classRes.data?.name || '—';
 
-    // Build display name: "Фамилия И. О."
-    const initials = [profile.first_name, profile.patronymic]
-      .filter(Boolean)
-      .map(n => n.charAt(0).toUpperCase() + '.')
-      .join(' ');
+    // Build names
+    const initials = [profile.first_name, profile.patronymic].filter(Boolean).map(n => n.charAt(0).toUpperCase() + '.').join(' ');
     const displayName = `${profile.last_name || ''} ${initials}`.trim() || 'Ученик';
+    const fullName = `${profile.last_name || ''} ${profile.first_name || ''} ${profile.patronymic || ''}`.trim() || 'Ученик';
 
     // ── 2. Fetch last 200 attempts ──
     const { data: fetchedAttempts } = await supabase
@@ -316,7 +314,7 @@ export const buildStudentPrompt = async (userId, viewerRole = 'student', viewerP
         limit_count: DATA_LIMIT_COUNT
       },
       u: {
-        n: displayName,
+        n: fullName,
         geo: `${cityName}, ${schoolName}, ${className}`
       },
       gs,
@@ -644,7 +642,7 @@ export const buildClassPrompt = async (classId) => {
       const strong = quizAvgs.filter(q => q.avg >= 80).sort((a, b) => b.avg - a.avg).slice(0, 3).map(q => q.tn);
 
       const entry = {
-        n: `${st.last_name} ${st.first_name?.charAt(0) || ''}.`,
+        n: `${st.last_name || ''} ${st.first_name || ''} ${st.patronymic || ''}`.trim() || 'Ученик',
         att: myResults.length,
         'avg%': avgPct
       };
