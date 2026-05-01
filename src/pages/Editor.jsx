@@ -532,7 +532,7 @@ const Editor = ({ session, profile }) => {
   };
 
   const copyJsonPrompt = () => {
-    const prompt = `Без подобострастия. Качественно создай строгий интересный тест с вопросами высокого порядка без подсказок по одному большему параграфу с приложенных изображений из кратного 5 количества вопросов от 5 до 30 в зависимости от объёма информации (чем больше информации, тем больше число вопросов). Выведи результат СТРОГО в формате JSON:\n{\n"title":\n"§ Номер-Номер (если есть). Название",\n"questions": [\n{\n"question": "Текст вопроса?",\n"options": ["Вариант 1", "Вариант 2", "Вариант 3", "Вариант 4", "...до 6 вариантов"],\n"correctIndex": 0 (всегда),\n"explanation": "Подробное объяснение, почему этот ответ верный, раскрывающее суть вопроса."\n}\n]\n}\nВАЖНО: Количество вариантов ответа может быть разным для каждого вопроса (от 2 до 6), но верный только один.\nСоставляй вопросы строго в рамках информации из параграфа, но делай их самодостаточными, чтобы ученик мог ответить на них, опираясь на общие знания по теме, даже если у него нет перед глазами текста или схем с изображений.\n\nХорошо составленный тест должен следовать правилу однородности:\n\nВсе варианты ответов должны быть примерно одинаковой длины.\nЕсли верный ответ длинный, нужно либо укоротить его, либо удлинить дистракторы, добавив в них детали.\nИногда детализацию лучше вынести в само условие вопроса, чтобы варианты ответов были лаконичными.\nДистракторы должны быть ничем не менее правдоподобны, чем верный ответ для запутывания учащихся.\n\nПоле "explanation" крайне важно: оно должно помогать ученику понять материал в обучающем режиме (после ответа).`;
+    const prompt = `\nБез подобострастия и на глубокую проверку настоящих знаний, мне не обидно и я хочу быть жестоко униженной, узнать все свои уязвимости и нелепые пробелы. Качественно создай на академическом языке строгий интересный тест с неоднозначными вопросами высокого порядка без подсказок в стиле ЕНТ, полностью охватывающий все аспекты параграфа с приложенных изображений в количестве XX вопросов. Выведи результат СТРОГО в формате JSON:\n{\n"title":\n"§ Номер-Номер (если есть). Название",\n"questions": [\n{\n"question": "Текст вопроса?",\n"options": ["Вариант 1", "Вариант 2", "Вариант 3", "Вариант 4"],\n"correctIndex": 0 (всегда),\n"explanation": "Подробное объяснение, почему этот ответ верный, раскрывающее суть \nвопроса."\n}\n]\n}\nВАЖНО: Количество вариантов ответа всегда одинаковое для каждого вопроса (4), но верный только один.\nСоставляй вопросы строго в рамках информации из параграфа, но делай их самодостаточными, чтобы ученик мог ответить на них, опираясь на общие знания по теме, даже если у него нет перед глазами текста или схем с изображений.\n\nХорошо составленный тест должен следовать правилу однородности:\n\nВсе варианты ответов должны быть примерно одинаковой длины.\nЕсли верный ответ длинный, нужно либо укоротить его, либо удлинить дистракторы, \nдобавив в них детали.\nИногда детализацию лучше вынести в само условие вопроса, чтобы варианты ответов были лаконичными.\nНеверные варианты ответов должны быть такими же правдоподобными, как и верный ответ, что направлено на запутывание учащихся. Дистракторы должны опираться на смежные настоящие исторические факты той эпохи, которые являются неверными лишь в контексте данного вопроса. То есть ученик, который даже читал параграф, но поверхностно, не сможет угадать верный вариант.\n\nПоле "explanation" крайне важно: оно должно помогать ученику понять материал в обучающем режиме (после ответа).\n\nЕсли в данном параграфе есть портреты, рисунки или карты, то можешь сделать вопрос с префиксом [ИЗОБРАЖЕНИЕ] по ним и сказать что именно добавить. Я сама буду ориентироваться и прикреплю к нему соответственное изображение, имеющиеся в контексте параграфа.`;
     navigator.clipboard.writeText(prompt);
     setCopyFeedbackJson(true);
     setTimeout(() => setCopyFeedbackJson(false), 2000);
@@ -1033,7 +1033,7 @@ const Editor = ({ session, profile }) => {
 
       {/* SUCCESS JSON LOAD MODAL */}
       {successLoadedQuiz && (
-        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setSuccessLoadedQuiz(null))(e); }}}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setSuccessLoadedQuiz(null))(e); } }}>
           <div className="modal-content animate" onClick={e => e.stopPropagation()} style={{ width: '400px' }}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '15px', background: 'rgba(74, 222, 128, 0.1)', color: '#4ade80', margin: '0 auto 20px' }}>
               <CheckCircle size={32} />
@@ -1052,7 +1052,7 @@ const Editor = ({ session, profile }) => {
 
       {/* PENDING EMPTY QUIZ MODAL */}
       {pendingEmptyQuiz && (
-        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setPendingEmptyQuiz(null))(e); }}}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setPendingEmptyQuiz(null))(e); } }}>
           <div className="modal-content animate" onClick={e => e.stopPropagation()} style={{ width: '450px' }}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '15px', background: 'rgba(250, 204, 21, 0.1)', color: '#ca8a04', margin: '0 auto 20px' }}>
               <AlertTriangle size={32} />
@@ -1071,7 +1071,7 @@ const Editor = ({ session, profile }) => {
 
       {/* МОДАЛКА ПЕРЕИМЕНОВАНИЯ КЛАССА / СЕКЦИИ */}
       {renamingItem && (
-        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setRenamingItem(null))(e); }}}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setRenamingItem(null))(e); } }}>
           <div className="modal-content animate" onClick={e => e.stopPropagation()} style={{ width: '400px' }}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '15px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', margin: '0 auto 20px' }}>
               <Pencil size={32} />
@@ -1102,7 +1102,7 @@ const Editor = ({ session, profile }) => {
       )}
 
       {editSectionLink && (
-        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setEditSectionLink(null))(e); }}}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setEditSectionLink(null))(e); } }}>
           <div className="modal-content animate" onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', margin: '0 auto 25px' }}>
               <Book size={32} />
@@ -1129,7 +1129,7 @@ const Editor = ({ session, profile }) => {
       )}
 
       {deleteId && (
-        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setDeleteId(null))(e); }}}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setDeleteId(null))(e); } }}>
           <div className="modal-content animate modal-content-danger" onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(248, 113, 113, 0.1)', color: '#f87171', margin: '0 auto 25px' }}><AlertTriangle size={32} /></div>
             <h2 style={{ marginBottom: '15px' }}>Удалить тест?</h2>
@@ -1142,7 +1142,7 @@ const Editor = ({ session, profile }) => {
       )}
 
       {deleteSectionId && (
-        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setDeleteSectionId(null))(e); }}}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setDeleteSectionId(null))(e); } }}>
           <div className="modal-content animate modal-content-danger" onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(248, 113, 113, 0.1)', color: '#f87171', margin: '0 auto 25px' }}><AlertTriangle size={32} /></div>
             <h2 style={{ marginBottom: '15px' }}>Удалить предмет?</h2>
@@ -1155,7 +1155,7 @@ const Editor = ({ session, profile }) => {
       )}
 
       {deleteClassId && (
-        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setDeleteClassId(null))(e); }}}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setDeleteClassId(null))(e); } }}>
           <div className="modal-content animate modal-content-danger" onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(248, 113, 113, 0.1)', color: '#f87171', margin: '0 auto 25px' }}><AlertTriangle size={32} /></div>
             <h2 style={{ marginBottom: '15px' }}>Удалить Класс/Папку?</h2>
