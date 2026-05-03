@@ -43,9 +43,10 @@ const SidebarUserList = React.memo(({
   analyticsMode, setAnalyticsMode
 }) => {
   const isTeacher = profile?.role === 'teacher';
-  let canChangeCity = !isTeacher;
-  let canChangeSchool = !isTeacher;
-  let canChangeClass = !isTeacher;
+  const isStudent = profile?.role === 'player';
+  let canChangeCity = !isTeacher && !isStudent;
+  let canChangeSchool = !isTeacher && !isStudent;
+  let canChangeClass = !isTeacher && !isStudent;
 
   if (isTeacher && classes.length > 0 && schools.length > 0) {
     const myClasses = classes.filter(c => teacherClasses.includes(c.id));
@@ -138,26 +139,36 @@ const SidebarUserList = React.memo(({
         </div>
       ) : (
         <>
-          {profile?.role !== 'player' && (
-            <div style={{ display: 'flex', gap: '5px', marginBottom: '20px', background: 'rgba(0,0,0,0.03)', padding: '4px', borderRadius: '12px' }}>
-              <button
-                onClick={() => setAnalyticsMode('official')}
-                style={{ flex: 1, padding: '8px', borderRadius: '10px', fontSize: '0.8rem', background: analyticsMode === 'official' ? 'white' : 'transparent', boxShadow: analyticsMode === 'official' ? '0 2px 8px rgba(0,0,0,0.05)' : 'none', color: analyticsMode === 'official' ? 'var(--primary-color)' : 'inherit', fontWeight: 'bold' }}
-              >
-                Каталог
-              </button>
-              <button
-                onClick={() => setAnalyticsMode('personal')}
-                style={{ flex: 1, padding: '8px', borderRadius: '10px', fontSize: '0.8rem', background: analyticsMode === 'personal' ? 'white' : 'transparent', boxShadow: analyticsMode === 'personal' ? '0 2px 8px rgba(0,0,0,0.05)' : 'none', color: analyticsMode === 'personal' ? 'var(--primary-color)' : 'inherit', fontWeight: 'bold' }}
-              >
-                Личная
-              </button>
-            </div>
-          )}
+          <div style={{ display: 'flex', gap: '5px', marginBottom: '20px', background: 'rgba(0,0,0,0.03)', padding: '4px', borderRadius: '12px' }}>
+            <button
+              onClick={() => setAnalyticsMode('official')}
+              style={{
+                flex: 1, padding: '8px', borderRadius: '10px', fontSize: '0.8rem',
+                background: analyticsMode === 'official' ? 'var(--card-bg)' : 'transparent',
+                boxShadow: analyticsMode === 'official' ? '0 2px 8px rgba(0,0,0,0.05)' : 'none',
+                color: analyticsMode === 'official' ? 'var(--primary-color)' : 'inherit',
+                fontWeight: 'bold', border: 'none'
+              }}
+            >
+              Каталог
+            </button>
+            <button
+              onClick={() => setAnalyticsMode('personal')}
+              style={{
+                flex: 1, padding: '8px', borderRadius: '10px', fontSize: '0.8rem',
+                background: analyticsMode === 'personal' ? 'var(--card-bg)' : 'transparent',
+                boxShadow: analyticsMode === 'personal' ? '0 2px 8px rgba(0,0,0,0.05)' : 'none',
+                color: analyticsMode === 'personal' ? 'var(--primary-color)' : 'inherit',
+                fontWeight: 'bold', border: 'none'
+              }}
+            >
+              Личная
+            </button>
+          </div>
 
           <div style={{ marginBottom: '20px' }}>
             <label htmlFor="ad-folder" style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '5px', display: 'block' }}>Выбор Теста</label>
-            <select id="ad-folder" value={filterFolder} onChange={e => setFilterFolder(e.target.value)} style={{ width: '100%', marginBottom: '10px', padding: '8px' }}>
+            <select id="ad-folder" value={filterFolder} onChange={e => setFilterFolder(e.target.value)} style={{ width: '100%', marginBottom: '10px', padding: '8px' }} disabled={isStudent}>
               <option value="all">Все папки</option>
               {quizFolders.map(f => (
                 <option key={f.id} value={f.id} disabled={f.is_divider || isFolderEmpty(f.id)}>
@@ -165,7 +176,7 @@ const SidebarUserList = React.memo(({
                 </option>
               ))}
             </select>
-            <select id="ad-section" value={filterSection} onChange={e => setFilterSection(e.target.value)} style={{ width: '100%', marginBottom: '10px', padding: '8px' }} aria-label="Предмет">
+            <select id="ad-section" value={filterSection} onChange={e => setFilterSection(e.target.value)} style={{ width: '100%', marginBottom: '10px', padding: '8px' }} aria-label="Предмет" disabled={isStudent}>
               <option value="all">Все предметы</option>
               {validSections.map(s => (
                 <option key={s.id} value={s.id} disabled={s.is_divider || isSectionEmpty(s.id)}>
@@ -173,7 +184,7 @@ const SidebarUserList = React.memo(({
                 </option>
               ))}
             </select>
-            <select id="ad-quiz" value={filterQuiz} onChange={e => handleQuizSelect(e.target.value)} style={{ width: '100%', padding: '8px' }} aria-label="Тест">
+            <select id="ad-quiz" value={filterQuiz} onChange={e => handleQuizSelect(e.target.value)} style={{ width: '100%', padding: '8px' }} aria-label="Тест" disabled={isStudent}>
               <option value="" disabled>-- Выберите тест --</option>
               {validQuizzes.map(q => (
                 <option key={q.id} value={q.id} disabled={q.is_divider}>
@@ -1038,7 +1049,11 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
       return;
     }
 
-    setUsers(userList);
+    let displayList = userList || [];
+    if (currentUserProfile?.role === 'player') {
+      displayList = displayList.filter(u => u.id === currentUserProfile.id);
+    }
+    setUsers(displayList);
 
     // Restoration Logic
     const finalTargetId = targetUserId || userIdParam;
@@ -1142,6 +1157,9 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
   const isSectionEmpty = useCallback((sId) => !quizzes.some(q => q.section_id === sId), [quizzes]);
 
   const filteredUsers = useMemo(() => users.filter(u => {
+    // If student, always show self
+    if (profile?.role === 'player' && u.id === profile?.id) return true;
+    
     if (!showObservers && u.is_observer) return false;
     if (filterCity !== 'all' && u.city_id !== filterCity) return false;
     if (filterSchool !== 'all' && u.school_id !== filterSchool) return false;
@@ -1151,7 +1169,7 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
       if (!name.includes(searchQuery.toLowerCase())) return false;
     }
     return true;
-  }), [users, showObservers, filterCity, filterSchool, filterClass, searchQuery]);
+  }), [users, showObservers, filterCity, filterSchool, filterClass, searchQuery, profile]);
 
   const stats = useMemo(() => {
     if (attempts.length === 0) return { totalTime: 0, avgTime: 0, maxScore: 0, passed: 0, failed: 0, isSuspiciousUser: false };

@@ -363,14 +363,25 @@ const QuizView = ({ session, profile }) => {
 
       // Try to restore shuffled structure from cache
       const structureKey = `quiz_structure_${data.id}`;
-      const cachedStructure = localStorage.getItem(structureKey);
+      const sessionKey = `quiz_session_struct_${data.id}`;
       let finalQuestions = null;
 
-      if (cachedStructure) {
-        try {
-          finalQuestions = JSON.parse(cachedStructure);
-        } catch (e) {
-          console.error('Failed to parse cached structure:', e);
+      // 1. Try sessionStorage first (highest priority for tab stability)
+      const sessionStructure = sessionStorage.getItem(sessionKey);
+      if (sessionStructure) {
+        try { finalQuestions = JSON.parse(sessionStructure); } catch (e) {}
+      }
+
+      if (!finalQuestions) {
+        const cachedStructure = localStorage.getItem(structureKey);
+        if (cachedStructure) {
+          try {
+            finalQuestions = JSON.parse(cachedStructure);
+            // Sync to sessionStorage
+            sessionStorage.setItem(sessionKey, cachedStructure);
+          } catch (e) {
+            console.error('Failed to parse cached structure:', e);
+          }
         }
       }
 
@@ -398,6 +409,7 @@ const QuizView = ({ session, profile }) => {
           };
         });
         localStorage.setItem(structureKey, JSON.stringify(finalQuestions));
+        sessionStorage.setItem(sessionKey, JSON.stringify(finalQuestions));
       }
 
       setQuestions(finalQuestions);
@@ -464,6 +476,11 @@ const QuizView = ({ session, profile }) => {
           setAnswers(parsedAnswers);
           answersRef.current = parsedAnswers;
         } catch (e) { console.error('Failed to restore answers:', e); }
+      }
+
+      const showResultKey = `quiz_show_result_${data.id}`;
+      if (localStorage.getItem(showResultKey) === 'true') {
+        setShowResult(true);
       }
 
       // Save any pending result from a closed tab (for logged in users)
@@ -704,19 +721,30 @@ const QuizView = ({ session, profile }) => {
     localStorage.removeItem(`quiz_pending_${id}`);
     localStorage.removeItem(`quiz_timer_${id}`);
     localStorage.removeItem(`quiz_answers_${id}`);
-    localStorage.removeItem(`quiz_structure_${id}`);
     localStorage.removeItem(`quiz_current_idx_${id}`);
     localStorage.removeItem(`quiz_times_${id}`);
     localStorage.removeItem(`quiz_start_time_${id}`);
     await saveResultRef.current(finalAnswers, false);
     if (blocker.state === 'blocked') blocker.proceed();
     setShowResult(true);
+    localStorage.setItem(`quiz_show_result_${id}`, 'true');
   };
 
   const handleExit = () => {
     const elapsed = Math.round((Date.now() - startTimeRef.current) / 1000);
     exitElapsedRef.current = elapsed;
     setShowExitModal(true);
+  };
+
+  const handleRetry = () => {
+    localStorage.removeItem(`quiz_show_result_${id}`);
+    localStorage.removeItem(`quiz_structure_${id}`);
+    sessionStorage.removeItem(`quiz_session_struct_${id}`);
+    localStorage.removeItem(`quiz_answers_${id}`);
+    localStorage.removeItem(`quiz_current_idx_${id}`);
+    localStorage.removeItem(`quiz_times_${id}`);
+    localStorage.removeItem(`quiz_start_time_${id}`);
+    window.location.reload();
   };
 
   const confirmExit = async () => {
@@ -780,7 +808,7 @@ const QuizView = ({ session, profile }) => {
 
             <div className="flex-center" style={{ gap: '15px', flexWrap: 'wrap' }}>
               <button onClick={() => navigate('/catalog')} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>В каталог</button>
-              <button onClick={() => window.location.reload()}><RotateCcw size={18} style={{ marginRight: '8px' }} /> Перепройти</button>
+              <button onClick={handleRetry}><RotateCcw size={18} style={{ marginRight: '8px' }} /> Перепройти</button>
               <button
                 onClick={() => setShowAnswersList(!showAnswersList)}
                 style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none' }}
