@@ -5,7 +5,7 @@ import { Search, Play, CheckCircle, ChevronDown, ChevronUp, Award, Save, Copy, B
 import { useScrollRestoration } from '../lib/useScrollRestoration';
 import { fetchWithCache, useCacheSync } from '../lib/cache';
 
-const DividerItem = React.memo(({ quiz, qIndex, userRole, searchQuery, swapQuizzes, setRenamingItem, fetchQuizzes, quizzesLength, activeTab }) => (
+const DividerItem = React.memo(({ quiz, qIndex, userRole, searchQuery, swapQuizzes, handleRenameTrigger, fetchQuizzes, quizzesLength, activeTab }) => (
   <div className="grid-full animate" style={{ gridColumn: '1 / -1', margin: '10px 0', padding: '10px 0', display: 'flex', alignItems: 'center', gap: '15px' }}>
     <div className="flex-center" style={{ gap: '15px' }}>
       {(userRole === 'creator' || activeTab === 'personal') && !searchQuery && (
@@ -23,7 +23,7 @@ const DividerItem = React.memo(({ quiz, qIndex, userRole, searchQuery, swapQuizz
     <div style={{ height: '1px', background: 'rgba(99, 102, 241, 0.2)', flex: 1 }} />
     {(userRole === 'creator' || activeTab === 'personal') && (
       <div className="flex-center" style={{ gap: '5px' }}>
-        <button onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: quiz.id, name: quiz.content.divider_text || quiz.title, type: 'quiz', isDivider: true, sectionId: quiz.section_id }); }} style={{ background: 'transparent', color: 'var(--primary-color)', opacity: 0.4, padding: '5px', boxShadow: 'none' }}><Pencil size={14} /></button>
+        <button onClick={(e) => { e.stopPropagation(); handleRenameTrigger({ id: quiz.id, name: quiz.content.divider_text || quiz.title, type: 'quiz', isDivider: true, sectionId: quiz.section_id }); }} style={{ background: 'transparent', color: 'var(--primary-color)', opacity: 0.4, padding: '5px', boxShadow: 'none' }}><Pencil size={14} /></button>
         <button onClick={async (e) => { e.stopPropagation(); await supabase.from('quizzes').update({ is_hidden: !quiz.is_hidden }).eq('id', quiz.id); fetchQuizzes(); }} style={{ background: 'transparent', color: quiz.is_hidden ? '#ca8a04' : 'inherit', opacity: 0.4, padding: '5px', boxShadow: 'none' }}>
           {quiz.is_hidden ? <Shield size={14} /> : <EyeOff size={14} />}
         </button>
@@ -100,6 +100,8 @@ const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, pass
                     console.error("Error updating publicity:", error);
                     alert("Ошибка: " + error.message);
                   } else {
+                    // Force invalidate cache for this specific list
+                    localStorage.removeItem(`labtest_cache_catalog_quizzes_${quiz.section_id}`);
                     fetchData();
                   }
                 }}
@@ -160,7 +162,7 @@ const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, pass
   );
 });
 
-const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, onQuizzesChange, setHideModal, setDuplicateModal, setRenamingItem, setSelectedQuiz, setRandomQuizModal, activeTab, handleShare, fetchData }) => {
+const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, onQuizzesChange, setHideModal, setDuplicateModal, handleRenameTrigger, setSelectedQuiz, setRandomQuizModal, activeTab, handleShare, fetchData }) => {
   const navigate = useNavigate();
   const [visibleCount, setVisibleCount] = useState(25); // Incremental rendering start
 
@@ -361,9 +363,10 @@ const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, 
                   userRole={profile?.role}
                   searchQuery={searchQuery}
                   swapQuizzes={swapQuizzes}
-                  setRenamingItem={setRenamingItem}
+                  handleRenameTrigger={handleRenameTrigger}
                   fetchQuizzes={fetchQuizzes}
                   quizzesLength={quizzes.length}
+                  activeTab={activeTab}
                 />
               );
             }
@@ -401,7 +404,7 @@ const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, 
 
 const CatalogSectionRow = React.memo(({
   section, clsId, sIndex, profile, searchQuery, isExpanded,
-  onToggle, onQuizzesChange, setHideModal, setDuplicateModal, setRenamingItem, setSelectedQuiz, setRandomQuizModal,
+  onToggle, onQuizzesChange, setHideModal, setDuplicateModal, handleRenameTrigger, setSelectedQuiz, setRandomQuizModal,
   handleCreateDivider, swapSections, setNewName, activeTab, handleShare, fetchData
 }) => {
   return (
@@ -472,7 +475,7 @@ const CatalogSectionRow = React.memo(({
                 <Plus size={14} style={{ marginRight: '4px' }} /> Разделитель
               </button>
               <button
-                onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: section.id, name: section.name, type: 'section' }); setNewName(section.name); }}
+                onClick={(e) => { e.stopPropagation(); handleRenameTrigger({ id: section.id, name: section.name, type: 'section' }); }}
                 style={{ background: 'transparent', color: 'var(--text-color)', opacity: 0.4, boxShadow: 'none', padding: '5px' }}
                 title="Переименовать предмет"
               >
@@ -493,7 +496,7 @@ const CatalogSectionRow = React.memo(({
           onQuizzesChange={onQuizzesChange}
           setHideModal={setHideModal}
           setDuplicateModal={setDuplicateModal}
-          setRenamingItem={setRenamingItem}
+          handleRenameTrigger={handleRenameTrigger}
           setSelectedQuiz={setSelectedQuiz}
           setRandomQuizModal={setRandomQuizModal}
           activeTab={activeTab}
@@ -507,7 +510,7 @@ const CatalogSectionRow = React.memo(({
 
 const CatalogClassRow = React.memo(({
   cls, cIndex, profile, searchQuery, isExpanded, expandedSections,
-  onToggle, onSectionToggle, swapClasses, swapSections, handleRenameItem, handleCreateDivider, handleCreateSectionDivider, setNewName,
+  onToggle, onSectionToggle, swapClasses, swapSections, handleRenameTrigger, handleCreateDivider, handleCreateSectionDivider, setNewName,
   onQuizzesChange, setHideModal, setDuplicateModal, setSelectedQuiz, setRandomQuizModal, activeTab, handleShare, fetchData
 }) => {
   return (
@@ -561,7 +564,7 @@ const CatalogClassRow = React.memo(({
           {(profile?.role === 'creator' || activeTab === 'personal') && (
             <div className="flex-center" style={{ gap: '10px' }}>
               <button
-                onClick={(e) => { e.stopPropagation(); handleRenameItem({ id: cls.id, name: cls.name, type: 'class' }); }}
+                onClick={(e) => { e.stopPropagation(); handleRenameTrigger({ id: cls.id, name: cls.name, type: 'class' }); }}
                 style={{ background: 'transparent', color: 'var(--primary-color)', opacity: 0.5, boxShadow: 'none', padding: '5px' }}
                 title="Переименовать класс"
               >
@@ -604,7 +607,7 @@ const CatalogClassRow = React.memo(({
                         <button onClick={(e) => { e.stopPropagation(); swapSections(cls.id, sIndex, -1, e); }} disabled={sIndex === 0} style={{ padding: '4px', background: 'rgba(0,0,0,0.02)', color: 'var(--primary-color)', borderRadius: '8px', boxShadow: 'none' }}><ChevronUp size={16} /></button>
                         <button onClick={(e) => { e.stopPropagation(); swapSections(cls.id, sIndex, 1, e); }} disabled={sIndex === cls.sections.length - 1} style={{ padding: '4px', background: 'rgba(0,0,0,0.02)', color: 'var(--primary-color)', borderRadius: '8px', boxShadow: 'none' }}><ChevronDown size={16} /></button>
                       </div>
-                      <button onClick={(e) => { e.stopPropagation(); handleRenameItem({ id: section.id, name: section.name, type: 'section' }); }} style={{ padding: '5px', background: 'rgba(99, 102, 241, 0.08)', color: 'var(--primary-color)', borderRadius: '8px', boxShadow: 'none' }}><Pencil size={16} /></button>
+                      <button onClick={(e) => { e.stopPropagation(); handleRenameTrigger({ id: section.id, name: section.name, type: 'section' }); }} style={{ padding: '5px', background: 'rgba(99, 102, 241, 0.08)', color: 'var(--primary-color)', borderRadius: '8px', boxShadow: 'none' }}><Pencil size={16} /></button>
                       <button onClick={async (e) => { e.stopPropagation(); if (window.confirm('Удалить этот разделитель предметов?')) { await supabase.from('quiz_sections').delete().eq('id', section.id); fetchData(); } }} style={{ padding: '5px', background: 'rgba(239, 68, 68, 0.08)', color: '#ef4444', borderRadius: '8px', boxShadow: 'none' }}><Trash2 size={16} /></button>
                     </div>
                   )}
@@ -625,7 +628,7 @@ const CatalogClassRow = React.memo(({
                 onQuizzesChange={onQuizzesChange}
                 setHideModal={setHideModal}
                 setDuplicateModal={setDuplicateModal}
-                setRenamingItem={handleRenameItem}
+                handleRenameTrigger={handleRenameTrigger}
                 setSelectedQuiz={setSelectedQuiz}
                 setRandomQuizModal={setRandomQuizModal}
                 handleCreateDivider={handleCreateDivider}
@@ -657,13 +660,15 @@ const QuizCatalog = ({ profile }) => {
 
   const [activeTab, setActiveTab] = useState(() => sessionStorage.getItem('catalog_tab') || 'official');
   const [libraryUsers, setLibraryUsers] = useState([]);
-  const [selectedLibraryUser, setSelectedLibraryUser] = useState(null);
+  const [selectedLibraryUser, setSelectedLibraryUserState] = useState(null);
+  const [sharedUsers, setSharedUsers] = useState([]);
+  const [duplicateModal, setDuplicateModalState] = useState(null);
   const [usersLoading, setUsersLoading] = useState(false);
 
   useEffect(() => {
     sessionStorage.setItem('catalog_tab', activeTab);
     if (activeTab === 'official' || activeTab === 'personal') {
-      setSelectedLibraryUser(null);
+      setSelectedLibraryUserState(null);
     } else if (!selectedLibraryUser) {
       const fetchLibraryUsers = async () => {
         setUsersLoading(true);
@@ -716,7 +721,6 @@ const QuizCatalog = ({ profile }) => {
 
   const [selectedQuiz, setSelectedQuizState] = useState(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [duplicateModal, setDuplicateModalState] = useState(null);
   const [shareModalQuiz, setShareModalQuiz] = useState(null);
   const [shareUserEmail, setShareUserEmail] = useState("");
   const [shareCityId, setShareCityId] = useState("");
@@ -729,6 +733,55 @@ const QuizCatalog = ({ profile }) => {
   const [shareLoading, setShareLoading] = useState(false);
   const [duplicateLoading, setDuplicateLoading] = useState(false);
   const [personalClasses, setPersonalClasses] = useState([]);
+
+  // Limits for personal library
+  const LIMITS = {
+    classes: 2,
+    sections: 3,
+    quizzes: 20
+  };
+
+  const getUsageStats = () => {
+    if (activeTab !== 'personal') return null;
+    
+    // Count real items (not dividers)
+    const realClassesCount = classes.filter(c => !c.is_divider).length;
+    const dividerClassesCount = classes.filter(c => c.is_divider).length;
+    
+    let maxRealSectionsCount = 0;
+    let maxDividerSectionsCount = 0;
+    let maxRealQuizzesCount = 0;
+    let maxDividerQuizzesCount = 0;
+
+    classes.forEach(c => {
+      if (c.is_divider) return;
+      
+      const realS = (c.sections || []).filter(s => !s.is_divider);
+      const divS = (c.sections || []).filter(s => s.is_divider);
+      
+      if (realS.length > maxRealSectionsCount) maxRealSectionsCount = realS.length;
+      if (divS.length > maxDividerSectionsCount) maxDividerSectionsCount = divS.length;
+      
+      realS.forEach(s => {
+        const realQ = (s.basicQuizzes || []).filter(q => !q.content?.is_divider);
+        const divQ = (s.basicQuizzes || []).filter(q => q.content?.is_divider);
+        
+        if (realQ.length > maxRealQuizzesCount) maxRealQuizzesCount = realQ.length;
+        if (divQ.length > maxDividerQuizzesCount) maxDividerQuizzesCount = divQ.length;
+      });
+    });
+
+    return {
+      classes: realClassesCount,
+      div_classes: dividerClassesCount,
+      sections: maxRealSectionsCount,
+      div_sections: maxDividerSectionsCount,
+      quizzes: maxRealQuizzesCount,
+      div_quizzes: maxDividerQuizzesCount
+    };
+  };
+
+  const usage = getUsageStats();
   const [personalSections, setPersonalSections] = useState([]);
   const [destClassId, setDestClassId] = useState('');
   const [destSectionId, setDestSectionId] = useState('');
@@ -801,6 +854,93 @@ const QuizCatalog = ({ profile }) => {
     setDuplicateLoading(false);
   };
 
+  const handleCreateClassDivider = async () => {
+    const name = prompt('Введите название разделителя папок:');
+    if (!name) return;
+    const { error } = await supabase.from('quiz_classes').insert({
+      name,
+      is_divider: true,
+      is_personal: activeTab === 'personal',
+      author_id: activeTab === 'personal' ? profile.id : null,
+      sort_order: (classes[classes.length - 1]?.sort_order || 0) + 1
+    });
+    if (error) alert(error.message);
+    else {
+      localStorage.removeItem('labtest_cache_catalog_struct_classes');
+      fetchData();
+    }
+  };
+
+  const handleCreateSectionDivider = async (classId) => {
+    const name = prompt('Введите название разделителя секций:');
+    if (!name) return;
+    const classSections = classes.find(c => c.id === classId)?.sections || [];
+    const { error } = await supabase.from('quiz_sections').insert({
+      name,
+      class_id: classId,
+      is_divider: true,
+      is_personal: activeTab === 'personal',
+      author_id: activeTab === 'personal' ? profile.id : null,
+      sort_order: (classSections[classSections.length - 1]?.sort_order || 0) + 1
+    });
+    if (error) alert(error.message);
+    else {
+      localStorage.removeItem('labtest_cache_catalog_struct_sections');
+      fetchData();
+    }
+  };
+
+  const handleCreateDivider = async (sectionId) => {
+    const text = prompt('Введите текст разделителя тестов:');
+    if (!text) return;
+    const section = classes.flatMap(c => c.sections).find(s => s.id === sectionId);
+    const sectionQuizzes = section?.basicQuizzes || [];
+    const { error } = await supabase.from('quizzes').insert({
+      title: 'Разделитель',
+      section_id: sectionId,
+      is_personal: activeTab === 'personal',
+      author_id: activeTab === 'personal' ? profile.id : null,
+      content: { is_divider: true, divider_text: text },
+      sort_order: (sectionQuizzes[sectionQuizzes.length - 1]?.sort_order || 0) + 1
+    });
+    if (error) alert(error.message);
+    else {
+      localStorage.removeItem(`labtest_cache_catalog_quizzes_${sectionId}`);
+      fetchData();
+    }
+  };
+
+  const handleRenameItem = async (type, id, newName) => {
+    let table = '';
+    if (type === 'class') table = 'quiz_classes';
+    else if (type === 'section') table = 'quiz_sections';
+    else if (type === 'quiz') table = 'quizzes';
+
+    if (!table) return;
+
+    if (type === 'quiz') {
+      const q = classes.flatMap(c => c.sections).flatMap(s => s.basicQuizzes).find(item => item.id === id);
+      if (q?.content?.is_divider) {
+        const newContent = { ...q.content, divider_text: newName };
+        const { error } = await supabase.from('quizzes').update({ content: newContent }).eq('id', id);
+        if (!error) {
+          localStorage.removeItem(`labtest_cache_catalog_quizzes_${q.section_id}`);
+          fetchData();
+        }
+        return;
+      }
+    }
+
+    const { error } = await supabase.from(table).update({ name: newName }).eq('id', id);
+    if (error) alert(error.message);
+    else {
+      // Invalidate cache based on type
+      if (type === 'class') localStorage.removeItem('labtest_cache_catalog_struct_classes');
+      if (type === 'section') localStorage.removeItem('labtest_cache_catalog_struct_sections');
+      fetchData();
+    }
+  };
+
   const [dirtySections, setDirtySections] = useState({});
 
   const [hideModal, setHideModalState] = useState(null);
@@ -838,13 +978,27 @@ const QuizCatalog = ({ profile }) => {
   }, []);
 
   const fetchData = useCallback(async () => {
-    if ((activeTab === 'public' || activeTab === 'shared') && !selectedLibraryUser) {
+    if ((activeTab === 'public' || activeTab === 'shared') && !selectedLibraryUser && activeTab !== 'shared') {
       setClasses([]);
       setLoading(false);
       return;
     }
 
     setLoading(true);
+
+    // 1. Сначала получаем список ID авторов, к чьим библиотекам у нас есть доступ
+    let libraryAccessIds = [];
+    if (activeTab === 'shared' && !selectedLibraryUser) {
+      const { data: accessData } = await supabase
+        .from('library_access')
+        .select('owner_id')
+        .or(`user_id.eq.${profile?.id},target_class_id.eq.${profile?.class_id}`);
+      
+      if (accessData) {
+        libraryAccessIds = [...new Set(accessData.map(a => a.owner_id))];
+      }
+    }
+
     const isPrivileged = profile?.role === 'admin' || profile?.role === 'creator';
     const cacheKeyBase = `catalog_struct_${activeTab}_${selectedLibraryUser?.id || 'none'}`;
 
@@ -857,6 +1011,7 @@ const QuizCatalog = ({ profile }) => {
         if (activeTab === 'official') q = q.eq('is_personal', false);
         else if (activeTab === 'personal') q = q.eq('is_personal', true).eq('author_id', profile?.id);
         else if (selectedLibraryUser) q = q.eq('is_personal', true).eq('author_id', selectedLibraryUser.id);
+        else if (activeTab === 'shared') return Promise.resolve([]);
         return q.then(r => r.data);
       }),
       fetchWithCache(cacheKeyBase + '_sections', () => {
@@ -864,10 +1019,11 @@ const QuizCatalog = ({ profile }) => {
         if (activeTab === 'official') q = q.eq('is_personal', false);
         else if (activeTab === 'personal') q = q.eq('is_personal', true).eq('author_id', profile?.id);
         else if (selectedLibraryUser) q = q.eq('is_personal', true).eq('author_id', selectedLibraryUser.id);
+        else if (activeTab === 'shared') return Promise.resolve([]);
         return q.then(r => r.data);
       }),
       fetchWithCache(cacheKeyBase + `_quizzes_${isPrivileged ? 'all' : 'visible'}`, () => {
-        let quizQuery = supabase.from('quizzes').select('id, title, section_id, is_hidden, is_public, content, is_personal, author_id').eq('is_archived', false);
+        let quizQuery = supabase.from('quizzes').select('id, title, section_id, is_hidden, is_public, content, is_personal, author_id').eq('is_archived', false).order('sort_order', { ascending: true });
         if (!isPrivileged) quizQuery = quizQuery.eq('is_hidden', false);
 
         if (activeTab === 'official') quizQuery = quizQuery.eq('is_personal', false);
@@ -1020,95 +1176,39 @@ const QuizCatalog = ({ profile }) => {
     }
   }, [hideModal, fetchData]);
 
-  const handleCreateDivider = useCallback(async (sId, text = '') => {
-    try {
-      const { data: q } = await supabase.from('quizzes').select('sort_order').eq('section_id', sId).order('sort_order', { ascending: false }).limit(1);
-      const maxOrder = q && q.length > 0 ? q[0].sort_order : -1;
-      const { error } = await supabase.from('quizzes').insert({
-        title: text || 'Разделитель',
-        section_id: sId,
-        author_id: profile.id,
-        content: { is_divider: true, divider_text: text },
-        is_verified: true,
-        sort_order: maxOrder + 1
-      });
-      if (error) throw error;
-      localStorage.removeItem(`labtest_cache_catalog_quizzes_${sId}`);
-      fetchData();
-    } catch (err) { alert(`Ошибка: ${err.message}`); }
-  }, [profile?.id, fetchData]);
-
-  const handleCreateClassDivider = useCallback(async () => {
-    try {
-      const { data: lastCls } = await supabase.from('quiz_classes').select('sort_order').order('sort_order', { ascending: false }).limit(1);
-      const maxOrder = lastCls && lastCls.length > 0 ? lastCls[0].sort_order : -1;
-      const { error } = await supabase.from('quiz_classes').insert({
-        name: 'Новый разделитель',
-        is_divider: true,
-        sort_order: maxOrder + 1
-      });
-      if (error) throw error;
-      localStorage.removeItem('labtest_cache_catalog_struct_classes');
-      fetchData();
-    } catch (err) { alert(`Ошибка: ${err.message}`); }
-  }, [fetchData]);
-
-  const handleCreateSectionDivider = useCallback(async (classId) => {
-    try {
-      const { data: lastSec } = await supabase.from('quiz_sections').select('sort_order').eq('class_id', classId).order('sort_order', { ascending: false }).limit(1);
-      const maxOrder = lastSec && lastSec.length > 0 ? lastSec[0].sort_order : -1;
-      const { error } = await supabase.from('quiz_sections').insert({
-        name: 'Новый разделитель предмета',
-        class_id: classId,
-        is_divider: true,
-        sort_order: maxOrder + 1
-      });
-      if (error) throw error;
-      localStorage.removeItem('labtest_cache_catalog_struct_sections');
-      fetchData();
-    } catch (err) { alert(`Ошибка: ${err.message}`); }
-  }, [fetchData]);
-
-  const handleRename = useCallback(async () => {
+  const handleRename = async () => {
     if (!renamingItem || !newName.trim()) return;
+    const table = renamingItem.type === 'class' ? 'quiz_classes' : (renamingItem.type === 'section' ? 'quiz_sections' : 'quizzes');
+    
+    let updateData = { name: newName };
     if (renamingItem.type === 'quiz') {
-      let updateObj = { title: newName };
       if (renamingItem.isDivider) {
-        // For dividers, we also update the divider_text inside content JSON
-        const { data: q } = await supabase.from('quizzes').select('content').eq('id', renamingItem.id).single();
-        if (q && q.content) {
-          updateObj.content = { ...q.content, divider_text: newName };
-        }
+        // КРИТИЧНО: Сохраняем структуру content, чтобы разделитель остался разделителем
+        updateData = { 
+          title: 'Разделитель', 
+          content: { ...renamingItem.content, divider_text: newName, is_divider: true } 
+        };
+      } else {
+        updateData = { title: newName };
       }
-
-      const { error } = await supabase.from('quizzes').update(updateObj).eq('id', renamingItem.id);
-      if (error) alert('Ошибка переименования: ' + error.message);
-      else {
-        localStorage.removeItem(`labtest_cache_catalog_struct_quizzes_all`);
-        localStorage.removeItem(`labtest_cache_catalog_struct_quizzes_visible`);
-        if (renamingItem.sectionId) {
-          localStorage.removeItem(`labtest_cache_catalog_quizzes_${renamingItem.sectionId}`);
-        }
-        setRenamingItem(null);
-        setNewName('');
-        fetchData();
-      }
-      return;
     }
-    const table = renamingItem.type === 'class' ? 'quiz_classes' : 'quiz_sections';
-    const { error } = await supabase.from(table).update({ name: newName }).eq('id', renamingItem.id);
-    if (error) alert('Ошибка переименования: ' + error.message);
+
+    const { error } = await supabase.from(table).update(updateData).eq('id', renamingItem.id);
+    if (error) alert(error.message);
     else {
-      localStorage.removeItem(renamingItem.type === 'class' ? 'labtest_cache_catalog_struct_classes' : 'labtest_cache_catalog_struct_sections');
+      if (renamingItem.type === 'class') localStorage.removeItem('labtest_cache_catalog_struct_classes');
+      if (renamingItem.type === 'section') localStorage.removeItem('labtest_cache_catalog_struct_sections');
+      if (renamingItem.sectionId) localStorage.removeItem(`labtest_cache_catalog_quizzes_${renamingItem.sectionId}`);
+      
       setRenamingItem(null);
       setNewName('');
       fetchData();
     }
-  }, [renamingItem, newName, fetchData]);
+  };
 
-  const handleRenameItem = useCallback((item) => {
+  const handleRenameTrigger = useCallback((item) => {
     setRenamingItem(item);
-    setNewName(item.name);
+    setNewName(item.name || item.title || (item.content?.is_divider ? item.content.divider_text : ''));
   }, []);
 
   const filteredClasses = useMemo(() => {
@@ -1172,7 +1272,7 @@ const QuizCatalog = ({ profile }) => {
           return (
             <button
               key={tab}
-              onClick={() => { setActiveTab(tab); setSelectedLibraryUser(null); }}
+              onClick={() => { setActiveTab(tab); setSelectedLibraryUserState(null); }}
               style={{
                 padding: '10px 20px',
                 borderRadius: '20px',
@@ -1194,7 +1294,7 @@ const QuizCatalog = ({ profile }) => {
           {usersLoading ? <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '40px' }}><Loader2 className="spinner" /></div> :
             libraryUsers.length === 0 ? <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '40px', opacity: 0.5 }}>Библиотеки не найдены</div> :
               libraryUsers.map(u => (
-                <div key={u.id} className="card" onClick={() => setSelectedLibraryUser(u)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '15px', padding: '20px' }}>
+                <div key={u.id} className="card" onClick={() => setSelectedLibraryUserState(u)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '15px', padding: '20px' }}>
                   <div style={{ width: '50px', height: '50px', borderRadius: '25px', background: 'var(--primary-color)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', fontWeight: 'bold' }}>
                     {u.first_name?.[0] || 'U'}
                   </div>
@@ -1210,8 +1310,34 @@ const QuizCatalog = ({ profile }) => {
 
       {selectedLibraryUser && (
         <div className="flex-center" style={{ marginBottom: '20px', gap: '10px', justifyContent: 'flex-start' }}>
-          <button onClick={() => setSelectedLibraryUser(null)} style={{ padding: '8px 15px', background: 'rgba(0,0,0,0.05)', color: 'inherit', boxShadow: 'none', borderRadius: '10px' }}>Назад</button>
+          <button onClick={() => setSelectedLibraryUserState(null)} style={{ padding: '8px 15px', background: 'rgba(0,0,0,0.05)', color: 'inherit', boxShadow: 'none', borderRadius: '10px' }}>Назад</button>
           <h3 style={{ margin: 0 }}>Библиотека пользователя: {selectedLibraryUser.first_name}</h3>
+        </div>
+      )}
+
+      {activeTab === 'personal' && usage && (
+        <div className="flex-center" style={{ gap: '15px', padding: '10px 20px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '15px', border: '1px solid rgba(99, 102, 241, 0.1)', marginBottom: '20px' }}>
+          {[
+            { label: 'Папки', current: usage.classes, max: LIMITS.classes, dCurrent: usage.div_classes },
+            { label: 'Секции', current: usage.sections, max: LIMITS.sections, dCurrent: usage.div_sections },
+            { label: 'Тесты', current: usage.quizzes, max: LIMITS.quizzes, dCurrent: usage.div_quizzes }
+          ].map(stat => (
+            <div key={stat.label} style={{ textAlign: 'center', minWidth: '70px' }}>
+              <div style={{ fontSize: '0.65rem', opacity: 0.5, marginBottom: '2px', textTransform: 'uppercase' }}>{stat.label}</div>
+              <div style={{ fontSize: '0.9rem', fontWeight: 'bold', color: stat.current >= stat.max ? '#ef4444' : 'var(--primary-color)' }}>
+                {stat.current}/{stat.max} 
+                <span style={{ fontSize: '0.7rem', opacity: 0.4, marginLeft: '4px' }} title="Разделители">+{stat.dCurrent}</span>
+              </div>
+              <div style={{ width: '100%', height: '4px', background: 'rgba(0,0,0,0.05)', borderRadius: '2px', marginTop: '4px', overflow: 'hidden' }}>
+                <div style={{ 
+                  width: `${Math.min(100, (stat.current / stat.max) * 100)}%`, 
+                  height: '100%', 
+                  background: stat.current >= stat.max ? '#ef4444' : 'var(--primary-color)',
+                  transition: 'width 0.3s ease'
+                }} />
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
@@ -1259,7 +1385,7 @@ const QuizCatalog = ({ profile }) => {
                     <div className="flex-center" style={{ gap: '10px' }}>
                       <button onClick={(e) => swapClasses(cIndex, -1, e)} disabled={cIndex === 0} style={{ padding: '8px', background: 'rgba(0,0,0,0.03)', color: 'var(--primary-color)', borderRadius: '10px', boxShadow: 'none' }}><ChevronUp size={20} /></button>
                       <button onClick={(e) => swapClasses(cIndex, 1, e)} disabled={cIndex === classes.length - 1} style={{ padding: '8px', background: 'rgba(0,0,0,0.03)', color: 'var(--primary-color)', borderRadius: '10px', boxShadow: 'none' }}><ChevronDown size={20} /></button>
-                      <button onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: cls.id, name: cls.name, type: 'class' }); setNewName(cls.name); }} style={{ padding: '8px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', borderRadius: '10px', boxShadow: 'none' }}><Pencil size={18} /></button>
+                      <button onClick={(e) => { e.stopPropagation(); handleRenameTrigger({ id: cls.id, name: cls.name, type: 'class' }); }} style={{ padding: '8px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', borderRadius: '10px', boxShadow: 'none' }}><Pencil size={18} /></button>
                       <button onClick={async (e) => { e.stopPropagation(); if (window.confirm('Удалить этот разделитель?')) { await supabase.from('quiz_classes').delete().eq('id', cls.id); fetchData(); } }} style={{ padding: '8px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', borderRadius: '10px', boxShadow: 'none' }}><Trash2 size={18} /></button>
                     </div>
                   )}
@@ -1279,7 +1405,7 @@ const QuizCatalog = ({ profile }) => {
                 onSectionToggle={handleToggleSection}
                 swapClasses={swapClasses}
                 swapSections={swapSections}
-                handleRenameItem={handleRenameItem}
+                handleRenameTrigger={handleRenameTrigger}
                 handleCreateDivider={handleCreateDivider}
                 handleCreateSectionDivider={handleCreateSectionDivider}
                 setNewName={setNewName}
@@ -1294,6 +1420,33 @@ const QuizCatalog = ({ profile }) => {
               />
             );
           })
+        )}
+
+        {!loading && activeTab === 'shared' && !selectedLibraryUser && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
+            {sharedUsers.map(u => (
+              <div 
+                key={u.id} 
+                className="card animate" 
+                onClick={() => setSelectedLibraryUserState(u)}
+                style={{ padding: '25px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '15px' }}
+              >
+                <div style={{ width: '50px', height: '50px', borderRadius: '50%', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', fontWeight: 'bold' }}>
+                  {u.first_name[0]}{u.last_name[0]}
+                </div>
+                <div>
+                  <h4 style={{ margin: 0 }}>{u.first_name} {u.last_name}</h4>
+                  <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', opacity: 0.6 }}>Пользователь поделился с вами библиотекой</p>
+                </div>
+                <ChevronRight style={{ marginLeft: 'auto', opacity: 0.3 }} />
+              </div>
+            ))}
+            {sharedUsers.length === 0 && (
+              <div className="card" style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '60px' }}>
+                <p style={{ opacity: 0.6 }}>У вас пока нет доступных тестов от других пользователей.</p>
+              </div>
+            )}
+          </div>
         )}
 
         {!loading && filteredClasses.length === 0 && !((activeTab === "public" || activeTab === "shared") && !selectedLibraryUser) && (

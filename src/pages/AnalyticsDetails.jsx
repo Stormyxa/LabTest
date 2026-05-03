@@ -39,7 +39,8 @@ const SidebarUserList = React.memo(({
   filterCity, setFilterCity, filterSchool, setFilterSchool, filterClass, setFilterClass,
   searchQuery, setSearchQuery, showObservers, setShowObservers, handleUserSelect, handleScroll,
   scrollRef, validSections, validQuizzes, isFolderEmpty, isSectionEmpty,
-  profile, cities, schools, classes, teacherClasses, navigate, setSidebarOpen
+  profile, cities, schools, classes, teacherClasses, navigate, setSidebarOpen,
+  analyticsMode, setAnalyticsMode
 }) => {
   const isTeacher = profile?.role === 'teacher';
   let canChangeCity = !isTeacher;
@@ -104,6 +105,8 @@ const SidebarUserList = React.memo(({
         <button onClick={() => setSidebarOpen(false)} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', boxShadow: 'none', padding: '8px', borderRadius: '10px' }}><X size={20} /></button>
       </div>
 
+
+
       <div style={{ display: 'flex', background: 'rgba(0,0,0,0.05)', borderRadius: '12px', padding: '4px', marginBottom: '15px' }}>
         <button style={{ flex: 1, padding: '10px', borderRadius: '8px', fontSize: '0.8rem', background: 'var(--card-bg)', border: 'none', boxShadow: 'var(--soft-shadow)', cursor: 'default', fontWeight: 'bold', color: 'var(--primary-color)' }}>По Тестам</button>
         <button onClick={() => navigate('/user-analytics')} style={{ flex: 1, padding: '10px', borderRadius: '8px', fontSize: '0.8rem', background: 'transparent', border: 'none', boxShadow: 'none', cursor: 'pointer', color: 'var(--text-color)', opacity: 0.7 }}>По Ученикам</button>
@@ -135,6 +138,21 @@ const SidebarUserList = React.memo(({
         </div>
       ) : (
         <>
+          <div style={{ display: 'flex', gap: '5px', marginBottom: '20px', background: 'rgba(0,0,0,0.03)', padding: '4px', borderRadius: '12px' }}>
+            <button 
+              onClick={() => setAnalyticsMode('official')}
+              style={{ flex: 1, padding: '8px', borderRadius: '10px', fontSize: '0.8rem', background: analyticsMode === 'official' ? 'white' : 'transparent', boxShadow: analyticsMode === 'official' ? '0 2px 8px rgba(0,0,0,0.05)' : 'none', color: analyticsMode === 'official' ? 'var(--primary-color)' : 'inherit', fontWeight: 'bold' }}
+            >
+              Каталог
+            </button>
+            <button 
+              onClick={() => setAnalyticsMode('personal')}
+              style={{ flex: 1, padding: '8px', borderRadius: '10px', fontSize: '0.8rem', background: analyticsMode === 'personal' ? 'white' : 'transparent', boxShadow: analyticsMode === 'personal' ? '0 2px 8px rgba(0,0,0,0.05)' : 'none', color: analyticsMode === 'personal' ? 'var(--primary-color)' : 'inherit', fontWeight: 'bold' }}
+            >
+              Личная
+            </button>
+          </div>
+
           <div style={{ marginBottom: '20px' }}>
             <label htmlFor="ad-folder" style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '5px', display: 'block' }}>Выбор Теста</label>
             <select id="ad-folder" value={filterFolder} onChange={e => setFilterFolder(e.target.value)} style={{ width: '100%', marginBottom: '10px', padding: '8px' }}>
@@ -316,7 +334,7 @@ const AttemptChart = React.memo(({
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', height: '100%', position: 'relative', zIndex: 1 }}>
           {chartBars.map((bar, i) => {
             const maxP = bar.maxPossible || 1;
-            const heightPercent = (bar.score / maxP) * MAX_BAR_HEIGHT;
+            const heightPercent = Math.min((bar.score / maxP) * MAX_BAR_HEIGHT, MAX_BAR_HEIGHT);
             const isSpecial = bar.type === 'max';
             const isZero = bar.score === 0;
 
@@ -372,7 +390,7 @@ const AttemptDetailsView = React.memo(({
 }) => {
   if (!selectedAttempt || !targetQuiz) return <div style={{ padding: '20px', opacity: 0.5 }}>Выберите попытку на графике</div>;
 
-  const qs = targetQuiz.content.questions;
+  const qs = targetQuiz?.content?.questions || [];
   const ansData = selectedAttempt.answers_data || [];
 
   const { avgTimePerQ, isSkippedHeavy, isShortTimeFail, minutes, seconds, scorePercent } = useMemo(() => {
@@ -434,7 +452,7 @@ const AttemptDetailsView = React.memo(({
             )}
           </div>
         </h3>
-        {(profile?.role === 'admin' || profile?.role === 'creator') && (
+        {(profile?.role === 'admin' || profile?.role === 'creator' || (targetQuiz?.is_personal && targetQuiz?.author_id === profile?.id)) && (
           <button
             onClick={() => handleDeleteClick('attempt', selectedAttempt)}
             style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: 'none', padding: '8px 15px', borderRadius: '8px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}
@@ -663,43 +681,29 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
   // Quiz-specific sections for test filters
   const [quizSections, setQuizSections] = useState([]);
 
-  // Test Filters
-  const [filterFolder, setFilterFolder] = useState(sessionStorage.getItem('ad_t_folder') || 'all');
-  const [filterSection, setFilterSection] = useState(sessionStorage.getItem('ad_t_section') || 'all');
-  const [filterQuiz, setFilterQuiz] = useState(quizIdParam || sessionStorage.getItem('ad_t_quiz') || '');
+  // Test Filters — начальные значения из текущего режима
+  const initialMode = sessionStorage.getItem('ad_mode') || 'official';
+  const [filterFolder, setFilterFolder] = useState(sessionStorage.getItem(`ad_${initialMode}_t_folder`) || 'all');
+  const [filterSection, setFilterSection] = useState(sessionStorage.getItem(`ad_${initialMode}_t_section`) || 'all');
+  const [filterQuiz, setFilterQuiz] = useState(quizIdParam || sessionStorage.getItem(`ad_${initialMode}_t_quiz`) || '');
 
-  // User Filters
-  const [filterCity, setFilterCity] = useState(sessionStorage.getItem('f_city') || initialProfile?.city_id || 'all');
-  const [filterSchool, setFilterSchool] = useState(sessionStorage.getItem('f_school') || initialProfile?.school_id || 'all');
-  const [filterClass, setFilterClass] = useState(sessionStorage.getItem('f_class') || 'all');
+  // User Filters — начальные значения из текущего режима
+  const [filterCity, setFilterCity] = useState(sessionStorage.getItem(`ad_${initialMode}_f_city`) || initialProfile?.city_id || 'all');
+  const [filterSchool, setFilterSchool] = useState(sessionStorage.getItem(`ad_${initialMode}_f_school`) || initialProfile?.school_id || 'all');
+  const [filterClass, setFilterClass] = useState(sessionStorage.getItem(`ad_${initialMode}_f_class`) || 'all');
   const [searchQuery, setSearchQuery] = useState('');
   const [showObservers, setShowObservers] = useState(sessionStorage.getItem('an_show_observers') === 'true');
 
   const [sidebarOpen, setSidebarOpen] = useState(sessionStorage.getItem('ad_sidebar_open') !== 'false');
   const scrollRef = React.useRef(null);
 
+  const [analyticsMode, setAnalyticsMode] = useState(initialMode);
   const [detailedImageModal, setDetailedImageModal] = useState({ isOpen: false, images: [], currentImgIdx: 0, question: '', userAnswer: '', correctAnswer: '', isCorrect: false, timeSpent: 0, avgQTime: 0 });
-
-  // category-specific memory for "smart" persistence - using Refs for callback stability
-  const folderMemory = useRef(JSON.parse(sessionStorage.getItem('ad_folder_to_section') || '{}'));
-  const sectionMemory = useRef(JSON.parse(sessionStorage.getItem('ad_section_to_quiz') || '{}'));
-  const quizMemory = useRef(JSON.parse(sessionStorage.getItem('ad_quiz_to_user') || '{}'));
-
-  useEffect(() => { sessionStorage.setItem('ad_sidebar_open', sidebarOpen); }, [sidebarOpen]);
 
   // Delete Modal States
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteLock, setDeleteLock] = useState(3);
   const [deleteAction, setDeleteAction] = useState(null); // { type: 'user_all' | 'attempt', data: attemptObj? }
-
-  useEffect(() => { sessionStorage.setItem('an_show_observers', showObservers); }, [showObservers]);
-
-  useEffect(() => { sessionStorage.setItem('ad_t_folder', filterFolder); }, [filterFolder]);
-  useEffect(() => { sessionStorage.setItem('ad_t_section', filterSection); }, [filterSection]);
-  useEffect(() => { sessionStorage.setItem('ad_t_quiz', filterQuiz); }, [filterQuiz]);
-  useEffect(() => { sessionStorage.setItem('f_city', filterCity); }, [filterCity]);
-  useEffect(() => { sessionStorage.setItem('f_school', filterSchool); }, [filterSchool]);
-  useEffect(() => { sessionStorage.setItem('f_class', filterClass); }, [filterClass]);
 
   // Data for main content
   const [targetUser, setTargetUser] = useState(null);
@@ -707,14 +711,99 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
   const [attempts, setAttempts] = useState([]);
   const [selectedAttempt, setSelectedAttempt] = useState(null);
 
-  useEffect(() => {
-    if (initialProfile) {
-      fetchInitialData();
+  // Категориальная память для "умной" персистентности
+  const folderMemory = useRef({});
+  const sectionMemory = useRef({});
+  const quizMemory = useRef({});
+  const currentModeRef = useRef(analyticsMode);
+
+  // === SNAPSHOT: полное состояние фильтров для каждого режима ===
+  const defaultSnap = (mode) => ({
+    folder: sessionStorage.getItem(`ad_${mode}_t_folder`) || 'all',
+    section: sessionStorage.getItem(`ad_${mode}_t_section`) || 'all',
+    quiz: sessionStorage.getItem(`ad_${mode}_t_quiz`) || '',
+    city: sessionStorage.getItem(`ad_${mode}_f_city`) || initialProfile?.city_id || 'all',
+    school: sessionStorage.getItem(`ad_${mode}_f_school`) || initialProfile?.school_id || 'all',
+    class: sessionStorage.getItem(`ad_${mode}_f_class`) || 'all',
+  });
+  const modeSnapshots = useRef({
+    official: defaultSnap('official'),
+    personal: defaultSnap('personal'),
+  });
+
+  // Хелпер: сохраняем конкретный фильтр в snapshot + sessionStorage
+  const saveModeFilter = useCallback((key, value) => {
+    const mode = currentModeRef.current;
+    sessionStorage.setItem(`ad_${mode}_${key}`, value);
+    if (modeSnapshots.current[mode]) {
+      const shortKey = key.replace('t_', '').replace('f_', '');
+      modeSnapshots.current[mode][shortKey] = value;
     }
-  }, [initialProfile]);
+  }, []);
+
+  // Обёртки set-теров: ставим стейт + записываем в snapshot
+  const setFilterCityAndSave = useCallback((v) => { setFilterCity(v); saveModeFilter('f_city', v); }, [saveModeFilter]);
+  const setFilterSchoolAndSave = useCallback((v) => { setFilterSchool(v); saveModeFilter('f_school', v); }, [saveModeFilter]);
+  const setFilterClassAndSave = useCallback((v) => { setFilterClass(v); saveModeFilter('f_class', v); }, [saveModeFilter]);
+
+  // === ПЕРЕКЛЮЧЕНИЕ РЕЖИМА — синхронно, без useEffect ===
+  const switchMode = useCallback((newMode) => {
+    if (newMode === analyticsMode) return;
+
+    // 1. Сохраняем snapshot ТЕКУЩЕГО режима
+    modeSnapshots.current[analyticsMode] = {
+      folder: filterFolder, section: filterSection, quiz: filterQuiz,
+      city: filterCity, school: filterSchool, class: filterClass,
+    };
+    sessionStorage.setItem(`ad_${analyticsMode}_t_folder`, filterFolder);
+    sessionStorage.setItem(`ad_${analyticsMode}_t_section`, filterSection);
+    sessionStorage.setItem(`ad_${analyticsMode}_t_quiz`, filterQuiz);
+    sessionStorage.setItem(`ad_${analyticsMode}_f_city`, filterCity);
+    sessionStorage.setItem(`ad_${analyticsMode}_f_school`, filterSchool);
+    sessionStorage.setItem(`ad_${analyticsMode}_f_class`, filterClass);
+
+    // 2. Сбрасываем контент (ученик, попытки)
+    setTargetUser(null);
+    setTargetQuiz(null);
+    setAttempts([]);
+    setSelectedAttempt(null);
+    setUsers([]);
+    setSearchParams({});
+
+    // 3. Восстанавливаем snapshot НОВОГО режима
+    const snap = modeSnapshots.current[newMode];
+    setFilterFolder(snap.folder);
+    setFilterSection(snap.section);
+    setFilterQuiz(snap.quiz);
+    setFilterCity(snap.city);
+    setFilterSchool(snap.school);
+    setFilterClass(snap.class);
+
+    // 4. Обновляем refs
+    currentModeRef.current = newMode;
+    folderMemory.current = JSON.parse(sessionStorage.getItem(`ad_${newMode}_folder_to_section`) || '{}');
+    sectionMemory.current = JSON.parse(sessionStorage.getItem(`ad_${newMode}_section_to_quiz`) || '{}');
+    quizMemory.current = JSON.parse(sessionStorage.getItem(`ad_${newMode}_quiz_to_user`) || '{}');
+
+    // 5. Ставим режим (триггерит useEffect для загрузки данных)
+    setAnalyticsMode(newMode);
+  }, [analyticsMode, filterFolder, filterSection, filterQuiz, filterCity, filterSchool, filterClass]);
+
+  useEffect(() => { sessionStorage.setItem('ad_sidebar_open', sidebarOpen); }, [sidebarOpen]);
+  useEffect(() => { sessionStorage.setItem('an_show_observers', showObservers); }, [showObservers]);
+
+  // useEffect для загрузки данных — НЕ трогает фильтры
+  useEffect(() => {
+    if (!initialProfile) return;
+    sessionStorage.setItem('ad_mode', analyticsMode);
+    fetchInitialData();
+  }, [initialProfile, analyticsMode]);
 
   const fetchInitialData = async () => {
     setLoading(true);
+    setSelectedAttempt(null);
+    setAttempts([]);
+    setTargetUser(null);
     const p = initialProfile;
     if (p) {
       setProfile(p);
@@ -730,15 +819,30 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
 
       const isPrivileged = p.role === 'admin' || p.role === 'creator' || p.role === 'teacher' || p.role === 'editor';
       if (!isPrivileged) {
-        setSidebarOpen(false); // Force close for players
+        setSidebarOpen(false);
       }
 
+      const isPersonal = analyticsMode === 'personal';
       const [qF, secs, qs, c, s, cl] = await Promise.all([
-        fetchWithCache('quiz_classes', () => supabase.from('quiz_classes').select('id, name, sort_order, is_divider').order('sort_order', { ascending: true }).then(res => res.data)),
-        fetchWithCache('quiz_sections', () => supabase.from('quiz_sections').select('id, class_id, name, sort_order, is_divider').order('sort_order', { ascending: true }).then(res => res.data)),
-        fetchWithCache(`catalog_struct_quizzes_analytics_${p.role === 'editor' ? p.id : 'all'}`, () => {
-          let quizQuery = supabase.from('quizzes').select('id, title, section_id, author_id, is_archived, sort_order, is_divider:content->is_divider, divider_text:content->divider_text').eq('is_archived', false).order('sort_order', { ascending: true });
-          if (p.role === 'editor') quizQuery = quizQuery.eq('author_id', p.id);
+        fetchWithCache(`quiz_classes_${analyticsMode}_${p.id}`, () => {
+          let q = supabase.from('quiz_classes').select('id, name, sort_order, is_divider, is_personal, author_id').order('sort_order', { ascending: true });
+          if (isPersonal) q = q.eq('is_personal', true).eq('author_id', p.id);
+          else q = q.eq('is_personal', false);
+          return q.then(res => res.data);
+        }),
+        fetchWithCache(`quiz_sections_${analyticsMode}_${p.id}`, () => {
+          let q = supabase.from('quiz_sections').select('id, class_id, name, sort_order, is_divider, is_personal, author_id').order('sort_order', { ascending: true });
+          if (isPersonal) q = q.eq('is_personal', true).eq('author_id', p.id);
+          else q = q.eq('is_personal', false);
+          return q.then(res => res.data);
+        }),
+        fetchWithCache(`catalog_struct_quizzes_analytics_${analyticsMode}_${p.id}`, () => {
+          let quizQuery = supabase.from('quizzes').select('id, title, section_id, author_id, is_archived, is_personal, sort_order, is_divider:content->is_divider, divider_text:content->divider_text').eq('is_archived', false).order('sort_order', { ascending: true });
+          if (isPersonal) quizQuery = quizQuery.eq('is_personal', true).eq('author_id', p.id);
+          else {
+            quizQuery = quizQuery.eq('is_personal', false);
+            if (p.role === 'editor') quizQuery = quizQuery.eq('author_id', p.id);
+          }
           return quizQuery.then(res => res.data);
         }),
         fetchWithCache('cities', () => supabase.from('cities').select('*').order('name').then(res => res.data)),
@@ -753,67 +857,27 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
       if (s) setSchools(s);
       if (cl) setClasses(cl);
 
-      // Default Filters logic
-      const savedCity = sessionStorage.getItem('f_city');
-      const savedSchool = sessionStorage.getItem('f_school');
-      const savedClass = sessionStorage.getItem('f_class');
-
+      // Фильтры УЖЕ выставлены (через switchMode или init).
+      // Но для учителя с 1 классом нужно принудительно задать city/school/class при первой загрузке
       if (p.role === 'teacher') {
         const tClasses = cl.filter(c => targetTeacherClasses.includes(c.id));
         const tSchoolIds = [...new Set(tClasses.map(c => c.school_id))];
         const tSchools = s.filter(sch => tSchoolIds.includes(sch.id));
-        const tCityIds = [...new Set(tSchools.map(sch => sch.city_id))];
-
         if (tClasses.length === 1) {
           setFilterCity(tSchools[0]?.city_id || 'all');
-          setFilterSchool(tSchoolIds[0] || 'all');
+          setFilterSchool(tSchools[0]?.id || 'all');
           setFilterClass(tClasses[0]?.id || 'all');
-        } else if (tSchoolIds.length === 1) {
-          setFilterCity(tSchools[0]?.city_id || 'all');
-          setFilterSchool(tSchoolIds[0] || 'all');
-          if (!savedClass) setFilterClass('all');
-        } else if (tCityIds.length === 1) {
-          setFilterCity(tCityIds[0] || 'all');
-          if (!savedSchool) setFilterSchool('all');
-        }
-      } else if (p.role === 'admin' || p.role === 'creator') {
-        if (!savedCity) {
-          if (p.city_id) setFilterCity(p.city_id);
-        }
-        if (!savedSchool) {
-          if (p.school_id) setFilterSchool(p.school_id);
         }
       }
 
-      const targetQuizId = quizIdParam || sessionStorage.getItem('ad_t_quiz');
-      if (targetQuizId && qs) {
-        setFilterQuiz(targetQuizId);
-
-        // Auto-select folder/section from active quiz
-        const found = qs.find(q => q.id === targetQuizId);
-        if (found && found.section_id && secs) {
-          const section = secs.find(s => s.id === found.section_id);
-          if (section) {
-            setFilterFolder(section.class_id);
-            setFilterSection(section.id);
-
-            // Update memory from URL params immediately
-            const fMem = { ...JSON.parse(sessionStorage.getItem('ad_folder_to_section') || '{}'), [section.class_id]: section.id };
-            const sMem = { ...JSON.parse(sessionStorage.getItem('ad_section_to_quiz') || '{}'), [section.id]: targetQuizId };
-            const qMem = userIdParam ? { ...JSON.parse(sessionStorage.getItem('ad_quiz_to_user') || '{}'), [targetQuizId]: userIdParam } : JSON.parse(sessionStorage.getItem('ad_quiz_to_user') || '{}');
-
-            folderMemory.current = fMem;
-            sectionMemory.current = sMem;
-            quizMemory.current = qMem;
-            sessionStorage.setItem('ad_folder_to_section', JSON.stringify(fMem));
-            sessionStorage.setItem('ad_section_to_quiz', JSON.stringify(sMem));
-            sessionStorage.setItem('ad_quiz_to_user', JSON.stringify(qMem));
-          }
+      // Загружаем пользователей для текущего теста (из snapshot)
+      const currentQuizId = quizIdParam || filterQuiz;
+      if (currentQuizId && qs) {
+        const found = qs.find(q => q.id === currentQuizId);
+        if (found) {
+          setTargetQuiz(found);
+          fetchUsersForQuiz(currentQuizId, p, userIdParam, targetTeacherClasses);
         }
-
-        fetchUsersForQuiz(targetQuizId, p, userIdParam, targetTeacherClasses);
-      } else if (p.role === 'player' && !targetQuizId) {
-        // If player but no quiz selected, they just see empty state
       }
     }
     setLoading(false);
@@ -885,7 +949,7 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
 
     // Save to memory Ref (stable, no re-render needed for this side effect)
     quizMemory.current[filterQuiz] = uId;
-    sessionStorage.setItem('ad_quiz_to_user', JSON.stringify(quizMemory.current));
+    sessionStorage.setItem(`ad_${currentModeRef.current}_quiz_to_user`, JSON.stringify(quizMemory.current));
 
     setSearchParams({ quizId: filterQuiz, userId: uId });
     fetchAttempts(filterQuiz, uId);
@@ -1003,10 +1067,11 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
     // 1. Save to memory ONLY if manual selection and we have a valid context
     if (!isAutomated && currentSId !== 'all' && qId) {
       sectionMemory.current[currentSId] = qId;
-      sessionStorage.setItem('ad_section_to_quiz', JSON.stringify(sectionMemory.current));
+      sessionStorage.setItem(`ad_${currentModeRef.current}_section_to_quiz`, JSON.stringify(sectionMemory.current));
     }
 
     setFilterQuiz(qId);
+    saveModeFilter('t_quiz', qId || '');
 
     // 2. Determine target user (use provided quizMemory Ref)
     const targetUId = overrideUserId || quizMemory.current[qId] || 'none';
@@ -1015,6 +1080,7 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
     setTargetUser(null);
     setTargetQuiz(null); // Clear the quiz info as well
     setAttempts([]);
+    setSelectedAttempt(null); // Сброс хронологии попыток
 
     if (qId) {
       fetchUsersForQuiz(qId, profile, targetUId === 'none' ? null : targetUId);
@@ -1029,15 +1095,16 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
     // 1. Save current state to memory Ref ONLY if manual
     if (!isAutomated && filterSection !== 'all') {
       sectionMemory.current[filterSection] = filterQuiz;
-      sessionStorage.setItem('ad_section_to_quiz', JSON.stringify(sectionMemory.current));
+      sessionStorage.setItem(`ad_${currentModeRef.current}_section_to_quiz`, JSON.stringify(sectionMemory.current));
 
       if (currentFId !== 'all') {
         folderMemory.current[currentFId] = sId;
-        sessionStorage.setItem('ad_folder_to_section', JSON.stringify(folderMemory.current));
+        sessionStorage.setItem(`ad_${currentModeRef.current}_folder_to_section`, JSON.stringify(folderMemory.current));
       }
     }
 
     setFilterSection(sId);
+    saveModeFilter('t_section', sId);
 
     // 2. Restore quiz for new section (read from ref)
     const rememberedQuiz = sId === 'all' ? '' : (sectionMemory.current[sId] || '');
@@ -1048,10 +1115,11 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
     // 1. Save old folder's section
     if (filterFolder !== 'all') {
       folderMemory.current[filterFolder] = filterSection;
-      sessionStorage.setItem('ad_folder_to_section', JSON.stringify(folderMemory.current));
+      sessionStorage.setItem(`ad_${currentModeRef.current}_folder_to_section`, JSON.stringify(folderMemory.current));
     }
 
     setFilterFolder(fId);
+    saveModeFilter('t_folder', fId);
 
     // 2. Restore section for new folder (read from Ref)
     const rememberedSection = fId === 'all' ? 'all' : (folderMemory.current[fId] || 'all');
@@ -1159,9 +1227,9 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
             filterFolder={filterFolder} setFilterFolder={handleFolderChange}
             filterSection={filterSection} setFilterSection={handleSectionChange}
             filterQuiz={filterQuiz} handleQuizSelect={handleQuizSelect}
-            filterCity={filterCity} setFilterCity={setFilterCity}
-            filterSchool={filterSchool} setFilterSchool={setFilterSchool}
-            filterClass={filterClass} setFilterClass={setFilterClass}
+            filterCity={filterCity} setFilterCity={setFilterCityAndSave}
+            filterSchool={filterSchool} setFilterSchool={setFilterSchoolAndSave}
+            filterClass={filterClass} setFilterClass={setFilterClassAndSave}
             searchQuery={searchQuery} setSearchQuery={setSearchQuery}
             showObservers={showObservers} setShowObservers={setShowObservers}
             handleUserSelect={handleUserSelect} handleScroll={handleScroll}
@@ -1169,6 +1237,7 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
             isFolderEmpty={isFolderEmpty} isSectionEmpty={isSectionEmpty}
             profile={profile} cities={cities} schools={schools} classes={classes} teacherClasses={teacherClasses} navigate={navigate}
             setSidebarOpen={setSidebarOpen}
+            analyticsMode={analyticsMode} setAnalyticsMode={switchMode}
           />
         </div>
       )}

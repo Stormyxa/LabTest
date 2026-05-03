@@ -609,11 +609,12 @@ const Editor = ({ session, profile }) => {
   // --- Creation Logic ---
   const handleCreateClass = async () => {
     if (!newClassName) return;
-    const { error } = await supabase.from('quiz_classes').insert({ 
+    const { data, error } = await supabase.from('quiz_classes').insert({ 
       name: newClassName,
-      author_id: session.user.id,
-      is_personal: isPersonal
-    });
+      sort_order: (classes[classes.length - 1]?.sort_order || 0) + 1,
+      is_personal: isPersonalMode,
+      author_id: isPersonalMode ? profile.id : null
+    }).select().single();
     if (error) alert(error.message);
     else { setNewClassName(''); fetchData(); }
   };
