@@ -241,9 +241,9 @@ const SidebarUserList = React.memo(({
                 </div>
               </div>
 
-              <label style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '10px', display: 'block', display: 'flex', flexDirection: 'column' }}>
-                <span>Ученики</span>
-                <span style={{ fontSize: '0.7rem', opacity: 0.7 }}>(выполнили хотя бы раз: {filteredUsers.length} / общее возможное: {totalPossibleUsers})</span>
+              <label style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '10px', display: 'flex', flexDirection: 'column' }}>
+                <span>{isStudent ? 'Ваш результат' : 'Ученики'}</span>
+                {!isStudent && <span style={{ fontSize: '0.7rem', opacity: 0.7 }}>(выполнили хотя бы раз: {filteredUsers.length} / общее возможное: {totalPossibleUsers})</span>}
               </label>
               <div ref={scrollRef} onScroll={handleScroll} style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '5px', paddingRight: '5px' }}>
                 {filteredUsers.map(u => (
@@ -1075,7 +1075,10 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
       }
     } else if (currentUserProfile?.role === 'player' || currentUserProfile?.is_observer) {
       const self = userList.find(u => u.id === currentUserProfile.id);
-      if (self) handleUserSelect(self.id);
+      if (self) {
+        setTargetUser(self);
+        fetchAttempts(qId, self.id);
+      }
     } else {
       setTargetUser(null);
       setAttempts([]);
