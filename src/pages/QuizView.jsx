@@ -62,6 +62,7 @@ const QuizView = ({ session, profile }) => {
   const [detailedImageModal, setDetailedImageModal] = useState({ isOpen: false, images: [], currentImgIdx: 0, question: '', userAnswer: '', correctAnswer: '', isCorrect: false });
   
   const [modal, setModal] = useState({ isOpen: false, title: '', message: '', type: 'success' });
+  const [guestSaving, setGuestSaving] = useState(false);
 
   // Quick Auth for Guests
   const [qaMode, setQaMode] = useState('choice'); // 'choice', 'login', 'register'
@@ -139,68 +140,99 @@ const QuizView = ({ session, profile }) => {
   }, [id]);
 
   // Handle Guest Result Auto-save when session appears
+  // NOTE: App.jsx recreates the router (useMemo) when session/profile change,
+  // which causes QuizView to fully unmount/remount and lose all state.
+  // We store the guest data in localStorage to survive remounts, and always
+  // await DB completion before navigating to ensure data is available.
   useEffect(() => {
-    if (session && quiz) {
-      const guestKey = `guest_quiz_result_${quiz.id}`;
-      const guestRaw = sessionStorage.getItem(guestKey);
-      if (guestRaw) {
-        (async () => {
-          try {
-            const gr = JSON.parse(guestRaw);
-            sessionStorage.removeItem(guestKey);
-            
-            // Log attempt
-            await supabase.from('quiz_attempts').insert({
-              user_id: session.user.id,
-              quiz_id: quiz.id,
-              score: gr.score,
-              max_score: gr.total_questions,
-              time_spent_total: gr.time_spent_total,
-              is_passed: gr.is_passed,
-              is_suspicious: gr.is_suspicious,
-              suspicion_reason: gr.suspicion_reason,
-              answers_data: gr.detailedAnswers
-            });
+    if (!session || !id) return;
+    let cancelled = false;
 
-            // Update/Insert result summary
-            const { data: existing } = await supabase.from('quiz_results').select('id').eq('quiz_id', quiz.id).eq('user_id', session.user.id).maybeSingle();
-            if (existing) {
-              await supabase.from('quiz_results').update({
-                score: gr.score, total_questions: gr.total_questions,
-                is_passed: gr.is_passed, completed_at: gr.completed_at, answers_array: gr.answers_array
-              }).eq('id', existing.id);
-            } else {
-              const resData = {
-                quiz_id: quiz.id, user_id: session.user.id,
-                score: gr.score, total_questions: gr.total_questions,
-                is_passed: gr.is_passed, completed_at: gr.completed_at,
-                first_score: gr.score, first_completed_at: gr.completed_at,
-                answers_array: gr.answers_array, first_answers_array: gr.answers_array
-              };
-              if (profile?.class_id) resData.class_id = profile.class_id;
-              await supabase.from('quiz_results').insert(resData);
-            }
-            
-            // Set results screen states from the guest data
-            setAnswers(gr.detailedAnswers.reduce((acc, curr, i) => ({ ...acc, [i]: curr.chosenIndex }), {}));
-            setShowResult(true);
-            finishTimeRef.current = gr.finishTime;
-            startTimeRef.current = gr.startTime;
-            
-            // Show success modal with confirmation redirect
-            setModal({
-              isOpen: true,
-              title: 'Успешно!',
-              message: 'Ваш гостевой результат был успешно сохранен в ваш личный профиль. Теперь вы можете просмотреть детальную аналитику вашей попытки.',
-              type: 'success',
-              isStatic: true,
-              onConfirm: () => navigate(`/analytics-details?quizId=${quiz.id}&userId=${session.user.id}`)
-            });
-          } catch(e) { console.error('Guest save failed:', e); }
-        })();
-      }
+    const guestKey = `guest_quiz_result_${id}`;
+    const savedFlag = `guest_quiz_saved_${id}`;
+
+    // Determine which data source to use
+    let gr = null;
+    const guestRaw = localStorage.getItem(guestKey);
+    const savedRaw = localStorage.getItem(savedFlag);
+
+    if (guestRaw) {
+      gr = JSON.parse(guestRaw);
+      localStorage.removeItem(guestKey);
+      localStorage.setItem(savedFlag, guestRaw);
+    } else if (savedRaw && savedRaw !== 'true') {
+      gr = JSON.parse(savedRaw);
+    } else if (savedRaw === 'true') {
+      localStorage.removeItem(savedFlag);
+      navigate(`/analytics-details?quizId=${id}&userId=${session.user.id}`);
+      return;
     }
-  }, [session, quiz, profile]);
+
+    if (!gr) return;
+
+    // Show saving indicator
+    setGuestSaving(true);
+
+    (async () => {
+      try {
+        // Check if this attempt was already saved (prevents double-insert on remounts)
+        const { data: existingAttempt } = await supabase.from('quiz_attempts')
+          .select('id')
+          .eq('quiz_id', id)
+          .eq('user_id', session.user.id)
+          .eq('score', gr.score)
+          .gte('created_at', new Date(Date.now() - 60000).toISOString())
+          .limit(1);
+
+        if (!existingAttempt || existingAttempt.length === 0) {
+          await supabase.from('quiz_attempts').insert({
+            user_id: session.user.id,
+            quiz_id: id,
+            score: gr.score,
+            max_score: gr.total_questions,
+            time_spent_total: gr.time_spent_total,
+            is_passed: gr.is_passed,
+            is_suspicious: gr.is_suspicious,
+            suspicion_reason: gr.suspicion_reason,
+            answers_data: gr.detailedAnswers
+          });
+        }
+
+        const { data: existing } = await supabase.from('quiz_results').select('id').eq('quiz_id', id).eq('user_id', session.user.id).maybeSingle();
+        if (existing) {
+          await supabase.from('quiz_results').update({
+            score: gr.score, total_questions: gr.total_questions,
+            is_passed: gr.is_passed, completed_at: gr.completed_at, answers_array: gr.answers_array
+          }).eq('id', existing.id);
+        } else {
+          const resData = {
+            quiz_id: id, user_id: session.user.id,
+            score: gr.score, total_questions: gr.total_questions,
+            is_passed: gr.is_passed, completed_at: gr.completed_at,
+            first_score: gr.score, first_completed_at: gr.completed_at,
+            answers_array: gr.answers_array, first_answers_array: gr.answers_array
+          };
+          if (profile?.class_id) resData.class_id = profile.class_id;
+          await supabase.from('quiz_results').insert(resData);
+        }
+
+        // Invalidate analytics cache so AnalyticsDetails fetches fresh data
+        localStorage.removeItem(`labtest_cache_ad_users_${id}`);
+        localStorage.removeItem(`labtest_cache_ad_attempts_${id}_${session.user.id}`);
+
+        if (!cancelled) {
+          localStorage.removeItem(savedFlag);
+          setGuestSaving(false);
+          navigate(`/analytics-details?quizId=${id}&userId=${session.user.id}&fresh=1`);
+        }
+      } catch(e) {
+        console.error('Guest save failed:', e);
+        if (!cancelled) setGuestSaving(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [session, id, profile]);
 
   // Stopwatch effect for tracking time spent per question
   useEffect(() => {
@@ -646,7 +678,7 @@ const QuizView = ({ session, profile }) => {
         finishTime: finishTimeRef.current,
         startTime: startTimeRef.current
       };
-      sessionStorage.setItem(`guest_quiz_result_${id}`, JSON.stringify(guestResult));
+      localStorage.setItem(`guest_quiz_result_${id}`, JSON.stringify(guestResult));
       savingRef.current = false;
       return;
     }
@@ -748,6 +780,8 @@ const QuizView = ({ session, profile }) => {
     localStorage.removeItem(`quiz_current_idx_${id}`);
     localStorage.removeItem(`quiz_times_${id}`);
     localStorage.removeItem(`quiz_start_time_${id}`);
+    localStorage.removeItem(`guest_quiz_saved_${id}`);
+    localStorage.removeItem(`guest_quiz_result_${id}`);
     window.location.reload();
   };
 
@@ -781,7 +815,25 @@ const QuizView = ({ session, profile }) => {
     if (blocker.state === 'blocked') blocker.reset();
   };
 
-  if (loading) return <div className="flex-center" style={{ height: '60vh' }}>Загрузка теста...</div>;
+  if (loading || guestSaving) return (
+    <>
+      <div className="flex-center" style={{ height: '60vh', flexDirection: 'column', gap: '20px' }}>
+        {guestSaving ? (
+          <>
+            <div style={{ 
+              width: '60px', height: '60px', borderRadius: '50%', 
+              border: '3px solid rgba(99, 102, 241, 0.2)', 
+              borderTopColor: 'var(--primary-color)',
+              animation: 'spin 0.8s linear infinite'
+            }} />
+            <h3 style={{ margin: 0, opacity: 0.8 }}>Сохраняем ваш результат...</h3>
+            <p style={{ margin: 0, opacity: 0.5, fontSize: '0.9rem' }}>Через мгновение вы будете перенаправлены в аналитику</p>
+          </>
+        ) : 'Загрузка теста...'}
+      </div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </>
+  );
   if (!quiz) return <div className="container" style={{ textAlign: 'center', padding: '100px' }}>Тест не найден.</div>;
 
 

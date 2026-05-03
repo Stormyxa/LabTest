@@ -677,6 +677,7 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
   const navigate = useNavigate();
   const quizIdParam = searchParams.get('quizId');
   const userIdParam = searchParams.get('userId');
+  const freshParam = searchParams.get('fresh');
 
   const [loading, setLoading] = useState(true);
   const [contentLoading, setContentLoading] = useState(false);
@@ -907,7 +908,14 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
               saveModeFilter('t_folder', sec.class_id);
             }
           }
-          fetchUsersForQuiz(currentQuizId, p, userIdParam, targetTeacherClasses);
+          fetchUsersForQuiz(currentQuizId, p, userIdParam, targetTeacherClasses, !!freshParam);
+
+          // Clean up the fresh param from URL
+          if (freshParam) {
+            const newParams = new URLSearchParams(searchParams);
+            newParams.delete('fresh');
+            setSearchParams(newParams, { replace: true });
+          }
         }
       }
     }
@@ -993,8 +1001,13 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
   useCacheSync('schools', (data) => { if (data) setSchools(data); });
   useCacheSync('classes', (data) => { if (data) setClasses(data); });
 
-  const fetchUsersForQuiz = useCallback(async (qId, currentUserProfile, targetUserId = null, overrideTeacherClasses = null) => {
+  const fetchUsersForQuiz = useCallback(async (qId, currentUserProfile, targetUserId = null, overrideTeacherClasses = null, skipCache = false) => {
     const cacheKey = `ad_users_${qId}`;
+
+    // If skipCache, remove stale cache before fetching
+    if (skipCache) {
+      localStorage.removeItem(`labtest_cache_${cacheKey}`);
+    }
 
     const userList = await fetchWithCache(cacheKey, async () => {
       const [{ data: results }, { data: currentQuizObj }] = await Promise.all([
