@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, startTransition } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, startTransition, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Search, Play, CheckCircle, ChevronDown, ChevronUp, Award, Save, Copy, BarChart2, Book, Pencil, Eye, AlertTriangle, Plus, Shield, EyeOff, Trash2, Dices, Clock, TrendingUp, Info, Loader2, Share2, Check, X } from 'lucide-react';
@@ -663,6 +663,7 @@ const QuizCatalog = ({ profile }) => {
   const [selectedLibraryUser, setSelectedLibraryUserState] = useState(null);
   const [duplicateModal, setDuplicateModalState] = useState(null);
   const [usersLoading, setUsersLoading] = useState(false);
+  const fetchIdRef = useRef(0);
 
   useEffect(() => {
     sessionStorage.setItem('catalog_tab', activeTab);
@@ -872,7 +873,7 @@ const QuizCatalog = ({ profile }) => {
     if (error) alert(error.message);
     else {
       localStorage.removeItem('labtest_cache_catalog_struct_classes');
-      fetchData();
+      fetchData(true);
     }
   };
 
@@ -891,7 +892,7 @@ const QuizCatalog = ({ profile }) => {
     if (error) alert(error.message);
     else {
       localStorage.removeItem('labtest_cache_catalog_struct_sections');
-      fetchData();
+      fetchData(true);
     }
   };
 
@@ -911,7 +912,7 @@ const QuizCatalog = ({ profile }) => {
     if (error) alert(error.message);
     else {
       localStorage.removeItem(`labtest_cache_catalog_quizzes_${sectionId}`);
-      fetchData();
+      fetchData(true);
     }
   };
 
@@ -930,7 +931,7 @@ const QuizCatalog = ({ profile }) => {
         const { error } = await supabase.from('quizzes').update({ content: newContent }).eq('id', id);
         if (!error) {
           localStorage.removeItem(`labtest_cache_catalog_quizzes_${q.section_id}`);
-          fetchData();
+          fetchData(true);
         }
         return;
       }
@@ -942,7 +943,7 @@ const QuizCatalog = ({ profile }) => {
       // Invalidate cache based on type
       if (type === 'class') localStorage.removeItem('labtest_cache_catalog_struct_classes');
       if (type === 'section') localStorage.removeItem('labtest_cache_catalog_struct_sections');
-      fetchData();
+      fetchData(true);
     }
   };
 
@@ -982,14 +983,16 @@ const QuizCatalog = ({ profile }) => {
     });
   }, []);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (silent = false) => {
+    const currentFetchId = ++fetchIdRef.current;
+
     if ((activeTab === 'public' || activeTab === 'shared') && !selectedLibraryUser && activeTab !== 'shared') {
       setClasses([]);
-      setLoading(false);
+      if (!silent) setLoading(false);
       return;
     }
 
-    setLoading(true);
+    if (!silent) setLoading(true);
 
     // 1. Сначала получаем список ID авторов, к чьим библиотекам у нас есть доступ
     let libraryAccessIds = [];
@@ -1039,6 +1042,8 @@ const QuizCatalog = ({ profile }) => {
       })
     ]);
 
+    if (currentFetchId !== fetchIdRef.current) return;
+
     setAllCities(citiesData || []);
     setAllSchools(schoolsData || []);
     setAllBaseClasses(baseClassesData || []);
@@ -1048,7 +1053,7 @@ const QuizCatalog = ({ profile }) => {
     } else {
       setClasses([]);
     }
-    setLoading(false);
+    if (!silent) setLoading(false);
   }, [profile, formatClasses, activeTab, selectedLibraryUser]);
 
   useEffect(() => {
@@ -1173,11 +1178,10 @@ const QuizCatalog = ({ profile }) => {
     const { error } = await supabase.from('quizzes').update({ is_hidden: true }).eq('id', hideModal.id);
     if (error) alert('Ошибка: ' + error.message);
     else {
-      localStorage.removeItem(`labtest_cache_catalog_quizzes_${hideModal.section_id}`);
       localStorage.removeItem(`labtest_cache_catalog_struct_quizzes_all`);
       localStorage.removeItem(`labtest_cache_catalog_struct_quizzes_visible`);
       setHideModal(null);
-      fetchData();
+      fetchData(true);
     }
   }, [hideModal, fetchData]);
 
@@ -1199,15 +1203,11 @@ const QuizCatalog = ({ profile }) => {
     }
 
     const { error } = await supabase.from(table).update(updateData).eq('id', renamingItem.id);
-    if (error) alert(error.message);
+    if (error) alert('Ошибка переименования: ' + error.message);
     else {
-      if (renamingItem.type === 'class') localStorage.removeItem('labtest_cache_catalog_struct_classes');
-      if (renamingItem.type === 'section') localStorage.removeItem('labtest_cache_catalog_struct_sections');
-      if (renamingItem.sectionId) localStorage.removeItem(`labtest_cache_catalog_quizzes_${renamingItem.sectionId}`);
-      
       setRenamingItem(null);
       setNewName('');
-      fetchData();
+      fetchData(true);
     }
   };
 
@@ -1296,7 +1296,7 @@ const QuizCatalog = ({ profile }) => {
 
       {(activeTab === 'public' || activeTab === 'shared') && !selectedLibraryUser && (
         <div className="grid-2 animate" style={{ marginBottom: '40px' }}>
-          {usersLoading ? <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '40px' }}><Loader2 className="spinner" /></div> :
+          {usersLoading ? null :
             libraryUsers.length === 0 ? (activeTab === 'public' ? <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '40px', opacity: 0.5 }}>Библиотеки не найдены</div> : null) :
               libraryUsers.map(u => (
                 <div key={u.id} className="card" onClick={() => setSelectedLibraryUserState(u)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '15px', padding: '20px' }}>
@@ -1377,7 +1377,7 @@ const QuizCatalog = ({ profile }) => {
       </div>
 
       <div style={{ minHeight: '400px' }}>
-        {loading ? <CatalogSkeleton /> : (
+        {(loading || usersLoading) ? <CatalogSkeleton /> : (
           filteredClasses.map((cls, cIndex) => {
             if (cls.is_divider) {
               if (debouncedSearchQuery) return null;
@@ -1391,7 +1391,7 @@ const QuizCatalog = ({ profile }) => {
                       <button onClick={(e) => swapClasses(cIndex, -1, e)} disabled={cIndex === 0} style={{ padding: '8px', background: 'rgba(0,0,0,0.03)', color: 'var(--primary-color)', borderRadius: '10px', boxShadow: 'none' }}><ChevronUp size={20} /></button>
                       <button onClick={(e) => swapClasses(cIndex, 1, e)} disabled={cIndex === classes.length - 1} style={{ padding: '8px', background: 'rgba(0,0,0,0.03)', color: 'var(--primary-color)', borderRadius: '10px', boxShadow: 'none' }}><ChevronDown size={20} /></button>
                       <button onClick={(e) => { e.stopPropagation(); handleRenameTrigger({ id: cls.id, name: cls.name, type: 'class' }); }} style={{ padding: '8px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', borderRadius: '10px', boxShadow: 'none' }}><Pencil size={18} /></button>
-                      <button onClick={async (e) => { e.stopPropagation(); if (window.confirm('Удалить этот разделитель?')) { await supabase.from('quiz_classes').delete().eq('id', cls.id); fetchData(); } }} style={{ padding: '8px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', borderRadius: '10px', boxShadow: 'none' }}><Trash2 size={18} /></button>
+                      <button onClick={async (e) => { e.stopPropagation(); if (window.confirm('Удалить этот разделитель?')) { await supabase.from('quiz_classes').delete().eq('id', cls.id); fetchData(true); } }} style={{ padding: '8px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', borderRadius: '10px', boxShadow: 'none' }}><Trash2 size={18} /></button>
                     </div>
                   )}
                 </div>
@@ -1445,7 +1445,7 @@ const QuizCatalog = ({ profile }) => {
         <div style={{ position: 'fixed', bottom: '30px', left: '50%', transform: 'translateX(-50%)', background: 'var(--card-bg)', padding: '15px 25px', borderRadius: '50px', boxShadow: '0 10px 40px rgba(0,0,0,0.15)', border: '1px solid rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', gap: '20px', zIndex: 2000 }}>
           <span style={{ fontWeight: '500', fontSize: '0.95rem' }}>⚠ Порядок изменён</span>
           <div style={{ display: 'flex', gap: '10px' }}>
-            <button onClick={() => { setHasUnsavedChanges(false); setDirtySections({}); fetchData(); }} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', padding: '9px 18px', borderRadius: '30px', boxShadow: 'none', fontSize: '0.9rem' }}>
+            <button onClick={() => { setHasUnsavedChanges(false); setDirtySections({}); fetchData(true); }} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', padding: '9px 18px', borderRadius: '30px', boxShadow: 'none', fontSize: '0.9rem' }}>
               Отменить
             </button>
             <button onClick={async () => {
@@ -1466,7 +1466,7 @@ const QuizCatalog = ({ profile }) => {
                 }
                 setDirtySections({});
                 await Promise.all(updates);
-                await fetchData();
+                await fetchData(true);
               } catch (e) {
                 console.error(e);
               } finally {
@@ -1511,8 +1511,8 @@ const QuizCatalog = ({ profile }) => {
                       console.error("Error updating publicity modal:", error);
                       alert("Ошибка сохранения: " + error.message);
                     } else {
-                      setShareModalQuiz({ ...shareModalQuiz, is_public: newStatus });
-                      fetchData(); // Обновляем весь каталог
+                      setShareModalQuiz(null);
+                      fetchData(true); // Обновляем весь каталог тихо
                     }
                   }}
                   style={{
