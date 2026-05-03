@@ -5,10 +5,10 @@ import { Search, Play, CheckCircle, ChevronDown, ChevronUp, Award, Save, Copy, B
 import { useScrollRestoration } from '../lib/useScrollRestoration';
 import { fetchWithCache, useCacheSync } from '../lib/cache';
 
-const DividerItem = React.memo(({ quiz, qIndex, userRole, searchQuery, swapQuizzes, setRenamingItem, fetchQuizzes, quizzesLength }) => (
+const DividerItem = React.memo(({ quiz, qIndex, userRole, searchQuery, swapQuizzes, setRenamingItem, fetchQuizzes, quizzesLength, activeTab }) => (
   <div className="grid-full animate" style={{ gridColumn: '1 / -1', margin: '10px 0', padding: '10px 0', display: 'flex', alignItems: 'center', gap: '15px' }}>
     <div className="flex-center" style={{ gap: '15px' }}>
-      {userRole === 'creator' && !searchQuery && (
+      {(userRole === 'creator' || activeTab === 'personal') && !searchQuery && (
         <div className="flex-center" style={{ flexDirection: 'column', gap: '2px' }}>
           <button onClick={(e) => swapQuizzes(qIndex, -1, e, quiz)} disabled={qIndex === 0} style={{ padding: '0', background: 'transparent', color: 'var(--primary-color)', boxShadow: 'none' }}><ChevronUp size={14} /></button>
           <button onClick={(e) => swapQuizzes(qIndex, 1, e, quiz)} disabled={qIndex === quizzesLength - 1} style={{ padding: '0', background: 'transparent', color: 'var(--primary-color)', boxShadow: 'none' }}><ChevronDown size={14} /></button>
@@ -21,7 +21,7 @@ const DividerItem = React.memo(({ quiz, qIndex, userRole, searchQuery, swapQuizz
       {quiz.is_hidden && <Shield size={14} style={{ marginLeft: '8px', verticalAlign: 'middle' }} />}
     </span>
     <div style={{ height: '1px', background: 'rgba(99, 102, 241, 0.2)', flex: 1 }} />
-    {userRole === 'creator' && (
+    {(userRole === 'creator' || activeTab === 'personal') && (
       <div className="flex-center" style={{ gap: '5px' }}>
         <button onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: quiz.id, name: quiz.content.divider_text || quiz.title, type: 'quiz', isDivider: true, sectionId: quiz.section_id }); }} style={{ background: 'transparent', color: 'var(--primary-color)', opacity: 0.4, padding: '5px', boxShadow: 'none' }}><Pencil size={14} /></button>
         <button onClick={async (e) => { e.stopPropagation(); await supabase.from('quizzes').update({ is_hidden: !quiz.is_hidden }).eq('id', quiz.id); fetchQuizzes(); }} style={{ background: 'transparent', color: quiz.is_hidden ? '#ca8a04' : 'inherit', opacity: 0.4, padding: '5px', boxShadow: 'none' }}>
@@ -167,7 +167,7 @@ const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, pass
   );
 });
 
-const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, onQuizzesChange, setHideModal, setDuplicateModal, setRenamingItem, setSelectedQuiz, setRandomQuizModal }) => {
+const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, onQuizzesChange, setHideModal, setDuplicateModal, setRenamingItem, setSelectedQuiz, setRandomQuizModal, activeTab }) => {
   const navigate = useNavigate();
   const [visibleCount, setVisibleCount] = useState(25); // Incremental rendering start
 
@@ -394,6 +394,7 @@ const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, 
                 setDuplicateModal={setDuplicateModal}
                 isDimmed={currentDividerHidden}
                 quizzesLength={quizzes.length}
+                activeTab={activeTab}
               />
             );
           });
@@ -406,7 +407,7 @@ const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, 
 const CatalogSectionRow = React.memo(({
   section, clsId, sIndex, profile, searchQuery, isExpanded,
   onToggle, onQuizzesChange, setHideModal, setDuplicateModal, setRenamingItem, setSelectedQuiz, setRandomQuizModal,
-  handleCreateDivider, swapSections, setNewName
+  handleCreateDivider, swapSections, setNewName, activeTab
 }) => {
   return (
     <div className="catalog-container" style={{
@@ -466,7 +467,7 @@ const CatalogSectionRow = React.memo(({
               <Clock size={10} /> В РАЗРАБОТКЕ
             </span>
           )}
-          {profile?.role === 'creator' && (
+          {(profile?.role === 'creator' || activeTab === 'personal') && (
             <div className="flex-center" style={{ gap: '10px' }}>
               <button
                 onClick={(e) => { e.stopPropagation(); handleCreateDivider(section.id); }}
@@ -500,6 +501,7 @@ const CatalogSectionRow = React.memo(({
           setRenamingItem={setRenamingItem}
           setSelectedQuiz={setSelectedQuiz}
           setRandomQuizModal={setRandomQuizModal}
+          activeTab={activeTab}
         />
       )}
     </div>
@@ -509,7 +511,7 @@ const CatalogSectionRow = React.memo(({
 const CatalogClassRow = React.memo(({
   cls, cIndex, profile, searchQuery, isExpanded, expandedSections,
   onToggle, onSectionToggle, swapClasses, swapSections, handleRenameItem, handleCreateDivider, handleCreateSectionDivider, setNewName,
-  onQuizzesChange, setHideModal, setDuplicateModal, setSelectedQuiz, setRandomQuizModal
+  onQuizzesChange, setHideModal, setDuplicateModal, setSelectedQuiz, setRandomQuizModal, activeTab
 }) => {
   return (
     <div className="card animate" style={{
@@ -534,7 +536,7 @@ const CatalogClassRow = React.memo(({
         }}
       >
         <div className="flex-center" style={{ gap: '15px' }}>
-          {profile?.role === 'creator' && !searchQuery && (
+          {(profile?.role === 'creator' || activeTab === 'personal') && !searchQuery && (
             <div className="flex-center" style={{ gap: '5px' }}>
               <button
                 onClick={(e) => { e.stopPropagation(); swapClasses(cIndex, -1, e); }}
@@ -559,7 +561,7 @@ const CatalogClassRow = React.memo(({
               <Clock size={12} /> В РАЗРАБОТКЕ
             </span>
           )}
-          {profile?.role === 'creator' && (
+          {(profile?.role === 'creator' || activeTab === 'personal') && (
             <div className="flex-center" style={{ gap: '10px' }}>
               <button
                 onClick={(e) => { e.stopPropagation(); handleRenameItem({ id: cls.id, name: cls.name, type: 'class' }); }}
@@ -599,7 +601,7 @@ const CatalogClassRow = React.memo(({
                   <div style={{ height: '3px', background: 'var(--primary-color)', width: '25px', borderRadius: '2px', opacity: 0.6 }} />
                   <h4 style={{ fontSize: '1.4rem', fontWeight: '800', margin: 0, color: 'var(--text-color)' }}>{section.name}</h4>
                   <div style={{ height: '1px', background: 'rgba(0,0,0,0.06)', flex: 1 }} />
-                  {profile?.role === 'creator' && !searchQuery && (
+                  {(profile?.role === 'creator' || activeTab === 'personal') && !searchQuery && (
                     <div className="flex-center" style={{ gap: '8px' }}>
                       <div className="flex-center" style={{ gap: '3px' }}>
                         <button onClick={(e) => { e.stopPropagation(); swapSections(cls.id, sIndex, -1, e); }} disabled={sIndex === 0} style={{ padding: '4px', background: 'rgba(0,0,0,0.02)', color: 'var(--primary-color)', borderRadius: '8px', boxShadow: 'none' }}><ChevronUp size={16} /></button>
@@ -631,6 +633,7 @@ const CatalogClassRow = React.memo(({
                 setRandomQuizModal={setRandomQuizModal}
                 handleCreateDivider={handleCreateDivider}
                 swapSections={swapSections}
+                activeTab={activeTab}
                 setNewName={setNewName}
               />
             );
@@ -910,25 +913,19 @@ const QuizCatalog = ({ profile }) => {
   // Logic for opening quiz from shared link
   useEffect(() => {
     const shareId = searchParams.get('shareQuiz');
-    if (shareId && classes.length > 0) {
-      let found = null;
-      for (const cls of classes) {
-        for (const sec of cls.sections) {
-          if (sec.basicQuizzes) {
-            found = sec.basicQuizzes.find(q => q.id === shareId);
-            if (found) break;
-          }
+    if (shareId && !selectedQuiz) {
+      (async () => {
+        const { data, error } = await supabase.from('quizzes')
+          .select('*, profiles:author_id(id, first_name, last_name)')
+          .eq('id', shareId)
+          .single();
+        if (data && !error) {
+          setSelectedQuizState(data);
+          window.history.replaceState({}, '', window.location.pathname);
         }
-        if (found) break;
-      }
-      if (found) {
-        setSelectedQuizState(found);
-        setIsFromShare(true);
-        // Clear param without page reload to avoid re-opening on every render/mount if navigation happens
-        window.history.replaceState({}, '', window.location.pathname);
-      }
+      })();
     }
-  }, [searchParams, classes]);
+  }, [searchParams, selectedQuiz]);
 
 
 
@@ -1190,7 +1187,7 @@ const QuizCatalog = ({ profile }) => {
               style={{ paddingLeft: '45px' }}
             />
           </div>
-          {profile?.role === 'creator' && (
+          {(profile?.role === 'creator' || activeTab === 'personal') && (
             <button
               onClick={handleCreateClassDivider}
               className="flex-center animate"
@@ -1212,7 +1209,7 @@ const QuizCatalog = ({ profile }) => {
                   <div style={{ height: '4px', background: 'var(--primary-color)', width: '40px', borderRadius: '2px' }} />
                   <h3 style={{ fontSize: '1.8rem', fontWeight: '900', margin: 0, textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--text-color)' }}>{cls.name}</h3>
                   <div style={{ height: '1px', background: 'rgba(0,0,0,0.1)', flex: 1 }} />
-                  {profile?.role === 'creator' && !debouncedSearchQuery && (
+                  {(profile?.role === 'creator' || activeTab === 'personal') && !debouncedSearchQuery && (
                     <div className="flex-center" style={{ gap: '10px' }}>
                       <button onClick={(e) => swapClasses(cIndex, -1, e)} disabled={cIndex === 0} style={{ padding: '8px', background: 'rgba(0,0,0,0.03)', color: 'var(--primary-color)', borderRadius: '10px', boxShadow: 'none' }}><ChevronUp size={20} /></button>
                       <button onClick={(e) => swapClasses(cIndex, 1, e)} disabled={cIndex === classes.length - 1} style={{ padding: '8px', background: 'rgba(0,0,0,0.03)', color: 'var(--primary-color)', borderRadius: '10px', boxShadow: 'none' }}><ChevronDown size={20} /></button>
@@ -1245,6 +1242,7 @@ const QuizCatalog = ({ profile }) => {
                 setDuplicateModal={setDuplicateModal}
                 setSelectedQuiz={setSelectedQuiz}
                 setRandomQuizModal={setRandomQuizModal}
+                activeTab={activeTab}
               />
             );
           })
