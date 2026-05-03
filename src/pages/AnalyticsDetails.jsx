@@ -40,7 +40,7 @@ const SidebarUserList = React.memo(({
   searchQuery, setSearchQuery, showObservers, setShowObservers, handleUserSelect, handleScroll,
   scrollRef, validSections, validQuizzes, isFolderEmpty, isSectionEmpty,
   profile, cities, schools, classes, teacherClasses, navigate, setSidebarOpen,
-  analyticsMode, setAnalyticsMode
+  analyticsMode, setAnalyticsMode, playerResults
 }) => {
   const isTeacher = profile?.role === 'teacher';
   const isStudent = profile?.role === 'player';
@@ -1281,6 +1281,7 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
             profile={profile} cities={cities} schools={schools} classes={classes} teacherClasses={teacherClasses} navigate={navigate}
             setSidebarOpen={setSidebarOpen}
             analyticsMode={analyticsMode} setAnalyticsMode={switchMode}
+            playerResults={playerResults}
           />
         </div>
       )}
