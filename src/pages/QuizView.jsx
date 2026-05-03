@@ -61,6 +61,35 @@ const QuizView = ({ session, profile }) => {
 
   const [detailedImageModal, setDetailedImageModal] = useState({ isOpen: false, images: [], currentImgIdx: 0, question: '', userAnswer: '', correctAnswer: '', isCorrect: false });
   
+  // Quick Auth for Guests
+  const [qaMode, setQaMode] = useState('choice'); // 'choice', 'login', 'register'
+  const [qaEmail, setQaEmail] = useState('');
+  const [qaPassword, setQaPassword] = useState('');
+  const [qaLoading, setQaLoading] = useState(false);
+  const [qaError, setQaError] = useState('');
+
+  const handleQuickAuth = async (e) => {
+    e.preventDefault();
+    setQaLoading(true);
+    setQaError('');
+    try {
+      if (qaMode === 'login') {
+        const { error } = await supabase.auth.signInWithPassword({ email: qaEmail, password: qaPassword });
+        if (error) throw error;
+      } else {
+        const { data, error } = await supabase.auth.signUp({ email: qaEmail, password: qaPassword });
+        if (error) throw error;
+        if (data?.user && !data.session) {
+          setQaError('Регистрация успешна! Пожалуйста, подтвердите email по ссылке в письме.');
+        }
+      }
+    } catch (err) {
+      setQaError(err.message);
+    } finally {
+      setQaLoading(false);
+    }
+  };
+  
   useEffect(() => {
     setCurrentImageIdx(0);
     // Note: We don't scroll to top here because the user explicitly asked to preserve scroll position between questions.
@@ -742,17 +771,52 @@ const QuizView = ({ session, profile }) => {
               </button>
             </div>
             {!session && (
-              <div className="card animate" style={{ marginTop: '30px', background: 'var(--primary-color)', color: 'white', padding: '25px' }}>
-                <div className="flex-center" style={{ gap: '15px', marginBottom: '15px', justifyContent: 'center' }}>
+              <div className="card animate" style={{ marginTop: '30px', background: 'var(--primary-color)', color: 'white', padding: '25px', textAlign: 'left' }}>
+                <div className="flex-center" style={{ gap: '15px', marginBottom: '15px', justifyContent: 'flex-start' }}>
                   <Zap size={24} fill="white" />
-                  <h3 style={{ margin: 0, color: 'white' }}>Гостевой режим</h3>
+                  <h3 style={{ margin: 0, color: 'white' }}>Сохранить результат</h3>
                 </div>
-                <p style={{ fontSize: '0.95rem', opacity: 0.9, marginBottom: '20px', lineHeight: '1.5' }}>
-                  Вы прошли тест как гость. Чтобы сохранить этот результат в свой личный профиль и видеть статистику, войдите или зарегистрируйтесь.
-                </p>
-                <div className="flex-center" style={{ gap: '10px', justifyContent: 'center' }}>
-                  <button onClick={() => navigate('/auth')} style={{ background: 'white', color: 'var(--primary-color)', fontWeight: 'bold', border: 'none' }}>Войти и сохранить</button>
-                </div>
+                
+                {qaMode === 'choice' ? (
+                  <>
+                    <p style={{ fontSize: '0.95rem', opacity: 0.9, marginBottom: '20px', lineHeight: '1.5' }}>
+                      Вы прошли тест как гость. Создайте аккаунт или войдите, чтобы сохранить этот результат навсегда и открыть доступ к статистике.
+                    </p>
+                    <div className="flex-center" style={{ gap: '10px' }}>
+                      <button onClick={() => setQaMode('register')} style={{ background: 'white', color: 'var(--primary-color)', fontWeight: 'bold', border: 'none' }}>Регистрация</button>
+                      <button onClick={() => setQaMode('login')} style={{ background: 'transparent', color: 'white', border: '1px solid white', boxShadow: 'none' }}>Вход</button>
+                    </div>
+                  </>
+                ) : (
+                  <form onSubmit={handleQuickAuth} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <p style={{ fontSize: '0.85rem', opacity: 0.8, margin: 0 }}>
+                      {qaMode === 'login' ? 'Вход в аккаунт' : 'Быстрая регистрация'}
+                    </p>
+                    <input 
+                      type="email" 
+                      placeholder="Email" 
+                      value={qaEmail} 
+                      onChange={e => setQaEmail(e.target.value)} 
+                      required 
+                      className="quiz-qa-input"
+                    />
+                    <input 
+                      type="password" 
+                      placeholder="Пароль" 
+                      value={qaPassword} 
+                      onChange={e => setQaPassword(e.target.value)} 
+                      required 
+                      className="quiz-qa-input"
+                    />
+                    {qaError && <p style={{ fontSize: '0.85rem', color: (qaError.includes('успешна') || qaError.includes('подтвердите')) ? '#4ade80' : '#ffbaba', margin: 0 }}>{qaError}</p>}
+                    <div className="flex-center" style={{ gap: '10px', marginTop: '5px' }}>
+                      <button type="submit" disabled={qaLoading} style={{ background: 'white', color: 'var(--primary-color)', fontWeight: 'bold', border: 'none', flex: 1 }}>
+                        {qaLoading ? '...' : (qaMode === 'login' ? 'Войти' : 'Создать')}
+                      </button>
+                      <button type="button" onClick={() => setQaMode('choice')} style={{ background: 'transparent', color: 'white', border: 'none', boxShadow: 'none', fontSize: '0.85rem' }}>Отмена</button>
+                    </div>
+                  </form>
+                )}
               </div>
             )}
           </div>

@@ -100,7 +100,7 @@ const Analytics = () => {
     if (studentsMap) setAllStudents(studentsMap);
 
     // Automated Filtering Defaults
-    if (p && (p.role === 'teacher' || p.role === 'admin' || p.role === 'creator')) {
+    if (p && (p.role === 'teacher' || p.role === 'admin' || p.role === 'creator' || p.role === 'player')) {
       const sCity = sessionStorage.getItem('f_city');
       const sSchool = sessionStorage.getItem('f_school');
       const sClass = sessionStorage.getItem('f_class');

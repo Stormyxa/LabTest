@@ -402,3 +402,28 @@ select {
   appearance: none;
   cursor: pointer;
 }
+.quiz-qa-input {
+  background: rgba(255, 255, 255, 0.1) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  color: white !important;
+  border-radius: 12px !important;
+  padding: 12px 15px !important;
+  width: 100%;
+  font-family: var(--font-main);
+  transition: all 0.3s;
+}
+
+.quiz-qa-input:focus {
+  background: rgba(255, 255, 255, 0.15) !important;
+  border-color: white !important;
+  outline: none;
+}
+
+.quiz-qa-input::placeholder {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+[data-theme='dark'] .quiz-qa-input {
+  background: rgba(0, 0, 0, 0.2) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
