@@ -301,7 +301,8 @@ const Statistics = ({ session, profile }) => {
   if (loading) return <StatSkeleton />;
 
   const isObserver = profile?.role === 'player' && profile?.is_observer;
-  const hasAccess = session && !isObserver;
+  const isPlayerWithoutClass = profile?.role === 'player' && !profile?.class_id;
+  const hasAccess = session && !isObserver && !isPlayerWithoutClass;
 
   return (
     <div className="container animate" style={{ padding: '40px 20px' }}>

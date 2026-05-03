@@ -93,7 +93,7 @@ function App() {
 
   const isAdmin = profile?.role === 'admin' || profile?.role === 'creator';
   const isTeacher = profile?.role === 'teacher';
-  const isEditor = isAdmin || profile?.role === 'editor' || isTeacher;
+  const isEditor = isAdmin || profile?.role === 'editor' || isTeacher || profile?.role === 'player';
 
   // Use useMemo to avoid re-creating the router on every state change
   const router = useMemo(() => createBrowserRouter(

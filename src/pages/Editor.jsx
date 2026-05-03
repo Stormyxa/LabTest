@@ -61,9 +61,9 @@ const EditorSectionQuizzes = ({
   setRenamingItem,
   setNewName,
   toggleHideQuiz,
-  swapQuizzes,
   handleCreateDivider,
-  navigate
+  navigate,
+  editorMode
 }) => {
   const [quizzes, setQuizzes] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -76,10 +76,18 @@ const EditorSectionQuizzes = ({
       const data = await fetchWithCache(cacheKey, async () => {
         let query = supabase.from('quizzes').select('*, quiz_sections(name, class_id, book_url), profiles(role, first_name, last_name)');
 
-        if (profile?.role === 'editor' || profile?.role === 'teacher') {
-          query = query.eq('author_id', session.user.id);
-        } else if (!showHidden) {
-          query = query.eq('is_hidden', false);
+        if (editorMode === 'official') {
+          query = query.eq('is_personal', false);
+          // Editors only see their own tests in official catalog if they aren't privileged
+          if (profile?.role === 'editor') query = query.eq('author_id', session.user.id);
+        } else if (editorMode === 'personal') {
+          query = query.eq('is_personal', true).eq('author_id', session.user.id);
+        } else if (editorMode === 'community') {
+          query = query.eq('is_personal', true);
+        }
+
+        if (!showHidden && (profile?.role !== 'admin' && profile?.role !== 'creator')) {
+          query = query.or(`is_hidden.eq.false,author_id.eq.${session.user.id}`);
         }
 
         const { data: q } = await query
@@ -176,7 +184,7 @@ const EditorSectionQuizzes = ({
                 <div className="flex-center" style={{ gap: '8px' }}>
                   <button onClick={() => { setRenamingItem({ id: quiz.id, name: quiz.title, type: 'quiz' }); setNewName(quiz.title); }} style={{ background: 'transparent', color: 'var(--primary-color)', opacity: 0.6, boxShadow: 'none', padding: '5px' }}><Pencil size={16} /></button>
                   <button onClick={() => toggleHideQuiz(quiz)} style={{ background: 'transparent', color: quiz.is_hidden ? '#ca8a04' : 'inherit', opacity: 0.6, boxShadow: 'none', padding: '5px' }}>{quiz.is_hidden ? <Eye size={16} /> : <EyeOff size={16} />}</button>
-                  {(profile?.role === 'creator' || profile?.role === 'admin' || (quiz.author_id === profile?.id && !quiz.hasForeignResults)) ? (
+                  {(profile?.role === 'creator' || profile?.role === 'admin' || (quiz.author_id === profile?.id && (!quiz.hasForeignResults || quiz.is_personal))) ? (
                     <button onClick={() => setDeleteId(quiz.id)} style={{ background: 'transparent', color: 'red', opacity: 0.6, boxShadow: 'none', padding: '5px' }}><Trash2 size={16} /></button>
                   ) : (
                     quiz.author_id === profile?.id && (
@@ -217,7 +225,7 @@ const EditorSectionQuizzes = ({
                 </div>
                 <div className="flex-center" style={{ gap: '10px' }}>
                   <button onClick={() => toggleHideQuiz(quiz)} style={{ background: 'transparent', color: quiz.is_hidden ? '#ca8a04' : 'inherit', opacity: 0.5, boxShadow: 'none', padding: '5px' }} title={quiz.is_hidden ? 'Скрыт' : 'Виден всем'}>{quiz.is_hidden ? <Shield size={18} /> : <Eye size={18} />}</button>
-                  {(profile?.role === 'creator' || (profile?.role === 'admin' && quiz.profiles?.role !== 'creator') || (quiz.author_id === profile?.id && !quiz.hasForeignResults)) ? (
+                  {(profile?.role === 'creator' || (profile?.role === 'admin' && quiz.profiles?.role !== 'creator') || (quiz.author_id === profile?.id && (!quiz.hasForeignResults || quiz.is_personal))) ? (
                     <button onClick={() => setDeleteId(quiz.id)} style={{ background: 'transparent', color: 'red', opacity: 0.5, boxShadow: 'none', padding: '5px' }} title="Удалить тест"><Trash2 size={18} /></button>
                   ) : (
                     quiz.author_id === profile?.id && (
@@ -278,10 +286,53 @@ const Editor = ({ session, profile }) => {
   const [newSectionClassId, setNewSectionClassId] = useState('');
   const [newSectionBookUrl, setNewSectionBookUrl] = useState('');
 
-  const [isPersonal, setIsPersonal] = useState(false);
+  const isTeacherOrPlayer = profile?.role === 'teacher' || profile?.role === 'player';
+  const isPrivilegedEditor = profile?.role === 'admin' || profile?.role === 'creator';
+  
+  const [editorMode, setEditorMode] = useState(() => {
+    const saved = sessionStorage.getItem('editor_mode');
+    if (saved) return saved;
+    if (isTeacherOrPlayer) return 'personal';
+    return 'official';
+  });
+
+  const [isPersonal, setIsPersonal] = useState(editorMode !== 'official');
+  
   useEffect(() => {
-    if (profile?.role === 'teacher' || profile?.role === 'player') {
-      setIsPersonal(true);
+    sessionStorage.setItem('editor_mode', editorMode);
+    setIsPersonal(editorMode !== 'official');
+  }, [editorMode]);
+
+  const [remainingTime, setRemainingTime] = useState(0);
+  const [officialTestCount, setOfficialTestCount] = useState(null);
+
+  useEffect(() => {
+    let interval;
+    if (remainingTime > 0) {
+      interval = setInterval(() => {
+        setRemainingTime(prev => prev - 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [remainingTime]);
+
+  useEffect(() => {
+    // Check timer limit
+    const lastTime = localStorage.getItem('labtest_last_quiz_created_time');
+    if (lastTime && profile?.role !== 'creator') {
+      const diff = Math.floor((Date.now() - parseInt(lastTime, 10)) / 1000);
+      if (diff < 60) {
+        setRemainingTime(60 - diff);
+      }
+    }
+
+    // Check official test count for admin/editor
+    if (profile?.role === 'admin' || profile?.role === 'editor') {
+      const fetchCount = async () => {
+        const { count } = await supabase.from('quizzes').select('*', { count: 'exact', head: true }).eq('is_personal', false);
+        setOfficialTestCount(count);
+      };
+      fetchCount();
     }
   }, [profile]);
 
@@ -317,8 +368,21 @@ const Editor = ({ session, profile }) => {
   const fetchStructure = async () => {
     setLoading(true);
     try {
-      const c = await fetchWithCache('catalog_struct_classes', () => supabase.from('quiz_classes').select('*').order('sort_order', { ascending: true }).then(r => r.data));
-      const secs = await fetchWithCache('catalog_struct_sections', () => supabase.from('quiz_sections').select('*').order('sort_order', { ascending: true }).then(r => r.data));
+      const cacheSuffix = `_${editorMode}_${session.user.id}`;
+      const c = await fetchWithCache(`catalog_struct_classes${cacheSuffix}`, () => {
+        let q = supabase.from('quiz_classes').select('*').order('sort_order', { ascending: true });
+        if (editorMode === 'official') q = q.eq('is_personal', false);
+        else if (editorMode === 'personal') q = q.eq('is_personal', true).eq('author_id', session.user.id);
+        else if (editorMode === 'community') q = q.eq('is_personal', true);
+        return q.then(r => r.data);
+      });
+      const secs = await fetchWithCache(`catalog_struct_sections${cacheSuffix}`, () => {
+        let q = supabase.from('quiz_sections').select('*').order('sort_order', { ascending: true });
+        if (editorMode === 'official') q = q.eq('is_personal', false);
+        else if (editorMode === 'personal') q = q.eq('is_personal', true).eq('author_id', session.user.id);
+        else if (editorMode === 'community') q = q.eq('is_personal', true);
+        return q.then(r => r.data);
+      });
       if (c) setClasses(c);
       if (secs) setSections(secs);
     } catch (err) {
@@ -330,7 +394,7 @@ const Editor = ({ session, profile }) => {
 
   useEffect(() => {
     fetchStructure();
-  }, []);
+  }, [editorMode]);
 
   useCacheSync('catalog_struct_classes', (data) => setClasses(data));
   useCacheSync('catalog_struct_sections', (data) => setSections(data));
@@ -343,9 +407,9 @@ const Editor = ({ session, profile }) => {
 
   // Full refresh after any mutation — clears cache
   const fetchData = async () => {
-    // Invalidate structural cache
-    localStorage.removeItem('labtest_cache_catalog_struct_classes');
-    localStorage.removeItem('labtest_cache_catalog_struct_sections');
+    const cacheSuffix = `_${editorMode}_${session.user.id}`;
+    localStorage.removeItem(`labtest_cache_catalog_struct_classes${cacheSuffix}`);
+    localStorage.removeItem(`labtest_cache_catalog_struct_sections${cacheSuffix}`);
 
     await fetchStructure();
   };
@@ -375,6 +439,19 @@ const Editor = ({ session, profile }) => {
           throw new Error('Массовое создание недоступно.');
         }
 
+        if (profile?.role !== 'creator') {
+          const lastTime = localStorage.getItem('labtest_last_quiz_created_time');
+          if (lastTime && Date.now() - parseInt(lastTime, 10) < 60000) {
+            throw new Error('Пожалуйста, подождите минуту перед созданием следующего теста.');
+          }
+        }
+
+        if ((profile?.role === 'admin' || profile?.role === 'editor') && !isPersonal) {
+          if (officialTestCount !== null && officialTestCount >= 200) {
+            throw new Error('Достигнут лимит в 200 тестов для официального каталога.');
+          }
+        }
+
         const { data: maxOrderData, error: rpcError } = await supabase.rpc('get_max_sort_order', { p_section_id: sectionId });
         if (rpcError) throw rpcError;
         const maxOrder = maxOrderData || -1;
@@ -392,6 +469,12 @@ const Editor = ({ session, profile }) => {
         const { error } = await supabase.from('quizzes').insert(newQuizzesInsertion);
         if (error) throw error;
 
+        if (profile?.role !== 'creator') {
+          localStorage.setItem('labtest_last_quiz_created_time', Date.now().toString());
+          setRemainingTime(60);
+          if (!isPersonal) setOfficialTestCount(prev => (prev || 0) + newQuizzesInsertion.length);
+        }
+
         fetchData();
         setSuccessLoadedQuiz(newQuizzesInsertion.map(q => q.title).join(', '));
         setTitles('');
@@ -405,6 +488,19 @@ const Editor = ({ session, profile }) => {
         const canBulk = profile?.role === 'admin' || profile?.role === 'creator';
         if (!canBulk && titleList.length > 1) {
           throw new Error('Массовое создание тестов доступно только Создателям и Админам.');
+        }
+
+        if (profile?.role !== 'creator') {
+          const lastTime = localStorage.getItem('labtest_last_quiz_created_time');
+          if (lastTime && Date.now() - parseInt(lastTime, 10) < 60000) {
+            throw new Error('Пожалуйста, подождите минуту перед созданием следующего теста.');
+          }
+        }
+
+        if ((profile?.role === 'admin' || profile?.role === 'editor') && !isPersonal) {
+          if (officialTestCount !== null && officialTestCount + titleList.length > 200) {
+            throw new Error('Достигнут лимит в 200 тестов для официального каталога.');
+          }
         }
 
         // Show warning modal BEFORE inserting
@@ -440,6 +536,12 @@ const Editor = ({ session, profile }) => {
 
       const { data: inserted, error } = await supabase.from('quizzes').insert(newQuizzes).select();
       if (error) throw error;
+
+      if (profile?.role !== 'creator') {
+        localStorage.setItem('labtest_last_quiz_created_time', Date.now().toString());
+        setRemainingTime(60);
+        if (!isPersonal) setOfficialTestCount(prev => (prev || 0) + newQuizzes.length);
+      }
 
       setPendingEmptyQuiz(null);
       setTitles('');
@@ -585,7 +687,7 @@ const Editor = ({ session, profile }) => {
       if (profile.role === 'admin') {
         return quiz.profiles?.role !== 'creator' && quiz.profiles?.role !== 'admin';
       }
-      return (profile.role === 'teacher' || profile.role === 'editor') && quiz.author_id === profile.id;
+      return (profile.role === 'teacher' || profile.role === 'editor' || profile.role === 'player') && quiz.author_id === profile.id;
     };
 
     if (!canMoveQuiz(quiz)) return;
@@ -612,8 +714,8 @@ const Editor = ({ session, profile }) => {
     const { data, error } = await supabase.from('quiz_classes').insert({
       name: newClassName,
       sort_order: (classes[classes.length - 1]?.sort_order || 0) + 1,
-      is_personal: isPersonalMode,
-      author_id: isPersonalMode ? profile.id : null
+      is_personal: isPersonal,
+      author_id: isPersonal ? profile.id : null
     }).select().single();
     if (error) alert(error.message);
     else { setNewClassName(''); fetchData(); }
@@ -722,19 +824,34 @@ const Editor = ({ session, profile }) => {
                   <div className="card">
                     <h3 style={{ marginBottom: '25px' }}>Новый тест</h3>
 
-                    {profile?.role !== 'teacher' && profile?.role !== 'player' && (
+                    {(isPrivilegedEditor || profile?.role === 'editor') && (
                       <div style={{ marginBottom: '20px', padding: '15px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '15px' }}>
                         <p style={{ margin: '0 0 10px 0', fontWeight: 'bold' }}>Где создать:</p>
                         <div style={{ display: 'flex', gap: '15px' }}>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                            <input type="radio" name="uploadTarget" checked={!isPersonal} onChange={() => setIsPersonal(false)} />
-                            Официальный каталог
-                          </label>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                            <input type="radio" name="uploadTarget" checked={isPersonal} onChange={() => setIsPersonal(true)} />
+                          <button
+                            type="button"
+                            onClick={() => setEditorMode('official')}
+                            style={{ flex: 1, padding: '10px', background: editorMode === 'official' ? 'var(--primary-color)' : 'var(--card-bg)', color: editorMode === 'official' ? 'white' : 'inherit', border: '1px solid rgba(0,0,0,0.05)', boxShadow: 'none', borderRadius: '10px', fontSize: '0.85rem' }}
+                          >
+                            Общий каталог
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditorMode('personal')}
+                            style={{ flex: 1, padding: '10px', background: editorMode !== 'official' ? 'var(--primary-color)' : 'var(--card-bg)', color: editorMode !== 'official' ? 'white' : 'inherit', border: '1px solid rgba(0,0,0,0.05)', boxShadow: 'none', borderRadius: '10px', fontSize: '0.85rem' }}
+                          >
                             Личная библиотека
-                          </label>
+                          </button>
                         </div>
+                      </div>
+                    )}
+
+                    {isTeacherOrPlayer && (
+                      <div style={{ marginBottom: '20px', padding: '15px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '15px', color: 'var(--primary-color)' }}>
+                        <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: '500' }}>
+                          <Book size={16} style={{ display: 'inline', marginRight: '8px', verticalAlign: 'middle', position: 'relative', top: '-1px' }} />
+                          Данные тесты создаются для вашей личной библиотеки.
+                        </p>
                       </div>
                     )}
 
@@ -768,8 +885,10 @@ const Editor = ({ session, profile }) => {
                       </div>
 
                       <div style={{ display: 'flex', gap: '15px' }}>
-                        <button type="submit" style={{ flex: 1, padding: '15px' }}>
-                          {jsonInput.trim() ? 'Опубликовать тест' : (titles.split('\n').filter(t => t.trim()).length > 1 ? 'Создать пачку тестов' : 'Создать пустой тест')}
+                        <button type="submit" disabled={isSubmitting || remainingTime > 0 || ((profile?.role === 'admin' || profile?.role === 'editor') && !isPersonal && officialTestCount >= 200)} style={{ flex: 1, padding: '15px', background: remainingTime > 0 ? 'var(--card-bg)' : '', color: remainingTime > 0 ? 'var(--text-color)' : '', border: remainingTime > 0 ? '1px solid rgba(0,0,0,0.1)' : 'none' }}>
+                          {remainingTime > 0 ? `⏳ Пожалуйста, подождите ${remainingTime} сек.` :
+                            (profile?.role === 'admin' || profile?.role === 'editor') && !isPersonal && officialTestCount >= 200 ? 'Лимит официального каталога достигнут (200)' :
+                              jsonInput.trim() ? 'Опубликовать тест' : (titles.split('\n').filter(t => t.trim()).length > 1 ? 'Создать пачку тестов' : 'Создать пустой тест')}
                         </button>
                       </div>
                     </form>
@@ -844,8 +963,32 @@ const Editor = ({ session, profile }) => {
                 </>
               ) : (
                 <>
-                  <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
-                    <p style={{ opacity: 0.5, fontSize: '0.9rem', margin: 0 }}>Управление структурой тестов, сортировкой и видимостью</p>
+                  <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '30px', flexWrap: 'wrap', gap: '20px' }}>
+                    <div style={{ display: 'flex', gap: '8px', background: 'rgba(0,0,0,0.03)', padding: '5px', borderRadius: '15px' }}>
+                      {(isPrivilegedEditor || profile?.role === 'editor') && (
+                        <button 
+                          onClick={() => setEditorMode('official')} 
+                          style={{ padding: '8px 16px', borderRadius: '10px', background: editorMode === 'official' ? 'var(--card-bg)' : 'transparent', color: editorMode === 'official' ? 'var(--primary-color)' : 'inherit', boxShadow: editorMode === 'official' ? 'var(--soft-shadow)' : 'none', fontWeight: '700', fontSize: '0.85rem' }}
+                        >
+                          Официальный
+                        </button>
+                      )}
+                      <button 
+                        onClick={() => setEditorMode('personal')} 
+                        style={{ padding: '8px 16px', borderRadius: '10px', background: editorMode === 'personal' ? 'var(--card-bg)' : 'transparent', color: editorMode === 'personal' ? 'var(--primary-color)' : 'inherit', boxShadow: editorMode === 'personal' ? 'var(--soft-shadow)' : 'none', fontWeight: '700', fontSize: '0.85rem' }}
+                      >
+                        Личный
+                      </button>
+                      {isPrivilegedEditor && (
+                        <button 
+                          onClick={() => setEditorMode('community')} 
+                          style={{ padding: '8px 16px', borderRadius: '10px', background: editorMode === 'community' ? 'var(--card-bg)' : 'transparent', color: editorMode === 'community' ? 'var(--primary-color)' : 'inherit', boxShadow: editorMode === 'community' ? 'var(--soft-shadow)' : 'none', fontWeight: '700', fontSize: '0.85rem' }}
+                        >
+                          Общий (все)
+                        </button>
+                      )}
+                    </div>
+                    
                     {(profile?.role === 'admin' || profile?.role === 'creator') && (
                       <button
                         onClick={() => setShowHidden(prev => !prev)}
@@ -882,9 +1025,6 @@ const Editor = ({ session, profile }) => {
                     <div style={{ gridColumn: '1 / -1' }}>
                       {classes.map((cls, cIndex) => {
                         const clsSections = sections.filter(s => s.class_id === cls.id);
-                        if ((profile?.role === 'editor' || profile?.role === 'teacher') && myQuizzes.filter(q => clsSections.some(s => s.id === q.section_id)).length === 0) {
-                          return null;
-                        }
 
                         if (cls.is_divider) {
                           return (
@@ -939,9 +1079,6 @@ const Editor = ({ session, profile }) => {
                             </div>
 
                             {expandedClasses[cls.id] && clsSections.map((section, sIndex) => {
-                              const qs = myQuizzes.filter(q => q.section_id === section.id);
-                              if (qs.length === 0 && (profile?.role === 'editor' || profile?.role === 'teacher')) return null;
-
                               if (section.is_divider) {
                                 return (
                                   <div key={section.id} className="animate" style={{ padding: '15px 25px', borderTop: '1px solid rgba(0,0,0,0.03)', background: 'rgba(0,0,0,0.01)', display: 'flex', alignItems: 'center', gap: '15px' }}>
@@ -1008,6 +1145,7 @@ const Editor = ({ session, profile }) => {
                                       swapQuizzes={swapQuizzes}
                                       handleCreateDivider={handleCreateDivider}
                                       navigate={navigate}
+                                      editorMode={editorMode}
                                     />
                                   )}
                                 </div>

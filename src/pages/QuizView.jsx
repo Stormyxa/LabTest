@@ -137,7 +137,7 @@ const QuizView = ({ session, profile }) => {
   // beforeunload: save result if elapsed >= EXIT_GRACE_SECONDS
   useEffect(() => {
     const handleBeforeUnload = () => {
-      if (finishedRef.current || !questionsRef.current.length) return;
+      if (!session || finishedRef.current || !questionsRef.current.length) return;
       const elapsed = Math.round((Date.now() - startTimeRef.current) / 1000);
       const answeredCount = Object.keys(answersRef.current).length;
       
@@ -185,7 +185,7 @@ const QuizView = ({ session, profile }) => {
         if (!showResult && !loading) setIsBlurred(true);
 
         // Save pending result to localStorage (fires reliably even on tab close)
-        if (!finishedRef.current && questionsRef.current.length > 0) {
+        if (session && !finishedRef.current && questionsRef.current.length > 0) {
           const elapsed = Math.round((Date.now() - startTimeRef.current) / 1000);
           const answeredCount = Object.keys(answersRef.current).length;
           const shouldSave = elapsed >= EXIT_GRACE_SECONDS || (!isFirstAttempt && answeredCount > 2);
@@ -328,14 +328,18 @@ const QuizView = ({ session, profile }) => {
       }
 
       // Check if this is first attempt
-      const { count } = await supabase
-        .from('quiz_results')
-        .select('*', { count: 'exact', head: true })
-        .eq('quiz_id', data.id)
-        .eq('user_id', session.user.id);
-
-      const first = (count || 0) === 0;
+      let first = true;
+      if (session) {
+        const { count } = await supabase
+          .from('quiz_results')
+          .select('*', { count: 'exact', head: true })
+          .eq('quiz_id', data.id)
+          .eq('user_id', session.user.id);
+        first = (count || 0) === 0;
+      }
       setIsFirstAttempt(first);
+
+      // Restore session-specific state (Timer, Start Time, Current Question Index)
 
       // Restore timer from localStorage if page was refreshed mid-attempt
       const timerKey = `quiz_timer_${data.id}`;
@@ -363,23 +367,75 @@ const QuizView = ({ session, profile }) => {
         } catch (e) { console.error('Failed to restore answers:', e); }
       }
 
-      // Save any pending result from a closed tab
-      const pendingKey = `quiz_pending_${data.id}`;
-      const pendingRaw = localStorage.getItem(pendingKey);
-      if (pendingRaw) {
-        try {
-          const pending = JSON.parse(pendingRaw);
-          localStorage.removeItem(pendingKey);
-          // Check if already saved (first attempt might have been saved)
-          const { data: existing } = await supabase.from('quiz_results').select('id').eq('quiz_id', pending.quiz_id).eq('user_id', pending.user_id).maybeSingle();
-          if (existing) {
-            await supabase.from('quiz_results').update({ score: pending.score, total_questions: pending.total_questions, is_passed: pending.is_passed, completed_at: pending.completed_at, answers_array: pending.answers_array }).eq('id', existing.id);
-          } else {
-            const ins = { ...pending, first_score: pending.score, first_completed_at: pending.completed_at, first_answers_array: pending.answers_array };
-            if (!ins.class_id) delete ins.class_id;
-            await supabase.from('quiz_results').insert(ins);
-          }
-        } catch (e) { console.error('Pending save failed:', e); }
+      // Save any pending result from a closed tab (for logged in users)
+      if (session) {
+        const pendingKey = `quiz_pending_${data.id}`;
+        const pendingRaw = localStorage.getItem(pendingKey);
+        if (pendingRaw) {
+          try {
+            const pending = JSON.parse(pendingRaw);
+            localStorage.removeItem(pendingKey);
+            const { data: existing } = await supabase.from('quiz_results').select('id').eq('quiz_id', pending.quiz_id).eq('user_id', pending.user_id).maybeSingle();
+            if (existing) {
+              await supabase.from('quiz_results').update({ score: pending.score, total_questions: pending.total_questions, is_passed: pending.is_passed, completed_at: pending.completed_at, answers_array: pending.answers_array }).eq('id', existing.id);
+            } else {
+              const ins = { ...pending, first_score: pending.score, first_completed_at: pending.completed_at, first_answers_array: pending.answers_array };
+              if (!ins.class_id) delete ins.class_id;
+              await supabase.from('quiz_results').insert(ins);
+            }
+          } catch (e) { console.error('Pending save failed:', e); }
+        }
+      }
+
+      // Save any pending guest result if logged in
+      if (session) {
+        const guestKey = `guest_quiz_result_${data.id}`;
+        const guestRaw = sessionStorage.getItem(guestKey);
+        if (guestRaw) {
+          try {
+            const gr = JSON.parse(guestRaw);
+            sessionStorage.removeItem(guestKey);
+            
+            // Log attempt
+            await supabase.from('quiz_attempts').insert({
+              user_id: session.user.id,
+              quiz_id: data.id,
+              score: gr.score,
+              max_score: gr.total_questions,
+              time_spent_total: gr.time_spent_total,
+              is_passed: gr.is_passed,
+              is_suspicious: gr.is_suspicious,
+              suspicion_reason: gr.suspicion_reason,
+              answers_data: gr.detailedAnswers
+            });
+
+            // Update/Insert result summary
+            const { data: existing } = await supabase.from('quiz_results').select('id').eq('quiz_id', data.id).eq('user_id', session.user.id).maybeSingle();
+            if (existing) {
+              await supabase.from('quiz_results').update({
+                score: gr.score, total_questions: gr.total_questions,
+                is_passed: gr.is_passed, completed_at: gr.completed_at, answers_array: gr.answers_array
+              }).eq('id', existing.id);
+            } else {
+              const resData = {
+                quiz_id: data.id, user_id: session.user.id,
+                score: gr.score, total_questions: gr.total_questions,
+                is_passed: gr.is_passed, completed_at: gr.completed_at,
+                first_score: gr.score, first_completed_at: gr.completed_at,
+                answers_array: gr.answers_array, first_answers_array: gr.answers_array
+              };
+              if (profile?.class_id) resData.class_id = profile.class_id;
+              await supabase.from('quiz_results').insert(resData);
+            }
+            
+            // Set results screen states from the guest data
+            setAnswers(gr.detailedAnswers.reduce((acc, curr, i) => ({ ...acc, [i]: curr.chosenIndex }), {}));
+            setShowResult(true);
+            finishTimeRef.current = gr.finishTime;
+            startTimeRef.current = gr.startTime;
+            alert('Ваш гостевой результат успешно сохранен!');
+          } catch(e) { console.error('Guest save failed:', e); }
+        }
       }
     }
     setLoading(false);
@@ -504,6 +560,27 @@ const QuizView = ({ session, profile }) => {
         isCorrect: isCorrect
       };
     });
+    
+    if (!session) {
+      // Guest mode: save to sessionStorage
+      const guestResult = {
+        quiz_id: id,
+        score: correctCount,
+        total_questions: qs.length,
+        is_passed: isPassed,
+        answers_array: answersArray,
+        detailedAnswers: detailedAnswers,
+        completed_at: now,
+        is_suspicious: isSuspicious,
+        suspicion_reason: suspicion_reason,
+        time_spent_total: finalTimeSpent,
+        finishTime: finishTimeRef.current,
+        startTime: startTimeRef.current
+      };
+      sessionStorage.setItem(`guest_quiz_result_${id}`, JSON.stringify(guestResult));
+      savingRef.current = false;
+      return;
+    }
 
     try {
       // 1. Log the detailed attempt into the new table
@@ -627,26 +704,6 @@ const QuizView = ({ session, profile }) => {
   if (loading) return <div className="flex-center" style={{ height: '60vh' }}>Загрузка теста...</div>;
   if (!quiz) return <div className="container" style={{ textAlign: 'center', padding: '100px' }}>Тест не найден.</div>;
 
-  // SCREEN: NO CLASS (Observers can pass without a class)
-  if (!profile?.class_id && !profile?.is_observer) {
-    return (
-      <div className="container flex-center animate" style={{ padding: '100px 20px', flexDirection: 'column', textAlign: 'center' }}>
-        <div className="card" style={{ maxWidth: '500px' }}>
-          <div className="flex-center" style={{ justifyContent: 'center', width: '80px', height: '80px', borderRadius: '50%', background: 'rgba(248, 113, 113, 0.1)', color: '#f87171', margin: '0 auto 25px' }}>
-            <AlertTriangle size={40} />
-          </div>
-          <h2 style={{ marginBottom: '15px' }}>Класс не указан</h2>
-          <p style={{ opacity: 0.7, marginBottom: '30px', lineHeight: '1.6' }}>
-            Для прохождения тестов и сохранения результатов необходимо указать ваш класс в профиле.
-            Это поможет учителям видеть ваши успехи.
-          </p>
-          <button onClick={() => navigate('/profile', { state: { onboarding: true } })} style={{ width: '100%', padding: '15px' }}>
-            Перейти в профиль
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   const currentQ = questions[currentIdx];
   const chosen = answers[currentIdx];
@@ -684,6 +741,20 @@ const QuizView = ({ session, profile }) => {
                 {showAnswersList ? 'Скрыть разбор' : 'Посмотреть разбор'}
               </button>
             </div>
+            {!session && (
+              <div className="card animate" style={{ marginTop: '30px', background: 'var(--primary-color)', color: 'white', padding: '25px' }}>
+                <div className="flex-center" style={{ gap: '15px', marginBottom: '15px', justifyContent: 'center' }}>
+                  <Zap size={24} fill="white" />
+                  <h3 style={{ margin: 0, color: 'white' }}>Гостевой режим</h3>
+                </div>
+                <p style={{ fontSize: '0.95rem', opacity: 0.9, marginBottom: '20px', lineHeight: '1.5' }}>
+                  Вы прошли тест как гость. Чтобы сохранить этот результат в свой личный профиль и видеть статистику, войдите или зарегистрируйтесь.
+                </p>
+                <div className="flex-center" style={{ gap: '10px', justifyContent: 'center' }}>
+                  <button onClick={() => navigate('/auth')} style={{ background: 'white', color: 'var(--primary-color)', fontWeight: 'bold', border: 'none' }}>Войти и сохранить</button>
+                </div>
+              </div>
+            )}
           </div>
 
           {showAnswersList && (

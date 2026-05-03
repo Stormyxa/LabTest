@@ -189,7 +189,7 @@ const UserAnalytics = ({ session, profile: initialProfile }) => {
         if (tc) setTeacherClasses(tc);
       }
 
-      const isPrivileged = p.role === 'admin' || p.role === 'creator' || p.role === 'teacher' || p.role === 'editor';
+      const isPrivileged = p.role === 'admin' || p.role === 'creator' || p.role === 'teacher' || p.role === 'editor' || p.role === 'player';
       if (!isPrivileged) {
         setSidebarOpen(false);
       }
@@ -220,8 +220,20 @@ const UserAnalytics = ({ session, profile: initialProfile }) => {
         }
 
         // Fetch users with SWR
-        const usersCacheKey = `ua_users_${p.role === 'teacher' ? p.school_id : 'all'}`;
+        const usersCacheKey = `ua_users_${p.role === 'teacher' ? p.school_id : (p.role === 'player' ? p.id : 'all')}`;
         const cachedUsers = await fetchWithCache(usersCacheKey, async () => {
+          if (p.role === 'player') {
+            return [{
+              id: p.id,
+              first_name: p.first_name,
+              last_name: p.last_name,
+              city_id: p.city_id,
+              school_id: p.school_id,
+              class_id: p.class_id,
+              is_observer: p.is_observer
+            }];
+          }
+
           let query = supabase.from('profiles').select('id, first_name, last_name, city_id, school_id, class_id, is_observer');
           if (p.role === 'teacher') query = query.eq('school_id', p.school_id);
           
@@ -247,10 +259,15 @@ const UserAnalytics = ({ session, profile: initialProfile }) => {
         if (cachedUsers && cachedUsers.length > 0) setUsers(cachedUsers);
       }
 
-      const effectiveUserId = userIdParam || (!isPrivileged ? p.id : null);
+      let effectiveUserId = userIdParam;
+      if (p.role === 'player') {
+        if (!effectiveUserId) effectiveUserId = p.id;
+      } else if (!isPrivileged) {
+        effectiveUserId = p.id;
+      }
+
       if (effectiveUserId) {
         if (!isPrivileged && effectiveUserId !== p.id) {
-            // Unprivileged users can only see their own
             await fetchUserAnalytics(p.id, p);
         } else {
             await fetchUserAnalytics(effectiveUserId, p);
@@ -569,7 +586,7 @@ const UserAnalytics = ({ session, profile: initialProfile }) => {
 
     return weeks;
   }, [allUserAttempts, heatmapRange, viewMode, targetUser]);
-  const isPrivileged = useMemo(() => profile?.role === 'admin' || profile?.role === 'creator' || profile?.role === 'teacher' || profile?.role === 'editor', [profile]);
+  const isPrivileged = useMemo(() => profile?.role === 'admin' || profile?.role === 'creator' || profile?.role === 'teacher' || profile?.role === 'editor' || profile?.role === 'player', [profile]);
 
   return (
     <div style={{ display: 'flex', height: 'calc(100vh - 70px)', overflow: 'hidden' }}>

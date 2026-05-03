@@ -138,20 +138,22 @@ const SidebarUserList = React.memo(({
         </div>
       ) : (
         <>
-          <div style={{ display: 'flex', gap: '5px', marginBottom: '20px', background: 'rgba(0,0,0,0.03)', padding: '4px', borderRadius: '12px' }}>
-            <button 
-              onClick={() => setAnalyticsMode('official')}
-              style={{ flex: 1, padding: '8px', borderRadius: '10px', fontSize: '0.8rem', background: analyticsMode === 'official' ? 'white' : 'transparent', boxShadow: analyticsMode === 'official' ? '0 2px 8px rgba(0,0,0,0.05)' : 'none', color: analyticsMode === 'official' ? 'var(--primary-color)' : 'inherit', fontWeight: 'bold' }}
-            >
-              Каталог
-            </button>
-            <button 
-              onClick={() => setAnalyticsMode('personal')}
-              style={{ flex: 1, padding: '8px', borderRadius: '10px', fontSize: '0.8rem', background: analyticsMode === 'personal' ? 'white' : 'transparent', boxShadow: analyticsMode === 'personal' ? '0 2px 8px rgba(0,0,0,0.05)' : 'none', color: analyticsMode === 'personal' ? 'var(--primary-color)' : 'inherit', fontWeight: 'bold' }}
-            >
-              Личная
-            </button>
-          </div>
+          {profile?.role !== 'player' && (
+            <div style={{ display: 'flex', gap: '5px', marginBottom: '20px', background: 'rgba(0,0,0,0.03)', padding: '4px', borderRadius: '12px' }}>
+              <button
+                onClick={() => setAnalyticsMode('official')}
+                style={{ flex: 1, padding: '8px', borderRadius: '10px', fontSize: '0.8rem', background: analyticsMode === 'official' ? 'white' : 'transparent', boxShadow: analyticsMode === 'official' ? '0 2px 8px rgba(0,0,0,0.05)' : 'none', color: analyticsMode === 'official' ? 'var(--primary-color)' : 'inherit', fontWeight: 'bold' }}
+              >
+                Каталог
+              </button>
+              <button
+                onClick={() => setAnalyticsMode('personal')}
+                style={{ flex: 1, padding: '8px', borderRadius: '10px', fontSize: '0.8rem', background: analyticsMode === 'personal' ? 'white' : 'transparent', boxShadow: analyticsMode === 'personal' ? '0 2px 8px rgba(0,0,0,0.05)' : 'none', color: analyticsMode === 'personal' ? 'var(--primary-color)' : 'inherit', fontWeight: 'bold' }}
+              >
+                Личная
+              </button>
+            </div>
+          )}
 
           <div style={{ marginBottom: '20px' }}>
             <label htmlFor="ad-folder" style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '5px', display: 'block' }}>Выбор Теста</label>
@@ -682,7 +684,8 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
   const [quizSections, setQuizSections] = useState([]);
 
   // Test Filters — начальные значения из текущего режима
-  const initialMode = sessionStorage.getItem('ad_mode') || 'official';
+  const isPlayer = initialProfile?.role === 'player';
+  const initialMode = isPlayer ? 'personal' : (sessionStorage.getItem('ad_mode') || 'official');
   const [filterFolder, setFilterFolder] = useState(sessionStorage.getItem(`ad_${initialMode}_t_folder`) || 'all');
   const [filterSection, setFilterSection] = useState(sessionStorage.getItem(`ad_${initialMode}_t_section`) || 'all');
   const [filterQuiz, setFilterQuiz] = useState(quizIdParam || sessionStorage.getItem(`ad_${initialMode}_t_quiz`) || '');
@@ -817,7 +820,7 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
         }
       }
 
-      const isPrivileged = p.role === 'admin' || p.role === 'creator' || p.role === 'teacher' || p.role === 'editor';
+      const isPrivileged = p.role === 'admin' || p.role === 'creator' || p.role === 'teacher' || p.role === 'editor' || p.role === 'player';
       if (!isPrivileged) {
         setSidebarOpen(false);
       }
@@ -1200,7 +1203,7 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
     }
   };
 
-  const isPrivileged = profile?.role === 'admin' || profile?.role === 'creator' || profile?.role === 'teacher' || profile?.role === 'editor';
+  const isPrivileged = profile?.role === 'admin' || profile?.role === 'creator' || profile?.role === 'teacher' || profile?.role === 'editor' || profile?.role === 'player';
 
   return (
     <div style={{ display: 'flex', height: 'calc(100vh - 70px)', overflow: 'hidden' }}>

@@ -101,7 +101,7 @@ const QuizRedactor = () => {
     const canEdit =
       p?.role === 'creator' ||
       (p?.role === 'admin' && authorRole !== 'creator') ||
-      ((p?.role === 'teacher' || p?.role === 'editor') && q.author_id === user.id);
+      ((p?.role === 'teacher' || p?.role === 'editor' || p?.role === 'player') && q.author_id === user.id);
 
     if (!canEdit) { setBlocked('no_permission'); setLoading(false); return; }
 
@@ -605,7 +605,7 @@ const QuizRedactor = () => {
 
     const isPrivileged = profile?.role === 'creator' || profile?.role === 'admin';
     const isAuthor = quiz?.author_id === profile?.id;
-    const canDelete = isPrivileged || (isAuthor && !hasForeignResults);
+    const canDelete = isPrivileged || (isAuthor && (!hasForeignResults || quiz?.is_personal));
     const canEditOnlyTitle = isPrivileged || isAuthor;
 
     return (
@@ -657,7 +657,7 @@ const QuizRedactor = () => {
                 <Trash2 size={18} style={{ marginRight: '8px' }} /> Удалить тест
               </button>
             )}
-            {isPrivileged && (
+            {(isPrivileged || (isAuthor && quiz?.is_personal)) && (
               <button
                 onClick={() => { setDeleteResultsLock(3); setShowDeleteResultsModal(true); }}
                 className="flex-center"

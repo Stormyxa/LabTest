@@ -295,7 +295,7 @@ const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, 
     if (!profile) return false;
     if (profile.role === 'creator') return true;
     if (profile.role === 'admin' && quiz.profiles?.role !== 'creator') return true;
-    if ((profile.role === 'teacher' || profile.role === 'editor') && quiz.author_id === profile.id) return true;
+    if ((profile.role === 'teacher' || profile.role === 'editor' || profile.role === 'player') && quiz.author_id === profile.id) return true;
     return false;
   }, [profile]);
 
