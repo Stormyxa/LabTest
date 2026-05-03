@@ -61,6 +61,8 @@ const QuizView = ({ session, profile }) => {
 
   const [detailedImageModal, setDetailedImageModal] = useState({ isOpen: false, images: [], currentImgIdx: 0, question: '', userAnswer: '', correctAnswer: '', isCorrect: false });
   
+  const [modal, setModal] = useState({ isOpen: false, title: '', message: '', type: 'success' });
+
   // Quick Auth for Guests
   const [qaMode, setQaMode] = useState('choice'); // 'choice', 'login', 'register'
   const [qaEmail, setQaEmail] = useState('');
@@ -134,7 +136,67 @@ const QuizView = ({ session, profile }) => {
 
   useEffect(() => {
     fetchQuiz();
-  }, [id, session]);
+  }, [id]);
+
+  // Handle Guest Result Auto-save when session appears
+  useEffect(() => {
+    if (session && quiz) {
+      const guestKey = `guest_quiz_result_${quiz.id}`;
+      const guestRaw = sessionStorage.getItem(guestKey);
+      if (guestRaw) {
+        (async () => {
+          try {
+            const gr = JSON.parse(guestRaw);
+            sessionStorage.removeItem(guestKey);
+            
+            // Log attempt
+            await supabase.from('quiz_attempts').insert({
+              user_id: session.user.id,
+              quiz_id: quiz.id,
+              score: gr.score,
+              max_score: gr.total_questions,
+              time_spent_total: gr.time_spent_total,
+              is_passed: gr.is_passed,
+              is_suspicious: gr.is_suspicious,
+              suspicion_reason: gr.suspicion_reason,
+              answers_data: gr.detailedAnswers
+            });
+
+            // Update/Insert result summary
+            const { data: existing } = await supabase.from('quiz_results').select('id').eq('quiz_id', quiz.id).eq('user_id', session.user.id).maybeSingle();
+            if (existing) {
+              await supabase.from('quiz_results').update({
+                score: gr.score, total_questions: gr.total_questions,
+                is_passed: gr.is_passed, completed_at: gr.completed_at, answers_array: gr.answers_array
+              }).eq('id', existing.id);
+            } else {
+              const resData = {
+                quiz_id: quiz.id, user_id: session.user.id,
+                score: gr.score, total_questions: gr.total_questions,
+                is_passed: gr.is_passed, completed_at: gr.completed_at,
+                first_score: gr.score, first_completed_at: gr.completed_at,
+                answers_array: gr.answers_array, first_answers_array: gr.answers_array
+              };
+              if (profile?.class_id) resData.class_id = profile.class_id;
+              await supabase.from('quiz_results').insert(resData);
+            }
+            
+            // Set results screen states from the guest data
+            setAnswers(gr.detailedAnswers.reduce((acc, curr, i) => ({ ...acc, [i]: curr.chosenIndex }), {}));
+            setShowResult(true);
+            finishTimeRef.current = gr.finishTime;
+            startTimeRef.current = gr.startTime;
+            setModal({
+              isOpen: true,
+              title: 'Успешно!',
+              message: 'Ваш гостевой результат был успешно сохранен в ваш личный профиль.',
+              type: 'success'
+            });
+          } catch(e) { console.error('Guest save failed:', e); }
+        })();
+      }
+    }
+  }, [session, quiz, profile]);
 
   // Stopwatch effect for tracking time spent per question
   useEffect(() => {
@@ -421,57 +483,6 @@ const QuizView = ({ session, profile }) => {
               await supabase.from('quiz_results').insert(ins);
             }
           } catch (e) { console.error('Pending save failed:', e); }
-        }
-      }
-
-      // Save any pending guest result if logged in
-      if (session) {
-        const guestKey = `guest_quiz_result_${data.id}`;
-        const guestRaw = sessionStorage.getItem(guestKey);
-        if (guestRaw) {
-          try {
-            const gr = JSON.parse(guestRaw);
-            sessionStorage.removeItem(guestKey);
-            
-            // Log attempt
-            await supabase.from('quiz_attempts').insert({
-              user_id: session.user.id,
-              quiz_id: data.id,
-              score: gr.score,
-              max_score: gr.total_questions,
-              time_spent_total: gr.time_spent_total,
-              is_passed: gr.is_passed,
-              is_suspicious: gr.is_suspicious,
-              suspicion_reason: gr.suspicion_reason,
-              answers_data: gr.detailedAnswers
-            });
-
-            // Update/Insert result summary
-            const { data: existing } = await supabase.from('quiz_results').select('id').eq('quiz_id', data.id).eq('user_id', session.user.id).maybeSingle();
-            if (existing) {
-              await supabase.from('quiz_results').update({
-                score: gr.score, total_questions: gr.total_questions,
-                is_passed: gr.is_passed, completed_at: gr.completed_at, answers_array: gr.answers_array
-              }).eq('id', existing.id);
-            } else {
-              const resData = {
-                quiz_id: data.id, user_id: session.user.id,
-                score: gr.score, total_questions: gr.total_questions,
-                is_passed: gr.is_passed, completed_at: gr.completed_at,
-                first_score: gr.score, first_completed_at: gr.completed_at,
-                answers_array: gr.answers_array, first_answers_array: gr.answers_array
-              };
-              if (profile?.class_id) resData.class_id = profile.class_id;
-              await supabase.from('quiz_results').insert(resData);
-            }
-            
-            // Set results screen states from the guest data
-            setAnswers(gr.detailedAnswers.reduce((acc, curr, i) => ({ ...acc, [i]: curr.chosenIndex }), {}));
-            setShowResult(true);
-            finishTimeRef.current = gr.finishTime;
-            startTimeRef.current = gr.startTime;
-            alert('Ваш гостевой результат успешно сохранен!');
-          } catch(e) { console.error('Guest save failed:', e); }
         }
       }
     }
@@ -1309,6 +1320,25 @@ const QuizView = ({ session, profile }) => {
           </button>
         </div>,
         document.body
+      )}
+      {/* МОДАЛЬНОЕ ОКНО УСПЕХА */}
+      {modal.isOpen && (
+        <div className="modal-overlay" onClick={() => setModal({ ...modal, isOpen: false })}>
+          <div className="modal-content animate" onClick={e => e.stopPropagation()} style={{ maxWidth: '450px' }}>
+            <div className="flex-center" style={{
+              width: '70px', height: '70px', borderRadius: '50%', background: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', margin: '0 auto 25px'
+            }}>
+              <CheckCircle size={40} />
+            </div>
+            <h2 style={{ marginBottom: '15px' }}>{modal.title}</h2>
+            <p style={{ opacity: 0.7, marginBottom: '30px', lineHeight: '1.6' }}>
+              {modal.message}
+            </p>
+            <button onClick={() => setModal({ ...modal, isOpen: false })} style={{ width: '100%', padding: '15px' }}>
+              Понятно
+            </button>
+          </div>
+        </div>
       )}
     </>
   );
