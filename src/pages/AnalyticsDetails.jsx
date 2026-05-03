@@ -172,7 +172,7 @@ const SidebarUserList = React.memo(({
               <option value="all">Все папки</option>
               {quizFolders.map(f => (
                 <option key={f.id} value={f.id} disabled={f.is_divider || isFolderEmpty(f.id)}>
-                  {f.is_divider ? `--- ${f.name} ---` : f.name} {isFolderEmpty(f.id) && !f.is_divider ? '(пусто)' : ''}
+                  {f.is_divider ? `--- ${f.name} ---` : f.name} {isFolderEmpty(f.id) && !f.is_divider ? (isStudent ? '(нет результатов)' : '(пусто)') : ''}
                 </option>
               ))}
             </select>
@@ -180,15 +180,16 @@ const SidebarUserList = React.memo(({
               <option value="all">Все предметы</option>
               {validSections.map(s => (
                 <option key={s.id} value={s.id} disabled={s.is_divider || isSectionEmpty(s.id)}>
-                  {s.is_divider ? `--- ${s.name} ---` : s.name} {isSectionEmpty(s.id) && !s.is_divider ? '(пусто)' : ''}
+                  {s.is_divider ? `--- ${s.name} ---` : s.name} {isSectionEmpty(s.id) && !s.is_divider ? (isStudent ? '(нет результатов)' : '(пусто)') : ''}
                 </option>
               ))}
             </select>
             <select id="ad-quiz" value={filterQuiz} onChange={e => handleQuizSelect(e.target.value)} style={{ width: '100%', padding: '8px' }} aria-label="Тест" disabled={isStudent}>
               <option value="" disabled>-- Выберите тест --</option>
               {validQuizzes.map(q => (
-                <option key={q.id} value={q.id} disabled={q.is_divider}>
+                <option key={q.id} value={q.id} disabled={q.is_divider || (isStudent && !playerResults.some(pr => pr.quiz_id === q.id))}>
                   {q.is_divider ? `--- ${q.divider_text || 'Разделитель'} ---` : q.title}
+                  {isStudent && !q.is_divider && !playerResults.some(pr => pr.quiz_id === q.id) ? ' (нет результатов)' : ''}
                 </option>
               ))}
             </select>
@@ -696,7 +697,7 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
 
   // Test Filters — начальные значения из текущего режима
   const isPlayer = initialProfile?.role === 'player';
-  const initialMode = isPlayer ? 'personal' : (sessionStorage.getItem('ad_mode') || 'official');
+  const initialMode = sessionStorage.getItem('ad_mode') || (isPlayer ? 'official' : 'personal');
   const [filterFolder, setFilterFolder] = useState(sessionStorage.getItem(`ad_${initialMode}_t_folder`) || 'all');
   const [filterSection, setFilterSection] = useState(sessionStorage.getItem(`ad_${initialMode}_t_section`) || 'all');
   const [filterQuiz, setFilterQuiz] = useState(quizIdParam || sessionStorage.getItem(`ad_${initialMode}_t_quiz`) || '');
@@ -712,6 +713,8 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
   const scrollRef = React.useRef(null);
 
   const [analyticsMode, setAnalyticsMode] = useState(initialMode);
+  const [playerResults, setPlayerResults] = useState([]); // Array of { quiz_id }
+
   const [detailedImageModal, setDetailedImageModal] = useState({ isOpen: false, images: [], currentImgIdx: 0, question: '', userAnswer: '', correctAnswer: '', isCorrect: false, timeSpent: 0, avgQTime: 0 });
 
   // Delete Modal States
@@ -837,7 +840,7 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
       }
 
       const isPersonal = analyticsMode === 'personal';
-      const [qF, secs, qs, c, s, cl] = await Promise.all([
+      const [qF, secs, qs, c, s, cl, playerRes] = await Promise.all([
         fetchWithCache(`quiz_classes_${analyticsMode}_${p.id}`, () => {
           let q = supabase.from('quiz_classes').select('id, name, sort_order, is_divider, is_personal, author_id').order('sort_order', { ascending: true });
           if (isPersonal) q = q.eq('is_personal', true).eq('author_id', p.id);
@@ -861,7 +864,8 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
         }),
         fetchWithCache('cities', () => supabase.from('cities').select('*').order('name').then(res => res.data)),
         fetchWithCache('schools', () => supabase.from('schools').select('*').order('name').then(res => res.data)),
-        fetchWithCache('classes', () => supabase.from('classes').select('*').order('name').then(res => res.data))
+        fetchWithCache('classes', () => supabase.from('classes').select('*').order('name').then(res => res.data)),
+        p.role === 'player' ? supabase.from('quiz_results').select('quiz_id').eq('user_id', p.id) : Promise.resolve({ data: [] })
       ]);
 
       if (qF) setQuizFolders(qF);
@@ -870,6 +874,9 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
       if (c) setCities(c);
       if (s) setSchools(s);
       if (cl) setClasses(cl);
+      if (p.role === 'player' && playerRes && playerRes.data) {
+        setPlayerResults(playerRes.data);
+      }
 
       // Фильтры УЖЕ выставлены (через switchMode или init).
       // Но для учителя с 1 классом нужно принудительно задать city/school/class при первой загрузке
@@ -1153,8 +1160,23 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
     ? quizzes.filter(q => filterFolder === 'all' || validSections.some(vs => vs.id === q.section_id))
     : quizzes.filter(q => q.section_id === filterSection), [filterSection, filterFolder, quizzes, validSections]);
 
-  const isFolderEmpty = useCallback((fId) => !quizzes.some(q => sections.some(s => s.class_id === fId && q.section_id === s.id)), [quizzes, sections]);
-  const isSectionEmpty = useCallback((sId) => !quizzes.some(q => q.section_id === sId), [quizzes]);
+  const isFolderEmpty = useCallback((fId) => {
+    const folderQuizzes = quizzes.filter(q => sections.some(s => s.class_id === fId && q.section_id === s.id));
+    if (folderQuizzes.length === 0) return true;
+    if (profile?.role === 'player') {
+      return !folderQuizzes.some(q => playerResults.some(pr => pr.quiz_id === q.id));
+    }
+    return false;
+  }, [quizzes, sections, playerResults, profile]);
+
+  const isSectionEmpty = useCallback((sId) => {
+    const sectionQuizzes = quizzes.filter(q => q.section_id === sId);
+    if (sectionQuizzes.length === 0) return true;
+    if (profile?.role === 'player') {
+      return !sectionQuizzes.some(q => playerResults.some(pr => pr.quiz_id === q.id));
+    }
+    return false;
+  }, [quizzes, playerResults, profile]);
 
   const filteredUsers = useMemo(() => users.filter(u => {
     // If student, always show self

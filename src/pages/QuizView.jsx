@@ -186,12 +186,9 @@ const QuizView = ({ session, profile }) => {
             setShowResult(true);
             finishTimeRef.current = gr.finishTime;
             startTimeRef.current = gr.startTime;
-            setModal({
-              isOpen: true,
-              title: 'Успешно!',
-              message: 'Ваш гостевой результат был успешно сохранен в ваш личный профиль.',
-              type: 'success'
-            });
+            
+            // Redirect to detailed analytics for this result
+            navigate(`/analytics-details?quizId=${quiz.id}&userId=${session.user.id}`);
           } catch(e) { console.error('Guest save failed:', e); }
         })();
       }
