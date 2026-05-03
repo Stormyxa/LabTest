@@ -78,7 +78,15 @@ const QuizView = ({ session, profile }) => {
         if (error) throw error;
       } else {
         const { data, error } = await supabase.auth.signUp({ email: qaEmail, password: qaPassword });
-        if (error) throw error;
+        if (error) {
+          if (error.message.toLowerCase().includes('already registered')) {
+            setQaError('Аккаунт с таким email уже существует. Пожалуйста, войдите.');
+            setQaMode('login');
+            setQaLoading(false);
+            return;
+          }
+          throw error;
+        }
         if (data?.user && !data.session) {
           setQaError('Регистрация успешна! Пожалуйста, подтвердите email по ссылке в письме.');
         }
@@ -126,7 +134,7 @@ const QuizView = ({ session, profile }) => {
 
   useEffect(() => {
     fetchQuiz();
-  }, [id]);
+  }, [id, session]);
 
   // Stopwatch effect for tracking time spent per question
   useEffect(() => {
