@@ -127,12 +127,11 @@ function App() {
         <Route path="/auth" element={!session ? <Auth /> : <Navigate to="/" />} />
 
         <Route path="/catalog" element={
-          !session ? <Navigate to="/auth" /> :
-            !profile?.is_profile_setup_completed ? <Navigate to="/profile" state={{ from: '/catalog', msg: 'Подтвердите данные профиля.' }} /> :
-              <QuizCatalog profile={profile} />
+          (!session || profile?.is_profile_setup_completed) ? <QuizCatalog profile={profile} /> :
+            <Navigate to="/profile" state={{ from: '/catalog', msg: 'Подтвердите данные профиля.' }} />
         } />
 
-        <Route path="/quiz/:id" element={session ? <QuizView session={session} profile={profile} /> : <Navigate to="/auth" />} />
+        <Route path="/quiz/:id" element={<QuizView session={session} profile={profile} />} />
 
         <Route path="/editor" element={isEditor ? <Editor session={session} profile={profile} /> : <Navigate to="/" />} />
         <Route path="/dashboard" element={(isAdmin || isTeacher) ? <Dashboard session={session} profile={profile} /> : <Navigate to="/" />} />

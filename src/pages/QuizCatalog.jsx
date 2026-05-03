@@ -1272,7 +1272,10 @@ const QuizCatalog = ({ profile }) => {
     <div className="container" style={{ padding: '40px 20px' }}>
 
       <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', overflowX: 'auto', paddingBottom: '10px' }}>
-        {['official', 'personal', 'public', 'shared'].map(tab => {
+        {['official', 'personal', 'public', 'shared'].filter(tab => {
+          if (!profile) return tab === 'official' || tab === 'public';
+          return true;
+        }).map(tab => {
           const labels = { official: 'Официальный каталог', personal: 'Личная библиотека', public: 'Общая библиотека', shared: 'Доступные мне' };
           return (
             <button
