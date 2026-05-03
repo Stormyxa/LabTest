@@ -698,7 +698,8 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
 
   // Test Filters — начальные значения из текущего режима
   const isPlayer = initialProfile?.role === 'player';
-  const initialMode = sessionStorage.getItem('ad_mode') || 'official';
+  // Force official mode when navigating via direct link (from UserAnalytics or QuizView)
+  const initialMode = quizIdParam ? 'official' : (sessionStorage.getItem('ad_mode') || 'official');
   const [filterFolder, setFilterFolder] = useState(sessionStorage.getItem(`ad_${initialMode}_t_folder`) || 'all');
   const [filterSection, setFilterSection] = useState(sessionStorage.getItem(`ad_${initialMode}_t_section`) || 'all');
   const [filterQuiz, setFilterQuiz] = useState(quizIdParam || sessionStorage.getItem(`ad_${initialMode}_t_quiz`) || '');
@@ -713,7 +714,13 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
   const [sidebarOpen, setSidebarOpen] = useState(sessionStorage.getItem('ad_sidebar_open') !== 'false');
   const scrollRef = React.useRef(null);
 
-  const [analyticsMode, setAnalyticsMode] = useState(initialMode);
+  const [analyticsMode, setAnalyticsMode] = useState(() => {
+    // If navigating via direct link, force official mode and sync to sessionStorage
+    if (quizIdParam && sessionStorage.getItem('ad_mode') !== 'official') {
+      sessionStorage.setItem('ad_mode', 'official');
+    }
+    return initialMode;
+  });
   const [playerResults, setPlayerResults] = useState([]); // Array of { quiz_id }
 
   const [detailedImageModal, setDetailedImageModal] = useState({ isOpen: false, images: [], currentImgIdx: 0, question: '', userAnswer: '', correctAnswer: '', isCorrect: false, timeSpent: 0, avgQTime: 0 });
