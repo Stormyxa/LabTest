@@ -697,7 +697,7 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
 
   // Test Filters — начальные значения из текущего режима
   const isPlayer = initialProfile?.role === 'player';
-  const initialMode = sessionStorage.getItem('ad_mode') || (isPlayer ? 'official' : 'personal');
+  const initialMode = sessionStorage.getItem('ad_mode') || 'official';
   const [filterFolder, setFilterFolder] = useState(sessionStorage.getItem(`ad_${initialMode}_t_folder`) || 'all');
   const [filterSection, setFilterSection] = useState(sessionStorage.getItem(`ad_${initialMode}_t_section`) || 'all');
   const [filterQuiz, setFilterQuiz] = useState(quizIdParam || sessionStorage.getItem(`ad_${initialMode}_t_quiz`) || '');
@@ -897,6 +897,16 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
         const found = qs.find(q => q.id === currentQuizId);
         if (found) {
           setTargetQuiz(found);
+          // Auto-detect folder and section if coming from a direct link
+          if (quizIdParam && secs) {
+            const sec = secs.find(s => s.id === found.section_id);
+            if (sec) {
+              setFilterSection(sec.id);
+              setFilterFolder(sec.class_id);
+              saveModeFilter('t_section', sec.id);
+              saveModeFilter('t_folder', sec.class_id);
+            }
+          }
           fetchUsersForQuiz(currentQuizId, p, userIdParam, targetTeacherClasses);
         }
       }

@@ -187,8 +187,15 @@ const QuizView = ({ session, profile }) => {
             finishTimeRef.current = gr.finishTime;
             startTimeRef.current = gr.startTime;
             
-            // Redirect to detailed analytics for this result
-            navigate(`/analytics-details?quizId=${quiz.id}&userId=${session.user.id}`);
+            // Show success modal with confirmation redirect
+            setModal({
+              isOpen: true,
+              title: 'Успешно!',
+              message: 'Ваш гостевой результат был успешно сохранен в ваш личный профиль. Теперь вы можете просмотреть детальную аналитику вашей попытки.',
+              type: 'success',
+              isStatic: true,
+              onConfirm: () => navigate(`/analytics-details?quizId=${quiz.id}&userId=${session.user.id}`)
+            });
           } catch(e) { console.error('Guest save failed:', e); }
         })();
       }
@@ -1348,7 +1355,7 @@ const QuizView = ({ session, profile }) => {
       )}
       {/* МОДАЛЬНОЕ ОКНО УСПЕХА */}
       {modal.isOpen && (
-        <div className="modal-overlay" onClick={() => setModal({ ...modal, isOpen: false })}>
+        <div className="modal-overlay" onClick={() => !modal.isStatic && setModal({ ...modal, isOpen: false })}>
           <div className="modal-content animate" onClick={e => e.stopPropagation()} style={{ maxWidth: '450px' }}>
             <div className="flex-center" style={{
               width: '70px', height: '70px', borderRadius: '50%', background: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', margin: '0 auto 25px'
@@ -1359,7 +1366,10 @@ const QuizView = ({ session, profile }) => {
             <p style={{ opacity: 0.7, marginBottom: '30px', lineHeight: '1.6' }}>
               {modal.message}
             </p>
-            <button onClick={() => setModal({ ...modal, isOpen: false })} style={{ width: '100%', padding: '15px' }}>
+            <button onClick={() => {
+              setModal({ ...modal, isOpen: false });
+              if (modal.onConfirm) modal.onConfirm();
+            }} style={{ width: '100%', padding: '15px' }}>
               Понятно
             </button>
           </div>
