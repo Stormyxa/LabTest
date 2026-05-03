@@ -168,7 +168,7 @@ const SidebarUserList = React.memo(({
 
           <div style={{ marginBottom: '20px' }}>
             <label htmlFor="ad-folder" style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '5px', display: 'block' }}>Выбор Теста</label>
-            <select id="ad-folder" value={filterFolder} onChange={e => setFilterFolder(e.target.value)} style={{ width: '100%', marginBottom: '10px', padding: '8px' }} disabled={isStudent}>
+            <select id="ad-folder" value={filterFolder} onChange={e => setFilterFolder(e.target.value)} style={{ width: '100%', marginBottom: '10px', padding: '8px' }}>
               <option value="all">Все папки</option>
               {quizFolders.map(f => (
                 <option key={f.id} value={f.id} disabled={f.is_divider || isFolderEmpty(f.id)}>
@@ -176,7 +176,7 @@ const SidebarUserList = React.memo(({
                 </option>
               ))}
             </select>
-            <select id="ad-section" value={filterSection} onChange={e => setFilterSection(e.target.value)} style={{ width: '100%', marginBottom: '10px', padding: '8px' }} aria-label="Предмет" disabled={isStudent}>
+            <select id="ad-section" value={filterSection} onChange={e => setFilterSection(e.target.value)} style={{ width: '100%', marginBottom: '10px', padding: '8px' }} aria-label="Предмет">
               <option value="all">Все предметы</option>
               {validSections.map(s => (
                 <option key={s.id} value={s.id} disabled={s.is_divider || isSectionEmpty(s.id)}>
@@ -184,7 +184,7 @@ const SidebarUserList = React.memo(({
                 </option>
               ))}
             </select>
-            <select id="ad-quiz" value={filterQuiz} onChange={e => handleQuizSelect(e.target.value)} style={{ width: '100%', padding: '8px' }} aria-label="Тест" disabled={isStudent}>
+            <select id="ad-quiz" value={filterQuiz} onChange={e => handleQuizSelect(e.target.value)} style={{ width: '100%', padding: '8px' }} aria-label="Тест">
               <option value="" disabled>-- Выберите тест --</option>
               {validQuizzes.map(q => (
                 <option key={q.id} value={q.id} disabled={q.is_divider || (isStudent && !playerResults.some(pr => pr.quiz_id === q.id))}>
@@ -201,7 +201,7 @@ const SidebarUserList = React.memo(({
             <>
               <label htmlFor="ad-city" style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '10px', display: 'block' }}>Фильтры Учеников</label>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '15px' }}>
-                <select id="ad-city" value={filterCity} onChange={e => { setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all'); }} style={{ padding: '6px', fontSize: '0.85rem' }} disabled={!canChangeCity}>
+                <select id="ad-city" value={filterCity} onChange={e => { setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all'); }} style={{ padding: '6px', fontSize: '0.85rem' }} disabled={isStudent || !canChangeCity}>
                   <option value="all">Все города</option>
                   {availableCities.map(c => {
                     const hasResults = users.some(u => u.city_id === c.id);
@@ -212,7 +212,7 @@ const SidebarUserList = React.memo(({
                     );
                   })}
                 </select>
-                <select id="ad-school" value={filterSchool} onChange={e => { setFilterSchool(e.target.value); setFilterClass('all'); }} disabled={!canChangeSchool} style={{ padding: '6px', fontSize: '0.85rem' }} aria-label="Школа">
+                <select id="ad-school" value={filterSchool} onChange={e => { setFilterSchool(e.target.value); setFilterClass('all'); }} disabled={isStudent || !canChangeSchool} style={{ padding: '6px', fontSize: '0.85rem' }} aria-label="Школа">
                   <option value="all">Все школы</option>
                   {availableSchools.map(s => {
                     const hasResults = users.some(u => u.school_id === s.id);
@@ -223,7 +223,7 @@ const SidebarUserList = React.memo(({
                     );
                   })}
                 </select>
-                <select id="ad-class" value={filterClass} onChange={e => setFilterClass(e.target.value)} style={{ padding: '6px', fontSize: '0.85rem' }} aria-label="Класс" disabled={!canChangeClass}>
+                <select id="ad-class" value={filterClass} onChange={e => setFilterClass(e.target.value)} style={{ padding: '6px', fontSize: '0.85rem' }} aria-label="Класс" disabled={isStudent || !canChangeClass}>
                   <option value="all">Все классы</option>
                   {availableClasses.map(c => {
                     const hasResults = users.some(u => u.class_id === c.id);
@@ -237,7 +237,7 @@ const SidebarUserList = React.memo(({
                 <div style={{ position: 'relative' }}>
                   <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', opacity: 0.5 }} />
                   <label htmlFor="ad-search" style={{ display: 'none' }}>Поиск</label>
-                  <input id="ad-search" type="text" placeholder="Поиск..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ width: '100%', padding: '6px 10px 6px 30px', fontSize: '0.85rem' }} />
+                  <input id="ad-search" type="text" placeholder="Поиск..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ width: '100%', padding: '6px 10px 6px 30px', fontSize: '0.85rem' }} disabled={isStudent} />
                 </div>
               </div>
 

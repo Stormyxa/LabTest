@@ -450,6 +450,7 @@ const UserAnalytics = ({ session, profile: initialProfile }) => {
   }, [fetchUserAnalytics, setSearchParams, users]);
 
   const isTeacher = profile?.role === 'teacher';
+  const isStudent = profile?.role === 'player';
   const teacherClassObjects = classes.filter(c => teacherClasses.includes(c.id));
   const teacherSchoolIds = [...new Set(teacherClassObjects.map(c => c.school_id))];
   const teacherCityIds = [...new Set(schools.filter(s => teacherSchoolIds.includes(s.id)).map(s => s.city_id))];
@@ -647,22 +648,22 @@ const UserAnalytics = ({ session, profile: initialProfile }) => {
                 <>
                   <label htmlFor="ua-city" style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '10px', display: 'block' }}>Фильтры</label>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '15px' }}>
-                    <select id="ua-city" value={filterCity} onChange={e => {setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all');}} style={{ padding: '6px', fontSize: '0.85rem' }} disabled={isTeacher && availableCities.length <= 1}>
+                    <select id="ua-city" value={filterCity} onChange={e => {setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all');}} style={{ padding: '6px', fontSize: '0.85rem' }} disabled={isStudent || (isTeacher && availableCities.length <= 1)}>
                       <option value="all">Все города</option>
                       {availableCities.map(c => <option key={c.id} value={c.id} disabled={!users.some(u => u.city_id === c.id)}>{c.name}</option>)}
                     </select>
-                    <select id="ua-school" value={filterSchool} onChange={e => {setFilterSchool(e.target.value); setFilterClass('all');}} disabled={isTeacher && availableSchools.length <= 1} style={{ padding: '6px', fontSize: '0.85rem' }} aria-label="Школа">
+                    <select id="ua-school" value={filterSchool} onChange={e => {setFilterSchool(e.target.value); setFilterClass('all');}} disabled={isStudent || (isTeacher && availableSchools.length <= 1)} style={{ padding: '6px', fontSize: '0.85rem' }} aria-label="Школа">
                       <option value="all">Все школы</option>
                       {availableSchools.map(s => <option key={s.id} value={s.id} disabled={!users.some(u => u.school_id === s.id)}>{s.name}</option>)}
                     </select>
-                    <select id="ua-class" value={filterClass} onChange={e => setFilterClass(e.target.value)} style={{ padding: '6px', fontSize: '0.85rem' }} disabled={isTeacher && availableClasses.length <= 1} aria-label="Класс">
+                    <select id="ua-class" value={filterClass} onChange={e => setFilterClass(e.target.value)} style={{ padding: '6px', fontSize: '0.85rem' }} disabled={isStudent || (isTeacher && availableClasses.length <= 1)} aria-label="Класс">
                       <option value="all">Все классы</option>
                       {availableClasses.map(c => <option key={c.id} value={c.id} disabled={!users.some(u => u.class_id === c.id)}>{c.name}</option>)}
                     </select>
                     <div style={{ position: 'relative' }}>
                       <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', opacity: 0.5 }} />
                       <label htmlFor="ua-search" style={{ display: 'none' }}>Поиск</label>
-                      <input id="ua-search" type="text" placeholder="Поиск по имени..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ width: '100%', padding: '6px 10px 6px 30px', fontSize: '0.85rem' }} />
+                      <input id="ua-search" type="text" placeholder="Поиск по имени..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ width: '100%', padding: '6px 10px 6px 30px', fontSize: '0.85rem' }} disabled={isStudent} />
                     </div>
                   </div>
 
