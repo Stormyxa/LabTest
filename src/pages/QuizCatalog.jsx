@@ -1510,16 +1510,29 @@ const QuizCatalog = ({ profile }) => {
               </div>
             )}
 
-            <button
-              onClick={() => {
-                const url = `${window.location.origin}${window.location.pathname}?shareQuiz=${shareModalQuiz.id}`;
-                navigator.clipboard.writeText(url);
-                alert('Ссылка скопирована!');
-              }}
-              style={{ width: '100%', padding: '15px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', fontWeight: 'bold' }}
-            >
-              Копировать ссылку
-            </button>
+            <div style={{ display: 'grid', gap: '10px' }}>
+              <button
+                onClick={() => {
+                  const url = `${window.location.origin}${window.location.pathname}?shareQuiz=${shareModalQuiz.id}`;
+                  const text = `${shareModalQuiz.title}\n${url}`;
+                  navigator.clipboard.writeText(text);
+                  alert('Название и ссылка скопированы!');
+                }}
+                style={{ width: '100%', padding: '15px', background: 'var(--primary-color)', color: 'white', fontWeight: 'bold' }}
+              >
+                Копировать с названием
+              </button>
+              <button
+                onClick={() => {
+                  const url = `${window.location.origin}${window.location.pathname}?shareQuiz=${shareModalQuiz.id}`;
+                  navigator.clipboard.writeText(url);
+                  alert('Ссылка скопирована!');
+                }}
+                style={{ width: '100%', padding: '15px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', fontWeight: 'bold' }}
+              >
+                Копировать только ссылку
+              </button>
+            </div>
           </div>
         </div>
       )}
