@@ -75,13 +75,36 @@ const Home = ({ session, profile }) => {
               </button>
             ) : (
               <>
-                <button
-                  onClick={() => navigate('/catalog')}
-                  style={{ fontSize: '1.1rem', padding: '15px 40px', background: 'var(--secondary-color)' }}
-                >
-                  <LayoutGrid size={20} style={{ marginRight: '10px' }} />
-                  Каталог тестов
-                </button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', width: '100%', maxWidth: '600px' }}>
+                  <button
+                    onClick={() => { sessionStorage.setItem('catalog_tab', 'official'); navigate('/catalog'); }}
+                    style={{ fontSize: '1.1rem', padding: '15px 40px', background: 'var(--secondary-color)', width: '100%' }}
+                  >
+                    <LayoutGrid size={20} style={{ marginRight: '10px' }} />
+                    Официальный каталог
+                  </button>
+                  
+                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                     <button
+                        onClick={() => { sessionStorage.setItem('catalog_tab', 'personal'); navigate('/catalog'); }}
+                        style={{ flex: 1, minWidth: '160px', padding: '12px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none' }}
+                      >
+                        Личная библиотека
+                      </button>
+                      <button
+                        onClick={() => { sessionStorage.setItem('catalog_tab', 'shared'); navigate('/catalog'); }}
+                        style={{ flex: 1, minWidth: '160px', padding: '12px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none' }}
+                      >
+                        Доступные мне
+                      </button>
+                      <button
+                        onClick={() => { sessionStorage.setItem('catalog_tab', 'public'); navigate('/catalog'); }}
+                        style={{ flex: 1, minWidth: '160px', padding: '12px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none' }}
+                      >
+                        Общая библиотека
+                      </button>
+                  </div>
+                </div>
 
                 {(profile?.role === 'admin' || profile?.role === 'creator') && (
                   <button

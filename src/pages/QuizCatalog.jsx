@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, startTransition } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { Search, Play, CheckCircle, ChevronDown, ChevronUp, Award, Save, BarChart2, Book, Pencil, Eye, AlertTriangle, Plus, Shield, EyeOff, Trash2, Dices, Clock, TrendingUp, Info, Loader2, Share2, Check } from 'lucide-react';
+import { Search, Play, CheckCircle, ChevronDown, ChevronUp, Award, Save, Copy, BarChart2, Book, Pencil, Eye, AlertTriangle, Plus, Shield, EyeOff, Trash2, Dices, Clock, TrendingUp, Info, Loader2, Share2, Check } from 'lucide-react';
 import { useScrollRestoration } from '../lib/useScrollRestoration';
 import { fetchWithCache, useCacheSync } from '../lib/cache';
 
@@ -33,14 +33,14 @@ const DividerItem = React.memo(({ quiz, qIndex, userRole, searchQuery, swapQuizz
   </div>
 ));
 
-const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, passState, statsLoading, canEditQuiz, canMoveQuiz, swapQuizzes, navigate, setSelectedQuiz, setHideModal, isDimmed, quizzesLength }) => {
+const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, passState, statsLoading, canEditQuiz, canMoveQuiz, swapQuizzes, navigate, setSelectedQuiz, setHideModal, setDuplicateModal, isDimmed, quizzesLength }) => {
   const [toast, setToast] = useState({ visible: false, opacity: 0 });
 
   const handleShare = useCallback((e) => {
     e.stopPropagation();
     const url = `${window.location.origin}/catalog?shareQuiz=${quiz.id}`;
     const text = `${quiz.title}\n${url}`;
-    
+
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(() => {
         setToast({ visible: true, opacity: 1 });
@@ -57,57 +57,66 @@ const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, pass
         setToast({ visible: true, opacity: 1 });
         setTimeout(() => setToast(prev => ({ ...prev, opacity: 0 })), 2000);
         setTimeout(() => setToast({ visible: false, opacity: 0 }), 3000); // Increased buffer for transition
-      } catch (err) {}
+      } catch (err) { }
       document.body.removeChild(textArea);
     }
   }, [quiz.id, quiz.title]);
 
   return (
-  <div className="card animate" style={{ padding: '20px', background: 'var(--card-bg)', boxShadow: 'var(--soft-shadow)', display: 'flex', flexDirection: 'column', height: '100%', opacity: isDimmed ? 0.5 : 1, border: isDimmed ? '1px dashed #ca8a04' : '1px solid rgba(99, 102, 241, 0.1)', position: 'relative' }}>
-    {canMoveQuiz(quiz) && !searchQuery && (
-      <div style={{ position: 'absolute', top: '15px', right: '15px', display: 'flex', gap: '5px', zIndex: 10 }}>
-        <button onClick={(e) => swapQuizzes(qIndex, -1, e, quiz)} disabled={qIndex === 0} style={{ padding: '4px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none', borderRadius: '8px' }} title="Переместить левее"><ChevronUp size={16} /></button>
-        <button onClick={(e) => swapQuizzes(qIndex, 1, e, quiz)} disabled={qIndex === quizzesLength - 1} style={{ padding: '4px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none', borderRadius: '8px' }} title="Переместить правее"><ChevronDown size={16} /></button>
-      </div>
-    )}
-    <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '15px' }}>
-      <div style={{ flex: 1, minWidth: 0, paddingRight: '50px' }}>
-        <h4 style={{ fontSize: '1.1rem', margin: 0, lineHeight: '1.4' }}>{quiz.title}{quiz.is_verified && <CheckCircle size={16} color="var(--primary-color)" style={{ marginLeft: '5px', display: 'inline' }} />}</h4>
-        <p style={{ fontSize: '0.8rem', opacity: 0.5, margin: '4px 0 0 0' }}>Автор: {quiz.profiles?.last_name} {quiz.profiles?.first_name}</p>
-      </div>
-    </div>
-
-    <div style={{ marginTop: 'auto', paddingTop: '15px' }}>
-      <div className="flex-center" style={{ justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-        <div className="flex-center" style={{ gap: '10px', flexDirection: 'column', alignItems: 'flex-start' }}>
-          {statsLoading && !passState ? (
-            <div className="skeleton-pulse" style={{ width: '80px', height: '24px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px' }} />
-          ) : (
-            passState !== undefined && (
-              <div className="flex-center" style={{ gap: '6px', fontSize: '0.8rem', background: passState.is_passed ? 'rgba(74, 222, 128, 0.1)' : 'rgba(248, 113, 113, 0.1)', color: passState.is_passed ? '#4ade80' : '#f87171', borderRadius: '10px', padding: '6px 12px', fontWeight: 'bold' }}>
-                {passState.score}/{passState.total} ({Math.round((passState.score / passState.total) * 100)}%)
-              </div>
-            )
-          )}
-
-          {quiz.avg_success_rate !== undefined && quiz.avg_success_rate > 0 && (
-            <div className="flex-center" style={{ gap: '6px', fontSize: '0.8rem', color: 'var(--primary-color)', fontWeight: 'bold', background: 'rgba(99, 102, 241, 0.05)', padding: '6px 12px', borderRadius: '10px' }} title="Общая успеваемость учеников (без учета наблюдателей)">
-              <TrendingUp size={14} /> {quiz.avg_success_rate}% успех
-            </div>
-          )}
+    <div className="card animate" style={{ padding: '20px', background: 'var(--card-bg)', boxShadow: 'var(--soft-shadow)', display: 'flex', flexDirection: 'column', height: '100%', opacity: isDimmed ? 0.5 : 1, border: isDimmed ? '1px dashed #ca8a04' : '1px solid rgba(99, 102, 241, 0.1)', position: 'relative' }}>
+      {canMoveQuiz(quiz) && !searchQuery && (
+        <div style={{ position: 'absolute', top: '15px', right: '15px', display: 'flex', gap: '5px', zIndex: 10 }}>
+          <button onClick={(e) => swapQuizzes(qIndex, -1, e, quiz)} disabled={qIndex === 0} style={{ padding: '4px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none', borderRadius: '8px' }} title="Переместить левее"><ChevronUp size={16} /></button>
+          <button onClick={(e) => swapQuizzes(qIndex, 1, e, quiz)} disabled={qIndex === quizzesLength - 1} style={{ padding: '4px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none', borderRadius: '8px' }} title="Переместить правее"><ChevronDown size={16} /></button>
         </div>
-        <div className="flex-center" style={{ gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end', flex: 1 }}>
-          <button
-            onClick={(e) => { e.stopPropagation(); if (passState) navigate(`/analytics-details?quizId=${quiz.id}&userId=${userId}`); }}
-            disabled={!passState}
-            style={{ padding: '8px', background: passState ? 'rgba(99, 102, 241, 0.1)' : 'rgba(0,0,0,0.03)', color: passState ? 'var(--primary-color)' : 'grey', boxShadow: 'none', borderRadius: '10px', opacity: passState ? 1 : 0.5, cursor: passState ? 'pointer' : 'not-allowed' }}
-            title={passState ? "Моя детальная аналитика" : "Доступно после прохождения"}
-          >
-            <Info size={15} />
-          </button>
-          {canEditQuiz(quiz) && <button onClick={() => navigate(`/redactor?id=${quiz.id}`)} style={{ padding: '8px', background: 'rgba(99,102,241,0.08)', color: 'var(--primary-color)', boxShadow: 'none', borderRadius: '10px' }} title="Редактировать"><Pencil size={15} /></button>}
-          {canEditQuiz(quiz) && <button onClick={() => setHideModal(quiz)} style={{ padding: '8px', background: 'rgba(250,204,21,0.08)', color: '#ca8a04', boxShadow: 'none', borderRadius: '10px' }} title="Скрыть"><Eye size={15} /></button>}
-          {(userRole === 'admin' || userRole === 'creator' || userRole === 'teacher' || userId === quiz.author_id) && <button onClick={() => navigate(`/analytics?id=${quiz.id}`)} style={{ padding: '8px', background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none', borderRadius: '10px' }} title="Аналитика"><BarChart2 size={15} /></button>}
+      )}
+      <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '15px' }}>
+        <div style={{ flex: 1, minWidth: 0, paddingRight: '50px' }}>
+          <h4 style={{ fontSize: '1.1rem', margin: 0, lineHeight: '1.4' }}>{quiz.title}{quiz.is_verified && <CheckCircle size={16} color="var(--primary-color)" style={{ marginLeft: '5px', display: 'inline' }} />}</h4>
+          <p style={{ fontSize: '0.8rem', opacity: 0.5, margin: '4px 0 0 0' }}>Автор: {quiz.profiles?.last_name} {quiz.profiles?.first_name}</p>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 'auto', paddingTop: '15px' }}>
+        <div className="flex-center" style={{ justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div className="flex-center" style={{ gap: '10px', flexDirection: 'column', alignItems: 'flex-start' }}>
+            {statsLoading && !passState ? (
+              <div className="skeleton-pulse" style={{ width: '80px', height: '24px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px' }} />
+            ) : (
+              passState !== undefined && (
+                <div className="flex-center" style={{ gap: '6px', fontSize: '0.8rem', background: passState.is_passed ? 'rgba(74, 222, 128, 0.1)' : 'rgba(248, 113, 113, 0.1)', color: passState.is_passed ? '#4ade80' : '#f87171', borderRadius: '10px', padding: '6px 12px', fontWeight: 'bold' }}>
+                  {passState.score}/{passState.total} ({Math.round((passState.score / passState.total) * 100)}%)
+                </div>
+              )
+            )}
+
+            {quiz.avg_success_rate !== undefined && quiz.avg_success_rate > 0 && (
+              <div className="flex-center" style={{ gap: '6px', fontSize: '0.8rem', color: 'var(--primary-color)', fontWeight: 'bold', background: 'rgba(99, 102, 241, 0.05)', padding: '6px 12px', borderRadius: '10px' }} title="Общая успеваемость учеников (без учета наблюдателей)">
+                <TrendingUp size={14} /> {quiz.avg_success_rate}% успех
+              </div>
+            )}
+          </div>
+          <div className="flex-center" style={{ gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end', flex: 1 }}>
+            <button
+              onClick={(e) => { e.stopPropagation(); if (passState) navigate(`/analytics-details?quizId=${quiz.id}&userId=${userId}`); }}
+              disabled={!passState}
+              style={{ padding: '8px', background: passState ? 'rgba(99, 102, 241, 0.1)' : 'rgba(0,0,0,0.03)', color: passState ? 'var(--primary-color)' : 'grey', boxShadow: 'none', borderRadius: '10px', opacity: passState ? 1 : 0.5, cursor: passState ? 'pointer' : 'not-allowed' }}
+              title={passState ? "Моя детальная аналитика" : "Доступно после прохождения"}
+            >
+              <Info size={15} />
+            </button>
+            {canEditQuiz(quiz) && <button onClick={() => navigate(`/redactor?id=${quiz.id}`)} style={{ padding: '8px', background: 'rgba(99,102,241,0.08)', color: 'var(--primary-color)', boxShadow: 'none', borderRadius: '10px' }} title="Редактировать"><Pencil size={15} /></button>}
+            {canEditQuiz(quiz) && <button onClick={() => setHideModal(quiz)} style={{ padding: '8px', background: 'rgba(250,204,21,0.08)', color: '#ca8a04', boxShadow: 'none', borderRadius: '10px' }} title="Скрыть"><Eye size={15} /></button>}
+            {quiz.is_personal && quiz.author_id === userId && (
+              <button
+                onClick={async (e) => { e.stopPropagation(); await supabase.from('quizzes').update({ is_public: !quiz.is_public }).eq('id', quiz.id); window.location.reload(); }}
+                style={{ padding: '8px', background: quiz.is_public ? 'rgba(74, 222, 128, 0.1)' : 'rgba(0,0,0,0.05)', color: quiz.is_public ? '#4ade80' : 'var(--text-color)', boxShadow: 'none', borderRadius: '10px' }}
+                title={quiz.is_public ? "Сделать приватным" : "Сделать публичным"}
+              >
+                {quiz.is_public ? <Eye size={15} /> : <EyeOff size={15} />}
+              </button>
+            )}
+            {(userRole === 'admin' || userRole === 'creator' || userRole === 'teacher' || userId === quiz.author_id) && <button onClick={() => navigate(`/analytics?id=${quiz.id}`)} style={{ padding: '8px', background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none', borderRadius: '10px' }} title="Аналитика"><BarChart2 size={15} /></button>}
             <button
               onClick={handleShare}
               style={{ padding: '8px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none', borderRadius: '10px' }}
@@ -115,6 +124,16 @@ const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, pass
             >
               <Share2 size={15} />
             </button>
+            {(!quiz.is_personal || (quiz.is_personal && quiz.author_id !== userId)) && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setDuplicateModal(quiz); }}
+                style={{ padding: '8px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none', borderRadius: '10px' }}
+                title="Дублировать в мою библиотеку"
+              >
+                <Copy size={15} />
+              </button>
+            )}
+
 
             {toast.visible && (
               <div style={{
@@ -141,14 +160,14 @@ const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, pass
               </div>
             )}
             <button onClick={() => setSelectedQuiz(quiz)} style={{ padding: '8px 20px', display: 'flex', alignItems: 'center', gap: '8px', borderRadius: '10px' }}><Play size={15} fill="currentColor" /> Начать</button>
+          </div>
         </div>
       </div>
     </div>
-  </div>
-);
+  );
 });
 
-const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, onQuizzesChange, setHideModal, setRenamingItem, setSelectedQuiz, setRandomQuizModal }) => {
+const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, onQuizzesChange, setHideModal, setDuplicateModal, setRenamingItem, setSelectedQuiz, setRandomQuizModal }) => {
   const navigate = useNavigate();
   const [visibleCount, setVisibleCount] = useState(25); // Incremental rendering start
 
@@ -372,6 +391,7 @@ const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, 
                 navigate={navigate}
                 setSelectedQuiz={setSelectedQuiz}
                 setHideModal={setHideModal}
+                setDuplicateModal={setDuplicateModal}
                 isDimmed={currentDividerHidden}
                 quizzesLength={quizzes.length}
               />
@@ -385,7 +405,7 @@ const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, 
 
 const CatalogSectionRow = React.memo(({
   section, clsId, sIndex, profile, searchQuery, isExpanded,
-  onToggle, onQuizzesChange, setHideModal, setRenamingItem, setSelectedQuiz, setRandomQuizModal,
+  onToggle, onQuizzesChange, setHideModal, setDuplicateModal, setRenamingItem, setSelectedQuiz, setRandomQuizModal,
   handleCreateDivider, swapSections, setNewName
 }) => {
   return (
@@ -476,6 +496,7 @@ const CatalogSectionRow = React.memo(({
           searchQuery={searchQuery}
           onQuizzesChange={onQuizzesChange}
           setHideModal={setHideModal}
+          setDuplicateModal={setDuplicateModal}
           setRenamingItem={setRenamingItem}
           setSelectedQuiz={setSelectedQuiz}
           setRandomQuizModal={setRandomQuizModal}
@@ -488,14 +509,14 @@ const CatalogSectionRow = React.memo(({
 const CatalogClassRow = React.memo(({
   cls, cIndex, profile, searchQuery, isExpanded, expandedSections,
   onToggle, onSectionToggle, swapClasses, swapSections, handleRenameItem, handleCreateDivider, handleCreateSectionDivider, setNewName,
-  onQuizzesChange, setHideModal, setSelectedQuiz, setRandomQuizModal
+  onQuizzesChange, setHideModal, setDuplicateModal, setSelectedQuiz, setRandomQuizModal
 }) => {
   return (
-    <div className="card animate" style={{ 
-      padding: '0', 
-      marginBottom: '40px', 
-      overflow: 'hidden', 
-      border: cls.isEmpty ? '1px dashed rgba(0,0,0,0.1)' : '1px solid var(--border-color)', 
+    <div className="card animate" style={{
+      padding: '0',
+      marginBottom: '40px',
+      overflow: 'hidden',
+      border: cls.isEmpty ? '1px dashed rgba(0,0,0,0.1)' : '1px solid var(--border-color)',
       background: 'var(--card-bg)',
       boxShadow: 'var(--soft-shadow)'
     }}>
@@ -547,6 +568,15 @@ const CatalogClassRow = React.memo(({
               >
                 <Pencil size={18} />
               </button>
+              {cls.is_personal && cls.author_id === profile?.id && (
+                <button
+                  onClick={async (e) => { e.stopPropagation(); await supabase.from('quiz_classes').update({ is_public: !cls.is_public }).eq('id', cls.id); window.location.reload(); }}
+                  style={{ padding: '8px', background: cls.is_public ? 'rgba(74, 222, 128, 0.1)' : 'rgba(0,0,0,0.05)', color: cls.is_public ? '#4ade80' : 'var(--text-color)', boxShadow: 'none', borderRadius: '10px' }}
+                  title={cls.is_public ? "Сделать класс приватным" : "Сделать класс публичным"}
+                >
+                  {cls.is_public ? <Eye size={16} /> : <EyeOff size={16} />}
+                </button>
+              )}
               <button
                 onClick={(e) => { e.stopPropagation(); handleCreateSectionDivider(cls.id); }}
                 className="flex-center animate"
@@ -595,6 +625,7 @@ const CatalogClassRow = React.memo(({
                 onToggle={onSectionToggle}
                 onQuizzesChange={onQuizzesChange}
                 setHideModal={setHideModal}
+                setDuplicateModal={setDuplicateModal}
                 setRenamingItem={handleRenameItem}
                 setSelectedQuiz={setSelectedQuiz}
                 setRandomQuizModal={setRandomQuizModal}
@@ -617,7 +648,42 @@ const QuizCatalog = ({ profile }) => {
   const [classes, setClasses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+
+  const [activeTab, setActiveTab] = useState(() => sessionStorage.getItem('catalog_tab') || 'official');
+  const [libraryUsers, setLibraryUsers] = useState([]);
+  const [selectedLibraryUser, setSelectedLibraryUser] = useState(null);
+  const [usersLoading, setUsersLoading] = useState(false);
+
+  useEffect(() => {
+    sessionStorage.setItem('catalog_tab', activeTab);
+    if (activeTab === 'official' || activeTab === 'personal') {
+      setSelectedLibraryUser(null);
+    } else if (!selectedLibraryUser) {
+      const fetchLibraryUsers = async () => {
+        setUsersLoading(true);
+        try {
+          if (activeTab === 'public') {
+            const { data } = await supabase.from('quiz_classes').select('author_id, profiles(id, first_name, last_name)').eq('is_public', true);
+            if (data) {
+              const uniqueUsers = Array.from(new Map(data.filter(d => d.profiles).map(item => [item.author_id, item.profiles])).values());
+              setLibraryUsers(uniqueUsers);
+            }
+          } else if (activeTab === 'shared') {
+            const { data } = await supabase.from('library_access').select('owner_id, profiles!library_access_owner_id_fkey(id, first_name, last_name)').eq('user_id', profile?.id);
+            if (data) {
+              const uniqueUsers = Array.from(new Map(data.filter(d => d.profiles).map(item => [item.owner_id, item.profiles])).values());
+              setLibraryUsers(uniqueUsers);
+            }
+          }
+        } catch (e) { console.error(e); }
+        setUsersLoading(false);
+      };
+      fetchLibraryUsers();
+    }
+  }, [activeTab, selectedLibraryUser, profile?.id]);
+
 
   const [expandedClasses, setExpandedClasses] = useState(() => {
     const saved = localStorage.getItem('catalog_expanded_classes_v2');
@@ -646,6 +712,81 @@ const QuizCatalog = ({ profile }) => {
 
   const [selectedQuiz, setSelectedQuizState] = useState(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [duplicateModal, setDuplicateModalState] = useState(null);
+  const [duplicateLoading, setDuplicateLoading] = useState(false);
+  const [personalClasses, setPersonalClasses] = useState([]);
+  const [personalSections, setPersonalSections] = useState([]);
+  const [destClassId, setDestClassId] = useState('');
+  const [destSectionId, setDestSectionId] = useState('');
+  const [duplicateTitle, setDuplicateTitle] = useState('');
+
+  useEffect(() => {
+    if (duplicateModal) {
+      setDestClassId('');
+      setDestSectionId('');
+      setDuplicateTitle(duplicateModal.title || 'Копия');
+      (async () => {
+        const [{ data: c }, { data: s }] = await Promise.all([
+          supabase.from('quiz_classes').select('*').eq('is_personal', true).eq('author_id', profile?.id).order('sort_order', { ascending: true }),
+          supabase.from('quiz_sections').select('*').eq('is_personal', true).eq('author_id', profile?.id).order('sort_order', { ascending: true })
+        ]);
+        if (c) setPersonalClasses(c);
+        if (s) setPersonalSections(s);
+      })();
+    }
+  }, [duplicateModal, profile?.id]);
+
+  const handleDuplicate = async () => {
+    if (!destSectionId) return alert('Выберите папку и предмет');
+    setDuplicateLoading(true);
+    try {
+      const contentStr = JSON.stringify(duplicateModal.content || {});
+      const urlRegex = /https:\/\/raw\.githubusercontent\.com\/[^\s"']+/g;
+      const urls = contentStr.match(urlRegex) || [];
+      const uniqueUrls = [...new Set(urls)];
+
+      let newContentStr = contentStr;
+      const newQuizId = crypto.randomUUID();
+
+      if (uniqueUrls.length > 0) {
+        const res = await fetch('/api/github-duplicate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ urls: uniqueUrls, path: `user_assets/${profile.id}/${newQuizId}` })
+        });
+        const data = await res.json();
+        if (data.success && data.duplicated) {
+          for (const [oldUrl, newUrl] of Object.entries(data.duplicated)) {
+            newContentStr = newContentStr.split(oldUrl).join(newUrl);
+          }
+        } else {
+          console.error('Duplication error', data);
+          alert('Не удалось скопировать некоторые изображения. Текст будет скопирован.');
+        }
+      }
+
+      const { error } = await supabase.from('quizzes').insert({
+        id: newQuizId,
+        title: duplicateTitle,
+        section_id: destSectionId,
+        author_id: profile.id,
+        is_personal: true,
+        is_public: false,
+        content: JSON.parse(newContentStr),
+        is_verified: true,
+        sort_order: 9999
+      });
+
+      if (error) throw error;
+      alert('Тест успешно продублирован в вашу личную библиотеку!');
+      setDuplicateModalState(null);
+    } catch (e) {
+      console.error(e);
+      alert('Ошибка: ' + e.message);
+    }
+    setDuplicateLoading(false);
+  };
+
   const [dirtySections, setDirtySections] = useState({});
 
   const [hideModal, setHideModalState] = useState(null);
@@ -657,6 +798,7 @@ const QuizCatalog = ({ profile }) => {
   const setSelectedQuiz = useCallback((v) => setSelectedQuizState(v), []);
   const setHideModal = useCallback((v) => setHideModalState(v), []);
   const setRandomQuizModal = useCallback((v) => setRandomQuizModalState(v), []);
+  const setDuplicateModal = useCallback((v) => setDuplicateModalState(v), []);
 
   const formatClasses = useCallback((c, s, basicQuizzes) => {
     if (!c || !s || !basicQuizzes) return [];
@@ -682,25 +824,50 @@ const QuizCatalog = ({ profile }) => {
   }, []);
 
   const fetchData = useCallback(async () => {
-    setLoading(true);
+    if ((activeTab === 'public' || activeTab === 'shared') && !selectedLibraryUser) {
+      setClasses([]);
+      setLoading(false);
+      return;
+    }
 
+    setLoading(true);
     const isPrivileged = profile?.role === 'admin' || profile?.role === 'creator';
+    const cacheKeyBase = `catalog_struct_${activeTab}_${selectedLibraryUser?.id || 'none'}`;
 
     const [c, s, basicQuizzes] = await Promise.all([
-      fetchWithCache('catalog_struct_classes', () => supabase.from('quiz_classes').select('*').order('sort_order', { ascending: true }).then(r => r.data)),
-      fetchWithCache('catalog_struct_sections', () => supabase.from('quiz_sections').select('*').order('sort_order', { ascending: true }).then(r => r.data)),
-      fetchWithCache(`catalog_struct_quizzes_${isPrivileged ? 'all' : 'visible'}`, () => {
+      fetchWithCache(cacheKeyBase + '_classes', () => {
+        let q = supabase.from('quiz_classes').select('*').order('sort_order', { ascending: true });
+        if (activeTab === 'official') q = q.eq('is_personal', false);
+        else if (activeTab === 'personal') q = q.eq('is_personal', true).eq('author_id', profile?.id);
+        else if (selectedLibraryUser) q = q.eq('is_personal', true).eq('author_id', selectedLibraryUser.id);
+        return q.then(r => r.data);
+      }),
+      fetchWithCache(cacheKeyBase + '_sections', () => {
+        let q = supabase.from('quiz_sections').select('*').order('sort_order', { ascending: true });
+        if (activeTab === 'official') q = q.eq('is_personal', false);
+        else if (activeTab === 'personal') q = q.eq('is_personal', true).eq('author_id', profile?.id);
+        else if (selectedLibraryUser) q = q.eq('is_personal', true).eq('author_id', selectedLibraryUser.id);
+        return q.then(r => r.data);
+      }),
+      fetchWithCache(cacheKeyBase + `_quizzes_${isPrivileged ? 'all' : 'visible'}`, () => {
         let quizQuery = supabase.from('quizzes').select('id, title, section_id, is_hidden, content').eq('is_archived', false);
         if (!isPrivileged) quizQuery = quizQuery.eq('is_hidden', false);
+
+        if (activeTab === 'official') quizQuery = quizQuery.eq('is_personal', false);
+        else if (activeTab === 'personal') quizQuery = quizQuery.eq('is_personal', true).eq('author_id', profile?.id);
+        else if (selectedLibraryUser) quizQuery = quizQuery.eq('is_personal', true).eq('author_id', selectedLibraryUser.id);
+
         return quizQuery.then(r => r.data);
       })
     ]);
 
     if (c && s && basicQuizzes) {
       setClasses(formatClasses(c, s, basicQuizzes));
+    } else {
+      setClasses([]);
     }
     setLoading(false);
-  }, [profile, formatClasses]);
+  }, [profile, formatClasses, activeTab, selectedLibraryUser]);
 
   useEffect(() => {
     if (profile !== undefined) {
@@ -739,7 +906,7 @@ const QuizCatalog = ({ profile }) => {
       }
     })();
   }, [debouncedSearchQuery]); // eslint-disable-line
-  
+
   // Logic for opening quiz from shared link
   useEffect(() => {
     const shareId = searchParams.get('shareQuiz');
@@ -955,7 +1122,57 @@ const QuizCatalog = ({ profile }) => {
 
   return (
     <div className="container" style={{ padding: '40px 20px' }}>
-      <div className="flex-center animate" style={{ justifyContent: 'space-between', marginBottom: '40px', flexWrap: 'wrap', gap: '20px' }}>
+
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', overflowX: 'auto', paddingBottom: '10px' }}>
+        {['official', 'personal', 'public', 'shared'].map(tab => {
+          const labels = { official: 'Официальный каталог', personal: 'Личная библиотека', public: 'Общая библиотека', shared: 'Доступные мне' };
+          return (
+            <button
+              key={tab}
+              onClick={() => { setActiveTab(tab); setSelectedLibraryUser(null); }}
+              style={{
+                padding: '10px 20px',
+                borderRadius: '20px',
+                background: activeTab === tab ? 'var(--primary-color)' : 'rgba(0,0,0,0.05)',
+                color: activeTab === tab ? 'white' : 'inherit',
+                boxShadow: 'none',
+                whiteSpace: 'nowrap',
+                fontWeight: 'bold'
+              }}
+            >
+              {labels[tab]}
+            </button>
+          )
+        })}
+      </div>
+
+      {(activeTab === 'public' || activeTab === 'shared') && !selectedLibraryUser && (
+        <div className="grid-2 animate" style={{ marginBottom: '40px' }}>
+          {usersLoading ? <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '40px' }}><Loader2 className="spinner" /></div> :
+            libraryUsers.length === 0 ? <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '40px', opacity: 0.5 }}>Библиотеки не найдены</div> :
+              libraryUsers.map(u => (
+                <div key={u.id} className="card" onClick={() => setSelectedLibraryUser(u)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '15px', padding: '20px' }}>
+                  <div style={{ width: '50px', height: '50px', borderRadius: '25px', background: 'var(--primary-color)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', fontWeight: 'bold' }}>
+                    {u.first_name?.[0] || 'U'}
+                  </div>
+                  <div>
+                    <h4 style={{ margin: 0 }}>{u.last_name} {u.first_name}</h4>
+                    <p style={{ margin: 0, opacity: 0.5, fontSize: '0.8rem' }}>Открыть библиотеку</p>
+                  </div>
+                </div>
+              ))
+          }
+        </div>
+      )}
+
+      {selectedLibraryUser && (
+        <div className="flex-center" style={{ marginBottom: '20px', gap: '10px', justifyContent: 'flex-start' }}>
+          <button onClick={() => setSelectedLibraryUser(null)} style={{ padding: '8px 15px', background: 'rgba(0,0,0,0.05)', color: 'inherit', boxShadow: 'none', borderRadius: '10px' }}>Назад</button>
+          <h3 style={{ margin: 0 }}>Библиотека пользователя: {selectedLibraryUser.first_name}</h3>
+        </div>
+      )}
+
+      <div className="flex-center animate" style={{ justifyContent: 'space-between', marginBottom: '40px', flexWrap: 'wrap', gap: '20px', display: ((activeTab === 'public' || activeTab === 'shared') && !selectedLibraryUser) ? 'none' : 'flex' }}>
         <div>
           <h2 style={{ fontSize: '2rem', fontWeight: '800', letterSpacing: '-1px', margin: 0 }}>Каталог тестов</h2>
           <p style={{ opacity: 0.6, marginTop: '5px' }}>Выберите предмет и начните обучение</p>
@@ -1025,6 +1242,7 @@ const QuizCatalog = ({ profile }) => {
                 setNewName={setNewName}
                 onQuizzesChange={handleQuizzesChange}
                 setHideModal={setHideModal}
+                setDuplicateModal={setDuplicateModal}
                 setSelectedQuiz={setSelectedQuiz}
                 setRandomQuizModal={setRandomQuizModal}
               />
@@ -1032,7 +1250,7 @@ const QuizCatalog = ({ profile }) => {
           })
         )}
 
-        {!loading && filteredClasses.length === 0 && (
+        {!loading && filteredClasses.length === 0 && !((activeTab === "public" || activeTab === "shared") && !selectedLibraryUser) && (
           <div className="card animate" style={{ textAlign: 'center', padding: '60px' }}>
             <h3>Ничего не найдено</h3>
             <p style={{ opacity: 0.6 }}>Попробуйте изменить поисковый запрос.</p>
@@ -1079,7 +1297,7 @@ const QuizCatalog = ({ profile }) => {
       )}
 
       {selectedQuiz && (
-        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setSelectedQuiz(null))(e); }}}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setSelectedQuiz(null))(e); } }}>
           <div className="modal-content animate" onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', margin: '0 auto 25px' }}><Award size={32} /></div>
             {isFromShare && <div style={{ fontSize: '0.8rem', color: 'var(--primary-color)', fontWeight: 'bold', marginBottom: '10px' }}>Вы перешли по ссылке на этот предмет</div>}
@@ -1094,7 +1312,7 @@ const QuizCatalog = ({ profile }) => {
       )}
 
       {randomQuizModal && (
-        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setRandomQuizModal(null))(e); }}}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setRandomQuizModal(null))(e); } }}>
           <div className="modal-content animate" onClick={e => e.stopPropagation()} style={{ width: '450px' }}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(168, 85, 247, 0.1) 100%)', color: 'var(--primary-color)', margin: '0 auto 25px' }}>
               <Dices size={32} />
@@ -1116,7 +1334,7 @@ const QuizCatalog = ({ profile }) => {
       )}
 
       {renamingItem && (
-        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setRenamingItem(null))(e); }}}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setRenamingItem(null))(e); } }}>
           <div className="modal-content animate" onClick={e => e.stopPropagation()} style={{ width: '400px' }}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '15px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', margin: '0 auto 20px' }}>
               <Pencil size={32} />
@@ -1146,8 +1364,50 @@ const QuizCatalog = ({ profile }) => {
         </div>
       )}
 
+
+      {duplicateModal && (
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget && !duplicateLoading) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true" && !duplicateLoading) { e.target.dataset.md = "false"; (() => setDuplicateModalState(null))(e); } }}>
+          <div className="modal-content animate" style={{ width: '500px' }} onClick={e => e.stopPropagation()}>
+            <div className="flex-center" style={{ justifyContent: 'center', width: '55px', height: '55px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', borderRadius: '15px', margin: '0 auto 20px' }}><Copy size={26} /></div>
+            <h3 style={{ marginBottom: '10px', textAlign: 'center' }}>Дублировать тест</h3>
+            <p style={{ opacity: 0.6, fontSize: '0.9rem', marginBottom: '20px', textAlign: 'center', lineHeight: '1.6' }}>
+              Создание копии в вашей Личной библиотеке. Все привязанные изображения будут скачаны и сохранены в ваш профиль.
+            </p>
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', opacity: 0.7, marginBottom: '8px' }}>Название копии</label>
+              <input type="text" value={duplicateTitle} onChange={e => setDuplicateTitle(e.target.value)} disabled={duplicateLoading} style={{ width: '100%', padding: '10px', borderRadius: '10px', border: '1px solid rgba(0,0,0,0.1)' }} />
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '30px' }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', opacity: 0.7, marginBottom: '8px' }}>Папка</label>
+                <select value={destClassId} onChange={e => { setDestClassId(e.target.value); setDestSectionId(''); }} disabled={duplicateLoading} style={{ width: '100%', padding: '10px', borderRadius: '10px', border: '1px solid rgba(0,0,0,0.1)' }}>
+                  <option value="">Выберите папку...</option>
+                  {personalClasses.filter(c => !c.is_divider).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', opacity: 0.7, marginBottom: '8px' }}>Предмет</label>
+                <select value={destSectionId} onChange={e => setDestSectionId(e.target.value)} disabled={!destClassId || duplicateLoading} style={{ width: '100%', padding: '10px', borderRadius: '10px', border: '1px solid rgba(0,0,0,0.1)' }}>
+                  <option value="">Выберите предмет...</option>
+                  {personalSections.filter(s => s.class_id === destClassId && !s.is_divider).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid-2" style={{ gap: '10px' }}>
+              <button onClick={() => setDuplicateModalState(null)} disabled={duplicateLoading} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit' }}>Отмена</button>
+              <button onClick={handleDuplicate} disabled={duplicateLoading} style={{ background: 'var(--primary-color)', color: 'white' }}>
+                {duplicateLoading ? <Loader2 size={18} className="spinner" /> : 'Сохранить к себе'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {hideModal && (
-        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setHideModal(null))(e); }}}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setHideModal(null))(e); } }}>
           <div className="modal-content animate" style={{ width: '430px' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '55px', height: '55px', background: 'rgba(250,204,21,0.1)', color: '#ca8a04', borderRadius: '15px', margin: '0 auto 20px' }}><AlertTriangle size={26} /></div>
             <h3 style={{ marginBottom: '10px', textAlign: 'center' }}>Скрыть тест?</h3>

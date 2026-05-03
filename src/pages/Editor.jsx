@@ -278,6 +278,13 @@ const Editor = ({ session, profile }) => {
   const [newSectionClassId, setNewSectionClassId] = useState('');
   const [newSectionBookUrl, setNewSectionBookUrl] = useState('');
 
+  const [isPersonal, setIsPersonal] = useState(false);
+  useEffect(() => {
+    if (profile?.role === 'teacher' || profile?.role === 'player') {
+      setIsPersonal(true);
+    }
+  }, [profile]);
+
   const [pendingEmptyQuiz, setPendingEmptyQuiz] = useState(null); // { titleList, canBulk, sectionId }
   const [dirtyQuizzesMap, setDirtyQuizzesMap] = useState({});
   const [successLoadedQuiz, setSuccessLoadedQuiz] = useState('');
@@ -376,6 +383,7 @@ const Editor = ({ session, profile }) => {
           title: (q.title || titles.split('\n')[0] || 'Новый тест').trim(),
           section_id: sectionId,
           author_id: session.user.id,
+          is_personal: isPersonal,
           content: { questions: q.questions },
           is_verified: canBulk,
           sort_order: maxOrder + 1 + i
@@ -423,6 +431,7 @@ const Editor = ({ session, profile }) => {
         title: t.trim(),
         section_id: sId,
         author_id: session.user.id,
+        is_personal: isPersonal,
         content: { questions: [] },
         is_verified: canBulk,
         is_hidden: true, // Auto-hide empty quiz
@@ -600,7 +609,11 @@ const Editor = ({ session, profile }) => {
   // --- Creation Logic ---
   const handleCreateClass = async () => {
     if (!newClassName) return;
-    const { error } = await supabase.from('quiz_classes').insert({ name: newClassName });
+    const { error } = await supabase.from('quiz_classes').insert({ 
+      name: newClassName,
+      author_id: session.user.id,
+      is_personal: isPersonal
+    });
     if (error) alert(error.message);
     else { setNewClassName(''); fetchData(); }
   };
@@ -611,6 +624,8 @@ const Editor = ({ session, profile }) => {
       name: newSectionName,
       class_id: newSectionClassId,
       created_by: session.user.id,
+      author_id: session.user.id,
+      is_personal: isPersonal,
       book_url: newSectionBookUrl || null
     });
     if (error) alert(error.message);
@@ -705,6 +720,23 @@ const Editor = ({ session, profile }) => {
                 <>
                   <div className="card">
                     <h3 style={{ marginBottom: '25px' }}>Новый тест</h3>
+                    
+                    {profile?.role !== 'teacher' && profile?.role !== 'player' && (
+                      <div style={{ marginBottom: '20px', padding: '15px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '15px' }}>
+                        <p style={{ margin: '0 0 10px 0', fontWeight: 'bold' }}>Где создать:</p>
+                        <div style={{ display: 'flex', gap: '15px' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                            <input type="radio" name="uploadTarget" checked={!isPersonal} onChange={() => setIsPersonal(false)} />
+                            Официальный каталог
+                          </label>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                            <input type="radio" name="uploadTarget" checked={isPersonal} onChange={() => setIsPersonal(true)} />
+                            Личная библиотека
+                          </label>
+                        </div>
+                      </div>
+                    )}
+
                     <form onSubmit={handleCreateQuiz} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                       <div>
                         <label style={{ fontSize: '0.85rem', opacity: 0.5, marginBottom: '8px', display: 'block' }}>
@@ -720,11 +752,11 @@ const Editor = ({ session, profile }) => {
                       <div style={{ display: 'flex', gap: '10px' }}>
                         <select id="quiz-class" name="class" value={selectedClassId} onChange={(e) => { setSelectedClassId(e.target.value); setSectionId(''); }} required style={{ flex: 1 }}>
                           <option value="">Выберите класс...</option>
-                          {classes.filter(c => !c.is_divider).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          {classes.filter(c => !c.is_divider && (isPersonal ? (c.is_personal && c.author_id === profile?.id) : !c.is_personal)).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                         </select>
                         <select id="quiz-section" name="section" value={sectionId} onChange={(e) => setSectionId(e.target.value)} required disabled={!selectedClassId} style={{ flex: 1 }}>
                           <option value="">Выберите предмет...</option>
-                          {sections.filter(s => s.class_id === selectedClassId && !s.is_divider).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                          {sections.filter(s => s.class_id === selectedClassId && !s.is_divider && (isPersonal ? (s.is_personal && s.author_id === profile?.id) : !s.is_personal)).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                         </select>
                       </div>
 
@@ -774,7 +806,7 @@ const Editor = ({ session, profile }) => {
                       </code>
                     </div>
 
-                    {profile?.role === 'creator' && (
+                    {(profile?.role === 'creator' || isPersonal) && (
                       <div style={{ marginBottom: '30px' }}>
                         <h4 style={{ marginBottom: '15px' }}>Папки / Классы</h4>
                         <div className="flex-center" style={{ gap: '10px' }}>
@@ -784,13 +816,13 @@ const Editor = ({ session, profile }) => {
                       </div>
                     )}
 
-                    {profile?.role === 'creator' && (
+                    {(profile?.role === 'creator' || isPersonal) && (
                       <div>
                         <h4 style={{ marginBottom: '15px' }}>Секции / Предметы</h4>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                           <select id="new-section-class" name="new-section-class" value={newSectionClassId} onChange={(e) => setNewSectionClassId(e.target.value)}>
                             <option value="">Укажите класс...</option>
-                            {classes.filter(c => !c.is_divider).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                            {classes.filter(c => !c.is_divider && (isPersonal ? (c.is_personal && c.author_id === profile?.id) : !c.is_personal)).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                           </select>
 
                           <div style={{ display: 'flex', gap: '10px' }}>
