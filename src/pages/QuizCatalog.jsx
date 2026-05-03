@@ -661,7 +661,6 @@ const QuizCatalog = ({ profile }) => {
   const [activeTab, setActiveTab] = useState(() => sessionStorage.getItem('catalog_tab') || 'official');
   const [libraryUsers, setLibraryUsers] = useState([]);
   const [selectedLibraryUser, setSelectedLibraryUserState] = useState(null);
-  const [sharedUsers, setSharedUsers] = useState([]);
   const [duplicateModal, setDuplicateModalState] = useState(null);
   const [usersLoading, setUsersLoading] = useState(false);
 
@@ -1428,30 +1427,9 @@ const QuizCatalog = ({ profile }) => {
           })
         )}
 
-        {!loading && activeTab === 'shared' && !selectedLibraryUser && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
-            {sharedUsers.map(u => (
-              <div 
-                key={u.id} 
-                className="card animate" 
-                onClick={() => setSelectedLibraryUserState(u)}
-                style={{ padding: '25px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '15px' }}
-              >
-                <div style={{ width: '50px', height: '50px', borderRadius: '50%', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', fontWeight: 'bold' }}>
-                  {u.first_name[0]}{u.last_name[0]}
-                </div>
-                <div>
-                  <h4 style={{ margin: 0 }}>{u.first_name} {u.last_name}</h4>
-                  <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', opacity: 0.6 }}>Пользователь поделился с вами библиотекой</p>
-                </div>
-                <ChevronRight style={{ marginLeft: 'auto', opacity: 0.3 }} />
-              </div>
-            ))}
-            {sharedUsers.length === 0 && (
-              <div className="card" style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '60px' }}>
-                <p style={{ opacity: 0.6 }}>У вас пока нет доступных тестов от других пользователей.</p>
-              </div>
-            )}
+        {!loading && activeTab === 'shared' && !selectedLibraryUser && libraryUsers.length === 0 && (
+          <div className="card" style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '60px' }}>
+            <p style={{ opacity: 0.6 }}>У вас пока нет доступных тестов от других пользователей.</p>
           </div>
         )}
 
