@@ -49,6 +49,7 @@ const Profile = ({ session, profile, refreshProfile }) => {
   const [application, setApplication] = useState(null);
   const [isEmailConfirmed, setIsEmailConfirmed] = useState(true); // Default to true, will check session
   const [userBlacklistedClasses, setUserBlacklistedClasses] = useState([]);
+  const [toast, setToast] = useState({ visible: false, opacity: 0 });
 
   useEffect(() => {
     localStorage.setItem('quiz_auto_advance', autoAdvance);
@@ -382,6 +383,22 @@ const Profile = ({ session, profile, refreshProfile }) => {
             <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px' }}>
               <Mail size={18} /> <span>{session.user.email}</span>
             </div>
+            <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px' }}>
+              <Copy size={18} style={{ opacity: 0.5 }} />
+              <div 
+                onClick={() => { 
+                  navigator.clipboard.writeText(session.user.id); 
+                  setToast({ visible: true, opacity: 1 });
+                  setTimeout(() => setToast(prev => ({ ...prev, opacity: 0 })), 2000);
+                  setTimeout(() => setToast({ visible: false, opacity: 0 }), 2500);
+                }}
+                style={{ cursor: 'pointer', background: 'rgba(99, 102, 241, 0.05)', padding: '5px 12px', borderRadius: '10px', fontSize: '0.85rem', border: '1px solid rgba(99, 102, 241, 0.1)', flex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                title="Нажмите, чтобы скопировать ваш ID для предоставления доступа к тестам"
+              >
+                <span style={{ opacity: 0.7, fontSize: '0.75rem' }}>Мой ID:</span>
+                <code style={{ fontWeight: 'bold', color: 'var(--primary-color)' }}>{session.user.id.slice(0, 8)}...</code>
+              </div>
+            </div>
             {profile?.is_profile_setup_completed && (
               <>
                 <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px' }}>
@@ -708,6 +725,18 @@ const Profile = ({ session, profile, refreshProfile }) => {
             </p>
             <button onClick={() => setShowSuccessModal(false)} style={{ width: '100%' }}>Понятно</button>
           </div>
+        </div>
+      )}
+      {/* Toast Notification */}
+      {toast.visible && (
+        <div style={{
+          position: 'fixed', bottom: '100px', left: '50%', transform: 'translateX(-50%)',
+          background: 'var(--primary-color)', color: 'white', padding: '12px 25px',
+          borderRadius: '10px', boxShadow: '0 10px 25px rgba(99, 102, 241, 0.3)',
+          zIndex: 5000, transition: 'all 0.3s ease', opacity: toast.opacity,
+          pointerEvents: 'none', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '10px'
+        }}>
+          <Check size={18} /> Скопировано!
         </div>
       )}
     </>

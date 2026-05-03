@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, startTransition } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { Search, Play, CheckCircle, ChevronDown, ChevronUp, Award, Save, Copy, BarChart2, Book, Pencil, Eye, AlertTriangle, Plus, Shield, EyeOff, Trash2, Dices, Clock, TrendingUp, Info, Loader2, Share2, Check } from 'lucide-react';
+import { Search, Play, CheckCircle, ChevronDown, ChevronUp, Award, Save, Copy, BarChart2, Book, Pencil, Eye, AlertTriangle, Plus, Shield, EyeOff, Trash2, Dices, Clock, TrendingUp, Info, Loader2, Share2, Check, X } from 'lucide-react';
 import { useScrollRestoration } from '../lib/useScrollRestoration';
 import { fetchWithCache, useCacheSync } from '../lib/cache';
 
@@ -33,34 +33,18 @@ const DividerItem = React.memo(({ quiz, qIndex, userRole, searchQuery, swapQuizz
   </div>
 ));
 
-const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, passState, statsLoading, canEditQuiz, canMoveQuiz, swapQuizzes, navigate, setSelectedQuiz, setHideModal, setDuplicateModal, isDimmed, quizzesLength }) => {
+const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, passState, statsLoading, canEditQuiz, canMoveQuiz, swapQuizzes, navigate, setSelectedQuiz, setHideModal, setDuplicateModal, isDimmed, quizzesLength, handleShare, fetchData }) => {
   const [toast, setToast] = useState({ visible: false, opacity: 0 });
 
-  const handleShare = useCallback((e) => {
+  const onShareClick = (e) => {
     e.stopPropagation();
-    const url = `${window.location.origin}/catalog?shareQuiz=${quiz.id}`;
-    const text = `${quiz.title}\n${url}`;
-
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(() => {
-        setToast({ visible: true, opacity: 1 });
-        setTimeout(() => setToast(prev => ({ ...prev, opacity: 0 })), 2000);
-        setTimeout(() => setToast({ visible: false, opacity: 0 }), 2500);
-      });
-    } else {
-      const textArea = document.createElement("textarea");
-      textArea.value = text;
-      document.body.appendChild(textArea);
-      textArea.select();
-      try {
-        document.execCommand('copy');
-        setToast({ visible: true, opacity: 1 });
-        setTimeout(() => setToast(prev => ({ ...prev, opacity: 0 })), 2000);
-        setTimeout(() => setToast({ visible: false, opacity: 0 }), 3000); // Increased buffer for transition
-      } catch (err) { }
-      document.body.removeChild(textArea);
+    const copied = handleShare(quiz);
+    if (copied) {
+      setToast({ visible: true, opacity: 1 });
+      setTimeout(() => setToast(prev => ({ ...prev, opacity: 0 })), 2000);
+      setTimeout(() => setToast({ visible: false, opacity: 0 }), 2500);
     }
-  }, [quiz.id, quiz.title]);
+  };
 
   return (
     <div className="card animate" style={{ padding: '20px', background: 'var(--card-bg)', boxShadow: 'var(--soft-shadow)', display: 'flex', flexDirection: 'column', height: '100%', opacity: isDimmed ? 0.5 : 1, border: isDimmed ? '1px dashed #ca8a04' : '1px solid rgba(99, 102, 241, 0.1)', position: 'relative' }}>
@@ -109,7 +93,16 @@ const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, pass
             {canEditQuiz(quiz) && <button onClick={() => setHideModal(quiz)} style={{ padding: '8px', background: 'rgba(250,204,21,0.08)', color: '#ca8a04', boxShadow: 'none', borderRadius: '10px' }} title="Скрыть"><Eye size={15} /></button>}
             {quiz.is_personal && quiz.author_id === userId && (
               <button
-                onClick={async (e) => { e.stopPropagation(); await supabase.from('quizzes').update({ is_public: !quiz.is_public }).eq('id', quiz.id); window.location.reload(); }}
+                onClick={async (e) => { 
+                  e.stopPropagation(); 
+                  const { error } = await supabase.from('quizzes').update({ is_public: !quiz.is_public }).eq('id', quiz.id); 
+                  if (error) {
+                    console.error("Error updating publicity:", error);
+                    alert("Ошибка: " + error.message);
+                  } else {
+                    fetchData();
+                  }
+                }}
                 style={{ padding: '8px', background: quiz.is_public ? 'rgba(74, 222, 128, 0.1)' : 'rgba(0,0,0,0.05)', color: quiz.is_public ? '#4ade80' : 'var(--text-color)', boxShadow: 'none', borderRadius: '10px' }}
                 title={quiz.is_public ? "Сделать приватным" : "Сделать публичным"}
               >
@@ -118,7 +111,7 @@ const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, pass
             )}
             {(userRole === 'admin' || userRole === 'creator' || userRole === 'teacher' || userId === quiz.author_id) && <button onClick={() => navigate(`/analytics?id=${quiz.id}`)} style={{ padding: '8px', background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none', borderRadius: '10px' }} title="Аналитика"><BarChart2 size={15} /></button>}
             <button
-              onClick={handleShare}
+              onClick={onShareClick}
               style={{ padding: '8px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none', borderRadius: '10px' }}
               title="Поделиться"
             >
@@ -167,7 +160,7 @@ const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, pass
   );
 });
 
-const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, onQuizzesChange, setHideModal, setDuplicateModal, setRenamingItem, setSelectedQuiz, setRandomQuizModal, activeTab }) => {
+const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, onQuizzesChange, setHideModal, setDuplicateModal, setRenamingItem, setSelectedQuiz, setRandomQuizModal, activeTab, handleShare, fetchData }) => {
   const navigate = useNavigate();
   const [visibleCount, setVisibleCount] = useState(25); // Incremental rendering start
 
@@ -212,7 +205,7 @@ const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, 
 
     const freshData = await fetchWithCache(`catalog_quizzes_${section.id}`, async () => {
       const { data: qData } = await supabase.from('quizzes')
-        .select('id, title, section_id, is_hidden, is_verified, sort_order, content, author_id, avg_success_rate, profiles(first_name, last_name, role)')
+        .select('id, title, section_id, is_hidden, is_public, is_verified, sort_order, content, author_id, is_personal, avg_success_rate, profiles(first_name, last_name, role)')
         .eq('section_id', section.id)
         .eq('is_archived', false)
         .eq('is_hidden', false)
@@ -395,6 +388,8 @@ const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, 
                 isDimmed={currentDividerHidden}
                 quizzesLength={quizzes.length}
                 activeTab={activeTab}
+                handleShare={handleShare}
+                fetchData={fetchData}
               />
             );
           });
@@ -407,7 +402,7 @@ const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, 
 const CatalogSectionRow = React.memo(({
   section, clsId, sIndex, profile, searchQuery, isExpanded,
   onToggle, onQuizzesChange, setHideModal, setDuplicateModal, setRenamingItem, setSelectedQuiz, setRandomQuizModal,
-  handleCreateDivider, swapSections, setNewName, activeTab
+  handleCreateDivider, swapSections, setNewName, activeTab, handleShare, fetchData
 }) => {
   return (
     <div className="catalog-container" style={{
@@ -502,6 +497,8 @@ const CatalogSectionRow = React.memo(({
           setSelectedQuiz={setSelectedQuiz}
           setRandomQuizModal={setRandomQuizModal}
           activeTab={activeTab}
+          handleShare={handleShare}
+          fetchData={fetchData}
         />
       )}
     </div>
@@ -511,7 +508,7 @@ const CatalogSectionRow = React.memo(({
 const CatalogClassRow = React.memo(({
   cls, cIndex, profile, searchQuery, isExpanded, expandedSections,
   onToggle, onSectionToggle, swapClasses, swapSections, handleRenameItem, handleCreateDivider, handleCreateSectionDivider, setNewName,
-  onQuizzesChange, setHideModal, setDuplicateModal, setSelectedQuiz, setRandomQuizModal, activeTab
+  onQuizzesChange, setHideModal, setDuplicateModal, setSelectedQuiz, setRandomQuizModal, activeTab, handleShare, fetchData
 }) => {
   return (
     <div className="card animate" style={{
@@ -634,6 +631,8 @@ const CatalogClassRow = React.memo(({
                 handleCreateDivider={handleCreateDivider}
                 swapSections={swapSections}
                 activeTab={activeTab}
+                handleShare={handleShare}
+                fetchData={fetchData}
                 setNewName={setNewName}
               />
             );
@@ -646,8 +645,10 @@ const CatalogClassRow = React.memo(({
 
 const QuizCatalog = ({ profile }) => {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [isFromShare, setIsFromShare] = useState(false);
+  const [cities, setCities] = useState([]);
+  const [schools, setSchools] = useState([]);
   const [classes, setClasses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -716,6 +717,16 @@ const QuizCatalog = ({ profile }) => {
   const [selectedQuiz, setSelectedQuizState] = useState(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [duplicateModal, setDuplicateModalState] = useState(null);
+  const [shareModalQuiz, setShareModalQuiz] = useState(null);
+  const [shareUserEmail, setShareUserEmail] = useState("");
+  const [shareCityId, setShareCityId] = useState("");
+  const [shareSchoolId, setShareSchoolId] = useState("");
+  const [shareClassId, setShareClassId] = useState("");
+  const [allCities, setAllCities] = useState([]);
+  const [allSchools, setAllSchools] = useState([]);
+  const [allBaseClasses, setAllBaseClasses] = useState([]);
+  const [shareAccessList, setShareAccessList] = useState([]);
+  const [shareLoading, setShareLoading] = useState(false);
   const [duplicateLoading, setDuplicateLoading] = useState(false);
   const [personalClasses, setPersonalClasses] = useState([]);
   const [personalSections, setPersonalSections] = useState([]);
@@ -837,23 +848,26 @@ const QuizCatalog = ({ profile }) => {
     const isPrivileged = profile?.role === 'admin' || profile?.role === 'creator';
     const cacheKeyBase = `catalog_struct_${activeTab}_${selectedLibraryUser?.id || 'none'}`;
 
-    const [c, s, basicQuizzes] = await Promise.all([
+    const [citiesData, schoolsData, baseClassesData, c, s, basicQuizzes] = await Promise.all([
+      fetchWithCache('cities_list', () => supabase.from('cities').select('*').order('name').then(r => r.data)),
+      fetchWithCache('schools_list', () => supabase.from('schools').select('*').order('name').then(r => r.data)),
+      fetchWithCache('classes_list', () => supabase.from('classes').select('*').order('order_index').then(r => r.data)),
       fetchWithCache(cacheKeyBase + '_classes', () => {
-        let q = supabase.from('quiz_classes').select('*').order('sort_order', { ascending: true });
+        let q = supabase.from('quiz_classes').select('*, is_public').order('sort_order', { ascending: true });
         if (activeTab === 'official') q = q.eq('is_personal', false);
         else if (activeTab === 'personal') q = q.eq('is_personal', true).eq('author_id', profile?.id);
         else if (selectedLibraryUser) q = q.eq('is_personal', true).eq('author_id', selectedLibraryUser.id);
         return q.then(r => r.data);
       }),
       fetchWithCache(cacheKeyBase + '_sections', () => {
-        let q = supabase.from('quiz_sections').select('*').order('sort_order', { ascending: true });
+        let q = supabase.from('quiz_sections').select('*, is_public').order('sort_order', { ascending: true });
         if (activeTab === 'official') q = q.eq('is_personal', false);
         else if (activeTab === 'personal') q = q.eq('is_personal', true).eq('author_id', profile?.id);
         else if (selectedLibraryUser) q = q.eq('is_personal', true).eq('author_id', selectedLibraryUser.id);
         return q.then(r => r.data);
       }),
       fetchWithCache(cacheKeyBase + `_quizzes_${isPrivileged ? 'all' : 'visible'}`, () => {
-        let quizQuery = supabase.from('quizzes').select('id, title, section_id, is_hidden, content').eq('is_archived', false);
+        let quizQuery = supabase.from('quizzes').select('id, title, section_id, is_hidden, is_public, content, is_personal, author_id').eq('is_archived', false);
         if (!isPrivileged) quizQuery = quizQuery.eq('is_hidden', false);
 
         if (activeTab === 'official') quizQuery = quizQuery.eq('is_personal', false);
@@ -863,6 +877,10 @@ const QuizCatalog = ({ profile }) => {
         return quizQuery.then(r => r.data);
       })
     ]);
+
+    setAllCities(citiesData || []);
+    setAllSchools(schoolsData || []);
+    setAllBaseClasses(baseClassesData || []);
 
     if (c && s && basicQuizzes) {
       setClasses(formatClasses(c, s, basicQuizzes));
@@ -910,6 +928,20 @@ const QuizCatalog = ({ profile }) => {
     })();
   }, [debouncedSearchQuery]); // eslint-disable-line
 
+  const handleShare = useCallback((quiz) => {
+    // Если это личный тест И мы его автор, открываем настройки
+    // Либо если мы находимся во вкладке "Личная библиотека"
+    if (quiz.is_personal && (quiz.author_id === profile?.id || activeTab === 'personal')) {
+      setShareUserEmail("");
+      setShareModalQuiz(quiz);
+      return false; // Окно открыто, копирования не было
+    }
+    const url = `${window.location.origin}${window.location.pathname}?shareQuiz=${quiz.id}`;
+    const text = `${quiz.title}\n${url}`;
+    navigator.clipboard.writeText(text);
+    return true; // Ссылка скопирована
+  }, [profile?.id, activeTab]);
+
   // Logic for opening quiz from shared link
   useEffect(() => {
     const shareId = searchParams.get('shareQuiz');
@@ -921,11 +953,25 @@ const QuizCatalog = ({ profile }) => {
           .single();
         if (data && !error) {
           setSelectedQuizState(data);
-          window.history.replaceState({}, '', window.location.pathname);
+          // Очищаем параметры URL, чтобы окно не открывалось повторно при ререндере
+          setSearchParams({}, { replace: true });
         }
       })();
     }
-  }, [searchParams, selectedQuiz]);
+  }, [searchParams, selectedQuiz, setSearchParams]);
+
+  // Fetch access list when share modal opens
+  useEffect(() => {
+    if (shareModalQuiz) {
+      (async () => {
+        const { data } = await supabase
+          .from('library_access')
+          .select('*, classes:target_class_id(name, schools(name))')
+          .eq('owner_id', profile.id);
+        setShareAccessList(data || []);
+      })();
+    }
+  }, [shareModalQuiz, profile?.id]);
 
 
 
@@ -1243,6 +1289,8 @@ const QuizCatalog = ({ profile }) => {
                 setSelectedQuiz={setSelectedQuiz}
                 setRandomQuizModal={setRandomQuizModal}
                 activeTab={activeTab}
+                handleShare={handleShare}
+                fetchData={fetchData}
               />
             );
           })
@@ -1289,6 +1337,188 @@ const QuizCatalog = ({ profile }) => {
               }
             }} style={{ padding: '9px 22px', borderRadius: '30px', fontSize: '0.9rem', fontWeight: '600', background: 'var(--primary-color)' }} className="flex-center">
               Сохранить
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Share Settings Modal */}
+      {shareModalQuiz && (
+        <div 
+          className="modal-overlay animate" 
+          style={{ zIndex: 3000 }} 
+          onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} 
+          onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; setShareModalQuiz(null); } }}
+        >
+          <div className="card animate" style={{ width: '500px', padding: '30px', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+            <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '25px' }}>
+              <h3 style={{ margin: 0 }}>Настройки доступа</h3>
+              <button onClick={() => setShareModalQuiz(null)} style={{ background: 'transparent', boxShadow: 'none' }}><X size={20} /></button>
+            </div>
+
+            <p style={{ opacity: 0.6, fontSize: '0.9rem', marginBottom: '20px' }}>
+              Тест: <strong>{shareModalQuiz.title}</strong>
+            </p>
+
+            <div style={{ marginBottom: '25px', padding: '20px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '15px' }}>
+              <div className="flex-center" style={{ justifyContent: 'space-between' }}>
+                <div>
+                  <h4 style={{ margin: 0 }}>Публичный доступ</h4>
+                  <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', opacity: 0.6 }}>Любой со ссылкой сможет пройти тест</p>
+                </div>
+                <button
+                  onClick={async () => {
+                    const newStatus = !shareModalQuiz.is_public;
+                    const { error } = await supabase.from('quizzes').update({ is_public: newStatus }).eq('id', shareModalQuiz.id);
+                    if (error) {
+                      console.error("Error updating publicity modal:", error);
+                      alert("Ошибка сохранения: " + error.message);
+                    } else {
+                      setShareModalQuiz({ ...shareModalQuiz, is_public: newStatus });
+                      fetchData(); // Обновляем весь каталог
+                    }
+                  }}
+                  style={{
+                    padding: '8px 20px',
+                    background: shareModalQuiz.is_public ? '#4ade80' : 'rgba(0,0,0,0.1)',
+                    color: shareModalQuiz.is_public ? 'white' : 'inherit',
+                    borderRadius: '10px'
+                  }}
+                >
+                  {shareModalQuiz.is_public ? 'Включен' : 'Выключен'}
+                </button>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '25px' }}>
+              <h4 style={{ marginBottom: '15px' }}>Предоставить доступ</h4>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '20px', background: 'rgba(0,0,0,0.03)', borderRadius: '15px' }}>
+                <p style={{ margin: 0, fontSize: '0.8rem', opacity: 0.6 }}>Доступ по UUID пользователя:</p>
+                <div className="flex-center" style={{ gap: '10px' }}>
+                  <input
+                    type="text"
+                    placeholder="xxxx-xxxx-xxxx-xxxx"
+                    value={shareUserEmail}
+                    onChange={(e) => setShareUserEmail(e.target.value)}
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    onClick={async () => {
+                      if (!shareUserEmail.trim()) return;
+                      setShareLoading(true);
+                      const { error } = await supabase.from('library_access').insert({
+                        owner_id: profile.id,
+                        user_id: shareUserEmail.trim(),
+                        item_type: 'library'
+                      });
+                      setShareLoading(false);
+                      if (error) alert('Ошибка доступа: ' + error.message);
+                      else {
+                        setShareUserEmail("");
+                        // Refresh list
+                        const { data } = await supabase.from('library_access').select('*, classes(name, schools(name))').eq('owner_id', profile.id);
+                        setShareAccessList(data || []);
+                      }
+                    }}
+                    disabled={shareLoading}
+                    style={{ background: 'var(--primary-color)', color: 'white', padding: '12px' }}
+                  >
+                    {shareLoading ? <Loader2 className="spinner" size={18} /> : 'Добавить'}
+                  </button>
+                </div>
+
+                <div style={{ height: '1px', background: 'rgba(0,0,0,0.05)', margin: '10px 0' }} />
+                
+                <p style={{ margin: 0, fontSize: '0.8rem', opacity: 0.6 }}>Доступ целому классу:</p>
+                <div style={{ display: 'grid', gap: '10px' }}>
+                  <select value={shareCityId} onChange={(e) => { setShareCityId(e.target.value); setShareSchoolId(""); setShareClassId(""); }}>
+                    <option value="">Выберите город...</option>
+                    {allCities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                  <select value={shareSchoolId} onChange={(e) => { setShareSchoolId(e.target.value); setShareClassId(""); }} disabled={!shareCityId}>
+                    <option value="">Выберите школу...</option>
+                    {allSchools.filter(s => s.city_id === shareCityId).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                  <div className="flex-center" style={{ gap: '10px' }}>
+                    <select value={shareClassId} onChange={(e) => setShareClassId(e.target.value)} disabled={!shareSchoolId} style={{ flex: 1 }}>
+                      <option value="">Выберите класс...</option>
+                      {allBaseClasses.filter(c => c.school_id === shareSchoolId).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                    <button
+                      onClick={async () => {
+                        if (!shareClassId) return;
+                        setShareLoading(true);
+                        const { error } = await supabase.from('library_access').insert({
+                          owner_id: profile.id,
+                          target_class_id: shareClassId,
+                          item_type: 'library'
+                        });
+                        setShareLoading(false);
+                        if (error) alert('Ошибка доступа: ' + error.message);
+                        else {
+                          // Refresh list
+                          const { data } = await supabase.from('library_access').select('*, classes:target_class_id(name, schools(name))').eq('owner_id', profile.id);
+                          setShareAccessList(data || []);
+                        }
+                      }}
+                      disabled={shareLoading || !shareClassId}
+                      style={{ background: 'var(--primary-color)', color: 'white', padding: '12px' }}
+                    >
+                      {shareLoading ? <Loader2 className="spinner" size={18} /> : 'Добавить'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {shareAccessList.length > 0 && (
+              <div style={{ marginBottom: '25px' }}>
+                <h4 style={{ marginBottom: '15px' }}>Текущие доступы</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {shareAccessList.map(access => (
+                    <div key={access.id} className="flex-center" style={{ justifyContent: 'space-between', padding: '12px', background: 'rgba(0,0,0,0.02)', borderRadius: '12px', fontSize: '0.85rem' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        {access.user_id ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div style={{ width: '8px', height: '8px', background: '#4ade80', borderRadius: '50%' }} />
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Пользователь: {access.user_id.slice(0, 8)}...</span>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div style={{ width: '8px', height: '8px', background: '#6366f1', borderRadius: '50%' }} />
+                            <span>Класс: {access.classes?.schools?.name}, {access.classes?.name}</span>
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        onClick={async () => {
+                          if (window.confirm('Отозвать доступ?')) {
+                            const { error } = await supabase.from('library_access').delete().eq('id', access.id);
+                            if (!error) {
+                              setShareAccessList(prev => prev.filter(a => a.id !== access.id));
+                            }
+                          }
+                        }}
+                        style={{ background: 'transparent', color: 'red', boxShadow: 'none', padding: '5px' }}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <button
+              onClick={() => {
+                const url = `${window.location.origin}${window.location.pathname}?shareQuiz=${shareModalQuiz.id}`;
+                navigator.clipboard.writeText(url);
+                alert('Ссылка скопирована!');
+              }}
+              style={{ width: '100%', padding: '15px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', fontWeight: 'bold' }}
+            >
+              Копировать ссылку
             </button>
           </div>
         </div>
