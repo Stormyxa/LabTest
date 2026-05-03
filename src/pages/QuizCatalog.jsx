@@ -680,7 +680,13 @@ const QuizCatalog = ({ profile }) => {
               setLibraryUsers(uniqueUsers);
             }
           } else if (activeTab === 'shared') {
-            const { data } = await supabase.from('library_access').select('owner_id, profiles!library_access_owner_id_fkey(id, first_name, last_name)').eq('user_id', profile?.id);
+            let query = supabase.from('library_access').select('owner_id, profiles!library_access_owner_id_fkey(id, first_name, last_name)');
+            if (profile?.class_id) {
+              query = query.or(`user_id.eq.${profile.id},target_class_id.eq.${profile.class_id}`);
+            } else {
+              query = query.eq('user_id', profile?.id);
+            }
+            const { data } = await query;
             if (data) {
               const uniqueUsers = Array.from(new Map(data.filter(d => d.profiles).map(item => [item.owner_id, item.profiles])).values());
               setLibraryUsers(uniqueUsers);
@@ -691,7 +697,7 @@ const QuizCatalog = ({ profile }) => {
       };
       fetchLibraryUsers();
     }
-  }, [activeTab, selectedLibraryUser, profile?.id]);
+  }, [activeTab, selectedLibraryUser, profile?.id, profile?.class_id]);
 
 
   const [expandedClasses, setExpandedClasses] = useState(() => {
@@ -1292,7 +1298,7 @@ const QuizCatalog = ({ profile }) => {
       {(activeTab === 'public' || activeTab === 'shared') && !selectedLibraryUser && (
         <div className="grid-2 animate" style={{ marginBottom: '40px' }}>
           {usersLoading ? <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '40px' }}><Loader2 className="spinner" /></div> :
-            libraryUsers.length === 0 ? <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '40px', opacity: 0.5 }}>Библиотеки не найдены</div> :
+            libraryUsers.length === 0 ? (activeTab === 'public' ? <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '40px', opacity: 0.5 }}>Библиотеки не найдены</div> : null) :
               libraryUsers.map(u => (
                 <div key={u.id} className="card" onClick={() => setSelectedLibraryUserState(u)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '15px', padding: '20px' }}>
                   <div style={{ width: '50px', height: '50px', borderRadius: '25px', background: 'var(--primary-color)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', fontWeight: 'bold' }}>
