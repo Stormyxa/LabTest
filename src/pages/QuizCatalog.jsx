@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, startTransition, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { Search, Play, CheckCircle, ChevronDown, ChevronUp, Award, Save, Copy, BarChart2, Book, Pencil, Eye, AlertTriangle, Plus, Shield, EyeOff, Trash2, Dices, Clock, TrendingUp, Info, Loader2, Share2, Check, X, ExternalLink, Youtube, FileText, Layout, Video } from 'lucide-react';
+import { Search, Play, CheckCircle, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Award, Save, Copy, BarChart2, Book, Pencil, Eye, AlertTriangle, Plus, Shield, EyeOff, Trash2, Dices, Clock, TrendingUp, Info, Loader2, Share2, Check, X, ExternalLink, Youtube, FileText, Layout, Video } from 'lucide-react';
 import { useScrollRestoration } from '../lib/useScrollRestoration';
 import { fetchWithCache, useCacheSync } from '../lib/cache';
 
@@ -103,9 +103,9 @@ const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, pass
             {canEditQuiz(quiz) && <button onClick={() => setHideModal(quiz)} style={{ padding: '8px', background: 'rgba(250,204,21,0.08)', color: '#ca8a04', boxShadow: 'none', borderRadius: '10px' }} title="Скрыть"><Eye size={15} /></button>}
             {quiz.is_personal && quiz.author_id === userId && (
               <button
-                onClick={async (e) => { 
-                  e.stopPropagation(); 
-                  const { error } = await supabase.from('quizzes').update({ is_public: !quiz.is_public }).eq('id', quiz.id); 
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  const { error } = await supabase.from('quizzes').update({ is_public: !quiz.is_public }).eq('id', quiz.id);
                   if (error) {
                     console.error("Error updating publicity:", error);
                     alert("Ошибка: " + error.message);
@@ -770,11 +770,11 @@ const QuizCatalog = ({ profile }) => {
 
   const getUsageStats = () => {
     if (activeTab !== 'personal') return null;
-    
+
     // Count real items (not dividers)
     const realClassesCount = classes.filter(c => !c.is_divider).length;
     const dividerClassesCount = classes.filter(c => c.is_divider).length;
-    
+
     let maxRealSectionsCount = 0;
     let maxDividerSectionsCount = 0;
     let maxRealQuizzesCount = 0;
@@ -782,17 +782,17 @@ const QuizCatalog = ({ profile }) => {
 
     classes.forEach(c => {
       if (c.is_divider) return;
-      
+
       const realS = (c.sections || []).filter(s => !s.is_divider);
       const divS = (c.sections || []).filter(s => s.is_divider);
-      
+
       if (realS.length > maxRealSectionsCount) maxRealSectionsCount = realS.length;
       if (divS.length > maxDividerSectionsCount) maxDividerSectionsCount = divS.length;
-      
+
       realS.forEach(s => {
         const realQ = (s.basicQuizzes || []).filter(q => !q.content?.is_divider);
         const divQ = (s.basicQuizzes || []).filter(q => q.content?.is_divider);
-        
+
         if (realQ.length > maxRealQuizzesCount) maxRealQuizzesCount = realQ.length;
         if (divQ.length > maxDividerQuizzesCount) maxDividerQuizzesCount = divQ.length;
       });
@@ -979,8 +979,12 @@ const QuizCatalog = ({ profile }) => {
   const setSelectedQuiz = useCallback((v) => setSelectedQuizState(v), []);
   const setHideModal = useCallback((v) => setHideModalState(v), []);
   const setRandomQuizModal = useCallback((v) => setRandomQuizModalState(v), []);
-  const onPrepQuizSelect = useCallback((v) => setPrepQuizState(v), []);
+  const onPrepQuizSelect = useCallback((v) => {
+    setPrepQuizState(v);
+    setActivePrepResourceIdx(null); // Reset when opening/closing
+  }, []);
   const setDuplicateModal = useCallback((v) => setDuplicateModalState(v), []);
+  const [activePrepResourceIdx, setActivePrepResourceIdx] = useState(null);
 
   const formatClasses = useCallback((c, s, basicQuizzes) => {
     if (!c || !s || !basicQuizzes) return [];
@@ -1023,7 +1027,7 @@ const QuizCatalog = ({ profile }) => {
         .from('library_access')
         .select('owner_id')
         .or(`user_id.eq.${profile?.id},target_class_id.eq.${profile?.class_id}`);
-      
+
       if (accessData) {
         libraryAccessIds = [...new Set(accessData.map(a => a.owner_id))];
       }
@@ -1210,14 +1214,14 @@ const QuizCatalog = ({ profile }) => {
   const handleRename = async () => {
     if (!renamingItem || !newName.trim()) return;
     const table = renamingItem.type === 'class' ? 'quiz_classes' : (renamingItem.type === 'section' ? 'quiz_sections' : 'quizzes');
-    
+
     let updateData = { name: newName };
     if (renamingItem.type === 'quiz') {
       if (renamingItem.isDivider) {
         // КРИТИЧНО: Сохраняем структуру content, чтобы разделитель остался разделителем
-        updateData = { 
-          title: 'Разделитель', 
-          content: { ...renamingItem.content, divider_text: newName, is_divider: true } 
+        updateData = {
+          title: 'Разделитель',
+          content: { ...renamingItem.content, divider_text: newName, is_divider: true }
         };
       } else {
         updateData = { title: newName };
@@ -1355,13 +1359,13 @@ const QuizCatalog = ({ profile }) => {
             <div key={stat.label} style={{ textAlign: 'center', minWidth: '70px' }}>
               <div style={{ fontSize: '0.65rem', opacity: 0.5, marginBottom: '2px', textTransform: 'uppercase' }}>{stat.label}</div>
               <div style={{ fontSize: '0.9rem', fontWeight: 'bold', color: stat.current >= stat.max ? '#ef4444' : 'var(--primary-color)' }}>
-                {stat.current}/{stat.max} 
+                {stat.current}/{stat.max}
                 <span style={{ fontSize: '0.7rem', opacity: 0.4, marginLeft: '4px' }} title="Разделители">+{stat.dCurrent}</span>
               </div>
               <div style={{ width: '100%', height: '4px', background: 'rgba(0,0,0,0.05)', borderRadius: '2px', marginTop: '4px', overflow: 'hidden' }}>
-                <div style={{ 
-                  width: `${Math.min(100, (stat.current / stat.max) * 100)}%`, 
-                  height: '100%', 
+                <div style={{
+                  width: `${Math.min(100, (stat.current / stat.max) * 100)}%`,
+                  height: '100%',
                   background: stat.current >= stat.max ? '#ef4444' : 'var(--primary-color)',
                   transition: 'width 0.3s ease'
                 }} />
@@ -1507,10 +1511,10 @@ const QuizCatalog = ({ profile }) => {
 
       {/* Share Settings Modal */}
       {shareModalQuiz && (
-        <div 
-          className="modal-overlay animate" 
-          style={{ zIndex: 3000 }} 
-          onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} 
+        <div
+          className="modal-overlay animate"
+          style={{ zIndex: 3000 }}
+          onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }}
           onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; setShareModalQuiz(null); } }}
         >
           <div className="card animate" style={{ width: '500px', padding: '30px', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
@@ -1555,7 +1559,7 @@ const QuizCatalog = ({ profile }) => {
 
             <div style={{ marginBottom: '25px' }}>
               <h4 style={{ marginBottom: '15px' }}>Предоставить доступ</h4>
-              
+
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '20px', background: 'rgba(0,0,0,0.03)', borderRadius: '15px' }}>
                 <p style={{ margin: 0, fontSize: '0.8rem', opacity: 0.6 }}>Доступ по UUID пользователя:</p>
                 <div className="flex-center" style={{ gap: '10px' }}>
@@ -1592,7 +1596,7 @@ const QuizCatalog = ({ profile }) => {
                 </div>
 
                 <div style={{ height: '1px', background: 'rgba(0,0,0,0.05)', margin: '10px 0' }} />
-                
+
                 <p style={{ margin: 0, fontSize: '0.8rem', opacity: 0.6 }}>Доступ целому классу:</p>
                 <div style={{ display: 'grid', gap: '10px' }}>
                   <select value={shareCityId} onChange={(e) => { setShareCityId(e.target.value); setShareSchoolId(""); setShareClassId(""); }}>
@@ -1844,67 +1848,149 @@ const QuizCatalog = ({ profile }) => {
           </div>
         </div>
       )}
-        {prepQuiz && (
-          <div 
-            className="modal-overlay animate" 
-            style={{ zIndex: 3500 }}
-            onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} 
-            onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; onPrepQuizSelect(null); } }}
-          >
-            <div className="card animate" style={{ width: '500px', padding: '35px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-              <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', margin: '0 auto 20px' }}>
-                <Book size={32} />
-              </div>
-              <h2 style={{ marginBottom: '10px' }}>Подготовка к тесту</h2>
-              <h3 style={{ fontSize: '1.1rem', opacity: 0.7, marginBottom: '25px', fontWeight: '500' }}>«{prepQuiz.title}»</h3>
-              
-              <div style={{ textAlign: 'left', marginBottom: '30px', background: 'rgba(0,0,0,0.02)', padding: '20px', borderRadius: '15px' }}>
-                <div style={{ fontSize: '0.8rem', opacity: 0.4, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '15px', fontWeight: 'bold' }}>Материалы для изучения:</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {(prepQuiz.resources || []).map((res, idx) => {
-                    const isYoutube = res.url.includes('youtube.com') || res.url.includes('youtu.be');
-                    const isDrive = res.url.includes('drive.google.com');
-                    return (
-                      <a 
-                        key={idx} 
-                        href={res.url} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="flex-center animate"
-                        style={{ justifyContent: 'space-between', padding: '12px 15px', background: 'white', borderRadius: '12px', color: 'inherit', textDecoration: 'none', border: '1px solid rgba(0,0,0,0.05)' }}
-                      >
-                        <div className="flex-center" style={{ gap: '12px' }}>
-                          <div style={{ color: isYoutube ? '#ef4444' : (isDrive ? '#22c55e' : 'var(--primary-color)') }}>
-                            {isYoutube ? <Youtube size={18} /> : (isDrive ? <FileText size={18} /> : <ExternalLink size={18} />)}
-                          </div>
-                          <span style={{ fontWeight: '600', fontSize: '0.9rem' }}>{res.title || 'Ресурс ' + (idx + 1)}</span>
-                        </div>
-                        <ExternalLink size={14} style={{ opacity: 0.3 }} />
-                      </a>
-                    );
-                  })}
+      {prepQuiz && (
+        <div
+          className="modal-overlay animate"
+          style={{ zIndex: 3500 }}
+          onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }}
+          onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; onPrepQuizSelect(null); } }}
+        >
+          <div className="card animate" style={{ width: activePrepResourceIdx !== null ? '95vw' : '550px', maxWidth: '1200px', padding: activePrepResourceIdx !== null ? '0' : '35px', textAlign: 'center', overflow: 'hidden', display: 'flex', flexDirection: 'column', height: activePrepResourceIdx !== null ? '90vh' : 'auto' }} onClick={e => e.stopPropagation()}>
+
+            {activePrepResourceIdx !== null ? (
+              // Integrated Player View
+              <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%' }}>
+                <div className="flex-center" style={{ padding: '15px 25px', background: 'var(--card-bg)', justifyContent: 'space-between', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
+                  <div className="flex-center" style={{ gap: '15px' }}>
+                    <button onClick={() => setActivePrepResourceIdx(null)} className="flex-center" style={{ background: 'rgba(0,0,0,0.05)', padding: '8px', borderRadius: '10px', color: 'inherit', boxShadow: 'none' }}>
+                      <ChevronLeft size={20} />
+                    </button>
+                    <h3 style={{ margin: 0, fontSize: '1.1rem' }}>{prepQuiz.resources[activePrepResourceIdx].title || 'Материал'}</h3>
+                  </div>
+                  <button onClick={() => onPrepQuizSelect(null)} style={{ background: 'transparent', boxShadow: 'none' }}><X size={20} /></button>
+                </div>
+
+                <div style={{ flex: 1, background: '#000', position: 'relative' }}>
+                  {(() => {
+                    const res = prepQuiz.resources[activePrepResourceIdx];
+                    const getYoutubeId = (url) => {
+                      const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+                      const match = url.match(regExp);
+                      return (match && match[2].length === 11) ? match[2] : null;
+                    };
+                    const ytId = getYoutubeId(res.url);
+
+                    if (ytId) {
+                      return (
+                        <iframe
+                          width="100%"
+                          height="100%"
+                          src={`https://www.youtube.com/embed/${ytId}?rel=0&autoplay=1&fs=0`}
+                          title={res.title}
+                          frameBorder="0"
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          style={{ position: 'absolute', inset: 0 }}
+                        />
+                      );
+                    } else {
+                      return (
+                        <iframe
+                          src={res.url}
+                          width="100%"
+                          height="100%"
+                          title={res.title}
+                          style={{ border: 'none', background: 'white' }}
+                        />
+                      );
+                    }
+                  })()}
+                </div>
+
+                <div className="flex-center" style={{ padding: '20px 25px', background: 'var(--card-bg)', justifyContent: 'center', gap: '15px', borderTop: '1px solid rgba(0,0,0,0.05)' }}>
+                  <button onClick={() => setActivePrepResourceIdx(null)} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', boxShadow: 'none' }}>Назад к списку</button>
+                  <button
+                    onClick={() => {
+                      const id = prepQuiz.id;
+                      onPrepQuizSelect(null);
+                      // DIRECT START LOGIC
+                      localStorage.removeItem(`quiz_show_result_${id}`);
+                      localStorage.removeItem(`quiz_answers_${id}`);
+                      localStorage.removeItem(`quiz_current_idx_${id}`);
+                      localStorage.removeItem(`quiz_times_${id}`);
+                      localStorage.removeItem(`quiz_start_time_${id}`);
+                      localStorage.removeItem(`quiz_timer_${id}`);
+                      navigate(`/quiz/${id}?fresh=1`);
+                    }}
+                    style={{ padding: '12px 30px', background: 'var(--primary-color)' }}
+                    className="flex-center"
+                  >
+                    <Play size={18} fill="currentColor" style={{ marginRight: '8px' }} /> Начать тест сейчас
+                  </button>
                 </div>
               </div>
+            ) : (
+              // Standard List View
+              <>
+                <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', margin: '0 auto 20px' }}>
+                  <Book size={32} />
+                </div>
+                <h2 style={{ marginBottom: '10px' }}>Подготовка к тесту</h2>
+                <h3 style={{ fontSize: '1.1rem', opacity: 0.7, marginBottom: '25px', fontWeight: '500' }}>«{prepQuiz.title}»</h3>
 
-              <div style={{ display: 'flex', gap: '12px' }}>
-                <button onClick={() => onPrepQuizSelect(null)} style={{ flex: 1, background: 'rgba(0,0,0,0.05)', color: 'inherit' }}>Закрыть</button>
-                <button 
-                  onClick={() => {
-                    const q = prepQuiz;
-                    onPrepQuizSelect(null);
-                    setSelectedQuiz(q);
-                  }} 
-                  style={{ flex: 2 }}
-                  className="flex-center"
-                >
-                  <Play size={18} fill="currentColor" style={{ marginRight: '8px' }} /> Начать тест
-                </button>
-              </div>
-            </div>
+                <div style={{ textAlign: 'left', marginBottom: '30px', background: 'rgba(0,0,0,0.02)', padding: '20px', borderRadius: '15px', flex: 1, overflowY: 'auto' }}>
+                  <div style={{ fontSize: '0.8rem', opacity: 0.4, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '15px', fontWeight: 'bold' }}>Материалы для изучения:</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {(prepQuiz.resources || []).map((res, idx) => {
+                      const isYoutube = res.url.includes('youtube.com') || res.url.includes('youtu.be');
+                      const isDrive = res.url.includes('drive.google.com') || res.url.includes('docs.google.com');
+                      return (
+                        <div
+                          key={idx}
+                          onClick={() => setActivePrepResourceIdx(idx)}
+                          className="flex-center animate"
+                          style={{ cursor: 'pointer', justifyContent: 'space-between', padding: '12px 15px', background: 'white', borderRadius: '12px', color: 'inherit', border: '1px solid rgba(0,0,0,0.05)' }}
+                        >
+                          <div className="flex-center" style={{ gap: '12px' }}>
+                            <div style={{ color: isYoutube ? '#ef4444' : (isDrive ? '#22c55e' : 'var(--primary-color)') }}>
+                              {isYoutube ? <Youtube size={18} /> : (isDrive ? <FileText size={18} /> : <Book size={18} />)}
+                            </div>
+                            <span style={{ fontWeight: '600', fontSize: '0.9rem' }}>{res.title || 'Ресурс ' + (idx + 1)}</span>
+                          </div>
+                          <Layout size={14} style={{ opacity: 0.3 }} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button onClick={() => onPrepQuizSelect(null)} style={{ flex: 1, background: 'rgba(0,0,0,0.05)', color: 'inherit', boxShadow: 'none' }}>Закрыть</button>
+                  <button
+                    onClick={() => {
+                      const id = prepQuiz.id;
+                      onPrepQuizSelect(null);
+                      // DIRECT START LOGIC
+                      localStorage.removeItem(`quiz_show_result_${id}`);
+                      localStorage.removeItem(`quiz_answers_${id}`);
+                      localStorage.removeItem(`quiz_current_idx_${id}`);
+                      localStorage.removeItem(`quiz_times_${id}`);
+                      localStorage.removeItem(`quiz_start_time_${id}`);
+                      localStorage.removeItem(`quiz_timer_${id}`);
+                      navigate(`/quiz/${id}?fresh=1`);
+                    }}
+                    style={{ flex: 2 }}
+                    className="flex-center"
+                  >
+                    <Play size={18} fill="currentColor" style={{ marginRight: '8px' }} /> Начать тест
+                  </button>
+                </div>
+              </>
+            )}
           </div>
-        )}
-      </div>
-    );
-  }
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default QuizCatalog;

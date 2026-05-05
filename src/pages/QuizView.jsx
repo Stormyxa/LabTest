@@ -68,44 +68,16 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, splitMod
         </div>
       </div>
 
-      {/* Tabs if multiple */}
-      {resources.length > 1 && (
-        <div style={{ display: 'flex', overflowX: 'auto', background: 'white', borderBottom: '1px solid rgba(0,0,0,0.05)' }} className="hide-scrollbar">
-          {resources.map((r, i) => (
-            <button
-              key={i}
-              onClick={() => setActiveIdx(i)}
-              style={{
-                padding: '12px 20px',
-                background: 'transparent',
-                borderRadius: '0',
-                borderBottom: activeIdx === i ? '2px solid var(--primary-color)' : '2px solid transparent',
-                color: activeIdx === i ? 'var(--primary-color)' : 'inherit',
-                fontSize: '0.85rem',
-                fontWeight: activeIdx === i ? '700' : '500',
-                whiteSpace: 'nowrap',
-                boxShadow: 'none',
-                opacity: activeIdx === i ? 1 : 0.6,
-                transition: 'all 0.2s'
-              }}
-            >
-              {r.title || `Ресурс ${i + 1}`}
-            </button>
-          ))}
-        </div>
-      )}
-
       {/* Main Content Area */}
       <div style={{ flex: 1, position: 'relative', background: '#000' }}>
         {isVideo ? (
           <iframe
             width="100%"
             height="100%"
-            src={`https://www.youtube.com/embed/${getYoutubeId(res.url)}?rel=0&autoplay=0`}
+            src={`https://www.youtube.com/embed/${getYoutubeId(res.url)}?rel=0&autoplay=0&fs=0`}
             title={res.title}
             frameBorder="0"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
             style={{ position: 'absolute', inset: 0 }}
           />
         ) : (
@@ -150,7 +122,7 @@ const ResourceModal = ({ res, onClose }) => {
             <iframe
               width="100%"
               height="100%"
-              src={`https://www.youtube.com/embed/${ytId}?rel=0&autoplay=1`}
+              src={`https://www.youtube.com/embed/${ytId}?rel=0&autoplay=1&fs=0`}
               title={res.title}
               frameBorder="0"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -1410,11 +1382,12 @@ const QuizView = ({ session, profile }) => {
           width: '100%',
           background: '#f1f5f9'
         }}>
-          {showResources && quiz.resources?.length > 0 && (
+          {quiz.resources?.length > 0 && (
             <div style={{ 
               width: isMobile ? '100%' : '50%', 
               flexShrink: 0,
-              background: 'white'
+              background: 'white',
+              display: showResources ? 'block' : 'none'
             }}>
               <ResourcePlayer 
                 resources={quiz.resources}
@@ -1461,27 +1434,41 @@ const QuizView = ({ session, profile }) => {
           </button>
 
 
-          {/* Resources Toggle Button */}
-          {quiz.resources && quiz.resources.length > 0 && (
-            <button
-              onClick={() => setShowResources(!showResources)}
-              className="flex-center"
-              style={{ 
-                position: 'absolute', top: '0', right: '70px', height: '40px', 
-                borderRadius: '12px', background: showResources ? 'var(--primary-color)' : 'white', 
-                color: showResources ? 'white' : 'var(--primary-color)',
-                padding: '0 15px', fontWeight: 'bold', fontSize: '0.85rem', gap: '8px',
-                border: '1px solid rgba(0,0,0,0.05)', boxShadow: '0 4px 12px rgba(0,0,0,0.08)', zIndex: 10
-              }}
-            >
-              <Book size={18} />
-              {!isMobile && 'Материалы'}
-            </button>
-          )}
-
-          <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '20px', opacity: 0.6, paddingRight: '50px' }}>
-            <span style={{ whiteSpace: 'nowrap', fontSize: '0.9rem', fontWeight: '500' }}>Вопрос {currentIdx + 1} из {questions.length}</span>
-            <div className="flex-center" style={{ gap: '10px', flex: 1, justifyContent: 'flex-end', marginLeft: '20px', minWidth: 0 }}>
+          <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '20px', opacity: 0.8, paddingRight: '50px' }}>
+            <span style={{ whiteSpace: 'nowrap', fontSize: '0.9rem', fontWeight: '500', opacity: 0.6 }}>Вопрос {currentIdx + 1} из {questions.length}</span>
+            <div className="flex-center" style={{ gap: '15px', flex: 1, justifyContent: 'flex-end', marginLeft: '20px', minWidth: 0 }}>
+              {quiz.resources && quiz.resources.length > 0 && (
+                <div className="flex-center" style={{ gap: '8px' }}>
+                  {quiz.resources.length > 1 && (
+                    <select 
+                      value={activeResourceIdx} 
+                      onChange={(e) => {
+                        setActiveResourceIdx(Number(e.target.value));
+                        setShowResources(true);
+                      }}
+                      style={{ padding: '6px 12px', borderRadius: '10px', fontSize: '0.8rem', background: 'rgba(0,0,0,0.05)', border: 'none' }}
+                    >
+                      {quiz.resources.map((r, i) => (
+                        <option key={i} value={i}>{r.title || `Ресурс ${i+1}`}</option>
+                      ))}
+                    </select>
+                  )}
+                  <button
+                    onClick={() => setShowResources(!showResources)}
+                    className="flex-center"
+                    style={{ 
+                      height: '36px', 
+                      borderRadius: '10px', background: showResources ? 'var(--primary-color)' : 'white', 
+                      color: showResources ? 'white' : 'var(--primary-color)',
+                      padding: '0 12px', fontWeight: 'bold', fontSize: '0.8rem', gap: '6px',
+                      border: '1px solid rgba(0,0,0,0.1)', boxShadow: 'none', zIndex: 10
+                    }}
+                  >
+                    <Book size={16} />
+                    {!isMobile && 'Материалы'}
+                  </button>
+                </div>
+              )}
               {quiz.quiz_sections?.book_url && (
                 <a href={quiz.quiz_sections.book_url} target="_blank" rel="noopener noreferrer"
                   style={{ color: 'var(--primary-color)', flexShrink: 0, display: 'flex' }} title="Открыть учебник">
