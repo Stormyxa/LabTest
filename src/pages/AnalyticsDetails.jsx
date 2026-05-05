@@ -1048,7 +1048,7 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
 
         if (isTeacher && currentQuizObj?.author_id !== currentUserProfile?.id) {
           const activeTeacherClasses = overrideTeacherClasses || teacherClasses;
-          validProfs = validProfs.filter(p => activeTeacherClasses.includes(p.class_id));
+          validProfs = validProfs.filter(p => p.id === currentUserProfile.id || activeTeacherClasses.includes(p.class_id));
         }
 
         const uList = validProfs.map(p => {
@@ -1212,8 +1212,8 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
   }, [quizzes, playerResults, profile]);
 
   const filteredUsers = useMemo(() => users.filter(u => {
-    // If student, always show self
-    if (profile?.role === 'player' && u.id === profile?.id) return true;
+    // Always show self if took the test
+    if (u.id === profile?.id) return true;
     
     if (!showObservers && u.is_observer) return false;
     if (filterCity !== 'all' && u.city_id !== filterCity) return false;

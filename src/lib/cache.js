@@ -19,7 +19,19 @@ export const setCachedData = (key, data, ttlHours = 24 * 365) => {
   try {
     localStorage.setItem(`${CACHE_PREFIX}${key}`, JSON.stringify(payload));
   } catch (e) {
-    console.error('Failed to set cache (quota exceeded?):', e);
+    if (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED' || e.code === 22) {
+      console.warn('LocalStorage quota exceeded. Clearing labtest caches...');
+      Object.keys(localStorage).forEach(k => {
+        if (k.startsWith(CACHE_PREFIX)) localStorage.removeItem(k);
+      });
+      try {
+        localStorage.setItem(`${CACHE_PREFIX}${key}`, JSON.stringify(payload));
+      } catch (retryError) {
+        console.error('Still failed to set cache after clearing:', retryError);
+      }
+    } else {
+      console.error('Failed to set cache:', e);
+    }
   }
 };
 
