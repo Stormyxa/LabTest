@@ -38,7 +38,7 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
   const containerStyle = inline ? {
     width: '100%',
     aspectRatio: ytId ? '16/9' : 'auto',
-    minHeight: ytId ? '350px' : '650px',
+    minHeight: ytId ? '265px' : '650px',
     height: 'auto',
     background: 'white',
     borderRadius: '20px',
@@ -48,13 +48,13 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
     position: 'relative'
   } : {
     width: '100%',
-    height: 'calc(100vh - 60px)',
+    height: 'calc(100vh - 67px)',
     display: 'flex',
     flexDirection: 'column',
     background: 'white',
     borderRight: '1px solid rgba(0,0,0,0.1)',
     position: 'sticky',
-    top: '60px',
+    top: 0,
     overflow: 'hidden'
   };
 
@@ -638,7 +638,7 @@ const QuizView = ({ session, profile }) => {
       setIsFirstAttempt(first);
 
       if (data.resources && data.resources.length > 0) {
-        setShowResources(true);
+        setShowResources(false);
         if (!isMobile) setSplitMode(true);
       }
 
@@ -1325,7 +1325,7 @@ const QuizView = ({ session, profile }) => {
   const formatTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
   return (
-    <div style={{ display: 'flex', minHeight: 'calc(100vh - 75px)' }}>
+    <div style={{ display: 'flex', height: isMobile ? 'auto' : 'calc(100vh - 67px)', overflow: isMobile ? 'visible' : 'hidden' }}>
       {/* Sidebar Materials (PC only, split screen) */}
       {!isMobile && showResources && quiz.resources?.length > 0 && (
         <div style={{ width: '50%', flexShrink: 0 }}>
