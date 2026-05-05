@@ -285,6 +285,7 @@ const Editor = ({ session, profile }) => {
   const [newSectionName, setNewSectionName] = useState('');
   const [newSectionClassId, setNewSectionClassId] = useState('');
   const [newSectionBookUrl, setNewSectionBookUrl] = useState('');
+  const [resources, setResources] = useState([{ url: '', title: '' }]);
 
   const isTeacherOrPlayer = profile?.role === 'teacher' || profile?.role === 'player';
   const isPrivilegedEditor = profile?.role === 'admin' || profile?.role === 'creator';
@@ -297,6 +298,20 @@ const Editor = ({ session, profile }) => {
   });
 
   const [isPersonal, setIsPersonal] = useState(editorMode !== 'official');
+
+  const addResource = () => {
+    if (resources.length < 5) setResources([...resources, { url: '', title: '' }]);
+  };
+
+  const removeResource = (index) => {
+    setResources(resources.filter((_, i) => i !== index));
+  };
+
+  const updateResource = (index, field, value) => {
+    const newResources = [...resources];
+    newResources[index][field] = value;
+    setResources(newResources);
+  };
   
   useEffect(() => {
     sessionStorage.setItem('editor_mode', editorMode);
@@ -456,12 +471,15 @@ const Editor = ({ session, profile }) => {
         if (rpcError) throw rpcError;
         const maxOrder = maxOrderData || -1;
 
+        const filteredResources = resources.filter(r => r.url.trim());
+
         const newQuizzesInsertion = quizzesList.map((q, i) => ({
           title: (q.title || titles.split('\n')[0] || 'Новый тест').trim(),
           section_id: sectionId,
           author_id: session.user.id,
           is_personal: isPersonal,
           content: { questions: q.questions },
+          resources: filteredResources.length > 0 ? filteredResources : null,
           is_verified: canBulk,
           sort_order: maxOrder + 1 + i
         }));
@@ -481,6 +499,7 @@ const Editor = ({ session, profile }) => {
         setJsonInput('');
         setSectionId('');
         setSelectedClassId('');
+        setResources([{ url: '', title: '' }]);
       } else {
         let titleList = titles.split('\n').map(t => t.trim()).filter(t => t.length > 0);
         if (titleList.length === 0) throw new Error('Введите хотя бы одно название');
@@ -504,7 +523,7 @@ const Editor = ({ session, profile }) => {
         }
 
         // Show warning modal BEFORE inserting
-        setPendingEmptyQuiz({ titleList, canBulk, sectionId });
+        setPendingEmptyQuiz({ titleList, canBulk, sectionId, resources: resources.filter(r => r.url.trim()) });
       }
     } catch (err) {
       alert(`Ошибка: ${err.message}`);
@@ -517,7 +536,7 @@ const Editor = ({ session, profile }) => {
     if (!pendingEmptyQuiz || isSubmitting) return;
     setIsSubmitting(true);
     try {
-      const { titleList, canBulk, sectionId: sId } = pendingEmptyQuiz;
+      const { titleList, canBulk, sectionId: sId, resources: pendingResources } = pendingEmptyQuiz;
 
       const { data: maxOrderData, error: rpcError } = await supabase.rpc('get_max_sort_order', { p_section_id: sId });
       if (rpcError) throw rpcError;
@@ -529,6 +548,7 @@ const Editor = ({ session, profile }) => {
         author_id: session.user.id,
         is_personal: isPersonal,
         content: { questions: [] },
+        resources: pendingResources?.length > 0 ? pendingResources : null,
         is_verified: canBulk,
         is_hidden: true, // Auto-hide empty quiz
         sort_order: maxOrder + 1 + i
@@ -547,6 +567,7 @@ const Editor = ({ session, profile }) => {
       setTitles('');
       setSectionId('');
       setSelectedClassId('');
+      setResources([{ url: '', title: '' }]);
 
       if (inserted && inserted.length > 0) {
         navigate(`/redactor?id=${inserted[0].id}`);
@@ -882,6 +903,55 @@ const Editor = ({ session, profile }) => {
                         <label style={{ fontSize: '0.85rem', opacity: 0.5, marginBottom: '8px', display: 'block' }}>JSON содержание (если есть)</label>
                         <textarea id="quiz-json" name="quiz-json" placeholder="Вставьте JSON формат вашего теста здесь..." value={jsonInput} onChange={(e) => setJsonInput(e.target.value)} style={{ width: '100%', height: '150px' }} />
                         <FileJson size={24} style={{ position: 'absolute', right: '20px', top: '40px', opacity: 0.2 }} />
+                      </div>
+
+                      {/* Educational Resources Block */}
+                      <div style={{ padding: '15px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '15px', border: '1px solid rgba(99, 102, 241, 0.1)' }}>
+                        <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '15px' }}>
+                          <div className="flex-center" style={{ gap: '8px', color: 'var(--primary-color)' }}>
+                            <LinkIcon size={18} />
+                            <span style={{ fontWeight: 'bold', fontSize: '0.9rem' }}>Материалы и ресурсы (до 5)</span>
+                          </div>
+                          {resources.length < 5 && (
+                            <button type="button" onClick={addResource} style={{ padding: '5px 12px', fontSize: '0.8rem', background: 'white', color: 'var(--primary-color)', border: '1px solid rgba(99, 102, 241, 0.2)', boxShadow: 'none' }}>
+                              <Plus size={14} style={{ marginRight: '5px' }} /> Добавить
+                            </button>
+                          )}
+                        </div>
+                        
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          {resources.map((res, idx) => (
+                            <div key={idx} style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                                <input 
+                                  type="url" 
+                                  placeholder="Ссылка (YouTube, Google Drive PDF...)" 
+                                  value={res.url} 
+                                  onChange={(e) => updateResource(idx, 'url', e.target.value)}
+                                  style={{ padding: '8px 12px', fontSize: '0.85rem' }}
+                                />
+                                <input 
+                                  type="text" 
+                                  placeholder="Название (опционально)" 
+                                  value={res.title} 
+                                  onChange={(e) => updateResource(idx, 'title', e.target.value)}
+                                  style={{ padding: '8px 12px', fontSize: '0.85rem', opacity: 0.8 }}
+                                />
+                              </div>
+                              <button 
+                                type="button" 
+                                onClick={() => removeResource(idx)}
+                                disabled={resources.length <= 1 && !res.url && !res.title}
+                                style={{ padding: '10px', background: 'transparent', color: 'red', opacity: 0.5, boxShadow: 'none' }}
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                        <p style={{ margin: '10px 0 0 0', fontSize: '0.75rem', opacity: 0.5 }}>
+                          Сайт автоматически определит формат: видео YouTube или PDF-документ.
+                        </p>
                       </div>
 
                       <div style={{ display: 'flex', gap: '15px' }}>

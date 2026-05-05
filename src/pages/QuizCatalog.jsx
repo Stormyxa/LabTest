@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, startTransition, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { Search, Play, CheckCircle, ChevronDown, ChevronUp, Award, Save, Copy, BarChart2, Book, Pencil, Eye, AlertTriangle, Plus, Shield, EyeOff, Trash2, Dices, Clock, TrendingUp, Info, Loader2, Share2, Check, X } from 'lucide-react';
+import { Search, Play, CheckCircle, ChevronDown, ChevronUp, Award, Save, Copy, BarChart2, Book, Pencil, Eye, AlertTriangle, Plus, Shield, EyeOff, Trash2, Dices, Clock, TrendingUp, Info, Loader2, Share2, Check, X, ExternalLink, Youtube, FileText, Layout, Video } from 'lucide-react';
 import { useScrollRestoration } from '../lib/useScrollRestoration';
 import { fetchWithCache, useCacheSync } from '../lib/cache';
 
@@ -33,7 +33,7 @@ const DividerItem = React.memo(({ quiz, qIndex, userRole, searchQuery, swapQuizz
   </div>
 ));
 
-const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, passState, statsLoading, canEditQuiz, canMoveQuiz, swapQuizzes, navigate, setSelectedQuiz, setHideModal, setDuplicateModal, isDimmed, quizzesLength, handleShare, fetchData }) => {
+const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, passState, statsLoading, canEditQuiz, canMoveQuiz, swapQuizzes, navigate, setSelectedQuiz, onPrepQuizSelect, setHideModal, setDuplicateModal, isDimmed, quizzesLength, handleShare, fetchData }) => {
   const [toast, setToast] = useState({ visible: false, opacity: 0 });
 
   const onShareClick = (e) => {
@@ -56,7 +56,17 @@ const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, pass
       )}
       <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '15px' }}>
         <div style={{ flex: 1, minWidth: 0, paddingRight: '50px' }}>
-          <h4 style={{ fontSize: '1.1rem', margin: 0, lineHeight: '1.4' }}>{quiz.title}{quiz.is_verified && <CheckCircle size={16} color="var(--primary-color)" style={{ marginLeft: '5px', display: 'inline' }} />}</h4>
+          <h4 style={{ fontSize: '1.1rem', margin: 0, lineHeight: '1.4' }}>
+            {quiz.title}
+            {quiz.is_verified && <CheckCircle size={16} color="var(--primary-color)" style={{ marginLeft: '5px', display: 'inline' }} />}
+            {quiz.resources && quiz.resources.length > 0 && (
+              <span style={{ marginLeft: '10px', display: 'inline-flex', gap: '5px', verticalAlign: 'middle' }}>
+                {quiz.resources.some(r => r.url.includes('youtube.com') || r.url.includes('youtu.be')) && <Youtube size={16} style={{ color: '#ef4444', cursor: 'pointer' }} onClick={(e) => { e.stopPropagation(); onPrepQuizSelect(quiz); }} />}
+                {quiz.resources.some(r => r.url.includes('drive.google.com') || r.url.includes('docs.google.com')) && <FileText size={16} style={{ color: '#22c55e', cursor: 'pointer' }} onClick={(e) => { e.stopPropagation(); onPrepQuizSelect(quiz); }} />}
+                {quiz.resources.some(r => !r.url.includes('youtube') && !r.url.includes('google')) && <Book size={16} style={{ color: 'var(--primary-color)', cursor: 'pointer' }} onClick={(e) => { e.stopPropagation(); onPrepQuizSelect(quiz); }} />}
+              </span>
+            )}
+          </h4>
           <p style={{ fontSize: '0.8rem', opacity: 0.5, margin: '4px 0 0 0' }}>Автор: {quiz.profiles?.last_name} {quiz.profiles?.first_name}</p>
         </div>
       </div>
@@ -154,7 +164,14 @@ const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, pass
                 <Check size={14} /> Скопировано!
               </div>
             )}
-            <button onClick={() => setSelectedQuiz(quiz)} style={{ padding: '8px 20px', display: 'flex', alignItems: 'center', gap: '8px', borderRadius: '10px' }}><Play size={15} fill="currentColor" /> Начать</button>
+            {quiz.resources && quiz.resources.length > 0 && (
+              <button onClick={(e) => { e.stopPropagation(); onPrepQuizSelect(quiz); }} className="flex-center" style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '6px', borderRadius: '10px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none' }} title="Подготовка к тесту">
+                <Book size={15} />
+              </button>
+            )}
+            <button onClick={(e) => { e.stopPropagation(); setSelectedQuiz(quiz); }} style={{ padding: '8px 20px', display: 'flex', alignItems: 'center', gap: '8px', borderRadius: '10px' }}>
+              <Play size={15} fill="currentColor" /> Начать
+            </button>
           </div>
         </div>
       </div>
@@ -162,7 +179,7 @@ const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, pass
   );
 });
 
-const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, onQuizzesChange, setHideModal, setDuplicateModal, handleRenameTrigger, setSelectedQuiz, setRandomQuizModal, activeTab, handleShare, fetchData }) => {
+const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, onQuizzesChange, setHideModal, setDuplicateModal, handleRenameTrigger, setSelectedQuiz, onPrepQuizSelect, setRandomQuizModal, activeTab, handleShare, fetchData }) => {
   const navigate = useNavigate();
   const [visibleCount, setVisibleCount] = useState(25); // Incremental rendering start
 
@@ -207,7 +224,7 @@ const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, 
 
     const freshData = await fetchWithCache(`catalog_quizzes_${section.id}`, async () => {
       const { data: qData } = await supabase.from('quizzes')
-        .select('id, title, section_id, is_hidden, is_public, is_verified, sort_order, content, author_id, is_personal, avg_success_rate, profiles(first_name, last_name, role)')
+        .select('id, title, section_id, is_hidden, is_public, is_verified, sort_order, content, author_id, is_personal, avg_success_rate, resources, profiles(first_name, last_name, role)')
         .eq('section_id', section.id)
         .eq('is_archived', false)
         .eq('is_hidden', false)
@@ -386,6 +403,7 @@ const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, 
                 swapQuizzes={swapQuizzes}
                 navigate={navigate}
                 setSelectedQuiz={setSelectedQuiz}
+                onPrepQuizSelect={onPrepQuizSelect}
                 setHideModal={setHideModal}
                 setDuplicateModal={setDuplicateModal}
                 isDimmed={currentDividerHidden}
@@ -404,7 +422,7 @@ const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, 
 
 const CatalogSectionRow = React.memo(({
   section, clsId, sIndex, profile, searchQuery, isExpanded,
-  onToggle, onQuizzesChange, setHideModal, setDuplicateModal, handleRenameTrigger, setSelectedQuiz, setRandomQuizModal,
+  onToggle, onQuizzesChange, setHideModal, setDuplicateModal, handleRenameTrigger, setSelectedQuiz, onPrepQuizSelect, setRandomQuizModal,
   handleCreateDivider, swapSections, setNewName, activeTab, handleShare, fetchData
 }) => {
   return (
@@ -498,6 +516,7 @@ const CatalogSectionRow = React.memo(({
           setDuplicateModal={setDuplicateModal}
           handleRenameTrigger={handleRenameTrigger}
           setSelectedQuiz={setSelectedQuiz}
+          onPrepQuizSelect={onPrepQuizSelect}
           setRandomQuizModal={setRandomQuizModal}
           activeTab={activeTab}
           handleShare={handleShare}
@@ -511,7 +530,7 @@ const CatalogSectionRow = React.memo(({
 const CatalogClassRow = React.memo(({
   cls, cIndex, profile, searchQuery, isExpanded, expandedSections,
   onToggle, onSectionToggle, swapClasses, swapSections, handleRenameTrigger, handleCreateDivider, handleCreateSectionDivider, setNewName,
-  onQuizzesChange, setHideModal, setDuplicateModal, setSelectedQuiz, setRandomQuizModal, activeTab, handleShare, fetchData
+  onQuizzesChange, setHideModal, setDuplicateModal, setSelectedQuiz, onPrepQuizSelect, setRandomQuizModal, activeTab, handleShare, fetchData
 }) => {
   return (
     <div className="card animate" style={{
@@ -630,6 +649,7 @@ const CatalogClassRow = React.memo(({
                 setDuplicateModal={setDuplicateModal}
                 handleRenameTrigger={handleRenameTrigger}
                 setSelectedQuiz={setSelectedQuiz}
+                onPrepQuizSelect={onPrepQuizSelect}
                 setRandomQuizModal={setRandomQuizModal}
                 handleCreateDivider={handleCreateDivider}
                 swapSections={swapSections}
@@ -726,6 +746,7 @@ const QuizCatalog = ({ profile }) => {
   }, [expandedSections]);
 
   const [selectedQuiz, setSelectedQuizState] = useState(null);
+  const [prepQuiz, setPrepQuizState] = useState(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [shareModalQuiz, setShareModalQuiz] = useState(null);
   const [shareUserEmail, setShareUserEmail] = useState("");
@@ -958,6 +979,7 @@ const QuizCatalog = ({ profile }) => {
   const setSelectedQuiz = useCallback((v) => setSelectedQuizState(v), []);
   const setHideModal = useCallback((v) => setHideModalState(v), []);
   const setRandomQuizModal = useCallback((v) => setRandomQuizModalState(v), []);
+  const onPrepQuizSelect = useCallback((v) => setPrepQuizState(v), []);
   const setDuplicateModal = useCallback((v) => setDuplicateModalState(v), []);
 
   const formatClasses = useCallback((c, s, basicQuizzes) => {
@@ -1421,6 +1443,7 @@ const QuizCatalog = ({ profile }) => {
                 setHideModal={setHideModal}
                 setDuplicateModal={setDuplicateModal}
                 setSelectedQuiz={setSelectedQuiz}
+                onPrepQuizSelect={onPrepQuizSelect}
                 setRandomQuizModal={setRandomQuizModal}
                 activeTab={activeTab}
                 handleShare={handleShare}
@@ -1686,7 +1709,16 @@ const QuizCatalog = ({ profile }) => {
             <p style={{ opacity: 0.7, marginBottom: '30px', lineHeight: '1.6' }}>Начать тест: <br /> <strong>"{selectedQuiz.title}"</strong>.</p>
             <div className="grid-2" style={{ gap: '15px' }}>
               <button onClick={() => setSelectedQuiz(null)} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>Отмена</button>
-              <button onClick={() => navigate(`/quiz/${selectedQuiz.id}`)} style={{ padding: '15px', background: 'var(--primary-color)' }}>Начать обучение</button>
+              <button onClick={() => {
+                const id = selectedQuiz.id;
+                localStorage.removeItem(`quiz_show_result_${id}`);
+                localStorage.removeItem(`quiz_answers_${id}`);
+                localStorage.removeItem(`quiz_current_idx_${id}`);
+                localStorage.removeItem(`quiz_times_${id}`);
+                localStorage.removeItem(`quiz_start_time_${id}`);
+                localStorage.removeItem(`quiz_timer_${id}`);
+                navigate(`/quiz/${id}`);
+              }} style={{ padding: '15px', background: 'var(--primary-color)' }}>Начать обучение</button>
             </div>
           </div>
         </div>
@@ -1708,7 +1740,16 @@ const QuizCatalog = ({ profile }) => {
             </div>
             <div className="grid-2" style={{ gap: '15px' }}>
               <button onClick={() => setRandomQuizModal(null)} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>Отмена</button>
-              <button onClick={() => navigate(`/quiz/${randomQuizModal.quiz.id}`)} style={{ padding: '15px', background: 'linear-gradient(135deg, var(--primary-color) 0%, #a855f7 100%)' }}>Начать обучение</button>
+              <button onClick={() => {
+                const id = randomQuizModal.quiz.id;
+                localStorage.removeItem(`quiz_show_result_${id}`);
+                localStorage.removeItem(`quiz_answers_${id}`);
+                localStorage.removeItem(`quiz_current_idx_${id}`);
+                localStorage.removeItem(`quiz_times_${id}`);
+                localStorage.removeItem(`quiz_start_time_${id}`);
+                localStorage.removeItem(`quiz_timer_${id}`);
+                navigate(`/quiz/${id}`);
+              }} style={{ padding: '15px', background: 'linear-gradient(135deg, var(--primary-color) 0%, #a855f7 100%)' }}>Начать обучение</button>
             </div>
           </div>
         </div>
@@ -1803,8 +1844,67 @@ const QuizCatalog = ({ profile }) => {
           </div>
         </div>
       )}
-    </div>
-  );
-};
+        {prepQuiz && (
+          <div 
+            className="modal-overlay animate" 
+            style={{ zIndex: 3500 }}
+            onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} 
+            onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; onPrepQuizSelect(null); } }}
+          >
+            <div className="card animate" style={{ width: '500px', padding: '35px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+              <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', margin: '0 auto 20px' }}>
+                <Book size={32} />
+              </div>
+              <h2 style={{ marginBottom: '10px' }}>Подготовка к тесту</h2>
+              <h3 style={{ fontSize: '1.1rem', opacity: 0.7, marginBottom: '25px', fontWeight: '500' }}>«{prepQuiz.title}»</h3>
+              
+              <div style={{ textAlign: 'left', marginBottom: '30px', background: 'rgba(0,0,0,0.02)', padding: '20px', borderRadius: '15px' }}>
+                <div style={{ fontSize: '0.8rem', opacity: 0.4, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '15px', fontWeight: 'bold' }}>Материалы для изучения:</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {(prepQuiz.resources || []).map((res, idx) => {
+                    const isYoutube = res.url.includes('youtube.com') || res.url.includes('youtu.be');
+                    const isDrive = res.url.includes('drive.google.com');
+                    return (
+                      <a 
+                        key={idx} 
+                        href={res.url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="flex-center animate"
+                        style={{ justifyContent: 'space-between', padding: '12px 15px', background: 'white', borderRadius: '12px', color: 'inherit', textDecoration: 'none', border: '1px solid rgba(0,0,0,0.05)' }}
+                      >
+                        <div className="flex-center" style={{ gap: '12px' }}>
+                          <div style={{ color: isYoutube ? '#ef4444' : (isDrive ? '#22c55e' : 'var(--primary-color)') }}>
+                            {isYoutube ? <Youtube size={18} /> : (isDrive ? <FileText size={18} /> : <ExternalLink size={18} />)}
+                          </div>
+                          <span style={{ fontWeight: '600', fontSize: '0.9rem' }}>{res.title || 'Ресурс ' + (idx + 1)}</span>
+                        </div>
+                        <ExternalLink size={14} style={{ opacity: 0.3 }} />
+                      </a>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <button onClick={() => onPrepQuizSelect(null)} style={{ flex: 1, background: 'rgba(0,0,0,0.05)', color: 'inherit' }}>Закрыть</button>
+                <button 
+                  onClick={() => {
+                    const q = prepQuiz;
+                    onPrepQuizSelect(null);
+                    setSelectedQuiz(q);
+                  }} 
+                  style={{ flex: 2 }}
+                  className="flex-center"
+                >
+                  <Play size={18} fill="currentColor" style={{ marginRight: '8px' }} /> Начать тест
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
 export default QuizCatalog;

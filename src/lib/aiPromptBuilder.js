@@ -783,10 +783,18 @@ export const buildDetailedQuizPrompt = async (userId, quizId, viewerRole = 'stud
         id: a.id.slice(0, 8),
         ts: toKZTime(a.created_at) + ' ' + formatDateShort(toKZDate(a.created_at)),
         sc: a.score,
-        dur: a.time_spent,
+        dur: a.time_spent_total || a.time_spent,
         is_passed: a.is_passed,
         ic: a.is_incomplete,
         s: a.is_suspicious,
+        fl: a.focus_lost_cnt || 0,
+        os: Math.round((a.off_site_ms || 0) / 1000),
+        a_log: (a.answer_log || []).map(log => ({
+          q: getQKey(log.qText || quizQuestions[log.qIdx]?.question || '—', ''),
+          f: log.from,
+          t: log.to,
+          ts: Math.round(log.ts / 1000)
+        })),
         ans: answers.map(ans => {
           // Resolve question data from index if string is missing
           const qObj = (ans.originalIndex !== undefined) ? quizQuestions[ans.originalIndex] : null;
@@ -856,6 +864,9 @@ export const buildDetailedQuizPrompt = async (userId, quizId, viewerRole = 'stud
 ## Расшифровка мнемоники
 - **questions**: Словарь вопросов. Ключ (Q1, Q2...) -> { text, correct }.
 - **attempts**: Список попыток. ts — время, sc — баллы, dur — длительность (сек), s — подозрительно, ic — не до конца.
+  - **fl** (Focus Loss): сколько раз ученик выходил из вкладки теста.
+  - **os** (Off-site): сколько секунд суммарно ученик провел вне вкладки.
+  - **a_log** (Answer Log): хронология смены ответов (f — старый, t — новый, ts — время с начала теста).
 - **ans**: Ответы в попытке. qid — ссылка на вопрос из словаря, ok — верно/неверно, t — время на вопрос, u — ответ ученика.
 
 ## Задание
@@ -876,6 +887,9 @@ export const buildDetailedQuizPrompt = async (userId, quizId, viewerRole = 'stud
 ## Расшифровка мнемоники
 - **questions**: Словарь вопросов. Ключ (Q1, Q2...) -> { text, correct }.
 - **attempts**: Список попыток. ts — время, sc — баллы, dur — длительность (сек), s — подозрительно, ic — не до конца.
+  - **fl** (Focus Loss): сколько раз ты выходил из вкладки теста.
+  - **os** (Off-site): сколько секунд суммарно ты провел вне вкладки.
+  - **a_log** (Answer Log): история смены твоих ответов (f — старый, t — новый, ts — когда сменил).
 - **ans**: Ответы в попытке. qid — ссылка на вопрос из словаря, ok — верно/неверно, t — время на вопрос, u — твой ответ.
 
 ## Задание

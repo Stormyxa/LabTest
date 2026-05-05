@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { fetchWithCache, useCacheSync } from '../lib/cache';
 import { resolveImgUrl } from '../lib/imageUtils';
-import { ChevronLeft, BarChart2, Clock, CheckCircle, XCircle, Search, Filter, AlertTriangle, Menu, Pencil, Trash2, Eye, X, ChevronRight, Sparkles, Copy, Check, RefreshCw, FileText } from 'lucide-react';
+import { ChevronLeft, BarChart2, Clock, CheckCircle, XCircle, Search, Filter, AlertTriangle, Menu, Pencil, Trash2, Eye, X, ChevronRight, Sparkles, Copy, Check, RefreshCw, FileText, Book, Shield } from 'lucide-react';
 import { buildDetailedQuizPrompt, downloadJSON } from '../lib/aiPromptBuilder';
 
 const UserListItem = React.memo(({ u, isSelected, onSelect }) => {
@@ -442,8 +442,20 @@ const AttemptDetailsView = React.memo(({
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h3 style={{ margin: 0 }}>
           Детали прохождения от {new Date(selectedAttempt.created_at).toLocaleString('ru-RU', { timeZone: 'Asia/Almaty' })} (KZ)
-          <div style={{ marginTop: '5px', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '5px', opacity: 0.7 }}>
-            <Clock size={16} /> <span>Времени затрачено: <strong>{minutes}м {seconds}с</strong></span>
+          <div style={{ marginTop: '5px', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '15px', opacity: 0.7 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <Clock size={16} /> <span>Времени затрачено: <strong>{minutes}м {seconds}с</strong></span>
+            </div>
+            {(selectedAttempt.focus_lost_cnt > 0 || selectedAttempt.off_site_ms > 0) && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '15px', color: (selectedAttempt.focus_lost_cnt > 3 || selectedAttempt.off_site_ms > 30000) ? '#ef4444' : 'inherit', opacity: 0.9 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }} title="Количество выходов из вкладки теста">
+                  <Shield size={16} /> <span>Потеря фокуса: <strong>{selectedAttempt.focus_lost_cnt}</strong></span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }} title="Суммарное время вне вкладки теста">
+                  <AlertTriangle size={16} /> <span>Вне теста: <strong>{Math.round((selectedAttempt.off_site_ms || 0) / 1000)}с</strong></span>
+                </div>
+              </div>
+            )}
           </div>
           <div style={{ display: 'flex', gap: '10px', marginTop: '10px', flexWrap: 'wrap' }}>
             {selectedAttempt.is_suspicious && (
@@ -862,7 +874,7 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
           return q.then(res => res.data);
         }),
         fetchWithCache(`catalog_struct_quizzes_analytics_${analyticsMode}_${p.id}`, () => {
-          let quizQuery = supabase.from('quizzes').select('id, title, section_id, author_id, is_archived, is_personal, sort_order, is_divider:content->is_divider, divider_text:content->divider_text').eq('is_archived', false).order('sort_order', { ascending: true });
+          let quizQuery = supabase.from('quizzes').select('id, title, section_id, author_id, is_archived, is_personal, sort_order, resources, is_divider:content->is_divider, divider_text:content->divider_text').eq('is_archived', false).order('sort_order', { ascending: true });
           if (isPersonal) quizQuery = quizQuery.eq('is_personal', true).eq('author_id', p.id);
           else {
             quizQuery = quizQuery.eq('is_personal', false);
@@ -950,7 +962,7 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
     const cacheKey = `ad_attempts_${qId}_${uId}`;
     const data = await fetchWithCache(cacheKey, async () => {
       const [{ data: q }, { data: u }, { data: rawAtts, error }] = await Promise.all([
-        supabase.from('quizzes').select('*').eq('id', qId).single(),
+        supabase.from('quizzes').select('*, resources').eq('id', qId).single(),
         supabase.from('profiles').select('*').eq('id', uId).single(),
         supabase.from('quiz_attempts').select('*').eq('quiz_id', qId).eq('user_id', uId).order('created_at', { ascending: true })
       ]);
@@ -1392,7 +1404,14 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
               {targetUser.last_name} {targetUser.first_name}
               {stats.isSuspiciousUser && <span style={{ marginLeft: '10px', fontSize: '0.9rem', background: '#ef4444', color: 'white', padding: '4px 12px', borderRadius: '20px', verticalAlign: 'middle' }}>Низкая успеваемость</span>}
             </h2>
-            <h3 style={{ opacity: 0.6, fontSize: '1.2rem', marginBottom: '30px' }}>Тест: {targetQuiz.title}</h3>
+            <h3 style={{ opacity: 0.6, fontSize: '1.2rem', marginBottom: '30px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              Тест: {targetQuiz.title}
+              {targetQuiz.resources && targetQuiz.resources.length > 0 && (
+                <span title="Есть учебные материалы" style={{ fontSize: '0.7rem', padding: '4px 8px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <Book size={12} /> Материалы
+                </span>
+              )}
+            </h3>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginBottom: '30px' }}>
               <div className="card" style={{ padding: '20px' }}>

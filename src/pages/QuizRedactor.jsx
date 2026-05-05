@@ -5,7 +5,7 @@ import { useScrollRestoration } from '../lib/useScrollRestoration';
 import {
   ChevronLeft, Pencil, Check, X, Plus, Trash2, RotateCcw,
   AlertTriangle, Download, AlertCircle, Lock, BarChart2,
-  GripVertical, Eye, EyeOff, Image as ImageIcon, Link,
+  GripVertical, Eye, EyeOff, Image as ImageIcon, Link as LinkIcon,
   Upload, ChevronRight
 } from 'lucide-react';
 import { transliterate } from '../lib/transliterate';
@@ -40,6 +40,8 @@ const QuizRedactor = () => {
   const [savedTitle, setSavedTitle] = useState('');
   const [savedQuestions, setSavedQuestions] = useState([]);
   const [savedIsHidden, setSavedIsHidden] = useState(false);
+  const [resources, setResources] = useState([]);
+  const [savedResources, setSavedResources] = useState([]);
 
   // Undo history (snapshots), max 20
   const historyRef = useRef([]);
@@ -79,6 +81,20 @@ const QuizRedactor = () => {
     }
     return () => clearInterval(timer);
   }, [showDeleteResultsModal, deleteResultsLock]);
+
+  const addResource = () => {
+    if (resources.length < 5) setResources([...resources, { url: '', title: '' }]);
+  };
+
+  const removeResource = (index) => {
+    setResources(resources.filter((_, i) => i !== index));
+  };
+
+  const updateResource = (index, field, value) => {
+    const newResources = [...resources];
+    newResources[index][field] = value;
+    setResources(newResources);
+  };
 
   const fetchAll = async () => {
     setLoading(true);
@@ -125,22 +141,33 @@ const QuizRedactor = () => {
     }
 
     const qs = deepClone(q.content?.questions || []);
+    const resList = q.resources || [];
     setTitle(q.title);
     setIsHidden(q.is_hidden || false);
     setQuestions(qs);
+    setResources(resList);
     setSavedTitle(q.title);
     setSavedIsHidden(q.is_hidden || false);
     setSavedQuestions(deepClone(qs));
+    setSavedResources(deepClone(resList));
     historyRef.current = [];
     setCanUndo(false);
     setLoading(false);
   };
 
   const hasChanges = () =>
-    title !== savedTitle || JSON.stringify(questions) !== JSON.stringify(savedQuestions) || isHidden !== savedIsHidden;
+    title !== savedTitle || 
+    JSON.stringify(questions) !== JSON.stringify(savedQuestions) || 
+    isHidden !== savedIsHidden ||
+    JSON.stringify(resources) !== JSON.stringify(savedResources);
 
-  const pushHistory = (prevTitle, prevQuestions) => {
-    historyRef.current = [...historyRef.current.slice(-19), { title: prevTitle, questions: deepClone(prevQuestions) }];
+  const pushHistory = (prevTitle, prevQuestions, prevIsHidden, prevResources) => {
+    historyRef.current = [...historyRef.current.slice(-19), { 
+      title: prevTitle, 
+      questions: deepClone(prevQuestions),
+      isHidden: prevIsHidden,
+      resources: deepClone(prevResources)
+    }];
     setCanUndo(true);
   };
 
@@ -150,6 +177,8 @@ const QuizRedactor = () => {
     historyRef.current = historyRef.current.slice(0, -1);
     setTitle(last.title);
     setQuestions(last.questions);
+    setIsHidden(last.isHidden);
+    setResources(last.resources);
     setCanUndo(historyRef.current.length > 0);
     setEditQIdx(null); setEditOptKey(null); setEditingTitle(false);
   };
@@ -235,10 +264,13 @@ const QuizRedactor = () => {
     setSaving(true);
     try {
       const trimmedTitle = finalTitle.trim();
+      const filteredResources = resources.filter(r => r.url.trim());
+
       const { error } = await supabase.from('quizzes').update({
         title: trimmedTitle,
         content: { questions },
-        is_hidden: isHidden
+        is_hidden: isHidden,
+        resources: filteredResources.length > 0 ? filteredResources : null
       }).eq('id', quizId);
       if (error) throw error;
       const oldTitle = savedTitle;
@@ -248,6 +280,8 @@ const QuizRedactor = () => {
       setTitle(trimmedTitle);
       setSavedIsHidden(isHidden);
       setSavedQuestions(deepClone(questions));
+      setSavedResources(deepClone(filteredResources));
+      setResources(filteredResources);
       historyRef.current = [];
       setCanUndo(false);
       setShowValidErrors(false);
@@ -387,12 +421,12 @@ const QuizRedactor = () => {
   // Question operations
   const addQuestion = () => {
     if (questions.length >= MAX_QUESTIONS) return;
-    pushHistory(title, questions);
+    pushHistory(title, questions, isHidden, resources);
     setQuestions(p => [...p, { question: 'Новый вопрос', options: ['Вариант 1', 'Вариант 2'], correctIndex: null, images: [], explanation: '' }]);
   };
 
   const deleteQuestion = (idx) => {
-    pushHistory(title, questions);
+    pushHistory(title, questions, isHidden, resources);
     setQuestions(p => p.filter((_, i) => i !== idx));
     setDeleteQModal(null);
   };
@@ -406,13 +440,13 @@ const QuizRedactor = () => {
   // Option operations
   const addOption = (qIdx) => {
     if (questions[qIdx].options.length >= MAX_OPTIONS) return;
-    pushHistory(title, questions);
+    pushHistory(title, questions, isHidden, resources);
     setQuestions(p => p.map((q, i) => i === qIdx ? { ...q, options: [...q.options, 'Новый вариант'] } : q));
   };
 
   const deleteOption = (qIdx, oIdx) => {
     if (questions[qIdx].options.length <= MIN_OPTIONS) return;
-    pushHistory(title, questions);
+    pushHistory(title, questions, isHidden, resources);
     setQuestions(p => p.map((q, i) => {
       if (i !== qIdx) return q;
       const opts = q.options.filter((_, oi) => oi !== oIdx);
@@ -432,7 +466,7 @@ const QuizRedactor = () => {
     }));
 
   const setCorrect = (qIdx, oIdx) => {
-    pushHistory(title, questions);
+    pushHistory(title, questions, isHidden, resources);
     setQuestions(p => p.map((q, i) => i === qIdx ? { ...q, correctIndex: oIdx } : q));
   };
 
@@ -446,7 +480,7 @@ const QuizRedactor = () => {
       }
     }
     
-    pushHistory(title, questions);
+    pushHistory(title, questions, isHidden, resources);
     setQuestions(p => p.map((q, i) => {
       if (i !== qIdx) return q;
       const imgs = q.images || [];
@@ -456,7 +490,7 @@ const QuizRedactor = () => {
   };
 
   const removeImage = (qIdx, imgIdx) => {
-    pushHistory(title, questions);
+    pushHistory(title, questions, isHidden, resources);
     setQuestions(p => p.map((q, i) => {
       if (i !== qIdx) return q;
       const imgs = q.images || [];
@@ -466,7 +500,7 @@ const QuizRedactor = () => {
 
   const moveImageLeft = (qIdx, imgIdx) => {
     if (imgIdx === 0) return;
-    pushHistory(title, questions);
+    pushHistory(title, questions, isHidden, resources);
     setQuestions(p => p.map((q, i) => {
       if (i !== qIdx) return q;
       const imgs = [...(q.images || [])];
@@ -476,7 +510,7 @@ const QuizRedactor = () => {
   };
 
   const moveImageRight = (qIdx, imgIdx) => {
-    pushHistory(title, questions);
+    pushHistory(title, questions, isHidden, resources);
     setQuestions(p => p.map((q, i) => {
       if (i !== qIdx) return q;
       const imgs = [...(q.images || [])];
@@ -837,7 +871,7 @@ const QuizRedactor = () => {
                   onClick={() => setImageInputModal(p => ({ ...p, mode: 'url' }))}
                   style={{ flex: 1, padding: '15px', background: 'transparent', color: imageInputModal.mode === 'url' ? 'var(--primary-color)' : 'inherit', borderBottom: imageInputModal.mode === 'url' ? '2px solid var(--primary-color)' : '2px solid transparent', borderRadius: 0, opacity: imageInputModal.mode === 'url' ? 1 : 0.5 }}
                 >
-                  <Link size={18} style={{ marginRight: '8px' }}/> По ссылке
+                  <LinkIcon size={18} style={{ marginRight: '8px' }}/> По ссылке
                 </button>
               </div>
 
@@ -950,7 +984,7 @@ const QuizRedactor = () => {
               <BarChart2 size={16} style={{ marginRight: '6px' }} /> Аналитика
             </button>
             <button
-              onClick={() => setIsHidden(!isHidden)}
+              onClick={() => { pushHistory(title, questions, isHidden, resources); setIsHidden(!isHidden); }}
               className="flex-center"
               title={isHidden ? "Показать ученикам" : "Скрыть от учеников"}
               style={{
@@ -1007,12 +1041,57 @@ const QuizRedactor = () => {
               <h2 style={{ fontSize: '1.8rem', margin: 0, fontWeight: '700', flex: 1, lineHeight: '1.3' }}>
                 {title || <span style={{ opacity: 0.3 }}>Без названия</span>}
               </h2>
-              <button onClick={() => { pushHistory(title, questions); setEditingTitle(true); }}
+              <button onClick={() => { pushHistory(title, questions, isHidden, resources); setEditingTitle(true); }}
                 style={{ padding: '8px', background: 'rgba(99,102,241,0.1)', color: 'var(--primary-color)', borderRadius: '10px', boxShadow: 'none', flexShrink: 0 }}>
                 <Pencil size={18} />
               </button>
             </div>
           )}
+        </div>
+
+        {/* Resources block */}
+        <div className="card" style={{ marginBottom: '25px', padding: '20px 25px', background: 'rgba(99, 102, 241, 0.04)', border: '1px dashed rgba(99, 102, 241, 0.2)' }}>
+          <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '15px' }}>
+            <div className="flex-center" style={{ gap: '10px', color: 'var(--primary-color)' }}>
+              <LinkIcon size={20} />
+              <span style={{ fontWeight: '700', fontSize: '1rem' }}>Материалы и ресурсы ({resources.length} / 5)</span>
+            </div>
+            {resources.length < 5 && (
+              <button onClick={() => { pushHistory(title, questions, isHidden, resources); addResource(); }} style={{ padding: '6px 14px', fontSize: '0.85rem', background: 'white', color: 'var(--primary-color)', border: '1px solid rgba(99, 102, 241, 0.2)', boxShadow: 'none' }}>
+                <Plus size={16} style={{ marginRight: '5px' }} /> Добавить
+              </button>
+            )}
+          </div>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {resources.length === 0 ? (
+              <p style={{ opacity: 0.4, fontSize: '0.85rem', margin: '0' }}>Ресурсы не добавлены. Они будут отображаться перед началом теста и во время прохождения.</p>
+            ) : (
+              resources.map((res, idx) => (
+                <div key={idx} className="flex-center animate" style={{ gap: '10px' }}>
+                  <div style={{ flex: 1, display: 'flex', gap: '10px' }}>
+                    <input 
+                      type="url" 
+                      placeholder="Ссылка (YouTube, Google Drive PDF...)" 
+                      value={res.url} 
+                      onChange={(e) => updateResource(idx, 'url', e.target.value)}
+                      style={{ flex: 2, padding: '10px 15px', fontSize: '0.9rem' }}
+                    />
+                    <input 
+                      type="text" 
+                      placeholder="Название" 
+                      value={res.title} 
+                      onChange={(e) => updateResource(idx, 'title', e.target.value)}
+                      style={{ flex: 1, padding: '10px 15px', fontSize: '0.9rem' }}
+                    />
+                  </div>
+                  <button onClick={() => { pushHistory(title, questions, isHidden, resources); removeResource(idx); }} style={{ padding: '10px', background: 'transparent', color: '#f87171', boxShadow: 'none' }}>
+                    <Trash2 size={18} />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
         </div>
 
         {/* Stats + validation summary */}
@@ -1073,7 +1152,7 @@ const QuizRedactor = () => {
                   </div>
                   <div className="flex-center" style={{ gap: '6px', flexShrink: 0 }}>
                     {editQIdx !== qIdx && (
-                      <button onClick={() => { pushHistory(title, questions); setEditQIdx(qIdx); }}
+                      <button onClick={() => { pushHistory(title, questions, isHidden, resources); setEditQIdx(qIdx); }}
                         style={{ padding: '7px', background: 'rgba(99,102,241,0.1)', color: 'var(--primary-color)', borderRadius: '8px', boxShadow: 'none' }}>
                         <Pencil size={15} />
                       </button>
@@ -1134,7 +1213,7 @@ const QuizRedactor = () => {
 
                       {/* Edit + delete option buttons */}
                       {editOptKey !== key && (
-                        <button onClick={() => { pushHistory(title, questions); setEditOptKey(key); }}
+                        <button onClick={() => { pushHistory(title, questions, isHidden, resources); setEditOptKey(key); }}
                           style={{ padding: '7px', background: 'rgba(99,102,241,0.08)', color: 'var(--primary-color)', borderRadius: '8px', boxShadow: 'none', flexShrink: 0 }}>
                           <Pencil size={14} />
                         </button>

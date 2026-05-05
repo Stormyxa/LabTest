@@ -4,7 +4,8 @@ import { useParams, useNavigate, useBlocker } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { 
   CheckCircle, XCircle, ChevronRight, ChevronLeft, RotateCcw, X, 
-  AlertTriangle, Book, FileText, ChevronDown, ChevronUp, Clock, Zap 
+  AlertTriangle, Book, FileText, ChevronDown, ChevronUp, Clock, Zap,
+  Shield, Maximize2, Minimize2, Youtube, ExternalLink
 } from 'lucide-react';
 import { resolveImgUrl } from '../lib/imageUtils';
 import { useScrollRestoration } from '../lib/useScrollRestoration';
@@ -22,6 +23,155 @@ const useIsMobile = () => {
   return isMobile;
 };
 
+const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, splitMode, setSplitMode, onOpenModal }) => {
+  if (!resources || resources.length === 0) return null;
+  const res = resources[activeIdx];
+
+  const getYoutubeId = (url) => {
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+    const match = url.match(regExp);
+    return (match && match[2].length === 11) ? match[2] : null;
+  };
+
+  const isVideo = res && getYoutubeId(res.url);
+
+  return (
+    <div className="resource-player-container" style={{ 
+      display: 'flex', 
+      flexDirection: 'column', 
+      height: isMobile ? '450px' : 'calc(100vh - 60px)',
+      position: isMobile ? 'relative' : 'sticky',
+      top: isMobile ? '0' : '60px',
+      background: 'white',
+      borderRight: isMobile ? 'none' : '1px solid rgba(0,0,0,0.1)',
+      borderBottom: isMobile ? '1px solid rgba(0,0,0,0.1)' : 'none',
+      overflow: 'hidden',
+      zIndex: 10
+    }}>
+      {/* Header */}
+      <div className="flex-center" style={{ padding: '15px 20px', background: 'rgba(99, 102, 241, 0.03)', justifyContent: 'space-between', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
+        <div className="flex-center" style={{ gap: '10px' }}>
+          <div className="flex-center" style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'var(--primary-color)', color: 'white' }}>
+            <Book size={18} />
+          </div>
+          <span style={{ fontWeight: '700', fontSize: '1rem' }}>Материалы</span>
+        </div>
+        <div className="flex-center" style={{ gap: '10px' }}>
+          <button 
+            onClick={onOpenModal} 
+            className="flex-center"
+            style={{ background: 'rgba(99, 102, 241, 0.1)', padding: '8px', borderRadius: '8px', color: 'var(--primary-color)', boxShadow: 'none' }}
+            title="Во весь экран"
+          >
+            <Maximize2 size={18} />
+          </button>
+        </div>
+      </div>
+
+      {/* Tabs if multiple */}
+      {resources.length > 1 && (
+        <div style={{ display: 'flex', overflowX: 'auto', background: 'white', borderBottom: '1px solid rgba(0,0,0,0.05)' }} className="hide-scrollbar">
+          {resources.map((r, i) => (
+            <button
+              key={i}
+              onClick={() => setActiveIdx(i)}
+              style={{
+                padding: '12px 20px',
+                background: 'transparent',
+                borderRadius: '0',
+                borderBottom: activeIdx === i ? '2px solid var(--primary-color)' : '2px solid transparent',
+                color: activeIdx === i ? 'var(--primary-color)' : 'inherit',
+                fontSize: '0.85rem',
+                fontWeight: activeIdx === i ? '700' : '500',
+                whiteSpace: 'nowrap',
+                boxShadow: 'none',
+                opacity: activeIdx === i ? 1 : 0.6,
+                transition: 'all 0.2s'
+              }}
+            >
+              {r.title || `Ресурс ${i + 1}`}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Main Content Area */}
+      <div style={{ flex: 1, position: 'relative', background: '#000' }}>
+        {isVideo ? (
+          <iframe
+            width="100%"
+            height="100%"
+            src={`https://www.youtube.com/embed/${getYoutubeId(res.url)}?rel=0&autoplay=0`}
+            title={res.title}
+            frameBorder="0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+            style={{ position: 'absolute', inset: 0 }}
+          />
+        ) : (
+          <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px', textAlign: 'center', background: '#f8f9fa' }}>
+            <FileText size={64} style={{ opacity: 0.1, marginBottom: '25px', color: 'var(--primary-color)' }} />
+            <h3 style={{ marginBottom: '12px', fontWeight: '700' }}>{res?.title || 'Документ'}</h3>
+            <p style={{ fontSize: '0.95rem', opacity: 0.6, marginBottom: '30px', maxWidth: '300px' }}>Этот ресурс открывается во всплывающем окне или новой вкладке.</p>
+            <button 
+              onClick={onOpenModal}
+              className="flex-center" 
+              style={{ padding: '14px 30px', background: 'var(--primary-color)', color: 'white', borderRadius: '14px', fontWeight: 'bold', gap: '10px' }}
+            >
+              <Maximize2 size={18} /> Открыть полностью
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const ResourceModal = ({ res, onClose }) => {
+  if (!res) return null;
+
+  const getYoutubeId = (url) => {
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+    const match = url.match(regExp);
+    return (match && match[2].length === 11) ? match[2] : null;
+  };
+
+  const ytId = getYoutubeId(res.url);
+
+  return createPortal(
+    <div className="modal-overlay" style={{ zIndex: 5000, background: 'rgba(0,0,0,0.95)', padding: 0 }} onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; onClose(); }}}>
+      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }} onClick={e => e.stopPropagation()}>
+        <div style={{ padding: '15px 30px', background: 'rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+          <h3 style={{ color: 'white', margin: 0 }}>{res.title || 'Материалы'}</h3>
+          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.1)', color: 'white', padding: '10px', borderRadius: '50%', boxShadow: 'none' }}><X size={24} /></button>
+        </div>
+        <div style={{ flex: 1, position: 'relative' }}>
+          {ytId ? (
+            <iframe
+              width="100%"
+              height="100%"
+              src={`https://www.youtube.com/embed/${ytId}?rel=0&autoplay=1`}
+              title={res.title}
+              frameBorder="0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+            />
+          ) : (
+            <iframe
+              src={res.url}
+              width="100%"
+              height="100%"
+              title={res.title}
+              style={{ border: 'none', background: 'white' }}
+            />
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+};
+
 const QuizView = ({ session, profile }) => {
   const isMobile = useIsMobile();
   const { id } = useParams();
@@ -37,6 +187,18 @@ const QuizView = ({ session, profile }) => {
   const [isBlurred, setIsBlurred] = useState(false);
   const [startTime] = useState(Date.now());
   const startTimeRef = useRef(Date.now());
+
+  // Integrity & Telemetry Refs
+  const focusLostCntRef = useRef(0);
+  const offSiteMsRef = useRef(0);
+  const lastHiddenAtRef = useRef(null);
+  const exitEventsRef = useRef([]);
+  const answerLogRef = useRef([]); // { qIdx, from, to, ts }
+  const integrityWarningTimerRef = useRef(null);
+
+  // Integrity Modal State
+  const [showIntegrityModal, setShowIntegrityModal] = useState(false);
+  const [integrityWarningLock, setIntegrityWarningLock] = useState(0);
 
   // Results display
   const [showAnswersList, setShowAnswersList] = useState(false);
@@ -63,6 +225,10 @@ const QuizView = ({ session, profile }) => {
   
   const [modal, setModal] = useState({ isOpen: false, title: '', message: '', type: 'success' });
   const [guestSaving, setGuestSaving] = useState(false);
+  const [showResources, setShowResources] = useState(false);
+  const [activeResourceIdx, setActiveResourceIdx] = useState(0);
+  const [showResourceModal, setShowResourceModal] = useState(false);
+  const [splitMode, setSplitMode] = useState(!isMobile);
 
   // Quick Auth for Guests
   const [qaMode, setQaMode] = useState('choice'); // 'choice', 'login', 'register'
@@ -387,7 +553,7 @@ const QuizView = ({ session, profile }) => {
   const fetchQuiz = async () => {
     const { data } = await supabase
       .from('quizzes')
-      .select('*, quiz_sections(name, book_url)')
+      .select('*, quiz_sections(name, book_url), resources')
       .eq('id', id)
       .single();
 
@@ -486,6 +652,11 @@ const QuizView = ({ session, profile }) => {
       }
       setIsFirstAttempt(first);
 
+      if (data.resources && data.resources.length > 0) {
+        setShowResources(true);
+        if (!isMobile) setSplitMode(true);
+      }
+
       // Restore session-specific state (Timer, Start Time, Current Question Index)
 
       // Restore timer from localStorage if page was refreshed mid-attempt
@@ -515,8 +686,11 @@ const QuizView = ({ session, profile }) => {
       }
 
       const showResultKey = `quiz_show_result_${data.id}`;
-      if (localStorage.getItem(showResultKey) === 'true') {
+      const isFresh = new URLSearchParams(window.location.search).get('fresh') === '1';
+      if (localStorage.getItem(showResultKey) === 'true' && !isFresh) {
         setShowResult(true);
+      } else {
+        localStorage.removeItem(showResultKey);
       }
 
       // Save any pending result from a closed tab (for logged in users)
@@ -542,9 +716,70 @@ const QuizView = ({ session, profile }) => {
     setLoading(false);
   };
 
+  // Handle Visibility Change (Telemetry & Integrity Warning)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // Leaving the page
+        focusLostCntRef.current++;
+        lastHiddenAtRef.current = Date.now();
+        setIsBlurred(true);
+      } else {
+        // Returning to the page
+        if (lastHiddenAtRef.current) {
+          const duration = Date.now() - lastHiddenAtRef.current;
+          offSiteMsRef.current += duration;
+          exitEventsRef.current.push({
+            left_at: new Date(lastHiddenAtRef.current).toISOString(),
+            returned_at: new Date().toISOString(),
+            duration_ms: duration
+          });
+        }
+        
+        setIsBlurred(false);
+
+        // Show Integrity Warning ONLY in checking mode (1st attempt)
+        if (isFirstAttempt && !finishedRef.current && !showResult) {
+          // 1st time = 5s, subsequent times = 3s
+          const lockTime = focusLostCntRef.current === 1 ? 5 : 3;
+          setIntegrityWarningLock(lockTime);
+          setShowIntegrityModal(true);
+          
+          if (integrityWarningTimerRef.current) clearInterval(integrityWarningTimerRef.current);
+          
+          integrityWarningTimerRef.current = setInterval(() => {
+            setIntegrityWarningLock(prev => {
+              if (prev <= 1) {
+                clearInterval(integrityWarningTimerRef.current);
+                return 0;
+              }
+              return prev - 1;
+            });
+          }, 1000);
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (integrityWarningTimerRef.current) clearInterval(integrityWarningTimerRef.current);
+    };
+  }, [isFirstAttempt, showResult, loading]);
+
   const handleSelect = (optionIdx) => {
     const isAlreadyAnswered = answers[currentIdx] !== undefined;
     
+    // Record answer change in first attempt mode
+    if (isFirstAttempt && isAlreadyAnswered && answers[currentIdx] !== optionIdx) {
+      answerLogRef.current.push({
+        qIdx: questions[currentIdx].originalIndex ?? currentIdx,
+        from: answers[currentIdx],
+        to: optionIdx,
+        ts: Date.now() - startTimeRef.current
+      });
+    }
+
     // In learning mode (not first attempt), we don't allow changing answers after the feedback is shown
     if (!isFirstAttempt && isAlreadyAnswered) return;
 
@@ -638,6 +873,9 @@ const QuizView = ({ session, profile }) => {
     } else if (correctCount === 0 && finalTimeSpent < 30) {
       isSuspicious = true;
       suspicion_reason = 'instant_zero';
+    } else if (isFirstAttempt && (focusLostCntRef.current > 5 || offSiteMsRef.current > 60000)) {
+      isSuspicious = true;
+      suspicion_reason = 'high_off_site';
     }
 
     // Build detailed answers map
@@ -676,7 +914,11 @@ const QuizView = ({ session, profile }) => {
         suspicion_reason: suspicion_reason,
         time_spent_total: finalTimeSpent,
         finishTime: finishTimeRef.current,
-        startTime: startTimeRef.current
+        startTime: startTimeRef.current,
+        // Guest telemetry
+        off_site_ms: Math.round(offSiteMsRef.current),
+        focus_lost_cnt: focusLostCntRef.current,
+        answer_log: answerLogRef.current
       };
       localStorage.setItem(`guest_quiz_result_${id}`, JSON.stringify(guestResult));
       savingRef.current = false;
@@ -695,7 +937,11 @@ const QuizView = ({ session, profile }) => {
         is_suspicious: isSuspicious,
         is_incomplete: isIncomplete,
         suspicion_reason: suspicion_reason,
-        answers_data: detailedAnswers
+        answers_data: detailedAnswers,
+        // Telemetry
+        off_site_ms: Math.round(offSiteMsRef.current),
+        focus_lost_cnt: focusLostCntRef.current,
+        answer_log: answerLogRef.current
       };
       await supabase.from('quiz_attempts').insert(attemptData);
 
@@ -1096,6 +1342,29 @@ const QuizView = ({ session, profile }) => {
   return (
     <>
       <div style={{ position: 'relative' }}>
+        {/* Integrity Warning Modal */}
+        {showIntegrityModal && (
+          <div className="modal-overlay" style={{ zIndex: 3000 }}>
+            <div className="modal-content animate" style={{ width: '450px', textAlign: 'center' }}>
+              <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', borderRadius: '20px', margin: '0 auto 20px' }}>
+                <Shield size={32} />
+              </div>
+              <h2 style={{ marginBottom: '15px' }}>Режим проверки</h2>
+              <p style={{ opacity: 0.7, lineHeight: '1.6', marginBottom: '25px' }}>
+                В режиме контрольной проверки не рекомендуется сворачивать окно или переключать вкладки. <br/>
+                <span style={{ color: '#ef4444', fontWeight: 'bold' }}>Ваша активность фиксируется в аналитике для учителя.</span>
+              </p>
+              <button 
+                disabled={integrityWarningLock > 0}
+                onClick={() => setShowIntegrityModal(false)}
+                style={{ width: '100%', background: integrityWarningLock > 0 ? 'rgba(0,0,0,0.05)' : 'var(--primary-color)', color: integrityWarningLock > 0 ? 'rgba(0,0,0,0.3)' : 'white' }}
+              >
+                {integrityWarningLock > 0 ? `Подождите... ${integrityWarningLock}с` : 'Я понимаю, продолжить'}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* BLUR OVERLAY when tab is hidden */}
         {isBlurred && (
           <div style={{
@@ -1134,19 +1403,53 @@ const QuizView = ({ session, profile }) => {
           </div>
         )}
 
-        <div
-          className="container animate quiz-page-content"
-          style={{
-            maxWidth: '800px',
-            padding: '60px 20px',
-            paddingBottom: '20px',
-            position: 'relative',
-            userSelect: 'none',
-            WebkitUserSelect: 'none',
-            MozUserSelect: 'none',
-            msUserSelect: 'none',
-          }}
-        >
+        <div style={{ 
+          display: 'flex', 
+          flexDirection: isMobile ? 'column' : 'row',
+          minHeight: 'calc(100vh - 60px)',
+          width: '100%',
+          background: '#f1f5f9'
+        }}>
+          {showResources && quiz.resources?.length > 0 && (
+            <div style={{ 
+              width: isMobile ? '100%' : '50%', 
+              flexShrink: 0,
+              background: 'white'
+            }}>
+              <ResourcePlayer 
+                resources={quiz.resources}
+                activeIdx={activeResourceIdx}
+                setActiveIdx={setActiveResourceIdx}
+                isMobile={isMobile}
+                splitMode={splitMode}
+                setSplitMode={setSplitMode}
+                onOpenModal={() => setShowResourceModal(true)}
+              />
+            </div>
+          )}
+
+          <div
+            className="animate quiz-page-content"
+            style={{
+              flex: 1,
+              padding: isMobile ? '20px' : '40px',
+              paddingTop: '30px',
+              position: 'relative',
+              overflowY: 'auto',
+              maxHeight: isMobile ? 'none' : 'calc(100vh - 60px)',
+              userSelect: 'none',
+              WebkitUserSelect: 'none',
+            }}
+          >
+            {/* Navigation Header */}
+            <div style={{ 
+              maxWidth: '800px', 
+              margin: '0 auto', 
+              width: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '20px'
+            }}>
           {/* Exit button */}
           <button
             onClick={handleExit}
@@ -1156,6 +1459,25 @@ const QuizView = ({ session, profile }) => {
           >
             <X size={20} />
           </button>
+
+
+          {/* Resources Toggle Button */}
+          {quiz.resources && quiz.resources.length > 0 && (
+            <button
+              onClick={() => setShowResources(!showResources)}
+              className="flex-center"
+              style={{ 
+                position: 'absolute', top: '0', right: '70px', height: '40px', 
+                borderRadius: '12px', background: showResources ? 'var(--primary-color)' : 'white', 
+                color: showResources ? 'white' : 'var(--primary-color)',
+                padding: '0 15px', fontWeight: 'bold', fontSize: '0.85rem', gap: '8px',
+                border: '1px solid rgba(0,0,0,0.05)', boxShadow: '0 4px 12px rgba(0,0,0,0.08)', zIndex: 10
+              }}
+            >
+              <Book size={18} />
+              {!isMobile && 'Материалы'}
+            </button>
+          )}
 
           <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '20px', opacity: 0.6, paddingRight: '50px' }}>
             <span style={{ whiteSpace: 'nowrap', fontSize: '0.9rem', fontWeight: '500' }}>Вопрос {currentIdx + 1} из {questions.length}</span>
@@ -1353,6 +1675,7 @@ const QuizView = ({ session, profile }) => {
             </button>
           </div>
         )}
+        </div>
       </div>
     </div>
 
@@ -1427,6 +1750,15 @@ const QuizView = ({ session, profile }) => {
           </div>
         </div>
       )}
+
+      {/* Resource Modal */}
+        {showResourceModal && quiz.resources && quiz.resources[activeResourceIdx] && (
+          <ResourceModal 
+            res={quiz.resources[activeResourceIdx]} 
+            onClose={() => setShowResourceModal(false)} 
+          />
+        )}
+      </div>
     </>
   );
 };
