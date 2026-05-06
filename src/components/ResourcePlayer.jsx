@@ -31,6 +31,9 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
   const timeUpdateRef = useRef(null);
   const hoverTimeoutRef = useRef(null);
 
+  // Key for local storage persistence
+  const storageKey = ytId ? `yt_pos_${ytId}` : null;
+
   useEffect(() => {
     if (ytId) {
       if (!window.YT) {
@@ -86,9 +89,20 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
       },
       events: {
         onReady: (event) => {
-          setPlayer(event.target);
-          setDuration(event.target.getDuration());
-          event.target.setVolume(volume);
+          const p = event.target;
+          setPlayer(p);
+          setDuration(p.getDuration());
+          p.setVolume(volume);
+
+          // Restore position from memory
+          if (storageKey) {
+            const saved = localStorage.getItem(storageKey);
+            if (saved) {
+              const pos = parseFloat(saved);
+              p.seekTo(pos, true);
+              setCurrentTime(pos);
+            }
+          }
         },
         onStateChange: (event) => {
           setPlayerState(event.data);
@@ -117,7 +131,11 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
     timeUpdateRef.current = setInterval(() => {
       if (p && p.getCurrentTime) {
         const t = p.getCurrentTime();
-        if (typeof t === 'number') setCurrentTime(t);
+        if (typeof t === 'number') {
+          setCurrentTime(t);
+          // Save position to memory
+          if (storageKey) localStorage.setItem(storageKey, t.toString());
+        }
         const d = p.getDuration();
         if (d > 0) setDuration(d);
       }
@@ -138,7 +156,10 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
   const handleSeek = (e) => {
     const time = parseFloat(e.target.value);
     setCurrentTime(time);
-    if (player) player.seekTo(time, true);
+    if (player) {
+      player.seekTo(time, true);
+      if (storageKey) localStorage.setItem(storageKey, time.toString());
+    }
   };
 
   const handleVolume = (e) => {
@@ -244,7 +265,7 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
       <div style={{ flex: 1, position: 'relative', background: ytId ? '#000' : 'var(--bg-color)', overflow: 'hidden' }}>
         {ytId ? (
           <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}>
-            {/* Masking Bars - Taller and More Opaque for Full Scale Video */}
+            {/* Masking Bars */}
             <div style={{
               position: 'absolute',
               top: 0,
@@ -275,13 +296,11 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
               willChange: 'transform, opacity'
             }} />
 
-            {/* Transparent click layer - Blocks YT interaction, handles toggle */}
             <div 
               onClick={togglePlay}
               style={{ position: 'absolute', inset: 0, zIndex: 10, cursor: 'pointer' }}
             ></div>
 
-            {/* The Player Div - NO CROP SCALE */}
             <div style={{ width: '100%', height: '100%', position: 'relative' }}>
                 <div id={`yt-player-${inline ? 'inline' : 'modal'}-${activeIdx}`} style={{ width: '100%', height: '100%' }}></div>
             </div>
@@ -303,7 +322,8 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
                 zIndex: 20
               }}
             >
-              <div style={{ position: 'relative', width: '100%', height: '4px', background: 'rgba(255,255,255,0.2)', borderRadius: '2px', cursor: 'pointer' }}>
+              {/* Progress Slider Container */}
+              <div style={{ position: 'relative', width: '100%', height: '6px', background: 'rgba(255,255,255,0.2)', borderRadius: '3px', cursor: 'pointer' }}>
                 <input 
                   type="range"
                   min="0"
@@ -314,12 +334,16 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
                   onClick={(e) => e.stopPropagation()}
                   style={{
                     position: 'absolute',
-                    top: '-5px',
+                    top: '-10px',
+                    left: 0,
                     width: '100%',
-                    height: '14px',
+                    height: '26px',
                     opacity: 0,
                     zIndex: 25,
-                    cursor: 'pointer'
+                    cursor: 'pointer',
+                    margin: 0,
+                    padding: 0,
+                    boxSizing: 'border-box'
                   }}
                 />
                 <div style={{ 
@@ -329,7 +353,7 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
                   height: '100%', 
                   width: `${(currentTime / (duration || 1)) * 100}%`, 
                   background: 'var(--primary-color)',
-                  borderRadius: '2px',
+                  borderRadius: '3px',
                   boxShadow: '0 0 10px var(--primary-color)',
                   transition: 'width 0.1s linear'
                 }} />
@@ -360,7 +384,9 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
                             height: '100%', 
                             cursor: 'pointer', 
                             opacity: 0,
-                            zIndex: 2
+                            zIndex: 2,
+                            margin: 0,
+                            padding: 0
                           }}
                         />
                         <div style={{ 
