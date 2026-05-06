@@ -96,7 +96,6 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
             setDuration(event.target.getDuration());
             startTimeUpdate(event.target);
             
-            // Start 5s persistence timer
             setShowPersistentUI(true);
             if (persistentTimeoutRef.current) clearTimeout(persistentTimeoutRef.current);
             persistentTimeoutRef.current = setTimeout(() => {
@@ -106,7 +105,7 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
             setIsHovered(false);
           } else {
             stopTimeUpdate();
-            setShowPersistentUI(true); // Show UI when paused/ended
+            setShowPersistentUI(true);
           }
         }
       }
@@ -211,7 +210,7 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
       onMouseMove={handleMouseMove}
       onMouseLeave={() => playerState === 1 && setIsHovered(false)}
     >
-      {/* Header - Only for inline or when hovered */}
+      {/* Header */}
       {inline && (
         <div className="flex-center" style={{ 
             padding: '12px 20px', 
@@ -245,19 +244,20 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
       <div style={{ flex: 1, position: 'relative', background: ytId ? '#000' : 'var(--bg-color)', overflow: 'hidden' }}>
         {ytId ? (
           <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}>
-            {/* Masking Bars - SOLID with SOFT EDGE */}
+            {/* Masking Bars - Taller and More Opaque for Full Scale Video */}
             <div style={{
               position: 'absolute',
               top: 0,
               left: 0,
               right: 0,
-              height: '80px',
-              background: 'linear-gradient(to bottom, #0a0a0b 0%, #0a0a0b 60%, transparent 100%)',
+              height: '110px',
+              background: 'linear-gradient(to bottom, rgba(10,10,11,1) 0%, rgba(10,10,11,1) 70%, rgba(10,10,11,0) 100%)',
               zIndex: 15,
               pointerEvents: 'none',
               opacity: showUI ? 1 : 0,
               transform: showUI ? 'translateY(0)' : 'translateY(-100%)',
-              transition: 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)'
+              transition: 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
+              willChange: 'transform, opacity'
             }} />
             
             <div style={{
@@ -265,13 +265,14 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
               bottom: 0,
               left: 0,
               right: 0,
-              height: '140px',
-              background: 'linear-gradient(to top, #0a0a0b 0%, #0a0a0b 60%, transparent 100%)',
+              height: '170px',
+              background: 'linear-gradient(to top, rgba(10,10,11,1) 0%, rgba(10,10,11,1) 70%, rgba(10,10,11,0) 100%)',
               zIndex: 15,
               pointerEvents: 'none',
               opacity: showUI ? 1 : 0,
               transform: showUI ? 'translateY(0)' : 'translateY(100%)',
-              transition: 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)'
+              transition: 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
+              willChange: 'transform, opacity'
             }} />
 
             {/* Transparent click layer - Blocks YT interaction, handles toggle */}
@@ -280,12 +281,11 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
               style={{ position: 'absolute', inset: 0, zIndex: 10, cursor: 'pointer' }}
             ></div>
 
-            {/* The Player Div with CROP scale */}
-            <div style={{ width: '100%', height: '100%', transform: 'scale(1.06)', position: 'relative' }}>
+            {/* The Player Div - NO CROP SCALE */}
+            <div style={{ width: '100%', height: '100%', position: 'relative' }}>
                 <div id={`yt-player-${inline ? 'inline' : 'modal'}-${activeIdx}`} style={{ width: '100%', height: '100%' }}></div>
             </div>
             
-            {/* Custom Controls Layer */}
             <div 
               className="player-controls"
               style={{
@@ -297,13 +297,12 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '12px',
-                transition: 'all 0.15s',
+                transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
                 opacity: showUI ? 1 : 0,
                 transform: showUI ? 'translateY(0)' : 'translateY(10px)',
                 zIndex: 20
               }}
             >
-              {/* Progress Slider */}
               <div style={{ position: 'relative', width: '100%', height: '4px', background: 'rgba(255,255,255,0.2)', borderRadius: '2px', cursor: 'pointer' }}>
                 <input 
                   type="range"
@@ -431,7 +430,6 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
               </div>
             </div>
             
-            {/* Click-to-play overlay icon - Only shows when paused */}
             {playerState !== 1 && (
               <div 
                 onClick={togglePlay}
