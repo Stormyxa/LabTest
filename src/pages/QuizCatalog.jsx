@@ -424,7 +424,7 @@ const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, 
 const CatalogSectionRow = React.memo(({
   section, clsId, sIndex, profile, searchQuery, isExpanded,
   onToggle, onQuizzesChange, setHideModal, setDuplicateModal, handleRenameTrigger, setSelectedQuiz, onPrepQuizSelect, setRandomQuizModal,
-  handleCreateDivider, swapSections, setNewName, activeTab, handleShare, fetchData
+  handleCreateDivider, swapSections, setNewName, activeTab, handleShare, fetchData, setActiveStandaloneResource
 }) => {
   return (
     <div className="catalog-container" style={{
@@ -465,15 +465,13 @@ const CatalogSectionRow = React.memo(({
             </div>
           )}
           {section.book_url && (
-            <a
-              href={section.book_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              style={{ padding: '5px', background: 'var(--primary-color)', color: 'white', borderRadius: '8px', display: 'flex', alignItems: 'center' }}
+            <button
+              onClick={(e) => { e.stopPropagation(); setActiveStandaloneResource({ url: section.book_url, title: section.name }); }}
+              style={{ padding: '5px', background: 'var(--primary-color)', color: 'white', borderRadius: '8px', display: 'flex', alignItems: 'center', border: 'none', cursor: 'pointer', boxShadow: 'none' }}
+              title="Открыть учебник"
             >
               <Book size={16} />
-            </a>
+            </button>
           )}
           <h4 style={{ fontSize: '1.2rem', margin: 0 }}>
             {section.name}
@@ -531,7 +529,7 @@ const CatalogSectionRow = React.memo(({
 const CatalogClassRow = React.memo(({
   cls, cIndex, profile, searchQuery, isExpanded, expandedSections,
   onToggle, onSectionToggle, swapClasses, swapSections, handleRenameTrigger, handleCreateDivider, handleCreateSectionDivider, setNewName,
-  onQuizzesChange, setHideModal, setDuplicateModal, setSelectedQuiz, onPrepQuizSelect, setRandomQuizModal, activeTab, handleShare, fetchData
+  onQuizzesChange, setHideModal, setDuplicateModal, setSelectedQuiz, onPrepQuizSelect, setRandomQuizModal, activeTab, handleShare, fetchData, setActiveStandaloneResource
 }) => {
   return (
     <div className="card animate" style={{
@@ -658,6 +656,7 @@ const CatalogClassRow = React.memo(({
                 handleShare={handleShare}
                 fetchData={fetchData}
                 setNewName={setNewName}
+                setActiveStandaloneResource={setActiveStandaloneResource}
               />
             );
           })}
@@ -680,6 +679,7 @@ const QuizCatalog = ({ profile }) => {
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
 
   const [activeTab, setActiveTab] = useState(() => sessionStorage.getItem('catalog_tab') || 'official');
+  const [activeStandaloneResource, setActiveStandaloneResource] = useState(null);
   const [libraryUsers, setLibraryUsers] = useState([]);
   const [selectedLibraryUser, setSelectedLibraryUserState] = useState(null);
   const [duplicateModal, setDuplicateModalState] = useState(null);
@@ -1962,6 +1962,33 @@ const QuizCatalog = ({ profile }) => {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+      {activeStandaloneResource && (
+        <div 
+          className="modal-overlay animate" 
+          style={{ zIndex: 4000 }}
+          onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }}
+          onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; setActiveStandaloneResource(null); } }}
+        >
+          <div className="card animate" style={{ width: '95vw', maxWidth: '1200px', padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '90vh' }} onClick={e => e.stopPropagation()}>
+            <div className="flex-center" style={{ padding: '15px 25px', background: 'var(--card-bg)', justifyContent: 'space-between', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
+              <div className="flex-center" style={{ gap: '15px' }}>
+                <h3 style={{ margin: 0, fontSize: '1.1rem' }}>{activeStandaloneResource.title || 'Материал'}</h3>
+              </div>
+              <button onClick={() => setActiveStandaloneResource(null)} style={{ background: 'transparent', boxShadow: 'none' }}><X size={20} /></button>
+            </div>
+            <div style={{ flex: 1, position: 'relative' }}>
+              <ResourcePlayer 
+                resources={[activeStandaloneResource]} 
+                activeIdx={0} 
+                setActiveIdx={() => {}} 
+                isMobile={isMobile} 
+                onOpenModal={null} 
+                inline={false} 
+              />
+            </div>
           </div>
         </div>
       )}

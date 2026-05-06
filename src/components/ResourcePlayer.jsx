@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Book, Maximize2, Play, Pause, Volume2, VolumeX, 
-  Settings, FileText, ChevronLeft, ChevronRight 
+  Settings, FileText, ChevronLeft, ChevronRight, ExternalLink, X 
 } from 'lucide-react';
 
-const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenModal, inline }) => {
+const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenModal, inline, hideExternalLink }) => {
   if (!resources || resources.length === 0) return null;
   const res = resources[activeIdx];
 
@@ -14,9 +14,47 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
     return (match && match[2].length === 11) ? match[2] : null;
   };
 
-  const ytId = getYoutubeId(res.url);
+  const getDriveEmbedUrl = (url) => {
+    if (!url) return null;
+    if (url.includes('drive.google.com') || url.includes('docs.google.com')) {
+      // Regex to extract the File ID from various Google Drive URL formats
+      const fileIdMatch = url.match(/\/d\/([^/]+)/) || url.match(/id=([^&]+)/);
+      if (fileIdMatch && fileIdMatch[1]) {
+        // More robust viewer format to bypass CSP / frame-ancestors issues
+        return `https://docs.google.com/viewer?srcid=${fileIdMatch[1]}&pid=explorer&efh=false&a=v&chrome=false&embedded=true`;
+      }
+      
+      // Fallback for direct preview links
+      if (url.includes('/preview')) return url;
+      
+      // Traditional replacement if regex fails
+      let embedUrl = url;
+      if (embedUrl.includes('/view')) embedUrl = embedUrl.split('/view')[0] + '/preview';
+      else if (embedUrl.includes('/edit')) embedUrl = embedUrl.split('/edit')[0] + '/preview';
+      return embedUrl;
+    }
+    return null;
+  };
 
-  // --- YouTube API Logic ---
+  const ytId = getYoutubeId(res.url);
+  const driveUrl = getDriveEmbedUrl(res.url);
+
+  // Helper for opening external links (Mobile App deep linking vs PC)
+  const openExternal = (e) => {
+    if (e) e.stopPropagation();
+    if (hideExternalLink) return;
+    
+    let targetUrl = res.url;
+    
+    // If it's YouTube and we are on mobile, we can try to force app behavior
+    // though standard https links usually work best for OS handoff
+    if (ytId && isMobile) {
+        // Some systems prefer the short link for app triggering
+        targetUrl = `https://youtu.be/${ytId}`;
+    }
+    window.open(targetUrl, '_blank', 'noopener,noreferrer');
+  };
+
   const [player, setPlayer] = useState(null);
   const [playerState, setPlayerState] = useState(-1);
   const [currentTime, setCurrentTime] = useState(0);
@@ -94,7 +132,6 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
           const p = event.target;
           setPlayer(p);
           setDuration(p.getDuration());
-          
           const savedVol = localStorage.getItem('app_player_volume');
           if (savedVol) {
             const v = parseInt(savedVol);
@@ -103,7 +140,6 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
           } else {
             p.setVolume(volume);
           }
-
           if (storageKey) {
             const saved = localStorage.getItem(storageKey);
             if (saved) {
@@ -118,13 +154,11 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
           if (event.data === 1) {
             setDuration(event.target.getDuration());
             startTimeUpdate(event.target);
-            
             setShowPersistentUI(true);
             if (persistentTimeoutRef.current) clearTimeout(persistentTimeoutRef.current);
             persistentTimeoutRef.current = setTimeout(() => {
               setShowPersistentUI(false);
             }, 5000);
-
             setIsHovered(false);
           } else {
             stopTimeUpdate();
@@ -214,19 +248,7 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
 
   const themeColor = 'var(--bg-color)'; 
 
-  const containerStyle = inline ? {
-    width: '100%',
-    aspectRatio: ytId ? '16/9' : 'auto',
-    minHeight: ytId ? '265px' : '650px',
-    height: 'auto',
-    background: themeColor,
-    borderRadius: '20px',
-    border: '1px solid var(--border-color)',
-    overflow: 'hidden',
-    marginBottom: '20px',
-    position: 'relative',
-    boxShadow: '0 10px 30px -10px rgba(0,0,0,0.1)' // Soft theme glow
-  } : {
+  const containerStyle = {
     width: '100%',
     height: '100%',
     display: 'flex',
@@ -236,9 +258,7 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
   };
 
   const showUI = isHovered || playerState !== 1 || showPersistentUI;
-  
-  // Adaptive Mask Heights
-  const topMaskHeight = isMobile ? '55px' : '85px';
+  const topMaskHeight = isMobile ? '65px' : '85px'; 
   const bottomMaskHeight = isMobile ? '70px' : '110px';
 
   return (
@@ -248,46 +268,11 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
       onMouseMove={handleMouseMove}
       onMouseLeave={() => playerState === 1 && setIsHovered(false)}
     >
-      {/* Header */}
-      {inline && (
-        <div className="flex-center" style={{ 
-            padding: '12px 20px', 
-            background: 'rgba(var(--primary-color-rgb), 0.05)', 
-            justifyContent: 'space-between', 
-            borderBottom: '1px solid var(--border-color)',
-            transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-            opacity: showUI ? 1 : 0,
-            transform: showUI ? 'translateY(0)' : 'translateY(-20px)',
-            zIndex: 30
-        }}>
-          <div className="flex-center" style={{ gap: '10px' }}>
-            <div className="flex-center" style={{ width: '28px', height: '28px', borderRadius: '8px', background: 'var(--primary-color)', color: 'white' }}>
-              <Book size={16} />
-            </div>
-            <span style={{ fontWeight: '700', fontSize: '0.9rem', color: 'var(--text-main)' }}>{res.title || 'Материалы'}</span>
-          </div>
-          {onOpenModal && (
-            <button
-              onClick={onOpenModal}
-              className="flex-center"
-              style={{ background: 'rgba(var(--primary-color-rgb), 0.1)', padding: '6px', borderRadius: '8px', color: 'var(--primary-color)', boxShadow: 'none', border: 'none' }}
-            >
-              <Maximize2 size={16} />
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Main Content Area */}
       <div style={{ flex: 1, position: 'relative', background: themeColor, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {ytId ? (
           <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            
-            {/* THE VIDEO BOX */}
             <div style={{ width: '100%', aspectRatio: '16/9', position: 'relative', overflow: 'hidden', background: themeColor }}>
                 <div id={`yt-player-${inline ? 'inline' : 'modal'}-${activeIdx}`} style={{ width: '100.2%', height: '100.2%', position: 'absolute', top: '-0.1%', left: '-0.1%' }}></div>
-                
-                {/* PAUSE DIMMING */}
                 {playerState !== 1 && (
                   <div 
                     onClick={togglePlay}
@@ -298,8 +283,6 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
                     </div>
                   </div>
                 )}
-
-                {/* ADAPTIVE THEME MASKS */}
                 <div style={{
                   position: 'absolute',
                   top: 0,
@@ -314,7 +297,6 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
                   transition: 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
                   willChange: 'transform, opacity'
                 }} />
-                
                 <div style={{
                   position: 'absolute',
                   bottom: 0,
@@ -329,8 +311,6 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
                   transition: 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
                   willChange: 'transform, opacity'
                 }} />
-
-                {/* CONTROLS */}
                 <div 
                   className="player-controls"
                   style={{
@@ -385,16 +365,14 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
                       transition: 'width 0.1s linear'
                     }} />
                   </div>
-
                   <div className="flex-center" style={{ justifyContent: 'space-between' }}>
                     <div className="flex-center" style={{ gap: '15px' }}>
                       <button onClick={togglePlay} style={{ background: 'transparent', color: 'inherit', padding: 0, boxShadow: 'none', border: 'none' }}>
                         {playerState === 1 ? <Pause size={isMobile ? 20 : 24} fill="currentColor" /> : <Play size={isMobile ? 20 : 24} fill="currentColor" />}
                       </button>
-                      
                       <div className="flex-center" style={{ gap: '10px' }}>
                         <button onClick={toggleMute} style={{ background: 'transparent', color: 'inherit', padding: 0, boxShadow: 'none', border: 'none' }}>
-                          {isMuted || volume === 0 ? <VolumeX size={isMobile ? 18 : 20} /> : <Volume2 size={isMobile ? 18 : 20} />}
+                          {isMuted || volume === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}
                         </button>
                         <div style={{ width: isMobile ? '60px' : '80px', height: '4px', background: 'rgba(128, 128, 128, 0.25)', borderRadius: '2px', position: 'relative', cursor: 'pointer' }}>
                             <input 
@@ -437,6 +415,15 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
                     </div>
 
                     <div className="flex-center" style={{ gap: '15px', position: 'relative' }}>
+                      {!hideExternalLink && (
+                        <button 
+                            onClick={openExternal}
+                            title="Открыть оригинал"
+                            style={{ background: 'transparent', color: 'inherit', padding: 0, border: 'none', opacity: 0.6, cursor: 'pointer' }}
+                        >
+                            <ExternalLink size={18} />
+                        </button>
+                      )}
                       <button 
                         onClick={(e) => { e.stopPropagation(); setShowSettings(!showSettings); }} 
                         style={{ background: 'transparent', color: 'inherit', padding: 0, boxShadow: 'none', border: 'none' }}
@@ -496,18 +483,54 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
             
           </div>
         ) : (
-          <div style={{ height: inline ? '300px' : '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px', textAlign: 'center' }}>
-            <FileText size={48} style={{ opacity: 0.1, marginBottom: '20px', color: 'var(--primary-color)' }} />
-            <h3 style={{ marginBottom: '10px', fontWeight: '700', fontSize: '1.1rem' }}>{res.title || 'Документ'}</h3>
-            <p style={{ fontSize: '0.85rem', opacity: 0.6, marginBottom: '25px', maxWidth: '250px' }}>Нажмите кнопку ниже, чтобы открыть этот материал полностью.</p>
-            {onOpenModal && (
-              <button
-                onClick={onOpenModal}
+          <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}>
+            {driveUrl ? (
+              <iframe 
+                src={driveUrl} 
+                style={{ width: '100%', height: '100%', border: 'none' }}
+                allow="autoplay; fullscreen"
+                title={res.title || 'Документ'}
+              />
+            ) : (
+              <div style={{ height: inline ? '300px' : '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px', textAlign: 'center' }}>
+                <FileText size={48} style={{ opacity: 0.1, marginBottom: '20px', color: 'var(--primary-color)' }} />
+                <h3 style={{ marginBottom: '10px', fontWeight: '700', fontSize: '1.1rem' }}>{res.title || 'Материалы'}</h3>
+                <p style={{ fontSize: '0.85rem', opacity: 0.6, marginBottom: '25px', maxWidth: '250px' }}>Этот ресурс нельзя отобразить встроенно. Используйте кнопку ниже для открытия.</p>
+                {!hideExternalLink && (
+                  <button
+                    onClick={openExternal}
+                    className="flex-center"
+                    style={{ padding: '10px 20px', background: 'var(--primary-color)', color: 'white', borderRadius: '12px', fontWeight: 'bold', gap: '8px', fontSize: '0.9rem', border: 'none', textDecoration: 'none', cursor: 'pointer' }}
+                  >
+                    <ExternalLink size={16} /> Открыть оригинал
+                  </button>
+                )}
+              </div>
+            )}
+            
+            {/* External link floating button for non-YT */}
+            {!hideExternalLink && (
+                <button 
+                onClick={openExternal}
                 className="flex-center"
-                style={{ padding: '10px 20px', background: 'var(--primary-color)', color: 'white', borderRadius: '12px', fontWeight: 'bold', gap: '8px', fontSize: '0.9rem', border: 'none' }}
-              >
-                <Maximize2 size={16} /> Открыть полностью
-              </button>
+                title="Открыть оригинал"
+                style={{ 
+                    position: 'absolute', 
+                    bottom: '20px', 
+                    right: '20px', 
+                    background: 'var(--primary-color)', 
+                    color: 'white', 
+                    width: '40px', 
+                    height: '40px', 
+                    borderRadius: '20px', 
+                    boxShadow: '0 4px 15px rgba(var(--primary-color-rgb, 99, 102, 241), 0.3)',
+                    zIndex: 40,
+                    border: 'none',
+                    cursor: 'pointer'
+                }}
+                >
+                <ExternalLink size={20} />
+                </button>
             )}
           </div>
         )}

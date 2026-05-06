@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate, useBlocker } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
@@ -54,6 +54,7 @@ const ResourceModal = ({ res, onClose }) => {
             isMobile={false} 
             onOpenModal={() => {}} 
             inline={false} 
+            hideExternalLink={true}
           />
         </div>
       </div>
@@ -119,6 +120,18 @@ const QuizView = ({ session, profile }) => {
   const [activeResourceIdx, setActiveResourceIdx] = useState(0);
   const [showResourceModal, setShowResourceModal] = useState(false);
   const [splitMode, setSplitMode] = useState(!isMobile);
+
+  const allResources = useMemo(() => {
+    if (!quiz) return [];
+    const res = [];
+    if (quiz.quiz_sections?.book_url) {
+      res.push({ url: quiz.quiz_sections.book_url, title: 'Учебник', isBook: true });
+    }
+    if (quiz.resources && quiz.resources.length > 0) {
+      quiz.resources.forEach(r => res.push(r));
+    }
+    return res;
+  }, [quiz]);
 
   // Quick Auth for Guests
   const [qaMode, setQaMode] = useState('choice'); // 'choice', 'login', 'register'
@@ -1232,15 +1245,16 @@ const QuizView = ({ session, profile }) => {
   return (
     <div style={{ display: 'flex', height: isMobile ? 'auto' : 'calc(100vh - 67px)', overflow: isMobile ? 'visible' : 'hidden' }}>
       {/* Sidebar Materials (PC only, split screen) */}
-      {!isMobile && showResources && quiz.resources?.length > 0 && (
-        <div style={{ width: '50%', flexShrink: 0 }}>
+      {!isMobile && showResources && allResources.length > 0 && (
+        <div style={{ width: '50%', flexShrink: 0, borderRight: '1px solid rgba(0,0,0,0.1)' }}>
           <ResourcePlayer
-            resources={quiz.resources}
+            resources={allResources}
             activeIdx={activeResourceIdx}
             setActiveIdx={setActiveResourceIdx}
-            isMobile={isMobile}
+            isMobile={false}
             onOpenModal={() => setShowResourceModal(true)}
             inline={false}
+            hideExternalLink={true}
           />
         </div>
       )}
@@ -1335,27 +1349,49 @@ const QuizView = ({ session, profile }) => {
           }}>
             <span style={{ whiteSpace: 'nowrap', fontSize: '0.9rem', fontWeight: '500', opacity: 0.6 }}>Вопрос {currentIdx + 1} из {questions.length}</span>
             <div className="flex-center" style={{ gap: '15px' }}>
-              {quiz.resources && quiz.resources.length > 0 && (
-                <button
-                  onClick={() => setShowResources(!showResources)}
-                  className="flex-center"
-                  style={{
-                    height: '32px',
-                    borderRadius: '10px', background: showResources ? 'var(--primary-color)' : 'rgba(0,0,0,0.05)',
-                    color: showResources ? 'white' : 'var(--primary-color)',
-                    padding: '0 12px', fontWeight: 'bold', fontSize: '0.8rem', gap: '6px',
-                    boxShadow: 'none', border: 'none'
-                  }}
-                >
-                  <Book size={14} />
-                  Материалы
-                </button>
-              )}
-              {quiz.quiz_sections?.book_url && (
-                <a href={quiz.quiz_sections.book_url} target="_blank" rel="noopener noreferrer"
-                  style={{ color: 'var(--primary-color)', flexShrink: 0, display: 'flex' }} title="Открыть учебник">
-                  <Book size={20} />
-                </a>
+              {allResources.length > 0 && (
+                <div className="flex-center" style={{ 
+                  background: 'rgba(0,0,0,0.03)', 
+                  padding: '4px', 
+                  borderRadius: '12px', 
+                  gap: '4px',
+                  border: '1px solid rgba(0,0,0,0.05)'
+                }}>
+                  {allResources.map((res, idx) => {
+                    const isYT = res.url.includes('youtube.com') || res.url.includes('youtu.be');
+                    const isActive = showResources && activeResourceIdx === idx;
+                    
+                    return (
+                      <button
+                        key={idx}
+                        onClick={() => {
+                          if (isActive) {
+                            setShowResources(false);
+                          } else {
+                            setActiveResourceIdx(idx);
+                            setShowResources(true);
+                          }
+                        }}
+                        className="flex-center animate"
+                        style={{
+                          width: '32px',
+                          height: '32px',
+                          borderRadius: '8px',
+                          background: isActive ? 'var(--primary-color)' : 'transparent',
+                          color: isActive ? 'white' : 'var(--primary-color)',
+                          boxShadow: 'none',
+                          border: 'none',
+                          padding: 0,
+                          opacity: (showResources && !isActive) ? 0.4 : 1,
+                          transition: 'all 0.2s'
+                        }}
+                        title={res.title || (res.isBook ? 'Учебник' : 'Материал')}
+                      >
+                        {res.isBook ? <Book size={18} /> : (isYT ? <Youtube size={18} /> : <FileText size={18} />)}
+                      </button>
+                    );
+                  })}
+                </div>
               )}
               <h3 style={{ fontSize: '0.95rem', fontWeight: '600', margin: 0, textAlign: 'right' }}>
                 {quiz.title}
@@ -1367,19 +1403,8 @@ const QuizView = ({ session, profile }) => {
             <div style={{ width: `${(Object.keys(answers).length / questions.length) * 100}%`, height: '100%', background: 'var(--primary-color)', transition: 'width 0.3s' }} />
           </div>
 
-          {/* Materials Area (Inline - Mobile ONLY) */}
-          {isMobile && showResources && (
-            <div style={{ display: 'block' }}>
-              <ResourcePlayer
-                resources={quiz.resources}
-                activeIdx={activeResourceIdx}
-                setActiveIdx={setActiveResourceIdx}
-                isMobile={isMobile}
-                onOpenModal={() => setShowResourceModal(true)}
-                inline={true}
-              />
-            </div>
-          )}
+          {/* Spacer when resources are active on mobile to keep padding consistent */}
+          {isMobile && showResources && allResources.length > 0 && <div style={{ marginBottom: '20px' }} />}
 
           {/* QUESTION NAVIGATOR (DOTS) */}
           <div className="flex-center" style={{ gap: '8px', marginBottom: '30px', flexWrap: 'wrap', justifyContent: 'center' }}>
@@ -1632,9 +1657,9 @@ const QuizView = ({ session, profile }) => {
           )}
 
           {/* Resource Modal */}
-          {showResourceModal && quiz.resources && quiz.resources[activeResourceIdx] && (
+          {showResourceModal && allResources[activeResourceIdx] && (
             <ResourceModal
-              res={quiz.resources[activeResourceIdx]}
+              res={allResources[activeResourceIdx]}
               onClose={() => setShowResourceModal(false)}
             />
           )}
