@@ -138,9 +138,18 @@ const QuizRedactor = () => {
       setResultCount(count);
       setHasForeignResults(foreign);
       setLoading(false);
-      // При блокировке по результатам мы всё равно подгружаем заголовок для редактирования
+      
+      const resList = q.resources || [];
+      const tLimit = q.content?.time_limit || 0;
+      const qs = q.content?.questions || [];
+
       setTitle(q.title);
       setSavedTitle(q.title);
+      setResources(deepClone(resList));
+      setSavedResources(deepClone(resList));
+      setTimeLimit(tLimit);
+      setSavedTimeLimit(tLimit);
+      setSavedQuestions(deepClone(qs));
       return;
     }
 
@@ -338,20 +347,34 @@ const QuizRedactor = () => {
     }
   };
 
-  const handleUpdateOnlyTitle = async () => {
+  const handleUpdateMetadata = async () => {
     if (!title.trim()) return;
     setSaving(true);
     try {
       const trimmedTitle = title.trim();
       const oldTitle = savedTitle;
       const isTitleChanged = oldTitle && oldTitle !== trimmedTitle;
+      const filteredResources = resources.filter(r => r.url.trim());
 
       const { error } = await supabase.from('quizzes').update({
-        title: trimmedTitle
+        title: trimmedTitle,
+        resources: filteredResources.length > 0 ? filteredResources : null,
+        content: { ...quiz.content, time_limit: timeLimit > 0 ? timeLimit : null }
       }).eq('id', quizId);
+
       if (error) throw error;
+      
       setSavedTitle(trimmedTitle);
-      setQuiz(p => ({ ...p, title: trimmedTitle }));
+      setSavedResources(deepClone(filteredResources));
+      setResources(filteredResources);
+      setSavedTimeLimit(timeLimit);
+      setQuiz(p => ({ 
+        ...p, 
+        title: trimmedTitle, 
+        resources: filteredResources.length > 0 ? filteredResources : null,
+        content: { ...p.content, time_limit: timeLimit > 0 ? timeLimit : null }
+      }));
+      
       setEditingTitle(false);
       setShowSuccessUpdateModal(true);
 
@@ -664,26 +687,101 @@ const QuizRedactor = () => {
           <h2 style={{ textAlign: 'center' }}>Редактирование ограничено</h2>
 
           {canEditOnlyTitle && (
-            <div className="card" style={{ width: '100%', maxWidth: '600px', padding: '25px', marginBottom: '10px' }}>
-              <div style={{ fontSize: '0.75rem', opacity: 0.4, marginBottom: '10px', letterSpacing: '1px', textTransform: 'uppercase', textAlign: 'left' }}>Изменить только заголовок</div>
-              <div className="flex-center" style={{ gap: '10px' }}>
+            <div className="card animate" style={{ width: '100%', maxWidth: '800px', padding: '30px', marginBottom: '10px', background: 'var(--card-bg)' }}>
+              <div style={{ fontSize: '0.85rem', opacity: 0.5, marginBottom: '20px', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: '700' }}>Редактирование метаданных</div>
+              
+              {/* Title Edit */}
+              <div style={{ marginBottom: '25px' }}>
+                <div style={{ fontSize: '0.75rem', opacity: 0.4, marginBottom: '8px' }}>Заголовок теста</div>
                 <input
                   type="text"
                   value={title}
                   onChange={e => setTitle(e.target.value)}
-                  placeholder="Новое название теста..."
-                  style={{ fontSize: '1.2rem', fontWeight: '600', flex: 1, padding: '12px 15px' }}
+                  placeholder="Название теста..."
+                  style={{ fontSize: '1.2rem', fontWeight: '600', width: '100%', padding: '12px 15px' }}
                 />
-                <button
-                  onClick={handleUpdateOnlyTitle}
-                  disabled={saving || title === savedTitle}
-                  style={{ padding: '12px 20px', background: 'var(--primary-color)', color: 'white', opacity: title === savedTitle ? 0.5 : 1 }}
-                >
-                  {saving ? '...' : <Check size={20} />}
-                </button>
               </div>
-              <p style={{ fontSize: '0.8rem', opacity: 0.5, marginTop: '10px', textAlign: 'left' }}>
-                Вы можете изменить название теста без удаления результатов. Изменение вопросов в этом режиме недоступно.
+
+              {/* Resources Edit */}
+              <div style={{ marginBottom: '25px', padding: '20px', background: 'rgba(99, 102, 241, 0.03)', borderRadius: '15px', border: '1px dashed rgba(99, 102, 241, 0.2)' }}>
+                <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '15px' }}>
+                  <div className="flex-center" style={{ gap: '10px', color: 'var(--primary-color)' }}>
+                    <LinkIcon size={18} />
+                    <span style={{ fontWeight: '700', fontSize: '0.95rem' }}>Материалы и ресурсы ({resources.length} / 5)</span>
+                  </div>
+                  {resources.length < 5 && (
+                    <button onClick={addResource} style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'var(--card-bg)', color: 'var(--primary-color)', border: '1px solid rgba(99, 102, 241, 0.2)', boxShadow: 'none' }}>
+                      <Plus size={14} style={{ marginRight: '5px' }} /> Добавить
+                    </button>
+                  )}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {resources.length === 0 ? (
+                    <p style={{ opacity: 0.4, fontSize: '0.8rem', margin: 0 }}>Материалы не добавлены.</p>
+                  ) : (
+                    resources.map((res, idx) => (
+                      <div key={idx} className="flex-center animate" style={{ gap: '10px' }}>
+                        <input 
+                          type="url" 
+                          placeholder="Ссылка" 
+                          value={res.url} 
+                          onChange={(e) => updateResource(idx, 'url', e.target.value)}
+                          style={{ flex: 2, padding: '8px 12px', fontSize: '0.85rem' }}
+                        />
+                        <input 
+                          type="text" 
+                          placeholder="Название" 
+                          value={res.title} 
+                          onChange={(e) => updateResource(idx, 'title', e.target.value)}
+                          style={{ flex: 1, padding: '8px 12px', fontSize: '0.85rem' }}
+                        />
+                        <button onClick={() => removeResource(idx)} style={{ background: 'transparent', color: '#f87171', padding: '5px', boxShadow: 'none' }}>
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Time Limit Edit */}
+              <div style={{ marginBottom: '30px', padding: '20px', background: 'rgba(99, 102, 241, 0.03)', borderRadius: '15px', border: '1px dashed rgba(99, 102, 241, 0.2)' }}>
+                <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '15px' }}>
+                  <div className="flex-center" style={{ gap: '10px', color: 'var(--primary-color)' }}>
+                    <Clock size={18} />
+                    <span style={{ fontWeight: '700', fontSize: '0.95rem' }}>Лимит времени</span>
+                  </div>
+                  {timeLimit > 0 && (
+                    <button onClick={() => setTimeLimit(0)} style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', boxShadow: 'none' }}>
+                      Сбросить
+                    </button>
+                  )}
+                </div>
+                <div className="flex-center" style={{ gap: '15px', justifyContent: 'flex-start' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input type="number" min="0" value={Math.floor(timeLimit / 60) || ''} onChange={e => setTimeLimit((parseInt(e.target.value) || 0) * 60 + (timeLimit % 60))} style={{ width: '70px', padding: '8px', textAlign: 'center' }} />
+                    <span style={{ opacity: 0.5, fontSize: '0.85rem' }}>мин</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input type="number" min="0" max="59" value={timeLimit % 60 || ''} onChange={e => setTimeLimit(Math.floor(timeLimit / 60) * 60 + Math.min(59, parseInt(e.target.value) || 0))} style={{ width: '70px', padding: '8px', textAlign: 'center' }} />
+                    <span style={{ opacity: 0.5, fontSize: '0.85rem' }}>сек</span>
+                  </div>
+                  <div style={{ marginLeft: '10px', padding: '8px 12px', background: 'var(--card-bg)', borderRadius: '8px', fontSize: '0.85rem', opacity: 0.7, border: '1px solid rgba(0,0,0,0.05)' }}>
+                    {timeLimit > 0 ? `Всего: ${timeLimit} сек` : `Стандарт: ${quiz?.content?.questions?.length * 25} сек`}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={handleUpdateMetadata}
+                disabled={saving || (title === savedTitle && JSON.stringify(resources) === JSON.stringify(savedResources) && timeLimit === savedTimeLimit)}
+                style={{ width: '100%', padding: '15px', background: 'var(--primary-color)', color: 'white', fontWeight: '700', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}
+              >
+                {saving ? 'Сохранение...' : <><Check size={20} /> Сохранить метаданные</>}
+              </button>
+              
+              <p style={{ fontSize: '0.8rem', opacity: 0.5, marginTop: '15px', textAlign: 'center' }}>
+                Изменение метаданных не затрагивает вопросы и результаты учеников.
               </p>
             </div>
           )}
