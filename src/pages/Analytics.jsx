@@ -6,6 +6,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { resolveImgUrl } from '../lib/imageUtils';
 import { ChevronLeft, User, BarChart, Calendar, CheckCircle, XCircle, Mail, Trash2, AlertTriangle, Filter, Download, Pencil, Shield, EyeOff, ArrowDown, ArrowUp, Info, Lock, Image as ImageIcon, ChevronRight, X, Sparkles, Copy, Check, RefreshCw, FileText } from 'lucide-react';
+import MathRenderer from '../components/MathRenderer';
 import { buildQuizPromptFromData, downloadJSON } from '../lib/aiPromptBuilder';
 
 const Analytics = () => {
@@ -37,7 +38,7 @@ const Analytics = () => {
   }, [useFirstResults]);
 
   // Expanded questions state - persistent for this quiz in session
-  const [imagePreviewModal, setImagePreviewModal] = useState({ isOpen: false, images: [], currentIdx: 0 });
+  const [imagePreviewModal, setImagePreviewModal] = useState({ isOpen: false, images: [], currentIdx: 0, question: '' });
   const [expandedQuestions, setExpandedQuestions] = useState(() => {
     const saved = sessionStorage.getItem(`expanded_q_${quizId}`);
     return saved ? JSON.parse(saved) : {};
@@ -700,11 +701,11 @@ const Analytics = () => {
                           }}
                           onClick={() => setExpandedQuestions(p => ({ ...p, [idx]: !p[idx] }))}
                         >
-                          {idx + 1}. {q.question}
+                          {idx + 1}. <MathRenderer text={q.question} />
                         </span>
                         {q.images && q.images.length > 0 && (
                           <button
-                            onClick={(e) => { e.stopPropagation(); setImagePreviewModal({ isOpen: true, images: q.images, currentIdx: 0 }); }}
+                            onClick={(e) => { e.stopPropagation(); setImagePreviewModal({ isOpen: true, images: q.images, currentIdx: 0, question: q.question }); }}
                             className="flex-center"
                             style={{ padding: '4px 8px', background: 'rgba(99,102,241,0.1)', color: 'var(--primary-color)', borderRadius: '6px', boxShadow: 'none', flexShrink: 0, gap: '4px' }}
                             title="Посмотреть картинку"
@@ -943,14 +944,12 @@ const Analytics = () => {
                 </>
               )}
             </div>
-            {imagePreviewModal.images.length > 1 && (
-              <div style={{ position: 'absolute', bottom: '-40px', color: 'rgba(255,255,255,0.7)', fontSize: '1rem', fontWeight: 'bold' }}>
-                {imagePreviewModal.currentIdx + 1} / {imagePreviewModal.images.length}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+             <div style={{ background: 'var(--card-bg)', color: 'var(--text-color)', padding: '25px', borderRadius: '20px', marginTop: '15px', width: '100%', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+               <h4 style={{ margin: '0', fontSize: '1.2rem', lineHeight: '1.4' }}><MathRenderer text={imagePreviewModal.question} /></h4>
+             </div>
+           </div>
+         </div>
+       )}
     </>
   );
 };

@@ -11,6 +11,7 @@ import {
 import { transliterate } from '../lib/transliterate';
 import { syncGithubRenames, updateQuizzesWithNewUrls } from '../lib/githubSync';
 import { resolveImgUrl } from '../lib/imageUtils';
+import MathRenderer from '../components/MathRenderer';
 
 const MAX_QUESTIONS = 30;
 const MAX_OPTIONS = 6;
@@ -51,6 +52,7 @@ const QuizRedactor = () => {
   const [editingTitle, setEditingTitle] = useState(false);
   const [editQIdx, setEditQIdx] = useState(null);
   const [editOptKey, setEditOptKey] = useState(null); // "qIdx-oIdx"
+  const [editExplIdx, setEditExplIdx] = useState(null);
 
   // Modals
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -180,7 +182,7 @@ const QuizRedactor = () => {
     setIsHidden(last.isHidden);
     setResources(last.resources);
     setCanUndo(historyRef.current.length > 0);
-    setEditQIdx(null); setEditOptKey(null); setEditingTitle(false);
+    setEditQIdx(null); setEditOptKey(null); setEditExplIdx(null); setEditingTitle(false);
   };
 
   const validate = () => {
@@ -404,7 +406,7 @@ const QuizRedactor = () => {
     setShowCancelModal(false);
     setValidErrors([]);
     setShowValidErrors(false);
-    setEditQIdx(null); setEditOptKey(null); setEditingTitle(false);
+    setEditQIdx(null); setEditOptKey(null); setEditExplIdx(null); setEditingTitle(false);
   };
 
   const downloadJson = () => {
@@ -1147,7 +1149,9 @@ const QuizRedactor = () => {
                         <button onClick={() => setEditQIdx(null)} style={{ padding: '6px', background: 'var(--primary-color)', color: 'white', borderRadius: '8px', boxShadow: 'none', flexShrink: 0 }}><Check size={16} /></button>
                       </div>
                     ) : (
-                      <span style={{ fontWeight: '600', fontSize: '1rem', flex: 1 }}>{q.question || <span style={{ opacity: 0.3 }}>Текст вопроса...</span>}</span>
+                      <span style={{ fontWeight: '600', fontSize: '1rem', flex: 1 }}>
+                        {q.question ? <MathRenderer text={q.question} /> : <span style={{ opacity: 0.3 }}>Текст вопроса...</span>}
+                      </span>
                     )}
                   </div>
                   <div className="flex-center" style={{ gap: '6px', flexShrink: 0 }}>
@@ -1207,7 +1211,9 @@ const QuizRedactor = () => {
                             style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: '0.95rem', color: 'var(--text-color)' }}
                           />
                         ) : (
-                          <span style={{ flex: 1, fontSize: '0.95rem' }}>{opt || <span style={{ opacity: 0.3 }}>Текст варианта...</span>}</span>
+                          <span style={{ flex: 1, fontSize: '0.95rem' }}>
+                            {opt ? <MathRenderer text={opt} /> : <span style={{ opacity: 0.3 }}>Текст варианта...</span>}
+                          </span>
                         )}
                       </div>
 
@@ -1298,23 +1304,45 @@ const QuizRedactor = () => {
                     <div style={{ fontSize: '0.85rem', opacity: 0.6, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '10px' }}>
                       Пояснение к ответу (необязательно)
                     </div>
-                    <textarea
-                      placeholder="Объясните, почему этот ответ правильный..."
-                      value={q.explanation || ''}
-                      onChange={e => {
-                        updateQExplanation(qIdx, e.target.value);
-                      }}
-                      style={{
-                        width: '100%',
-                        height: '80px',
+                    <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <div style={{
+                        flex: 1,
                         fontSize: '0.9rem',
+                        lineHeight: '1.6',
                         padding: '12px 15px',
                         borderRadius: '12px',
-                        resize: 'vertical',
                         background: 'rgba(0,0,0,0.02)',
-                        border: '1px solid rgba(0,0,0,0.05)'
-                      }}
-                    />
+                        border: '1px solid rgba(0,0,0,0.05)',
+                        minHeight: '40px'
+                      }}>
+                        {editExplIdx === qIdx ? (
+                          <textarea
+                            placeholder="Объясните, почему этот ответ правильный..."
+                            value={q.explanation || ''}
+                            autoFocus
+                            onChange={e => updateQExplanation(qIdx, e.target.value)}
+                            onBlur={() => setEditExplIdx(null)}
+                            style={{
+                              width: '100%',
+                              height: '100px',
+                              fontSize: '0.9rem',
+                              background: 'transparent',
+                              border: 'none',
+                              outline: 'none',
+                              resize: 'vertical'
+                            }}
+                          />
+                        ) : (
+                          <div onClick={() => setEditExplIdx(qIdx)} style={{ cursor: 'pointer' }}>
+                            {q.explanation ? <MathRenderer text={q.explanation} /> : <span style={{ opacity: 0.3 }}>Добавить пояснение...</span>}
+                          </div>
+                        )}
+                      </div>
+                      <button onClick={() => setEditExplIdx(editExplIdx === qIdx ? null : qIdx)}
+                        style={{ padding: '8px', background: 'rgba(99,102,241,0.1)', color: 'var(--primary-color)', borderRadius: '10px', boxShadow: 'none', flexShrink: 0 }}>
+                        {editExplIdx === qIdx ? <Check size={18} /> : <Pencil size={18} />}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>

@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { fetchWithCache, useCacheSync } from '../lib/cache';
 import { resolveImgUrl } from '../lib/imageUtils';
 import { ChevronLeft, BarChart2, Clock, CheckCircle, XCircle, Search, Filter, AlertTriangle, Menu, Pencil, Trash2, Eye, X, ChevronRight, Sparkles, Copy, Check, RefreshCw, FileText, Book, Shield } from 'lucide-react';
+import MathRenderer from '../components/MathRenderer';
 import { buildDetailedQuizPrompt, downloadJSON } from '../lib/aiPromptBuilder';
 
 const UserListItem = React.memo(({ u, isSelected, onSelect }) => {
@@ -518,12 +519,12 @@ const AttemptDetailsView = React.memo(({
             <div key={i} className="card" style={{ padding: '20px', borderLeft: `4px solid ${ans.isCorrect ? '#4ade80' : '#ef4444'}`, overflowWrap: 'anywhere' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '20px', flexWrap: 'wrap' }}>
                 <div style={{ flex: 1, minWidth: '200px' }}>
-                  <h4 style={{ marginBottom: '10px', fontSize: '1.1rem' }}>{i + 1}. {originQ.question}</h4>
+                  <h4 style={{ marginBottom: '10px', fontSize: '1.1rem' }}>{i + 1}. <MathRenderer text={originQ.question} /></h4>
 
                   <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '5px' }}>
                     <span style={{ opacity: 0.6, fontSize: '0.9rem' }}>Ваш ответ:</span>
                     <strong style={{ color: ans.isCorrect ? '#4ade80' : '#ef4444', fontSize: '0.95rem' }}>
-                      {ans.chosenIndex !== null ? originQ.options[ans.chosenIndex] : 'Пропущено'}
+                      <MathRenderer text={ans.chosenIndex !== null ? originQ.options[ans.chosenIndex] : 'Пропущено'} />
                     </strong>
                     {ans.isCorrect ? <CheckCircle size={16} color="#4ade80" /> : <XCircle size={16} color="#ef4444" />}
                   </div>
@@ -531,7 +532,7 @@ const AttemptDetailsView = React.memo(({
                   {!ans.isCorrect && (
                     <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px', color: '#4ade80', fontSize: '0.9rem' }}>
                       <span style={{ opacity: 0.8 }}>Верный:</span>
-                      <strong>{originQ.options[originQ.correctIndex]}</strong>
+                      <strong><MathRenderer text={originQ.options[originQ.correctIndex]} /></strong>
                     </div>
                   )}
 
@@ -547,7 +548,7 @@ const AttemptDetailsView = React.memo(({
                   {originQ.explanation && (
                     <div style={{ marginTop: '15px', padding: '12px 15px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '12px', border: '1px dashed rgba(99, 102, 241, 0.2)' }}>
                       <div style={{ fontSize: '0.75rem', opacity: 0.5, fontWeight: '700', textTransform: 'uppercase', marginBottom: '5px', letterSpacing: '0.5px' }}>Пояснение</div>
-                      <div style={{ fontSize: '0.9rem', lineHeight: '1.5', opacity: 0.9 }}>{originQ.explanation}</div>
+                      <div style={{ fontSize: '0.9rem', lineHeight: '1.5', opacity: 0.9 }}><MathRenderer text={originQ.explanation} /></div>
                     </div>
                   )}
                 </div>
@@ -1531,12 +1532,12 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
                 )}
               </div>
               <div style={{ background: 'var(--card-bg)', color: 'var(--text-color)', padding: '25px', borderRadius: '20px', marginTop: '15px', width: '100%', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-                <h4 style={{ margin: '0 0 15px 0', fontSize: '1.2rem', lineHeight: '1.4' }}>{detailedImageModal.question}</h4>
+                <h4 style={{ margin: '0 0 15px 0', fontSize: '1.2rem', lineHeight: '1.4' }}><MathRenderer text={detailedImageModal.question} /></h4>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <div style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ opacity: 0.6 }}>Ответ:</span>
                     <strong style={{ color: detailedImageModal.isCorrect ? '#4ade80' : '#f87171' }}>
-                      {detailedImageModal.userAnswer}
+                      <MathRenderer text={detailedImageModal.userAnswer} />
                     </strong>
                     {detailedImageModal.isCorrect ? <CheckCircle size={18} color="#4ade80" /> : <XCircle size={18} color="#f87171" />}
                   </div>
@@ -1544,7 +1545,7 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
                     <div style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: 'rgba(74, 222, 128, 0.05)', borderRadius: '10px', marginTop: '5px' }}>
                       <span style={{ opacity: 0.6 }}>Правильный:</span>
                       <strong style={{ color: '#4ade80' }}>
-                        {detailedImageModal.correctAnswer}
+                        <MathRenderer text={detailedImageModal.correctAnswer} />
                       </strong>
                     </div>
                   )}

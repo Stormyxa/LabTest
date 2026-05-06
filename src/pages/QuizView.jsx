@@ -11,31 +11,7 @@ import {
 import { resolveImgUrl } from '../lib/imageUtils';
 import { useScrollRestoration } from '../lib/useScrollRestoration';
 import ResourcePlayer from '../components/ResourcePlayer';
-import katex from 'katex';
-import 'katex/dist/katex.min.css';
-
-const MathRenderer = React.memo(({ text }) => {
-  if (!text) return null;
-  const parts = text.split(/(\$\$[\s\S]+?\$\$|\$[\s\S]+?\$)/g);
-  return (
-    <span>
-      {parts.map((part, i) => {
-        if (part.startsWith('$$') && part.endsWith('$$')) {
-          const formula = part.slice(2, -2);
-          try {
-            return <div key={i} style={{ margin: '10px 0' }} dangerouslySetInnerHTML={{ __html: katex.renderToString(formula, { displayMode: true, throwOnError: false }) }} />;
-          } catch (e) { return <span key={i}>{part}</span>; }
-        } else if (part.startsWith('$') && part.endsWith('$')) {
-          const formula = part.slice(1, -1);
-          try {
-            return <span key={i} dangerouslySetInnerHTML={{ __html: katex.renderToString(formula, { displayMode: false, throwOnError: false }) }} />;
-          } catch (e) { return <span key={i}>{part}</span>; }
-        }
-        return <span key={i}>{part}</span>;
-      })}
-    </span>
-  );
-});
+import MathRenderer from '../components/MathRenderer';
 
 const SECONDS_PER_QUESTION = 25;
 const EXIT_GRACE_SECONDS = 30;
@@ -1141,7 +1117,7 @@ const QuizView = ({ session, profile }) => {
                           <div style={{ fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <span style={{ opacity: 0.6 }}>Ваш ответ:</span>
                             <span style={{ color: isCorrect ? '#4ade80' : '#f87171', fontWeight: '600' }}>
-                               <MathRenderer text={userChoice !== undefined ? q.options[userChoice] : 'Пропущено'} />
+                               <MathRenderer text={userChoice !== undefined ? q.options[userChoice] : 'Пропущено'} noSelect={false} />
                             </span>
                             {userChoice !== undefined && (isCorrect ? <CheckCircle size={16} color="#4ade80" /> : <XCircle size={16} color="#f87171" />)}
                           </div>
@@ -1538,7 +1514,7 @@ const QuizView = ({ session, profile }) => {
             )}
 
             <h2 style={{ marginBottom: '40px', fontSize: (currentQ.images && currentQ.images.length > 0) ? '1.4rem' : '1.7rem', lineHeight: '1.4' }}>
-              <MathRenderer text={currentQ.question} />
+              <MathRenderer text={currentQ.question} noSelect={!showResult} />
             </h2>
 
             <div style={{
@@ -1582,7 +1558,7 @@ const QuizView = ({ session, profile }) => {
                       userSelect: 'none', WebkitUserSelect: 'none',
                     }}>
                     <div className="flex-center" style={{ justifyContent: 'space-between', gap: '10px' }}>
-                      <span><MathRenderer text={opt} /></span>
+                      <span><MathRenderer text={opt} noSelect={!showResult} /></span>
                       <div style={{ flexShrink: 0 }}>
                         {!isFirstAttempt && chosen !== undefined && isCorrect && <CheckCircle size={20} color="#4ade80" />}
                         {!isFirstAttempt && chosen !== undefined && isSelected && !isCorrect && <XCircle size={20} color="#f87171" />}
@@ -1618,7 +1594,7 @@ const QuizView = ({ session, profile }) => {
                   opacity: isExplanationExpanded ? 1 : 0
                 }}>
                   <div style={{ paddingBottom: '20px', fontSize: '1.05rem', lineHeight: '1.6', opacity: 0.9 }}>
-                    <MathRenderer text={currentQ.explanation} />
+                    <MathRenderer text={currentQ.explanation} noSelect={!showResult} />
                   </div>
                 </div>
               </div>
