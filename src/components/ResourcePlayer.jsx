@@ -475,11 +475,13 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
                 </div>
             </div>
 
-            {/* INTERACTION LAYER */}
-            <div 
-              onClick={togglePlay}
-              style={{ position: 'absolute', inset: 0, zIndex: 10, cursor: 'pointer' }}
-            ></div>
+            {/* INTERACTION LAYER (Only for YouTube) */}
+            {ytId && (
+              <div 
+                onClick={togglePlay}
+                style={{ position: 'absolute', inset: 0, zIndex: 10, cursor: 'pointer' }}
+              ></div>
+            )}
             
           </div>
         ) : (

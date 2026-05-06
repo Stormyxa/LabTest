@@ -1415,7 +1415,15 @@ const QuizView = ({ session, profile }) => {
 
           {/* Spacer when resources are active on mobile to keep padding consistent */}
           {isMobile && showResources && allResources.length > 0 && (
-            <div style={{ marginBottom: '25px', borderRadius: '20px', overflow: 'hidden', border: '1px solid rgba(0,0,0,0.1)', background: 'var(--card-bg)' }}>
+            <div style={{ 
+              marginBottom: '25px', 
+              borderRadius: '20px', 
+              overflow: 'hidden', 
+              border: '1px solid rgba(0,0,0,0.1)', 
+              background: 'var(--card-bg)',
+              height: allResources[activeResourceIdx]?.url?.includes('youtube.com') || allResources[activeResourceIdx]?.url?.includes('youtu.be') ? 'auto' : '550px', 
+              boxShadow: '0 4px 15px rgba(0,0,0,0.05)'
+            }}>
               <ResourcePlayer
                 resources={allResources}
                 activeIdx={activeResourceIdx}
