@@ -1439,8 +1439,11 @@ const QuizView = ({ session, profile }) => {
               overflow: 'hidden', 
               border: '1px solid rgba(0,0,0,0.1)', 
               background: 'var(--card-bg)',
-              height: allResources[activeResourceIdx]?.url?.includes('youtube.com') || allResources[activeResourceIdx]?.url?.includes('youtu.be') ? 'auto' : '550px', 
-              boxShadow: '0 4px 15px rgba(0,0,0,0.05)'
+              width: '100%',
+              aspectRatio: (allResources[activeResourceIdx]?.url?.includes('youtube.com') || allResources[activeResourceIdx]?.url?.includes('youtu.be')) ? '16/9' : 'auto',
+              height: (allResources[activeResourceIdx]?.url?.includes('youtube.com') || allResources[activeResourceIdx]?.url?.includes('youtu.be')) ? 'auto' : '550px', 
+              boxShadow: '0 4px 15px rgba(0,0,0,0.05)',
+              position: 'relative'
             }}>
               <ResourcePlayer
                 resources={allResources}
