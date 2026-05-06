@@ -63,13 +63,13 @@ const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, pass
             {quiz.resources && quiz.resources.length > 0 && (
               <span style={{ marginLeft: '10px', display: 'inline-flex', gap: '5px', verticalAlign: 'middle' }}>
                 {quiz.resources.some(r => r.url.includes('youtube.com') || r.url.includes('youtu.be')) && (
-                  <Youtube size={16} style={{ color: '#ef4444', cursor: 'pointer' }} onClick={(e) => { e.stopPropagation(); const res = quiz.resources.find(r => r.url.includes('youtube')); if (res) setActiveStandaloneResource(res); }} />
+                  <Youtube size={16} style={{ color: '#ef4444', cursor: 'pointer' }} onClick={(e) => { e.stopPropagation(); const idx = quiz.resources.findIndex(r => r.url.includes('youtube.com') || r.url.includes('youtu.be')); if (idx !== -1) setActiveStandaloneResource(quiz.resources, idx); }} />
                 )}
                 {quiz.resources.some(r => r.url.includes('drive.google.com') || r.url.includes('docs.google.com')) && (
-                  <FileText size={16} style={{ color: '#22c55e', cursor: 'pointer' }} onClick={(e) => { e.stopPropagation(); const res = quiz.resources.find(r => r.url.includes('drive.google.com') || r.url.includes('docs.google.com')); if (res) setActiveStandaloneResource(res); }} />
+                  <FileText size={16} style={{ color: '#22c55e', cursor: 'pointer' }} onClick={(e) => { e.stopPropagation(); const idx = quiz.resources.findIndex(r => r.url.includes('drive.google.com') || r.url.includes('docs.google.com')); if (idx !== -1) setActiveStandaloneResource(quiz.resources, idx); }} />
                 )}
                 {quiz.resources.some(r => !r.url.includes('youtube') && !r.url.includes('google')) && (
-                  <Book size={16} style={{ color: 'var(--primary-color)', cursor: 'pointer' }} onClick={(e) => { e.stopPropagation(); const res = quiz.resources.find(r => !r.url.includes('youtube') && !r.url.includes('google')); if (res) setActiveStandaloneResource(res); }} />
+                  <Book size={16} style={{ color: 'var(--primary-color)', cursor: 'pointer' }} onClick={(e) => { e.stopPropagation(); const idx = quiz.resources.findIndex(r => !r.url.includes('youtube') && !r.url.includes('google')); if (idx !== -1) setActiveStandaloneResource(quiz.resources, idx); }} />
                 )}
               </span>
             )}
@@ -693,7 +693,18 @@ const QuizCatalog = ({ profile }) => {
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
 
   const [activeTab, setActiveTab] = useState(() => sessionStorage.getItem('catalog_tab') || 'official');
-  const [activeStandaloneResource, setActiveStandaloneResource] = useState(null);
+  const [activeStandaloneResource, setActiveStandaloneResourceState] = useState(null);
+  const setActiveStandaloneResource = useCallback((resourceOrList, index = 0) => {
+    if (!resourceOrList) {
+      setActiveStandaloneResourceState(null);
+      return;
+    }
+    if (Array.isArray(resourceOrList)) {
+      setActiveStandaloneResourceState({ resources: resourceOrList, index });
+    } else {
+      setActiveStandaloneResourceState({ resources: [resourceOrList], index: 0 });
+    }
+  }, []);
   const [libraryUsers, setLibraryUsers] = useState([]);
   const [selectedLibraryUser, setSelectedLibraryUserState] = useState(null);
   const [duplicateModal, setDuplicateModalState] = useState(null);
@@ -2039,6 +2050,7 @@ const QuizCatalog = ({ profile }) => {
 
                 <div style={{ flex: 1, position: 'relative', background: '#000' }}>
                   <ResourcePlayer 
+                    key={activePrepResourceIdx}
                     resources={prepQuiz.resources} 
                     activeIdx={activePrepResourceIdx} 
                     setActiveIdx={setActivePrepResourceIdx} 
@@ -2140,12 +2152,33 @@ const QuizCatalog = ({ profile }) => {
         >
           <div className="card animate" style={{ width: '95vw', maxWidth: '1200px', padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '90vh' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ padding: '15px 25px', background: 'var(--card-bg)', justifyContent: 'space-between', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
-              <div className="flex-center" style={{ gap: '15px' }}>
-                <h3 style={{ margin: 0, fontSize: '1.1rem' }}>{activeStandaloneResource.title || 'Материал'}</h3>
+              <div className="flex-center" style={{ gap: '15px', flex: 1, minWidth: 0 }}>
+                <h3 className="text-truncate" style={{ margin: 0, fontSize: '1.1rem' }}>{activeStandaloneResource.resources[activeStandaloneResource.index]?.title || 'Материал'}</h3>
               </div>
+              
+              {activeStandaloneResource.resources.length > 1 && (
+                <div className="flex-center" style={{ gap: '15px', padding: '0 20px', background: 'rgba(0,0,0,0.03)', borderRadius: '12px', margin: '0 15px' }}>
+                  <button 
+                    onClick={() => setActiveStandaloneResourceState(p => ({ ...p, index: (p.index - 1 + p.resources.length) % p.resources.length }))}
+                    style={{ background: 'transparent', boxShadow: 'none', padding: '5px', opacity: 0.6 }}
+                  >
+                    <ChevronLeft size={20} />
+                  </button>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 'bold', minWidth: '40px', textAlign: 'center' }}>
+                    {activeStandaloneResource.index + 1} / {activeStandaloneResource.resources.length}
+                  </span>
+                  <button 
+                    onClick={() => setActiveStandaloneResourceState(p => ({ ...p, index: (p.index + 1) % p.resources.length }))}
+                    style={{ background: 'transparent', boxShadow: 'none', padding: '5px', opacity: 0.6 }}
+                  >
+                    <ChevronRight size={20} />
+                  </button>
+                </div>
+              )}
+
               <div className="flex-center" style={{ gap: '10px' }}>
                 <button 
-                  onClick={() => window.open(activeStandaloneResource.url, '_blank')} 
+                  onClick={() => window.open(activeStandaloneResource.resources[activeStandaloneResource.index].url, '_blank')} 
                   style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', padding: '8px', borderRadius: '10px', boxShadow: 'none', cursor: 'pointer' }}
                   title="Открыть в новой вкладке"
                 >
@@ -2156,9 +2189,10 @@ const QuizCatalog = ({ profile }) => {
             </div>
             <div style={{ flex: 1, position: 'relative' }}>
               <ResourcePlayer 
-                resources={[activeStandaloneResource]} 
-                activeIdx={0} 
-                setActiveIdx={() => {}} 
+                key={activeStandaloneResource.index}
+                resources={activeStandaloneResource.resources} 
+                activeIdx={activeStandaloneResource.index} 
+                setActiveIdx={(idx) => setActiveStandaloneResourceState(p => ({ ...p, index: idx }))} 
                 isMobile={isMobile} 
                 onOpenModal={null} 
                 inline={false} 
