@@ -212,12 +212,14 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
     }, 2000);
   };
 
+  const themeColor = 'var(--bg-color)'; // МЕСТО НАСТРОЙКИ ЦВЕТА МАСКИ
+
   const containerStyle = inline ? {
     width: '100%',
     aspectRatio: ytId ? '16/9' : 'auto',
     minHeight: ytId ? '265px' : '650px',
     height: 'auto',
-    background: 'var(--bg-color)',
+    background: themeColor,
     borderRadius: '20px',
     border: '1px solid var(--border-color)',
     overflow: 'hidden',
@@ -228,7 +230,7 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
     height: '100%',
     display: 'flex',
     flexDirection: 'column',
-    background: 'var(--bg-color)',
+    background: themeColor,
     overflow: 'hidden'
   };
 
@@ -241,7 +243,7 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
       onMouseMove={handleMouseMove}
       onMouseLeave={() => playerState === 1 && setIsHovered(false)}
     >
-      {/* Header - Stays at top of container */}
+      {/* Header */}
       {inline && (
         <div className="flex-center" style={{ 
             padding: '12px 20px', 
@@ -272,13 +274,13 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
       )}
 
       {/* Main Content Area */}
-      <div style={{ flex: 1, position: 'relative', background: 'var(--bg-color)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ flex: 1, position: 'relative', background: themeColor, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {ytId ? (
           <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             
-            {/* THE VIDEO BOX (16:9 Forced) - ALL UI IS NOW RELATIVE TO THIS BOX */}
-            <div style={{ width: '100%', aspectRatio: '16/9', position: 'relative', overflow: 'hidden', background: '#000', boxShadow: '0 10px 40px rgba(0,0,0,0.2)' }}>
-                <div id={`yt-player-${inline ? 'inline' : 'modal'}-${activeIdx}`} style={{ width: '100%', height: '100%' }}></div>
+            {/* THE VIDEO BOX - NO SHADOWS, NO SEAMS */}
+            <div style={{ width: '100%', aspectRatio: '16/9', position: 'relative', overflow: 'hidden', background: themeColor }}>
+                <div id={`yt-player-${inline ? 'inline' : 'modal'}-${activeIdx}`} style={{ width: '100%', height: '100%', transform: 'scale(1.002)' }}></div>
                 
                 {/* PAUSE DIMMING */}
                 {playerState !== 1 && (
@@ -292,14 +294,14 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
                   </div>
                 )}
 
-                {/* THEME MASKS - NOW RELATIVE TO THE VIDEO BOX */}
+                {/* THEME MASKS */}
                 <div style={{
                   position: 'absolute',
                   top: 0,
                   left: 0,
                   right: 0,
                   height: '80px',
-                  background: 'linear-gradient(to bottom, var(--bg-color) 0%, var(--bg-color) 70%, transparent 100%)',
+                  background: `linear-gradient(to bottom, ${themeColor} 0%, ${themeColor} 70%, transparent 100%)`,
                   zIndex: 15,
                   pointerEvents: 'none',
                   opacity: showUI ? 1 : 0,
@@ -314,7 +316,7 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
                   left: 0,
                   right: 0,
                   height: '110px',
-                  background: 'linear-gradient(to top, var(--bg-color) 0%, var(--bg-color) 70%, transparent 100%)',
+                  background: `linear-gradient(to top, ${themeColor} 0%, ${themeColor} 70%, transparent 100%)`,
                   zIndex: 15,
                   pointerEvents: 'none',
                   opacity: showUI ? 1 : 0,
@@ -323,7 +325,7 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
                   willChange: 'transform, opacity'
                 }} />
 
-                {/* CONTROLS - NOW RELATIVE TO THE VIDEO BOX */}
+                {/* CONTROLS */}
                 <div 
                   className="player-controls"
                   style={{
