@@ -522,6 +522,7 @@ const CatalogSectionRow = React.memo(({
           activeTab={activeTab}
           handleShare={handleShare}
           fetchData={fetchData}
+          setActiveStandaloneResource={setActiveStandaloneResource}
         />
       )}
     </div>
@@ -1741,7 +1742,10 @@ const QuizCatalog = ({ profile }) => {
                       return (
                         <div
                           key={idx}
-                          onClick={() => setActiveStandaloneResource(res)}
+                          onClick={() => { 
+                            setActiveStandaloneResource(res);
+                            setSelectedQuiz(null);
+                          }}
                           className="flex-center animate"
                           style={{ 
                             cursor: 'pointer', 
@@ -1826,7 +1830,10 @@ const QuizCatalog = ({ profile }) => {
                       return (
                         <div
                           key={idx}
-                          onClick={() => setActiveStandaloneResource(res)}
+                          onClick={() => { 
+                            setActiveStandaloneResource(res);
+                            setRandomQuizModal(null);
+                          }}
                           className="flex-center animate"
                           style={{ 
                             cursor: 'pointer', 

@@ -1121,7 +1121,7 @@ const QuizView = ({ session, profile }) => {
                         {idx + 1}
                       </div>
                       <div style={{ flex: 1 }}>
-                        <h4 style={{ margin: '0 0 15px 0', lineHeight: '1.4' }}>{q.question}</h4>
+                        <h4 style={{ margin: '0 0 15px 0', lineHeight: '1.4' }}><MathRenderer text={q.question} /></h4>
 
                         {q.images && q.images.length > 0 && (
                           <div style={{ display: 'flex', gap: '10px', marginBottom: '15px', overflowX: 'auto', paddingBottom: '10px' }}>
@@ -1231,7 +1231,7 @@ const QuizView = ({ session, profile }) => {
                   )}
                 </div>
                 <div style={{ background: 'var(--card-bg)', color: 'var(--text-color)', padding: '25px', borderRadius: '20px', marginTop: '15px', width: '100%', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-                  <h4 style={{ margin: '0 0 15px 0', fontSize: '1.2rem', lineHeight: '1.4' }}>{detailedImageModal.question}</h4>
+                  <h4 style={{ margin: '0 0 15px 0', fontSize: '1.2rem', lineHeight: '1.4' }}><MathRenderer text={detailedImageModal.question} /></h4>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     <div style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span style={{ opacity: 0.6 }}>Ответ:</span>
