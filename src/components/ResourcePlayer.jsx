@@ -21,7 +21,10 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
   const [playerState, setPlayerState] = useState(-1);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [volume, setVolume] = useState(100);
+  const [volume, setVolume] = useState(() => {
+    const saved = localStorage.getItem('app_player_volume');
+    return saved ? parseInt(saved) : 100;
+  });
   const [isMuted, setIsMuted] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [showSettings, setShowSettings] = useState(false);
@@ -92,9 +95,16 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
           const p = event.target;
           setPlayer(p);
           setDuration(p.getDuration());
-          p.setVolume(volume);
+          
+          const savedVol = localStorage.getItem('app_player_volume');
+          if (savedVol) {
+            const v = parseInt(savedVol);
+            p.setVolume(v);
+            setVolume(v);
+          } else {
+            p.setVolume(volume);
+          }
 
-          // Restore position from memory
           if (storageKey) {
             const saved = localStorage.getItem(storageKey);
             if (saved) {
@@ -106,7 +116,7 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
         },
         onStateChange: (event) => {
           setPlayerState(event.data);
-          if (event.data === 1) { // Playing
+          if (event.data === 1) {
             setDuration(event.target.getDuration());
             startTimeUpdate(event.target);
             
@@ -133,7 +143,6 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
         const t = p.getCurrentTime();
         if (typeof t === 'number') {
           setCurrentTime(t);
-          // Save position to memory
           if (storageKey) localStorage.setItem(storageKey, t.toString());
         }
         const d = p.getDuration();
@@ -165,6 +174,7 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
   const handleVolume = (e) => {
     const val = parseInt(e.target.value);
     setVolume(val);
+    localStorage.setItem('app_player_volume', val.toString());
     if (player) {
       player.setVolume(val);
       if (val > 0) {
@@ -180,7 +190,8 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
     if (isMuted) {
       player.unMute();
       setIsMuted(false);
-      player.setVolume(volume || 50);
+      const savedVol = localStorage.getItem('app_player_volume');
+      player.setVolume(savedVol ? parseInt(savedVol) : 100);
     } else {
       player.mute();
       setIsMuted(true);
@@ -247,7 +258,7 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
             <div className="flex-center" style={{ width: '28px', height: '28px', borderRadius: '8px', background: 'var(--primary-color)', color: 'white' }}>
               <Book size={16} />
             </div>
-            <span style={{ fontWeight: '700', fontSize: '0.9rem' }}>{res.title || 'Материалы'}</span>
+            <span style={{ fontWeight: '700', fontSize: '0.9rem', color: 'var(--text-main)' }}>{res.title || 'Материалы'}</span>
           </div>
           {onOpenModal && (
             <button
@@ -262,17 +273,17 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
       )}
 
       {/* Main Content Area */}
-      <div style={{ flex: 1, position: 'relative', background: ytId ? '#000' : 'var(--bg-color)', overflow: 'hidden' }}>
+      <div style={{ flex: 1, position: 'relative', background: 'var(--bg-color)', overflow: 'hidden' }}>
         {ytId ? (
           <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}>
-            {/* Masking Bars */}
+            {/* Masking Bars - THEME AWARE */}
             <div style={{
               position: 'absolute',
               top: 0,
               left: 0,
               right: 0,
               height: '110px',
-              background: 'linear-gradient(to bottom, rgba(10,10,11,1) 0%, rgba(10,10,11,1) 70%, rgba(10,10,11,0) 100%)',
+              background: 'linear-gradient(to bottom, var(--bg-color) 0%, var(--bg-color) 70%, transparent 100%)',
               zIndex: 15,
               pointerEvents: 'none',
               opacity: showUI ? 1 : 0,
@@ -287,7 +298,7 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
               left: 0,
               right: 0,
               height: '170px',
-              background: 'linear-gradient(to top, rgba(10,10,11,1) 0%, rgba(10,10,11,1) 70%, rgba(10,10,11,0) 100%)',
+              background: 'linear-gradient(to top, var(--bg-color) 0%, var(--bg-color) 70%, transparent 100%)',
               zIndex: 15,
               pointerEvents: 'none',
               opacity: showUI ? 1 : 0,
@@ -319,11 +330,12 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
                 transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
                 opacity: showUI ? 1 : 0,
                 transform: showUI ? 'translateY(0)' : 'translateY(10px)',
-                zIndex: 20
+                zIndex: 20,
+                color: 'var(--text-main)'
               }}
             >
               {/* Progress Slider Container */}
-              <div style={{ position: 'relative', width: '100%', height: '6px', background: 'rgba(255,255,255,0.2)', borderRadius: '3px', cursor: 'pointer' }}>
+              <div style={{ position: 'relative', width: '100%', height: '6px', background: 'rgba(99, 102, 241, 0.2)', borderRadius: '3px', cursor: 'pointer' }}>
                 <input 
                   type="range"
                   min="0"
@@ -361,15 +373,15 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
 
               <div className="flex-center" style={{ justifyContent: 'space-between' }}>
                 <div className="flex-center" style={{ gap: '15px' }}>
-                  <button onClick={togglePlay} style={{ background: 'transparent', color: 'white', padding: 0, boxShadow: 'none' }}>
+                  <button onClick={togglePlay} style={{ background: 'transparent', color: 'inherit', padding: 0, boxShadow: 'none', border: 'none' }}>
                     {playerState === 1 ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />}
                   </button>
                   
                   <div className="flex-center" style={{ gap: '10px' }}>
-                    <button onClick={toggleMute} style={{ background: 'transparent', color: 'white', padding: 0, boxShadow: 'none' }}>
+                    <button onClick={toggleMute} style={{ background: 'transparent', color: 'inherit', padding: 0, boxShadow: 'none', border: 'none' }}>
                       {isMuted || volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}
                     </button>
-                    <div style={{ width: '80px', height: '4px', background: 'rgba(255,255,255,0.2)', borderRadius: '2px', position: 'relative', cursor: 'pointer' }}>
+                    <div style={{ width: '80px', height: '4px', background: 'rgba(0,0,0,0.1)', borderRadius: '2px', position: 'relative', cursor: 'pointer' }}>
                         <input 
                           type="range"
                           min="0"
@@ -395,13 +407,14 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
                             top: 0, 
                             height: '100%', 
                             width: `${isMuted ? 0 : volume}%`, 
-                            background: 'white', 
-                            borderRadius: '2px' 
+                            background: 'var(--text-main)', 
+                            borderRadius: '2px',
+                            opacity: 0.8
                         }} />
                     </div>
                   </div>
 
-                  <span style={{ color: 'white', fontSize: '0.85rem', fontWeight: '500', minWidth: '100px', textAlign: 'left', opacity: 0.8 }}>
+                  <span style={{ color: 'inherit', fontSize: '0.85rem', fontWeight: '500', minWidth: '100px', textAlign: 'left', opacity: 0.8 }}>
                     {formatTime(currentTime)} / {formatTime(duration)}
                   </span>
                 </div>
@@ -409,7 +422,7 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
                 <div className="flex-center" style={{ gap: '15px', position: 'relative' }}>
                   <button 
                     onClick={(e) => { e.stopPropagation(); setShowSettings(!showSettings); }} 
-                    style={{ background: 'transparent', color: 'white', padding: 0, boxShadow: 'none' }}
+                    style={{ background: 'transparent', color: 'inherit', padding: 0, boxShadow: 'none', border: 'none' }}
                   >
                     <Settings size={20} style={{ transform: showSettings ? 'rotate(90deg)' : 'none', transition: 'transform 0.3s' }} />
                   </button>
@@ -419,19 +432,19 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
                       position: 'absolute',
                       bottom: '40px',
                       right: 0,
-                      background: 'rgba(20, 20, 21, 0.98)',
+                      background: 'var(--card-bg)',
                       backdropFilter: 'blur(15px)',
                       borderRadius: '12px',
                       padding: '8px',
-                      border: '1px solid rgba(255,255,255,0.1)',
+                      border: '1px solid var(--border-color)',
                       minWidth: '130px',
                       display: 'flex',
                       flexDirection: 'column',
                       gap: '4px',
                       zIndex: 100,
-                      boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
+                      boxShadow: '0 10px 30px rgba(0,0,0,0.1)'
                     }}>
-                      <p style={{ margin: '4px 0 6px 8px', fontSize: '0.65rem', color: 'white', opacity: 0.4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Скорость</p>
+                      <p style={{ margin: '4px 0 6px 8px', fontSize: '0.65rem', color: 'var(--text-main)', opacity: 0.4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Скорость</p>
                       {[0.5, 0.75, 1, 1.25, 1.5, 2].map(rate => (
                         <button 
                           key={rate}
@@ -439,12 +452,13 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
                           style={{
                             padding: '8px 12px',
                             background: playbackRate === rate ? 'var(--primary-color)' : 'transparent',
-                            color: 'white',
+                            color: playbackRate === rate ? 'white' : 'var(--text-main)',
                             fontSize: '0.8rem',
                             textAlign: 'left',
                             borderRadius: '8px',
                             boxShadow: 'none',
-                            fontWeight: playbackRate === rate ? 'bold' : 'normal'
+                            fontWeight: playbackRate === rate ? 'bold' : 'normal',
+                            border: 'none'
                           }}
                         >
                           {rate === 1 ? 'Обычная' : `${rate}x`}
