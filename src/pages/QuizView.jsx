@@ -5,10 +5,12 @@ import { supabase } from '../lib/supabase';
 import {
   CheckCircle, XCircle, ChevronRight, ChevronLeft, RotateCcw, X,
   AlertTriangle, Book, FileText, ChevronDown, ChevronUp, Clock, Zap,
-  Shield, Maximize2, Minimize2, Youtube, ExternalLink
+  Shield, Maximize2, Minimize2, Youtube, ExternalLink,
+  Play, Pause, Volume2, VolumeX, Settings, FastForward, Rewind
 } from 'lucide-react';
 import { resolveImgUrl } from '../lib/imageUtils';
 import { useScrollRestoration } from '../lib/useScrollRestoration';
+import ResourcePlayer from '../components/ResourcePlayer';
 
 const SECONDS_PER_QUESTION = 25;
 const EXIT_GRACE_SECONDS = 30;
@@ -23,92 +25,6 @@ const useIsMobile = () => {
   return isMobile;
 };
 
-const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenModal, inline }) => {
-  if (!resources || resources.length === 0) return null;
-  const res = resources[activeIdx];
-
-  const getYoutubeId = (url) => {
-    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
-    const match = url.match(regExp);
-    return (match && match[2].length === 11) ? match[2] : null;
-  };
-
-  const ytId = getYoutubeId(res.url);
-
-  const containerStyle = inline ? {
-    width: '100%',
-    aspectRatio: ytId ? '16/9' : 'auto',
-    minHeight: ytId ? '265px' : '650px',
-    height: 'auto',
-    background: 'white',
-    borderRadius: '20px',
-    border: '1px solid rgba(0,0,0,0.1)',
-    overflow: 'hidden',
-    marginBottom: '20px',
-    position: 'relative'
-  } : {
-    width: '100%',
-    height: 'calc(100vh - 67px)',
-    display: 'flex',
-    flexDirection: 'column',
-    background: 'var(--card-bg)',
-    borderRight: '1px solid var(--border-color)',
-    position: 'sticky',
-    top: 0,
-    overflow: 'hidden'
-  };
-
-  return (
-    <div className="resource-player-container" style={containerStyle}>
-      {/* Header */}
-      <div className="flex-center" style={{ padding: '12px 20px', background: 'rgba(99, 102, 241, 0.03)', justifyContent: 'space-between', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
-        <div className="flex-center" style={{ gap: '10px' }}>
-          <div className="flex-center" style={{ width: '28px', height: '28px', borderRadius: '8px', background: 'var(--primary-color)', color: 'white' }}>
-            <Book size={16} />
-          </div>
-          <span style={{ fontWeight: '700', fontSize: '0.9rem' }}>{res.title || 'Материалы'}</span>
-        </div>
-        <button
-          onClick={onOpenModal}
-          className="flex-center"
-          style={{ background: 'rgba(99, 102, 241, 0.1)', padding: '6px', borderRadius: '8px', color: 'var(--primary-color)', boxShadow: 'none', border: 'none' }}
-        >
-          <Maximize2 size={16} />
-        </button>
-      </div>
-
-      {/* Main Content Area */}
-      <div style={{ flex: 1, position: 'relative', background: ytId ? '#000' : '#f8f9fa' }}>
-        {ytId ? (
-          <div style={{ width: '100%', height: '100%', position: inline ? 'relative' : 'absolute', inset: 0, aspectRatio: inline ? '16/9' : 'unset' }}>
-            <iframe
-              width="100%"
-              height="100%"
-              src={`https://www.youtube.com/embed/${ytId}?rel=0&controls=1&iv_load_policy=3&disablekb=1`}
-              title={res.title}
-              frameBorder="0"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              style={{ position: 'absolute', inset: 0 }}
-            />
-          </div>
-        ) : (
-          <div style={{ height: inline ? '300px' : '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px', textAlign: 'center' }}>
-            <FileText size={48} style={{ opacity: 0.1, marginBottom: '20px', color: 'var(--primary-color)' }} />
-            <h3 style={{ marginBottom: '10px', fontWeight: '700', fontSize: '1.1rem' }}>{res.title || 'Документ'}</h3>
-            <p style={{ fontSize: '0.85rem', opacity: 0.6, marginBottom: '25px', maxWidth: '250px' }}>Нажмите кнопку ниже, чтобы открыть этот материал полностью.</p>
-            <button
-              onClick={onOpenModal}
-              className="flex-center"
-              style={{ padding: '10px 20px', background: 'var(--primary-color)', color: 'white', borderRadius: '12px', fontWeight: 'bold', gap: '8px', fontSize: '0.9rem', border: 'none' }}
-            >
-              <Maximize2 size={16} /> Открыть полностью
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
 
 
 
@@ -130,26 +46,15 @@ const ResourceModal = ({ res, onClose }) => {
           <h3 style={{ color: 'white', margin: 0 }}>{res.title || 'Материалы'}</h3>
           <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.1)', color: 'white', padding: '10px', borderRadius: '50%', boxShadow: 'none' }}><X size={24} /></button>
         </div>
-        <div style={{ flex: 1, position: 'relative' }}>
-          {ytId ? (
-            <iframe
-              width="100%"
-              height="100%"
-              src={`https://www.youtube.com/embed/${ytId}?rel=0&modestbranding=1&showinfo=0&autoplay=1`}
-              title={res.title}
-              frameBorder="0"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-            />
-          ) : (
-            <iframe
-              src={res.url}
-              width="100%"
-              height="100%"
-              title={res.title}
-              style={{ border: 'none', background: 'white' }}
-            />
-          )}
+        <div style={{ flex: 1, position: 'relative', background: '#000' }}>
+          <ResourcePlayer 
+            resources={[res]} 
+            activeIdx={0} 
+            setActiveIdx={() => {}} 
+            isMobile={false} 
+            onOpenModal={() => {}} 
+            inline={false} 
+          />
         </div>
       </div>
     </div>,

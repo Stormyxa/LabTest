@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Search, Play, CheckCircle, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Award, Save, Copy, BarChart2, Book, Pencil, Eye, AlertTriangle, Plus, Shield, EyeOff, Trash2, Dices, Clock, TrendingUp, Info, Loader2, Share2, Check, X, ExternalLink, Youtube, FileText, Layout, Video } from 'lucide-react';
 import { useScrollRestoration } from '../lib/useScrollRestoration';
+import ResourcePlayer from '../components/ResourcePlayer';
 import { fetchWithCache, useCacheSync } from '../lib/cache';
 
 const DividerItem = React.memo(({ quiz, qIndex, userRole, searchQuery, swapQuizzes, handleRenameTrigger, fetchQuizzes, quizzesLength, activeTab }) => (
@@ -1870,40 +1871,15 @@ const QuizCatalog = ({ profile }) => {
                   <button onClick={() => onPrepQuizSelect(null)} style={{ background: 'transparent', boxShadow: 'none' }}><X size={20} /></button>
                 </div>
 
-                <div style={{ flex: 1, background: '#000', position: 'relative' }}>
-                  {(() => {
-                    const res = prepQuiz.resources[activePrepResourceIdx];
-                    const getYoutubeId = (url) => {
-                      const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
-                      const match = url.match(regExp);
-                      return (match && match[2].length === 11) ? match[2] : null;
-                    };
-                    const ytId = getYoutubeId(res.url);
-
-                    if (ytId) {
-                      return (
-                        <iframe
-                          width="100%"
-                          height="100%"
-                          src={`https://www.youtube.com/embed/${ytId}?rel=0&autoplay=1&fs=0`}
-                          title={res.title}
-                          frameBorder="0"
-                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                          style={{ position: 'absolute', inset: 0 }}
-                        />
-                      );
-                    } else {
-                      return (
-                        <iframe
-                          src={res.url}
-                          width="100%"
-                          height="100%"
-                          title={res.title}
-                          style={{ border: 'none', background: 'white' }}
-                        />
-                      );
-                    }
-                  })()}
+                <div style={{ flex: 1, position: 'relative', background: '#000' }}>
+                  <ResourcePlayer 
+                    resources={prepQuiz.resources} 
+                    activeIdx={activePrepResourceIdx} 
+                    setActiveIdx={setActivePrepResourceIdx} 
+                    isMobile={false} 
+                    onOpenModal={null} 
+                    inline={false} 
+                  />
                 </div>
 
                 <div className="flex-center" style={{ padding: '20px 25px', background: 'var(--card-bg)', justifyContent: 'center', gap: '15px', borderTop: '1px solid rgba(0,0,0,0.05)' }}>
