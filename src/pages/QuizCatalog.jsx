@@ -2151,32 +2151,42 @@ const QuizCatalog = ({ profile }) => {
           onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; setActiveStandaloneResource(null); } }}
         >
           <div className="card animate" style={{ width: '95vw', maxWidth: '1200px', padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '90vh' }} onClick={e => e.stopPropagation()}>
-            <div className="flex-center" style={{ padding: '15px 25px', background: 'var(--card-bg)', justifyContent: 'space-between', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
-              <div className="flex-center" style={{ gap: '15px', flex: 1, minWidth: 0 }}>
-                <h3 className="text-truncate" style={{ margin: 0, fontSize: '1.1rem' }}>{activeStandaloneResource.resources[activeStandaloneResource.index]?.title || 'Материал'}</h3>
+            <div className="flex-center" style={{ padding: '15px 25px', background: 'var(--card-bg)', borderBottom: '1px solid rgba(0,0,0,0.05)', position: 'relative' }}>
+              {/* Title - Absolutely Centered */}
+              <div style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', width: '40%', textAlign: 'center', pointerEvents: 'none', zIndex: 1 }}>
+                <h3 className="text-truncate" style={{ margin: 0, fontSize: '1.1rem', fontWeight: '700' }}>
+                  {activeStandaloneResource.resources[activeStandaloneResource.index]?.title || 'Материал'}
+                </h3>
+              </div>
+
+              {/* Left Placeholder/Content */}
+              <div className="flex-center" style={{ flex: 1, justifyContent: 'flex-start' }}>
+                {/* Empty or can put something here if needed */}
               </div>
               
-              {activeStandaloneResource.resources.length > 1 && (
-                <div className="flex-center" style={{ gap: '15px', padding: '0 20px', background: 'rgba(0,0,0,0.03)', borderRadius: '12px', margin: '0 15px' }}>
-                  <button 
-                    onClick={() => setActiveStandaloneResourceState(p => ({ ...p, index: (p.index - 1 + p.resources.length) % p.resources.length }))}
-                    style={{ background: 'transparent', boxShadow: 'none', padding: '5px', opacity: 0.6 }}
-                  >
-                    <ChevronLeft size={20} />
-                  </button>
-                  <span style={{ fontSize: '0.9rem', fontWeight: 'bold', minWidth: '40px', textAlign: 'center' }}>
-                    {activeStandaloneResource.index + 1} / {activeStandaloneResource.resources.length}
-                  </span>
-                  <button 
-                    onClick={() => setActiveStandaloneResourceState(p => ({ ...p, index: (p.index + 1) % p.resources.length }))}
-                    style={{ background: 'transparent', boxShadow: 'none', padding: '5px', opacity: 0.6 }}
-                  >
-                    <ChevronRight size={20} />
-                  </button>
-                </div>
-              )}
+              {/* Right - Controls */}
+              <div className="flex-center" style={{ gap: '10px', flex: 1, justifyContent: 'flex-end', zIndex: 2 }}>
+                {/* Middle - Arrows (Now on the right) */}
+                {activeStandaloneResource.resources.length > 1 && (
+                  <div className="flex-center" style={{ gap: '15px', padding: '0 15px', background: 'rgba(0,0,0,0.03)', borderRadius: '12px', marginRight: '10px' }}>
+                    <button 
+                      onClick={() => setActiveStandaloneResourceState(p => ({ ...p, index: (p.index - 1 + p.resources.length) % p.resources.length }))}
+                      style={{ background: 'transparent', boxShadow: 'none', padding: '5px', opacity: 0.6 }}
+                    >
+                      <ChevronLeft size={18} />
+                    </button>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 'bold', minWidth: '35px', textAlign: 'center' }}>
+                      {activeStandaloneResource.index + 1} / {activeStandaloneResource.resources.length}
+                    </span>
+                    <button 
+                      onClick={() => setActiveStandaloneResourceState(p => ({ ...p, index: (p.index + 1) % p.resources.length }))}
+                      style={{ background: 'transparent', boxShadow: 'none', padding: '5px', opacity: 0.6 }}
+                    >
+                      <ChevronRight size={18} />
+                    </button>
+                  </div>
+                )}
 
-              <div className="flex-center" style={{ gap: '10px' }}>
                 <button 
                   onClick={() => window.open(activeStandaloneResource.resources[activeStandaloneResource.index].url, '_blank')} 
                   style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', padding: '8px', borderRadius: '10px', boxShadow: 'none', cursor: 'pointer' }}
