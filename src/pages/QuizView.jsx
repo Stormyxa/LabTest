@@ -117,7 +117,17 @@ const QuizView = ({ session, profile }) => {
   const [modal, setModal] = useState({ isOpen: false, title: '', message: '', type: 'success' });
   const [guestSaving, setGuestSaving] = useState(false);
   const [showResources, setShowResources] = useState(false);
-  const [activeResourceIdx, setActiveResourceIdx] = useState(0);
+  const [activeResourceIdx, setActiveResourceIdx] = useState(() => {
+    if (!id) return 0;
+    const saved = localStorage.getItem(`last_res_${id}`);
+    return saved ? parseInt(saved) : 0;
+  });
+
+  useEffect(() => {
+    if (id) {
+      localStorage.setItem(`last_res_${id}`, activeResourceIdx);
+    }
+  }, [id, activeResourceIdx]);
   const [showResourceModal, setShowResourceModal] = useState(false);
   const [splitMode, setSplitMode] = useState(!isMobile);
 

@@ -17,17 +17,11 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
   const getDriveEmbedUrl = (url) => {
     if (!url) return null;
     if (url.includes('drive.google.com') || url.includes('docs.google.com')) {
-      // Regex to extract the File ID from various Google Drive URL formats
       const fileIdMatch = url.match(/\/d\/([^/]+)/) || url.match(/id=([^&]+)/);
       if (fileIdMatch && fileIdMatch[1]) {
-        // Return strictly formatted /preview link
         return `https://drive.google.com/file/d/${fileIdMatch[1]}/preview`;
       }
-      
-      // Fallback for direct preview links
       if (url.includes('/preview')) return url;
-      
-      // Traditional replacement if regex fails
       let embedUrl = url;
       if (embedUrl.includes('/view')) embedUrl = embedUrl.split('/view')[0] + '/preview';
       else if (embedUrl.includes('/edit')) embedUrl = embedUrl.split('/edit')[0] + '/preview';
@@ -39,17 +33,13 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
   const ytId = getYoutubeId(res.url);
   const driveUrl = getDriveEmbedUrl(res.url);
 
-  // Helper for opening external links (Mobile App deep linking vs PC)
   const openExternal = (e) => {
     if (e) e.stopPropagation();
     if (hideExternalLink) return;
     
     let targetUrl = res.url;
     
-    // If it's YouTube and we are on mobile, we can try to force app behavior
-    // though standard https links usually work best for OS handoff
     if (ytId && isMobile) {
-        // Some systems prefer the short link for app triggering
         targetUrl = `https://youtu.be/${ytId}`;
     }
     window.open(targetUrl, '_blank', 'noopener,noreferrer');
@@ -68,6 +58,17 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
   const [showSettings, setShowSettings] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [showPersistentUI, setShowPersistentUI] = useState(true);
+  const [pdfPage, setPdfPage] = useState(() => {
+    const key = `pdf_page_${res.url}`;
+    const saved = localStorage.getItem(key);
+    return saved || '';
+  });
+
+  useEffect(() => {
+    const key = `pdf_page_${res.url}`;
+    if (pdfPage) localStorage.setItem(key, pdfPage);
+  }, [pdfPage, res.url]);
+
   const persistentTimeoutRef = useRef(null);
   const timeUpdateRef = useRef(null);
   const hoverTimeoutRef = useRef(null);
@@ -268,6 +269,57 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
       onMouseMove={handleMouseMove}
       onMouseLeave={() => playerState === 1 && setIsHovered(false)}
     >
+      {/* Header */}
+      <div className="flex-center" style={{ 
+          padding: '15px 25px', 
+          background: 'rgba(0,0,0,0.03)', 
+          justifyContent: 'space-between', 
+          borderBottom: '1px solid rgba(0,0,0,0.05)',
+          zIndex: 30
+      }}>
+        <div className="flex-center" style={{ gap: '12px' }}>
+          <div className="flex-center" style={{ width: '32px', height: '32px', borderRadius: '10px', background: 'var(--primary-color)', color: 'white' }}>
+            {ytId ? <Youtube size={18} /> : (res.isBook ? <Book size={18} /> : <FileText size={18} />)}
+          </div>
+          <div className="flex-center" style={{ gap: '8px' }}>
+            <span style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--text-color)' }}>{res.title || (res.isBook ? 'Учебник' : 'Материалы')}</span>
+            {!ytId && (
+              <div className="flex-center" style={{ background: 'rgba(0,0,0,0.05)', padding: '2px 8px', borderRadius: '6px', gap: '5px' }}>
+                <span style={{ fontSize: '0.7rem', opacity: 0.5, fontWeight: 'bold' }}>Стр:</span>
+                <input 
+                  type="text" 
+                  value={pdfPage} 
+                  onChange={(e) => setPdfPage(e.target.value.replace(/\D/g,''))}
+                  style={{ width: '35px', background: 'transparent', border: 'none', padding: 0, fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--primary-color)', textAlign: 'center', boxShadow: 'none' }}
+                  placeholder="..."
+                />
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="flex-center" style={{ gap: '10px' }}>
+          {!hideExternalLink && (
+              <button
+                onClick={openExternal}
+                className="flex-center"
+                title="Открыть оригинал"
+                style={{ background: 'rgba(0,0,0,0.05)', padding: '8px', borderRadius: '10px', color: 'var(--primary-color)', boxShadow: 'none', border: 'none', cursor: 'pointer' }}
+              >
+                <ExternalLink size={18} />
+              </button>
+          )}
+          {onOpenModal && (
+            <button
+              onClick={onOpenModal}
+              className="flex-center"
+              style={{ background: 'rgba(99, 102, 241, 0.1)', padding: '8px', borderRadius: '10px', color: 'var(--primary-color)', boxShadow: 'none', border: 'none' }}
+            >
+              <Maximize2 size={18} />
+            </button>
+          )}
+        </div>
+      </div>
+
       <div style={{ flex: 1, position: 'relative', background: themeColor, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {ytId ? (
           <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -416,13 +468,15 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
 
                     <div className="flex-center" style={{ gap: '15px', position: 'relative' }}>
                       {!hideExternalLink && (
-                        <button 
-                            onClick={openExternal}
-                            title="Открыть оригинал"
-                            style={{ background: 'transparent', color: 'inherit', padding: 0, border: 'none', opacity: 0.6, cursor: 'pointer' }}
-                        >
-                            <ExternalLink size={18} />
-                        </button>
+                        <div className="flex-center" style={{ gap: '8px' }}>
+                          <button 
+                              onClick={openExternal}
+                              title="Открыть оригинал"
+                              style={{ background: 'transparent', color: 'inherit', padding: 0, border: 'none', opacity: 0.6, cursor: 'pointer' }}
+                          >
+                              <ExternalLink size={18} />
+                          </button>
+                        </div>
                       )}
                       <button 
                         onClick={(e) => { e.stopPropagation(); setShowSettings(!showSettings); }} 
@@ -486,7 +540,7 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
           <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}>
             {driveUrl ? (
               <iframe 
-                src={driveUrl} 
+                src={`${driveUrl}${pdfPage ? `#page=${pdfPage}` : ''}`} 
                 style={{ width: '100%', height: '100%', border: 'none' }}
                 allow="autoplay; fullscreen"
                 title={res.title || 'Документ'}

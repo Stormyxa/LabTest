@@ -666,7 +666,18 @@ const CatalogClassRow = React.memo(({
   );
 });
 
+const useIsMobile = () => {
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+  useEffect(() => {
+    const h = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, []);
+  return isMobile;
+};
+
 const QuizCatalog = ({ profile }) => {
+  const isMobile = useIsMobile();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [isFromShare, setIsFromShare] = useState(false);
