@@ -20,8 +20,8 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
       // Regex to extract the File ID from various Google Drive URL formats
       const fileIdMatch = url.match(/\/d\/([^/]+)/) || url.match(/id=([^&]+)/);
       if (fileIdMatch && fileIdMatch[1]) {
-        // More robust viewer format to bypass CSP / frame-ancestors issues
-        return `https://docs.google.com/viewer?srcid=${fileIdMatch[1]}&pid=explorer&efh=false&a=v&chrome=false&embedded=true`;
+        // Return strictly formatted /preview link
+        return `https://drive.google.com/file/d/${fileIdMatch[1]}/preview`;
       }
       
       // Fallback for direct preview links
@@ -495,7 +495,7 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
               <div style={{ height: inline ? '300px' : '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px', textAlign: 'center' }}>
                 <FileText size={48} style={{ opacity: 0.1, marginBottom: '20px', color: 'var(--primary-color)' }} />
                 <h3 style={{ marginBottom: '10px', fontWeight: '700', fontSize: '1.1rem' }}>{res.title || 'Материалы'}</h3>
-                <p style={{ fontSize: '0.85rem', opacity: 0.6, marginBottom: '25px', maxWidth: '250px' }}>Этот ресурс нельзя отобразить встроенно. Используйте кнопку ниже для открытия.</p>
+                <p style={{ fontSize: '0.85rem', opacity: 0.6, marginBottom: '25px', maxWidth: '250px' }}>Этот ресурс нельзя отобразить встроенно. {!hideExternalLink && 'Используйте кнопку ниже для открытия.'}</p>
                 {!hideExternalLink && (
                   <button
                     onClick={openExternal}

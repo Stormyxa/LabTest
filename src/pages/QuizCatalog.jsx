@@ -1453,6 +1453,7 @@ const QuizCatalog = ({ profile }) => {
                 activeTab={activeTab}
                 handleShare={handleShare}
                 fetchData={fetchData}
+                setActiveStandaloneResource={setActiveStandaloneResource}
               />
             );
           })
