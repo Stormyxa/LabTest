@@ -2007,9 +2007,6 @@ const QuizCatalog = ({ profile }) => {
             <div className="flex-center" style={{ justifyContent: 'center', width: '55px', height: '55px', background: 'rgba(250,204,21,0.1)', color: '#ca8a04', borderRadius: '15px', margin: '0 auto 20px' }}><AlertTriangle size={26} /></div>
             <h3 style={{ marginBottom: '10px', textAlign: 'center' }}>Скрыть тест?</h3>
             <p style={{ opacity: 0.6, fontSize: '0.9rem', marginBottom: '20px', textAlign: 'center', lineHeight: '1.6' }}>
-              <strong>«{hideModal.title}»</strong> исчезнет из каталога для всех пользователей.<br />
-              Найти его можно будет в разделе <strong>«Управление тестами»</strong> → Дерево тестов.
-            </p>
             <div className="grid-2" style={{ gap: '10px' }}>
               <button onClick={() => setHideModal(null)} style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit' }}>Отмена</button>
               <button onClick={handleHideQuiz} style={{ background: '#ca8a04', color: 'white' }}>Скрыть</button>
@@ -2050,7 +2047,6 @@ const QuizCatalog = ({ profile }) => {
 
                 <div style={{ flex: 1, position: 'relative', background: '#000' }}>
                   <ResourcePlayer 
-                    key={activePrepResourceIdx}
                     resources={prepQuiz.resources} 
                     activeIdx={activePrepResourceIdx} 
                     setActiveIdx={setActivePrepResourceIdx} 
@@ -2199,7 +2195,6 @@ const QuizCatalog = ({ profile }) => {
             </div>
             <div style={{ flex: 1, position: 'relative' }}>
               <ResourcePlayer 
-                key={activeStandaloneResource.index}
                 resources={activeStandaloneResource.resources} 
                 activeIdx={activeStandaloneResource.index} 
                 setActiveIdx={(idx) => setActiveStandaloneResourceState(p => ({ ...p, index: idx }))} 
