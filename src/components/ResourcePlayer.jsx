@@ -26,6 +26,8 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
   const [playbackRate, setPlaybackRate] = useState(1);
   const [showSettings, setShowSettings] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
+  const [showPersistentUI, setShowPersistentUI] = useState(true);
+  const persistentTimeoutRef = useRef(null);
   const timeUpdateRef = useRef(null);
   const hoverTimeoutRef = useRef(null);
 
@@ -55,6 +57,7 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
     return () => {
       if (timeUpdateRef.current) clearInterval(timeUpdateRef.current);
       if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+      if (persistentTimeoutRef.current) clearTimeout(persistentTimeoutRef.current);
     };
   }, [ytId]);
 
@@ -92,9 +95,18 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
           if (event.data === 1) { // Playing
             setDuration(event.target.getDuration());
             startTimeUpdate(event.target);
+            
+            // Start 5s persistence timer
+            setShowPersistentUI(true);
+            if (persistentTimeoutRef.current) clearTimeout(persistentTimeoutRef.current);
+            persistentTimeoutRef.current = setTimeout(() => {
+              setShowPersistentUI(false);
+            }, 5000);
+
             setIsHovered(false);
           } else {
             stopTimeUpdate();
+            setShowPersistentUI(true); // Show UI when paused/ended
           }
         }
       }
@@ -107,7 +119,6 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
       if (p && p.getCurrentTime) {
         const t = p.getCurrentTime();
         if (typeof t === 'number') setCurrentTime(t);
-        // Ensure duration is always updated
         const d = p.getDuration();
         if (d > 0) setDuration(d);
       }
@@ -191,6 +202,8 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
     overflow: 'hidden'
   };
 
+  const showUI = isHovered || playerState !== 1 || showPersistentUI;
+
   return (
     <div 
       className="resource-player-container" 
@@ -205,9 +218,10 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
             background: 'rgba(99, 102, 241, 0.03)', 
             justifyContent: 'space-between', 
             borderBottom: '1px solid rgba(0,0,0,0.05)',
-            transition: 'all 0.2s',
-            opacity: (isHovered || playerState !== 1) ? 1 : 0,
-            transform: (isHovered || playerState !== 1) ? 'translateY(0)' : 'translateY(-10px)'
+            transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+            opacity: showUI ? 1 : 0,
+            transform: showUI ? 'translateY(0)' : 'translateY(-20px)',
+            zIndex: 30
         }}>
           <div className="flex-center" style={{ gap: '10px' }}>
             <div className="flex-center" style={{ width: '28px', height: '28px', borderRadius: '8px', background: 'var(--primary-color)', color: 'white' }}>
@@ -228,17 +242,48 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
       )}
 
       {/* Main Content Area */}
-      <div style={{ flex: 1, position: 'relative', background: ytId ? '#000' : 'var(--bg-color)' }}>
+      <div style={{ flex: 1, position: 'relative', background: ytId ? '#000' : 'var(--bg-color)', overflow: 'hidden' }}>
         {ytId ? (
           <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}>
+            {/* Masking Bars - SOLID with SOFT EDGE */}
+            <div style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              height: '80px',
+              background: 'linear-gradient(to bottom, #0a0a0b 0%, #0a0a0b 60%, transparent 100%)',
+              zIndex: 15,
+              pointerEvents: 'none',
+              opacity: showUI ? 1 : 0,
+              transform: showUI ? 'translateY(0)' : 'translateY(-100%)',
+              transition: 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)'
+            }} />
+            
+            <div style={{
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              height: '140px',
+              background: 'linear-gradient(to top, #0a0a0b 0%, #0a0a0b 60%, transparent 100%)',
+              zIndex: 15,
+              pointerEvents: 'none',
+              opacity: showUI ? 1 : 0,
+              transform: showUI ? 'translateY(0)' : 'translateY(100%)',
+              transition: 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)'
+            }} />
+
             {/* Transparent click layer - Blocks YT interaction, handles toggle */}
             <div 
               onClick={togglePlay}
               style={{ position: 'absolute', inset: 0, zIndex: 10, cursor: 'pointer' }}
             ></div>
 
-            {/* The Player Div */}
-            <div id={`yt-player-${inline ? 'inline' : 'modal'}-${activeIdx}`} style={{ width: '100%', height: '100%' }}></div>
+            {/* The Player Div with CROP scale */}
+            <div style={{ width: '100%', height: '100%', transform: 'scale(1.06)', position: 'relative' }}>
+                <div id={`yt-player-${inline ? 'inline' : 'modal'}-${activeIdx}`} style={{ width: '100%', height: '100%' }}></div>
+            </div>
             
             {/* Custom Controls Layer */}
             <div 
@@ -248,14 +293,13 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
                 bottom: 0,
                 left: 0,
                 right: 0,
-                padding: '20px',
-                background: 'linear-gradient(transparent, rgba(0,0,0,0.9))',
+                padding: '20px 30px',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '10px',
-                transition: 'all 0.2s',
-                opacity: (isHovered || playerState !== 1) ? 1 : 0,
-                transform: (isHovered || playerState !== 1) ? 'translateY(0)' : 'translateY(10px)',
+                gap: '12px',
+                transition: 'all 0.15s',
+                opacity: showUI ? 1 : 0,
+                transform: showUI ? 'translateY(0)' : 'translateY(10px)',
                 zIndex: 20
               }}
             >
