@@ -1414,7 +1414,19 @@ const QuizView = ({ session, profile }) => {
           </div>
 
           {/* Spacer when resources are active on mobile to keep padding consistent */}
-          {isMobile && showResources && allResources.length > 0 && <div style={{ marginBottom: '20px' }} />}
+          {isMobile && showResources && allResources.length > 0 && (
+            <div style={{ marginBottom: '25px', borderRadius: '20px', overflow: 'hidden', border: '1px solid rgba(0,0,0,0.1)', background: 'var(--card-bg)' }}>
+              <ResourcePlayer
+                resources={allResources}
+                activeIdx={activeResourceIdx}
+                setActiveIdx={setActiveResourceIdx}
+                isMobile={true}
+                onOpenModal={() => setShowResourceModal(true)}
+                inline={true}
+                hideExternalLink={true}
+              />
+            </div>
+          )}
 
           {/* QUESTION NAVIGATOR (DOTS) */}
           <div className="flex-center" style={{ gap: '8px', marginBottom: '30px', flexWrap: 'wrap', justifyContent: 'center' }}>

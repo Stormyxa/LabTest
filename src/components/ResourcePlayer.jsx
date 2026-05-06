@@ -485,12 +485,19 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
         ) : (
           <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}>
             {driveUrl ? (
-              <iframe 
-                src={driveUrl} 
-                style={{ width: '100%', height: '100%', border: 'none' }}
-                allow="autoplay; fullscreen"
-                title={res.title || 'Документ'}
-              />
+              <div style={{ width: '100%', height: '100%', overflow: 'hidden', position: 'relative' }}>
+                <iframe 
+                  src={driveUrl} 
+                  style={{ 
+                    width: '100%', 
+                    height: 'calc(100% + 56px)', 
+                    marginTop: '-56px',
+                    border: 'none' 
+                  }}
+                  allow="autoplay; fullscreen"
+                  title={res.title || 'Документ'}
+                />
+              </div>
             ) : (
               <div style={{ height: inline ? '300px' : '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px', textAlign: 'center' }}>
                 <FileText size={48} style={{ opacity: 0.1, marginBottom: '20px', color: 'var(--primary-color)' }} />
