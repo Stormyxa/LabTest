@@ -1880,7 +1880,16 @@ const QuizCatalog = ({ profile }) => {
                     </button>
                     <h3 style={{ margin: 0, fontSize: '1.1rem' }}>{prepQuiz.resources[activePrepResourceIdx].title || 'Материал'}</h3>
                   </div>
-                  <button onClick={() => onPrepQuizSelect(null)} style={{ background: 'transparent', boxShadow: 'none' }}><X size={20} /></button>
+                  <div className="flex-center" style={{ gap: '10px' }}>
+                    <button 
+                      onClick={() => window.open(prepQuiz.resources[activePrepResourceIdx].url, '_blank')} 
+                      style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', padding: '8px', borderRadius: '10px', boxShadow: 'none', cursor: 'pointer' }}
+                      title="Открыть в новой вкладке"
+                    >
+                      <ExternalLink size={20} />
+                    </button>
+                    <button onClick={() => onPrepQuizSelect(null)} style={{ background: 'transparent', boxShadow: 'none' }}><X size={20} /></button>
+                  </div>
                 </div>
 
                 <div style={{ flex: 1, position: 'relative', background: '#000' }}>
@@ -1989,7 +1998,16 @@ const QuizCatalog = ({ profile }) => {
               <div className="flex-center" style={{ gap: '15px' }}>
                 <h3 style={{ margin: 0, fontSize: '1.1rem' }}>{activeStandaloneResource.title || 'Материал'}</h3>
               </div>
-              <button onClick={() => setActiveStandaloneResource(null)} style={{ background: 'transparent', boxShadow: 'none' }}><X size={20} /></button>
+              <div className="flex-center" style={{ gap: '10px' }}>
+                <button 
+                  onClick={() => window.open(activeStandaloneResource.url, '_blank')} 
+                  style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', padding: '8px', borderRadius: '10px', boxShadow: 'none', cursor: 'pointer' }}
+                  title="Открыть в новой вкладке"
+                >
+                  <ExternalLink size={20} />
+                </button>
+                <button onClick={() => setActiveStandaloneResource(null)} style={{ background: 'transparent', boxShadow: 'none' }}><X size={20} /></button>
+              </div>
             </div>
             <div style={{ flex: 1, position: 'relative' }}>
               <ResourcePlayer 

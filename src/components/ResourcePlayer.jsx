@@ -516,31 +516,6 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
                 )}
               </div>
             )}
-            
-            {/* External link floating button for non-YT */}
-            {!hideExternalLink && (
-                <button 
-                onClick={openExternal}
-                className="flex-center"
-                title="Открыть оригинал"
-                style={{ 
-                    position: 'absolute', 
-                    bottom: '20px', 
-                    right: '20px', 
-                    background: 'var(--primary-color)', 
-                    color: 'white', 
-                    width: '40px', 
-                    height: '40px', 
-                    borderRadius: '20px', 
-                    boxShadow: '0 4px 15px rgba(var(--primary-color-rgb, 99, 102, 241), 0.3)',
-                    zIndex: 40,
-                    border: 'none',
-                    cursor: 'pointer'
-                }}
-                >
-                <ExternalLink size={20} />
-                </button>
-            )}
           </div>
         )}
       </div>
