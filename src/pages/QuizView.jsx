@@ -577,6 +577,9 @@ const QuizView = ({ session, profile }) => {
       const timerKey = `quiz_timer_${data.id}`;
       const answersKey = `quiz_answers_${data.id}`;
 
+      const defaultTime = finalQuestions.length * SECONDS_PER_QUESTION;
+      const customLimit = data.content?.time_limit;
+
       const storedTimer = localStorage.getItem(timerKey);
       if (storedTimer && first) {
         try {
@@ -584,9 +587,11 @@ const QuizView = ({ session, profile }) => {
           const secondsPassed = Math.round((Date.now() - ts) / 1000);
           const restored = Math.max(0, storedTime - secondsPassed);
           setTimeLeft(restored);
-        } catch { setTimeLeft(finalQuestions.length * SECONDS_PER_QUESTION); }
+        } catch { 
+          setTimeLeft(customLimit || defaultTime); 
+        }
       } else if (first) {
-        setTimeLeft(finalQuestions.length * SECONDS_PER_QUESTION);
+        setTimeLeft(customLimit || defaultTime);
       }
 
       // Restore answers from localStorage (always restore if cached)

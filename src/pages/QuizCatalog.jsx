@@ -1729,6 +1729,23 @@ const QuizCatalog = ({ profile }) => {
               <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>Вы готовы?</h2>
               <p style={{ opacity: 0.7, marginBottom: '25px', lineHeight: '1.6', textAlign: 'center' }}>Начать тест: <br /> <strong>"{selectedQuiz.title}"</strong>.</p>
 
+              {/* Time info */}
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginBottom: '25px' }}>
+                <div style={{ padding: '8px 15px', background: 'rgba(0,0,0,0.03)', borderRadius: '12px', fontSize: '0.85rem' }}>
+                  <strong>{selectedQuiz.content?.questions?.length || 0}</strong> вопр.
+                </div>
+                <div style={{ padding: '8px 15px', background: 'rgba(99, 102, 241, 0.08)', color: 'var(--primary-color)', borderRadius: '12px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Clock size={14} />
+                  <strong>
+                    {selectedQuiz.content?.time_limit ? (
+                      Math.floor(selectedQuiz.content.time_limit / 60) + ' мин ' + (selectedQuiz.content.time_limit % 60) + ' сек'
+                    ) : (
+                      Math.floor(((selectedQuiz.content?.questions?.length || 0) * 25) / 60) + ' мин ' + (((selectedQuiz.content?.questions?.length || 0) * 25) % 60) + ' сек'
+                    )}
+                  </strong>
+                </div>
+              </div>
+
               {selectedQuiz.resources && selectedQuiz.resources.length > 0 && (
                 <div style={{ marginBottom: '30px', textAlign: 'left' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '15px', padding: '12px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '12px', border: '1px solid rgba(99, 102, 241, 0.1)' }}>
@@ -1815,6 +1832,17 @@ const QuizCatalog = ({ profile }) => {
               <div style={{ padding: '15px', background: 'rgba(0,0,0,0.03)', borderRadius: '12px', marginBottom: '25px', textAlign: 'center' }}>
                 <span style={{ fontSize: '0.85rem', opacity: 0.6, display: 'block', marginBottom: '5px' }}>Вам выпал тест:</span>
                 <span style={{ fontWeight: 'bold', color: 'var(--primary-color)' }}>{randomQuizModal.quiz.title}</span>
+                <div style={{ marginTop: '10px', display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                  <span style={{ fontSize: '0.75rem', opacity: 0.5 }}>{randomQuizModal.quiz.content?.questions?.length || 0} вопр.</span>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--primary-color)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <Clock size={12} />
+                    {randomQuizModal.quiz.content?.time_limit ? (
+                      Math.floor(randomQuizModal.quiz.content.time_limit / 60) + ':' + String(randomQuizModal.quiz.content.time_limit % 60).padStart(2, '0')
+                    ) : (
+                      Math.floor(((randomQuizModal.quiz.content?.questions?.length || 0) * 25) / 60) + ':' + String(((randomQuizModal.quiz.content?.questions?.length || 0) * 25) % 60).padStart(2, '0')
+                    )}
+                  </span>
+                </div>
               </div>
 
               {randomQuizModal.quiz.resources && randomQuizModal.quiz.resources.length > 0 && (

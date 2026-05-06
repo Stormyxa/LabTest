@@ -286,6 +286,7 @@ const Editor = ({ session, profile }) => {
   const [newSectionClassId, setNewSectionClassId] = useState('');
   const [newSectionBookUrl, setNewSectionBookUrl] = useState('');
   const [resources, setResources] = useState([{ url: '', title: '' }]);
+  const [newQuizTimeLimit, setNewQuizTimeLimit] = useState(0);
 
   const isTeacherOrPlayer = profile?.role === 'teacher' || profile?.role === 'player';
   const isPrivilegedEditor = profile?.role === 'admin' || profile?.role === 'creator';
@@ -478,7 +479,10 @@ const Editor = ({ session, profile }) => {
           section_id: sectionId,
           author_id: session.user.id,
           is_personal: isPersonal,
-          content: { questions: q.questions },
+          content: { 
+            questions: q.questions,
+            time_limit: newQuizTimeLimit > 0 ? newQuizTimeLimit : q.time_limit
+          },
           resources: filteredResources.length > 0 ? filteredResources : null,
           is_verified: canBulk,
           sort_order: maxOrder + 1 + i
@@ -500,6 +504,7 @@ const Editor = ({ session, profile }) => {
         setSectionId('');
         setSelectedClassId('');
         setResources([{ url: '', title: '' }]);
+        setNewQuizTimeLimit(0);
       } else {
         let titleList = titles.split('\n').map(t => t.trim()).filter(t => t.length > 0);
         if (titleList.length === 0) throw new Error('Введите хотя бы одно название');
@@ -547,7 +552,10 @@ const Editor = ({ session, profile }) => {
         section_id: sId,
         author_id: session.user.id,
         is_personal: isPersonal,
-        content: { questions: [] },
+        content: { 
+          questions: [],
+          time_limit: newQuizTimeLimit > 0 ? newQuizTimeLimit : undefined
+        },
         resources: pendingResources?.length > 0 ? pendingResources : null,
         is_verified: canBulk,
         is_hidden: true, // Auto-hide empty quiz
@@ -568,6 +576,7 @@ const Editor = ({ session, profile }) => {
       setSectionId('');
       setSelectedClassId('');
       setResources([{ url: '', title: '' }]);
+      setNewQuizTimeLimit(0);
 
       if (inserted && inserted.length > 0) {
         navigate(`/redactor?id=${inserted[0].id}`);
@@ -664,7 +673,7 @@ const Editor = ({ session, profile }) => {
   };
 
   const copyJsonPrompt = () => {
-    const prompt = `Без подобострастия и на глубокую проверку настоящих знаний, мне не обидно и я хочу быть жестоко униженной, узнать все свои уязвимости и нелепые пробелы. Качественно создай на академическом языке строгий интересный тест с неоднозначными вопросами высокого порядка без подсказок в стиле ЕНТ, полностью охватывающий все аспекты параграфа с приложенных изображений в количестве XX вопросов. Выведи результат СТРОГО в формате JSON:\n{\n"title":\n"§ Номер-Номер (если есть). Название",\n"questions": [\n{\n"question": "Текст вопроса?",\n"options": ["Вариант 1", "Вариант 2", "Вариант 3", "Вариант 4"],\n"correctIndex": 0 (всегда),\n"explanation": "Подробное объяснение, почему этот ответ верный, раскрывающее суть \nвопроса."\n}\n]\n}\nВАЖНО: Количество вариантов ответа всегда одинаковое для каждого вопроса (4), но верный только один.\nСоставляй вопросы строго в рамках информации из параграфа, но делай их самодостаточными, чтобы ученик мог ответить на них, опираясь на общие знания по теме, даже если у него нет перед глазами текста или схем с изображений.\n\nХорошо составленный тест должен следовать правилу однородности:\n\nВсе варианты ответов должны быть примерно одинаковой длины.\nЕсли верный ответ длинный, нужно либо укоротить его, либо удлинить дистракторы, \nдобавив в них детали.\nИногда детализацию лучше вынести в само условие вопроса, чтобы варианты ответов были лаконичными.\nНеверные варианты ответов должны быть такими же правдоподобными, как и верный ответ, что направлено на запутывание учащихся. Дистракторы должны опираться на смежные настоящие исторические факты той эпохи, которые являются неверными лишь в контексте данного вопроса. То есть ученик, который даже читал параграф, но поверхностно, не сможет угадать верный вариант.\n\nПоле "explanation" крайне важно: оно должно помогать ученику понять материал в обучающем режиме (после ответа).\n\nЕсли в данном параграфе есть портреты, рисунки или карты, то можешь сделать вопрос с префиксом [ИЗОБРАЖЕНИЕ] по ним и сказать что именно добавить. Я сама буду ориентироваться и прикреплю к нему соответственное изображение, имеющиеся в контексте параграфа.`;
+    const prompt = `Без подобострастия и на глубокую проверку настоящих знаний, мне не обидно и я хочу быть жестоко униженной, узнать все свои уязвимости и нелепые пробелы. Качественно создай на академическом языке строгий интересный тест с неоднозначными вопросами высокого порядка без подсказок в стиле ЕНТ, полностью охватывающий все аспекты параграфа с приложенных изображений в количестве XX вопросов. Выведи результат СТРОГО в формате JSON:\n{\n"title":\n"§ Номер-Номер (если есть). Название",\n"time_limit": 600 (укажи время в секундах, адекватное для XX вопросов),\n"questions": [\n{\n"question": "Текст вопроса?",\n"options": ["Вариант 1", "Вариант 2", "Вариант 3", "Вариант 4"],\n"correctIndex": 0 (всегда),\n"explanation": "Подробное объяснение, почему этот ответ верный, раскрывающее суть \nвопроса."\n}\n]\n}\nВАЖНО: Количество вариантов ответа всегда одинаковое для каждого вопроса (4), но верный только один.\nСоставляй вопросы строго в рамках информации из параграфа, но делай их самодостаточными, чтобы ученик мог ответить на них, опираясь на общие знания по теме, даже если у него нет перед глазами текста или схем с изображений.\n\nХорошо составленный тест должен следовать правилу однородности:\n\nВсе варианты ответов должны быть примерно одинаковой длины.\nЕсли верный ответ длинный, нужно либо укоротить его, либо удлинить дистракторы, \nдобавив в них детали.\nИногда детализацию лучше вынести в само условие вопроса, чтобы варианты ответов были лаконичными.\nНеверные варианты ответов должны быть такими же правдоподобными, как и верный ответ, что направлено на запутывание учащихся. Дистракторы должны опираться на смежные настоящие исторические факты той эпохи, которые являются неверными лишь в контексте данного вопроса. То есть ученик, который даже читал параграф, но поверхностно, не сможет угадать верный вариант.\n\nПоле "explanation" крайне важно: оно должно помогать ученику понять материал в обучающем режиме (после ответа).\n\nЕсли в данном параграфе есть портреты, рисунки или карты, то можешь сделать вопрос с префиксом [ИЗОБРАЖЕНИЕ] по ним и сказать что именно добавить. Я сама буду ориентироваться и прикреплю к нему соответственное изображение, имеющиеся в контексте параграфа.`;
     navigator.clipboard.writeText(prompt);
     setCopyFeedbackJson(true);
     setTimeout(() => setCopyFeedbackJson(false), 2000);
@@ -897,6 +906,47 @@ const Editor = ({ session, profile }) => {
                           <option value="">Выберите предмет...</option>
                           {sections.filter(s => s.class_id === selectedClassId && !s.is_divider && (isPersonal ? (s.is_personal && s.author_id === profile?.id) : !s.is_personal)).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                         </select>
+                      </div>
+
+                      <div className="flex-center" style={{ gap: '15px', justifyContent: 'flex-start', padding: '15px', background: 'rgba(0,0,0,0.02)', borderRadius: '12px', border: '1px solid rgba(0,0,0,0.05)' }}>
+                        <div className="flex-center" style={{ gap: '8px', color: 'var(--primary-color)' }}>
+                          <Clock size={18} />
+                          <label style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>Лимит времени:</label>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <input 
+                            type="number" 
+                            min="0"
+                            placeholder="Мин"
+                            value={Math.floor(newQuizTimeLimit / 60) || ''}
+                            onChange={(e) => {
+                              const mins = parseInt(e.target.value) || 0;
+                              const secs = newQuizTimeLimit % 60;
+                              setNewQuizTimeLimit(mins * 60 + secs);
+                            }}
+                            style={{ width: '70px', padding: '8px', textAlign: 'center' }}
+                          />
+                          <span style={{ fontSize: '0.8rem', opacity: 0.5 }}>мин</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <input 
+                            type="number" 
+                            min="0"
+                            max="59"
+                            placeholder="Сек"
+                            value={newQuizTimeLimit % 60 || ''}
+                            onChange={(e) => {
+                              const mins = Math.floor(newQuizTimeLimit / 60);
+                              const secs = Math.min(59, parseInt(e.target.value) || 0);
+                              setNewQuizTimeLimit(mins * 60 + secs);
+                            }}
+                            style={{ width: '70px', padding: '8px', textAlign: 'center' }}
+                          />
+                          <span style={{ fontSize: '0.8rem', opacity: 0.5 }}>сек</span>
+                        </div>
+                        <div style={{ fontSize: '0.75rem', opacity: 0.4, marginLeft: '5px' }}>
+                          (0 = авторасчет 25с/вопр)
+                        </div>
                       </div>
 
                       <div style={{ position: 'relative' }}>
