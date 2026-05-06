@@ -212,7 +212,7 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
     }, 2000);
   };
 
-  const themeColor = 'var(--bg-color)'; // МЕСТО НАСТРОЙКИ ЦВЕТА МАСКИ
+  const themeColor = 'var(--bg-color)'; 
 
   const containerStyle = inline ? {
     width: '100%',
@@ -224,7 +224,8 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
     border: '1px solid var(--border-color)',
     overflow: 'hidden',
     marginBottom: '20px',
-    position: 'relative'
+    position: 'relative',
+    boxShadow: '0 10px 30px -10px rgba(0,0,0,0.1)' // Soft theme glow
   } : {
     width: '100%',
     height: '100%',
@@ -235,6 +236,10 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
   };
 
   const showUI = isHovered || playerState !== 1 || showPersistentUI;
+  
+  // Adaptive Mask Heights
+  const topMaskHeight = isMobile ? '55px' : '85px';
+  const bottomMaskHeight = isMobile ? '70px' : '110px';
 
   return (
     <div 
@@ -278,9 +283,9 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
         {ytId ? (
           <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             
-            {/* THE VIDEO BOX - NO SHADOWS, NO SEAMS */}
+            {/* THE VIDEO BOX */}
             <div style={{ width: '100%', aspectRatio: '16/9', position: 'relative', overflow: 'hidden', background: themeColor }}>
-                <div id={`yt-player-${inline ? 'inline' : 'modal'}-${activeIdx}`} style={{ width: '100%', height: '100%', transform: 'scale(1.002)' }}></div>
+                <div id={`yt-player-${inline ? 'inline' : 'modal'}-${activeIdx}`} style={{ width: '100.2%', height: '100.2%', position: 'absolute', top: '-0.1%', left: '-0.1%' }}></div>
                 
                 {/* PAUSE DIMMING */}
                 {playerState !== 1 && (
@@ -294,13 +299,13 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
                   </div>
                 )}
 
-                {/* THEME MASKS */}
+                {/* ADAPTIVE THEME MASKS */}
                 <div style={{
                   position: 'absolute',
                   top: 0,
                   left: 0,
                   right: 0,
-                  height: '80px',
+                  height: topMaskHeight,
                   background: `linear-gradient(to bottom, ${themeColor} 0%, ${themeColor} 70%, transparent 100%)`,
                   zIndex: 15,
                   pointerEvents: 'none',
@@ -315,7 +320,7 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
                   bottom: 0,
                   left: 0,
                   right: 0,
-                  height: '110px',
+                  height: bottomMaskHeight,
                   background: `linear-gradient(to top, ${themeColor} 0%, ${themeColor} 70%, transparent 100%)`,
                   zIndex: 15,
                   pointerEvents: 'none',
@@ -333,10 +338,10 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
                     bottom: 0,
                     left: 0,
                     right: 0,
-                    padding: '20px 30px',
+                    padding: isMobile ? '10px 15px' : '20px 30px',
                     display: 'flex',
                     flexDirection: 'column',
-                    gap: '12px',
+                    gap: isMobile ? '8px' : '12px',
                     transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
                     opacity: showUI ? 1 : 0,
                     transform: showUI ? 'translateY(0)' : 'translateY(10px)',
@@ -344,7 +349,7 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
                     color: 'var(--text-main)'
                   }}
                 >
-                  <div style={{ position: 'relative', width: '100%', height: '6px', background: 'rgba(var(--text-main-rgb), 0.1)', borderRadius: '3px', cursor: 'pointer' }}>
+                  <div style={{ position: 'relative', width: '100%', height: '6px', background: 'rgba(var(--text-main-rgb, 128, 128, 128), 0.15)', borderRadius: '3px', cursor: 'pointer' }}>
                     <input 
                       type="range"
                       min="0"
@@ -364,7 +369,8 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
                         cursor: 'pointer',
                         margin: 0,
                         padding: 0,
-                        boxSizing: 'border-box'
+                        appearance: 'none',
+                        background: 'transparent'
                       }}
                     />
                     <div style={{ 
@@ -383,14 +389,14 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
                   <div className="flex-center" style={{ justifyContent: 'space-between' }}>
                     <div className="flex-center" style={{ gap: '15px' }}>
                       <button onClick={togglePlay} style={{ background: 'transparent', color: 'inherit', padding: 0, boxShadow: 'none', border: 'none' }}>
-                        {playerState === 1 ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />}
+                        {playerState === 1 ? <Pause size={isMobile ? 20 : 24} fill="currentColor" /> : <Play size={isMobile ? 20 : 24} fill="currentColor" />}
                       </button>
                       
                       <div className="flex-center" style={{ gap: '10px' }}>
                         <button onClick={toggleMute} style={{ background: 'transparent', color: 'inherit', padding: 0, boxShadow: 'none', border: 'none' }}>
-                          {isMuted || volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}
+                          {isMuted || volume === 0 ? <VolumeX size={isMobile ? 18 : 20} /> : <Volume2 size={isMobile ? 18 : 20} />}
                         </button>
-                        <div style={{ width: '80px', height: '4px', background: 'rgba(var(--text-main-rgb), 0.1)', borderRadius: '2px', position: 'relative', cursor: 'pointer' }}>
+                        <div style={{ width: isMobile ? '60px' : '80px', height: '4px', background: 'rgba(128, 128, 128, 0.25)', borderRadius: '2px', position: 'relative', cursor: 'pointer' }}>
                             <input 
                               type="range"
                               min="0"
@@ -407,7 +413,9 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
                                 opacity: 0,
                                 zIndex: 2,
                                 margin: 0,
-                                padding: 0
+                                padding: 0,
+                                appearance: 'none',
+                                background: 'transparent'
                               }}
                             />
                             <div style={{ 
@@ -423,7 +431,7 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
                         </div>
                       </div>
 
-                      <span style={{ color: 'inherit', fontSize: '0.85rem', fontWeight: '500', minWidth: '100px', textAlign: 'left', opacity: 0.8 }}>
+                      <span style={{ color: 'inherit', fontSize: isMobile ? '0.75rem' : '0.85rem', fontWeight: '500', minWidth: isMobile ? '70px' : '100px', textAlign: 'left', opacity: 0.8 }}>
                         {formatTime(currentTime)} / {formatTime(duration)}
                       </span>
                     </div>
@@ -433,7 +441,7 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
                         onClick={(e) => { e.stopPropagation(); setShowSettings(!showSettings); }} 
                         style={{ background: 'transparent', color: 'inherit', padding: 0, boxShadow: 'none', border: 'none' }}
                       >
-                        <Settings size={20} style={{ transform: showSettings ? 'rotate(90deg)' : 'none', transition: 'transform 0.3s' }} />
+                        <Settings size={isMobile ? 18 : 20} style={{ transform: showSettings ? 'rotate(90deg)' : 'none', transition: 'transform 0.3s' }} />
                       </button>
 
                       {showSettings && (
