@@ -101,6 +101,14 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
       if (timeUpdateRef.current) clearInterval(timeUpdateRef.current);
       if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
       if (persistentTimeoutRef.current) clearTimeout(persistentTimeoutRef.current);
+      
+      const playerElementId = `yt-player-${inline ? 'inline' : 'modal'}-${activeIdx}`;
+      if (window.YT_INSTANCES && window.YT_INSTANCES[playerElementId]) {
+        try {
+          window.YT_INSTANCES[playerElementId].destroy();
+          delete window.YT_INSTANCES[playerElementId];
+        } catch (e) { console.error("Error destroying YT player:", e); }
+      }
     };
   }, [ytId]);
 
@@ -270,7 +278,7 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
     >
       <div style={{ flex: 1, position: 'relative', background: themeColor, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {ytId ? (
-          <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div key={ytId} style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div style={{ width: '100%', aspectRatio: '16/9', position: 'relative', overflow: 'hidden', background: themeColor }}>
               <div id={`yt-player-${inline ? 'inline' : 'modal'}-${activeIdx}`} style={{ width: '100.2%', height: '100.2%', position: 'absolute', top: '-0.1%', left: '-0.1%' }}></div>
               {playerState !== 1 && (

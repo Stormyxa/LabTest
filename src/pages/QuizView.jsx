@@ -49,6 +49,7 @@ const ResourceModal = ({ res, onClose }) => {
         </div>
         <div style={{ flex: 1, position: 'relative', background: '#000' }}>
           <ResourcePlayer 
+            key={res.url}
             resources={[res]} 
             activeIdx={0} 
             setActiveIdx={() => {}} 
@@ -1437,6 +1438,7 @@ const QuizView = ({ session, profile }) => {
               boxShadow: '0 4px 15px rgba(0,0,0,0.05)'
             }}>
               <ResourcePlayer
+                key={activeResourceIdx}
                 resources={allResources}
                 activeIdx={activeResourceIdx}
                 setActiveIdx={setActiveResourceIdx}
