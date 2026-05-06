@@ -10,13 +10,14 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.49.8",
+    "jspdf": "latest",
+    "jspdf-autotable": "latest",
+    "katex": "^0.16.45",
+    "lucide-react": "^0.511.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "react-router-dom": "^7.6.0",
-    "@supabase/supabase-js": "^2.49.8",
-    "lucide-react": "^0.511.0",
-    "jspdf": "latest",
-    "jspdf-autotable": "latest"
+    "react-router-dom": "^7.6.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",

@@ -34,7 +34,7 @@ const DividerItem = React.memo(({ quiz, qIndex, userRole, searchQuery, swapQuizz
   </div>
 ));
 
-const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, passState, statsLoading, canEditQuiz, canMoveQuiz, swapQuizzes, navigate, setSelectedQuiz, onPrepQuizSelect, setHideModal, setDuplicateModal, isDimmed, quizzesLength, handleShare, fetchData }) => {
+const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, passState, statsLoading, canEditQuiz, canMoveQuiz, swapQuizzes, navigate, setSelectedQuiz, onPrepQuizSelect, setHideModal, setDuplicateModal, isDimmed, quizzesLength, handleShare, fetchData, setActiveStandaloneResource }) => {
   const [toast, setToast] = useState({ visible: false, opacity: 0 });
 
   const onShareClick = (e) => {
@@ -62,9 +62,15 @@ const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, pass
             {quiz.is_verified && <CheckCircle size={16} color="var(--primary-color)" style={{ marginLeft: '5px', display: 'inline' }} />}
             {quiz.resources && quiz.resources.length > 0 && (
               <span style={{ marginLeft: '10px', display: 'inline-flex', gap: '5px', verticalAlign: 'middle' }}>
-                {quiz.resources.some(r => r.url.includes('youtube.com') || r.url.includes('youtu.be')) && <Youtube size={16} style={{ color: '#ef4444', cursor: 'pointer' }} onClick={(e) => { e.stopPropagation(); onPrepQuizSelect(quiz); }} />}
-                {quiz.resources.some(r => r.url.includes('drive.google.com') || r.url.includes('docs.google.com')) && <FileText size={16} style={{ color: '#22c55e', cursor: 'pointer' }} onClick={(e) => { e.stopPropagation(); onPrepQuizSelect(quiz); }} />}
-                {quiz.resources.some(r => !r.url.includes('youtube') && !r.url.includes('google')) && <Book size={16} style={{ color: 'var(--primary-color)', cursor: 'pointer' }} onClick={(e) => { e.stopPropagation(); onPrepQuizSelect(quiz); }} />}
+                {quiz.resources.some(r => r.url.includes('youtube.com') || r.url.includes('youtu.be')) && (
+                  <Youtube size={16} style={{ color: '#ef4444', cursor: 'pointer' }} onClick={(e) => { e.stopPropagation(); const res = quiz.resources.find(r => r.url.includes('youtube')); if (res) setActiveStandaloneResource(res); }} />
+                )}
+                {quiz.resources.some(r => r.url.includes('drive.google.com') || r.url.includes('docs.google.com')) && (
+                  <FileText size={16} style={{ color: '#22c55e', cursor: 'pointer' }} onClick={(e) => { e.stopPropagation(); const res = quiz.resources.find(r => r.url.includes('drive.google.com') || r.url.includes('docs.google.com')); if (res) setActiveStandaloneResource(res); }} />
+                )}
+                {quiz.resources.some(r => !r.url.includes('youtube') && !r.url.includes('google')) && (
+                  <Book size={16} style={{ color: 'var(--primary-color)', cursor: 'pointer' }} onClick={(e) => { e.stopPropagation(); const res = quiz.resources.find(r => !r.url.includes('youtube') && !r.url.includes('google')); if (res) setActiveStandaloneResource(res); }} />
+                )}
               </span>
             )}
           </h4>
@@ -165,11 +171,6 @@ const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, pass
                 <Check size={14} /> Скопировано!
               </div>
             )}
-            {quiz.resources && quiz.resources.length > 0 && (
-              <button onClick={(e) => { e.stopPropagation(); onPrepQuizSelect(quiz); }} className="flex-center" style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '6px', borderRadius: '10px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none' }} title="Подготовка к тесту">
-                <Book size={15} />
-              </button>
-            )}
             <button onClick={(e) => { e.stopPropagation(); setSelectedQuiz(quiz); }} style={{ padding: '8px 20px', display: 'flex', alignItems: 'center', gap: '8px', borderRadius: '10px' }}>
               <Play size={15} fill="currentColor" /> Начать
             </button>
@@ -180,7 +181,7 @@ const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, pass
   );
 });
 
-const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, onQuizzesChange, setHideModal, setDuplicateModal, handleRenameTrigger, setSelectedQuiz, onPrepQuizSelect, setRandomQuizModal, activeTab, handleShare, fetchData }) => {
+const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, onQuizzesChange, setHideModal, setDuplicateModal, handleRenameTrigger, setSelectedQuiz, onPrepQuizSelect, setRandomQuizModal, activeTab, handleShare, fetchData, setActiveStandaloneResource }) => {
   const navigate = useNavigate();
   const [visibleCount, setVisibleCount] = useState(25); // Incremental rendering start
 
@@ -412,6 +413,7 @@ const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, 
                 activeTab={activeTab}
                 handleShare={handleShare}
                 fetchData={fetchData}
+                setActiveStandaloneResource={setActiveStandaloneResource}
               />
             );
           });
@@ -1719,12 +1721,66 @@ const QuizCatalog = ({ profile }) => {
 
       {selectedQuiz && (
         <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setSelectedQuiz(null))(e); } }}>
-          <div className="modal-content animate" onClick={e => e.stopPropagation()}>
-            <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', margin: '0 auto 25px' }}><Award size={32} /></div>
-            {isFromShare && <div style={{ fontSize: '0.8rem', color: 'var(--primary-color)', fontWeight: 'bold', marginBottom: '10px' }}>Вы перешли по ссылке на этот предмет</div>}
-            <h2 style={{ marginBottom: '15px' }}>Вы готовы?</h2>
-            <p style={{ opacity: 0.7, marginBottom: '30px', lineHeight: '1.6' }}>Начать тест: <br /> <strong>"{selectedQuiz.title}"</strong>.</p>
-            <div className="grid-2" style={{ gap: '15px' }}>
+          <div className="modal-content animate" onClick={e => e.stopPropagation()} style={{ width: '500px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ overflowY: 'auto', flex: 1, paddingRight: '5px' }}>
+              <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', margin: '0 auto 25px' }}><Award size={32} /></div>
+              {isFromShare && <div style={{ fontSize: '0.8rem', color: 'var(--primary-color)', fontWeight: 'bold', marginBottom: '10px', textAlign: 'center' }}>Вы перешли по ссылке на этот предмет</div>}
+              <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>Вы готовы?</h2>
+              <p style={{ opacity: 0.7, marginBottom: '25px', lineHeight: '1.6', textAlign: 'center' }}>Начать тест: <br /> <strong>"{selectedQuiz.title}"</strong>.</p>
+
+              {selectedQuiz.resources && selectedQuiz.resources.length > 0 && (
+                <div style={{ marginBottom: '30px', textAlign: 'left' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '15px', padding: '12px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '12px', border: '1px solid rgba(99, 102, 241, 0.1)' }}>
+                    <Book size={18} style={{ color: 'var(--primary-color)' }} />
+                    <span style={{ fontSize: '0.9rem', fontWeight: 'bold', color: 'var(--primary-color)' }}>Рекомендуем подготовиться:</span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '250px', overflowY: 'auto', paddingRight: '5px' }} className="custom-scrollbar">
+                    {selectedQuiz.resources.map((res, idx) => {
+                      const isYoutube = res.url.includes('youtube.com') || res.url.includes('youtu.be');
+                      const isDrive = res.url.includes('drive.google.com') || res.url.includes('docs.google.com');
+                      return (
+                        <div
+                          key={idx}
+                          onClick={() => setActiveStandaloneResource(res)}
+                          className="flex-center animate"
+                          style={{ 
+                            cursor: 'pointer', 
+                            justifyContent: 'space-between', 
+                            padding: '12px 18px', 
+                            background: 'rgba(99, 102, 241, 0.03)', 
+                            borderRadius: '14px', 
+                            border: '1px solid rgba(99, 102, 241, 0.1)', 
+                            fontSize: '0.9rem',
+                            transition: 'all 0.2s ease'
+                          }}
+                        >
+                          <div className="flex-center" style={{ gap: '12px' }}>
+                            <div style={{ 
+                              width: '32px', 
+                              height: '32px', 
+                              borderRadius: '10px', 
+                              background: isYoutube ? 'rgba(239, 68, 68, 0.1)' : (isDrive ? 'rgba(34, 197, 94, 0.1)' : 'rgba(99, 102, 241, 0.1)'),
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center'
+                            }}>
+                              {isYoutube ? <Youtube size={16} color="#ef4444" /> : (isDrive ? <FileText size={16} color="#22c55e" /> : <Book size={16} color="var(--primary-color)" />)}
+                            </div>
+                            <span style={{ fontWeight: '600', color: 'var(--text-color)' }}>{res.title || 'Материал ' + (idx + 1)}</span>
+                          </div>
+                          <div className="flex-center" style={{ gap: '10px' }}>
+                            <span style={{ fontSize: '0.75rem', opacity: 0.4, fontWeight: '500' }}>Открыть</span>
+                            <ChevronRight size={14} style={{ opacity: 0.3 }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="grid-2" style={{ gap: '15px', marginTop: '10px' }}>
               <button onClick={() => setSelectedQuiz(null)} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>Отмена</button>
               <button onClick={() => {
                 const id = selectedQuiz.id;
@@ -1735,7 +1791,7 @@ const QuizCatalog = ({ profile }) => {
                 localStorage.removeItem(`quiz_start_time_${id}`);
                 localStorage.removeItem(`quiz_timer_${id}`);
                 navigate(`/quiz/${id}`);
-              }} style={{ padding: '15px', background: 'var(--primary-color)' }}>Начать обучение</button>
+              }} style={{ padding: '15px', background: 'var(--primary-color)', color: 'white' }}>Начать тест</button>
             </div>
           </div>
         </div>
@@ -1743,19 +1799,73 @@ const QuizCatalog = ({ profile }) => {
 
       {randomQuizModal && (
         <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setRandomQuizModal(null))(e); } }}>
-          <div className="modal-content animate" onClick={e => e.stopPropagation()} style={{ width: '450px' }}>
-            <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(168, 85, 247, 0.1) 100%)', color: 'var(--primary-color)', margin: '0 auto 25px' }}>
-              <Dices size={32} />
+          <div className="modal-content animate" onClick={e => e.stopPropagation()} style={{ width: '500px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ overflowY: 'auto', flex: 1, paddingRight: '5px' }}>
+              <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '20px', background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(168, 85, 247, 0.1) 100%)', color: 'var(--primary-color)', margin: '0 auto 25px' }}>
+                <Dices size={32} />
+              </div>
+              <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>Случайный тест</h2>
+              <p style={{ opacity: 0.7, marginBottom: '20px', lineHeight: '1.6', textAlign: 'center' }}>
+                Вы выбрали прохождение случайного теста по предмету <br /> <strong>«{randomQuizModal.sectionName}»</strong>.
+              </p>
+              <div style={{ padding: '15px', background: 'rgba(0,0,0,0.03)', borderRadius: '12px', marginBottom: '25px', textAlign: 'center' }}>
+                <span style={{ fontSize: '0.85rem', opacity: 0.6, display: 'block', marginBottom: '5px' }}>Вам выпал тест:</span>
+                <span style={{ fontWeight: 'bold', color: 'var(--primary-color)' }}>{randomQuizModal.quiz.title}</span>
+              </div>
+
+              {randomQuizModal.quiz.resources && randomQuizModal.quiz.resources.length > 0 && (
+                <div style={{ marginBottom: '30px', textAlign: 'left' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '15px', padding: '12px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '12px', border: '1px solid rgba(99, 102, 241, 0.1)' }}>
+                    <Book size={18} style={{ color: 'var(--primary-color)' }} />
+                    <span style={{ fontSize: '0.9rem', fontWeight: 'bold', color: 'var(--primary-color)' }}>Материалы для подготовки:</span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '250px', overflowY: 'auto', paddingRight: '5px' }} className="custom-scrollbar">
+                    {randomQuizModal.quiz.resources.map((res, idx) => {
+                      const isYoutube = res.url.includes('youtube.com') || res.url.includes('youtu.be');
+                      const isDrive = res.url.includes('drive.google.com') || res.url.includes('docs.google.com');
+                      return (
+                        <div
+                          key={idx}
+                          onClick={() => setActiveStandaloneResource(res)}
+                          className="flex-center animate"
+                          style={{ 
+                            cursor: 'pointer', 
+                            justifyContent: 'space-between', 
+                            padding: '12px 18px', 
+                            background: 'rgba(99, 102, 241, 0.03)', 
+                            borderRadius: '14px', 
+                            border: '1px solid rgba(99, 102, 241, 0.1)', 
+                            fontSize: '0.9rem',
+                            transition: 'all 0.2s ease'
+                          }}
+                        >
+                          <div className="flex-center" style={{ gap: '12px' }}>
+                            <div style={{ 
+                              width: '32px', 
+                              height: '32px', 
+                              borderRadius: '10px', 
+                              background: isYoutube ? 'rgba(239, 68, 68, 0.1)' : (isDrive ? 'rgba(34, 197, 94, 0.1)' : 'rgba(99, 102, 241, 0.1)'),
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center'
+                            }}>
+                              {isYoutube ? <Youtube size={16} color="#ef4444" /> : (isDrive ? <FileText size={16} color="#22c55e" /> : <Book size={16} color="var(--primary-color)" />)}
+                            </div>
+                            <span style={{ fontWeight: '600', color: 'var(--text-color)' }}>{res.title || 'Материал ' + (idx + 1)}</span>
+                          </div>
+                          <div className="flex-center" style={{ gap: '10px' }}>
+                            <span style={{ fontSize: '0.75rem', opacity: 0.4, fontWeight: '500' }}>Открыть</span>
+                            <ChevronRight size={14} style={{ opacity: 0.3 }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
-            <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>Случайный тест</h2>
-            <p style={{ opacity: 0.7, marginBottom: '20px', lineHeight: '1.6', textAlign: 'center' }}>
-              Вы выбрали прохождение случайного теста по предмету <br /> <strong>«{randomQuizModal.sectionName}»</strong>.
-            </p>
-            <div style={{ padding: '15px', background: 'rgba(0,0,0,0.03)', borderRadius: '12px', marginBottom: '30px', textAlign: 'center' }}>
-              <span style={{ fontSize: '0.85rem', opacity: 0.6, display: 'block', marginBottom: '5px' }}>Вам выпал тест:</span>
-              <span style={{ fontWeight: 'bold', color: 'var(--primary-color)' }}>{randomQuizModal.quiz.title}</span>
-            </div>
-            <div className="grid-2" style={{ gap: '15px' }}>
+
+            <div className="grid-2" style={{ gap: '15px', marginTop: '10px' }}>
               <button onClick={() => setRandomQuizModal(null)} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>Отмена</button>
               <button onClick={() => {
                 const id = randomQuizModal.quiz.id;
@@ -1766,7 +1876,7 @@ const QuizCatalog = ({ profile }) => {
                 localStorage.removeItem(`quiz_start_time_${id}`);
                 localStorage.removeItem(`quiz_timer_${id}`);
                 navigate(`/quiz/${id}`);
-              }} style={{ padding: '15px', background: 'linear-gradient(135deg, var(--primary-color) 0%, #a855f7 100%)' }}>Начать обучение</button>
+              }} style={{ padding: '15px', background: 'linear-gradient(135deg, var(--primary-color) 0%, #a855f7 100%)', color: 'white' }}>Начать тест</button>
             </div>
           </div>
         </div>

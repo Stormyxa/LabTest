@@ -11,6 +11,31 @@ import {
 import { resolveImgUrl } from '../lib/imageUtils';
 import { useScrollRestoration } from '../lib/useScrollRestoration';
 import ResourcePlayer from '../components/ResourcePlayer';
+import katex from 'katex';
+import 'katex/dist/katex.min.css';
+
+const MathRenderer = React.memo(({ text }) => {
+  if (!text) return null;
+  const parts = text.split(/(\$\$[\s\S]+?\$\$|\$[\s\S]+?\$)/g);
+  return (
+    <span>
+      {parts.map((part, i) => {
+        if (part.startsWith('$$') && part.endsWith('$$')) {
+          const formula = part.slice(2, -2);
+          try {
+            return <div key={i} style={{ margin: '10px 0' }} dangerouslySetInnerHTML={{ __html: katex.renderToString(formula, { displayMode: true, throwOnError: false }) }} />;
+          } catch (e) { return <span key={i}>{part}</span>; }
+        } else if (part.startsWith('$') && part.endsWith('$')) {
+          const formula = part.slice(1, -1);
+          try {
+            return <span key={i} dangerouslySetInnerHTML={{ __html: katex.renderToString(formula, { displayMode: false, throwOnError: false }) }} />;
+          } catch (e) { return <span key={i}>{part}</span>; }
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </span>
+  );
+});
 
 const SECONDS_PER_QUESTION = 25;
 const EXIT_GRACE_SECONDS = 30;
@@ -1116,14 +1141,16 @@ const QuizView = ({ session, profile }) => {
                           <div style={{ fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <span style={{ opacity: 0.6 }}>Ваш ответ:</span>
                             <span style={{ color: isCorrect ? '#4ade80' : '#f87171', fontWeight: '600' }}>
-                              {userChoice !== undefined ? q.options[userChoice] : 'Пропущено'}
+                               <MathRenderer text={userChoice !== undefined ? q.options[userChoice] : 'Пропущено'} />
                             </span>
                             {userChoice !== undefined && (isCorrect ? <CheckCircle size={16} color="#4ade80" /> : <XCircle size={16} color="#f87171" />)}
                           </div>
                           {!isCorrect && (
                             <div style={{ fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: 'rgba(74, 222, 128, 0.05)', borderRadius: '10px' }}>
                               <span style={{ opacity: 0.6 }}>Правильный:</span>
-                              <span style={{ color: '#4ade80', fontWeight: '600' }}>{q.options[q.correctIndex]}</span>
+                               <span style={{ color: '#4ade80', fontWeight: '600' }}>
+                                <MathRenderer text={q.options[q.correctIndex]} />
+                              </span>
                             </div>
                           )}
 
@@ -1149,7 +1176,9 @@ const QuizView = ({ session, profile }) => {
                                 transition: 'max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s',
                                 opacity: isExplanationExpanded ? 1 : 0
                               }}>
-                                <div style={{ paddingBottom: '12px', fontSize: '0.9rem', lineHeight: '1.5', opacity: 0.9 }}>{q.explanation}</div>
+                                 <div style={{ paddingBottom: '12px', fontSize: '0.9rem', lineHeight: '1.5', opacity: 0.9 }}>
+                                  <MathRenderer text={q.explanation} />
+                                </div>
                               </div>
                             </div>
                           )}
@@ -1207,7 +1236,7 @@ const QuizView = ({ session, profile }) => {
                     <div style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span style={{ opacity: 0.6 }}>Ответ:</span>
                       <strong style={{ color: detailedImageModal.isCorrect ? '#4ade80' : '#f87171' }}>
-                        {detailedImageModal.userAnswer}
+                        <MathRenderer text={detailedImageModal.userAnswer} />
                       </strong>
                       {detailedImageModal.isCorrect ? <CheckCircle size={18} color="#4ade80" /> : <XCircle size={18} color="#f87171" />}
                     </div>
@@ -1215,7 +1244,7 @@ const QuizView = ({ session, profile }) => {
                       <div style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: 'rgba(74, 222, 128, 0.05)', borderRadius: '10px', marginTop: '5px' }}>
                         <span style={{ opacity: 0.6 }}>Правильный:</span>
                         <strong style={{ color: '#4ade80' }}>
-                          {detailedImageModal.correctAnswer}
+                          <MathRenderer text={detailedImageModal.correctAnswer} />
                         </strong>
                       </div>
                     )}
@@ -1229,7 +1258,9 @@ const QuizView = ({ session, profile }) => {
                     {detailedImageModal.explanation && (
                       <div style={{ marginTop: '15px', padding: '15px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '15px', border: '1px dashed rgba(99, 102, 241, 0.2)' }}>
                         <div style={{ fontSize: '0.8rem', opacity: 0.5, fontWeight: '700', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px', color: 'var(--primary-color)' }}>Пояснение</div>
-                        <div style={{ fontSize: '1rem', lineHeight: '1.5', opacity: 0.9 }}>{detailedImageModal.explanation}</div>
+                        <div style={{ fontSize: '1rem', lineHeight: '1.5', opacity: 0.9 }}>
+                          <MathRenderer text={detailedImageModal.explanation} />
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1506,7 +1537,9 @@ const QuizView = ({ session, profile }) => {
               </div>
             )}
 
-            <h2 style={{ marginBottom: '40px', fontSize: (currentQ.images && currentQ.images.length > 0) ? '1.4rem' : '1.7rem', lineHeight: '1.4' }}>{currentQ.question}</h2>
+            <h2 style={{ marginBottom: '40px', fontSize: (currentQ.images && currentQ.images.length > 0) ? '1.4rem' : '1.7rem', lineHeight: '1.4' }}>
+              <MathRenderer text={currentQ.question} />
+            </h2>
 
             <div style={{
               display: 'grid', gap: '12px', marginTop: 'auto',
@@ -1549,7 +1582,7 @@ const QuizView = ({ session, profile }) => {
                       userSelect: 'none', WebkitUserSelect: 'none',
                     }}>
                     <div className="flex-center" style={{ justifyContent: 'space-between', gap: '10px' }}>
-                      <span>{opt}</span>
+                      <span><MathRenderer text={opt} /></span>
                       <div style={{ flexShrink: 0 }}>
                         {!isFirstAttempt && chosen !== undefined && isCorrect && <CheckCircle size={20} color="#4ade80" />}
                         {!isFirstAttempt && chosen !== undefined && isSelected && !isCorrect && <XCircle size={20} color="#f87171" />}
@@ -1585,7 +1618,7 @@ const QuizView = ({ session, profile }) => {
                   opacity: isExplanationExpanded ? 1 : 0
                 }}>
                   <div style={{ paddingBottom: '20px', fontSize: '1.05rem', lineHeight: '1.6', opacity: 0.9 }}>
-                    {currentQ.explanation}
+                    <MathRenderer text={currentQ.explanation} />
                   </div>
                 </div>
               </div>
