@@ -688,9 +688,10 @@ const AiDetailedPromptButton = ({ userId, quizId, viewerProfile }) => {
 const AnalyticsDetails = ({ session, profile: initialProfile }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
-  const quizIdParam = searchParams.get('quizId');
+  const quizIdParam = searchParams.get('quizId') || searchParams.get('id'); // Support both
   const userIdParam = searchParams.get('userId');
   const freshParam = searchParams.get('fresh');
+  const modeParam = searchParams.get('mode');
 
   const [loading, setLoading] = useState(true);
   const [contentLoading, setContentLoading] = useState(false);
@@ -711,8 +712,9 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
 
   // Test Filters — начальные значения из текущего режима
   const isPlayer = initialProfile?.role === 'player';
-  // Force official mode when navigating via direct link (from UserAnalytics or QuizView)
-  const initialMode = quizIdParam ? 'official' : (sessionStorage.getItem('ad_mode') || 'official');
+  // If mode is explicitly passed (e.g. from Editor or Catalog), use it. 
+  // Otherwise, if quizId is present, default to official, else session storage.
+  const initialMode = modeParam || (quizIdParam ? 'official' : (sessionStorage.getItem('ad_mode') || 'official'));
   const [filterFolder, setFilterFolder] = useState(sessionStorage.getItem(`ad_${initialMode}_t_folder`) || 'all');
   const [filterSection, setFilterSection] = useState(sessionStorage.getItem(`ad_${initialMode}_t_section`) || 'all');
   const [filterQuiz, setFilterQuiz] = useState(quizIdParam || sessionStorage.getItem(`ad_${initialMode}_t_quiz`) || '');
@@ -728,8 +730,8 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
   const scrollRef = React.useRef(null);
 
   const [analyticsMode, setAnalyticsMode] = useState(() => {
-    // If navigating via direct link, force official mode and sync to sessionStorage
-    if (quizIdParam && sessionStorage.getItem('ad_mode') !== 'official') {
+    // If navigating via direct link WITHOUT explicit mode, force official mode and sync to sessionStorage
+    if (quizIdParam && !modeParam && sessionStorage.getItem('ad_mode') !== 'official') {
       sessionStorage.setItem('ad_mode', 'official');
     }
     return initialMode;
@@ -915,7 +917,23 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
       // Загружаем пользователей для текущего теста (из snapshot)
       const currentQuizId = quizIdParam || filterQuiz;
       if (currentQuizId && qs) {
-        const found = qs.find(q => q.id === currentQuizId);
+        let found = qs.find(q => q.id === currentQuizId);
+        
+        if (!found && quizIdParam) {
+          const { data: directQuiz } = await supabase
+            .from('quizzes')
+            .select('id, title, section_id, author_id, is_archived, is_personal, is_public, sort_order, resources, is_divider:content->is_divider, divider_text:content->divider_text')
+            .eq('id', quizIdParam)
+            .single();
+          if (directQuiz) {
+            found = directQuiz;
+            setQuizzes(prev => {
+              if (prev.find(q => q.id === found.id)) return prev;
+              return [...prev, found];
+            });
+          }
+        }
+
         if (found) {
           setTargetQuiz(found);
           // Auto-detect folder and section if coming from a direct link

@@ -244,7 +244,7 @@ const EditorSectionQuizzes = ({
                 <span style={{ fontSize: '0.75rem' }}>{quiz.profiles && `${quiz.profiles.last_name || ''} ${quiz.profiles.first_name || ''}`}</span>
               </div>
               <div className="flex-center" style={{ justifyContent: 'flex-end', gap: '8px', marginTop: 'auto' }}>
-                <button onClick={() => navigate(`/analytics?id=${quiz.id}`)} style={{ padding: '8px', background: 'rgba(0,0,0,0.05)', color: 'inherit', boxShadow: 'none', borderRadius: '10px' }} title="Аналитика"><TrendingUp size={15} /></button>
+                <button onClick={() => navigate(`/analytics-details?quizId=${quiz.id}${editorMode === 'personal' ? '&mode=personal' : ''}`)} style={{ padding: '8px', background: 'rgba(0,0,0,0.05)', color: 'inherit', boxShadow: 'none', borderRadius: '10px' }} title="Аналитика"><TrendingUp size={15} /></button>
                 <button onClick={() => navigate(`/redactor?id=${quiz.id}`)} style={{ padding: '8px 15px', borderRadius: '10px', fontSize: '0.9rem' }}>Редактировать</button>
               </div>
             </div>

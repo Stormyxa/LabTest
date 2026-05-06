@@ -995,7 +995,7 @@ const QuizRedactor = () => {
               style={{ padding: '10px 18px', background: 'rgba(74,222,128,0.1)', color: '#4ade80', boxShadow: 'none', opacity: changed ? 0.4 : 1, borderRadius: '12px', fontSize: '0.9rem' }}>
               <Download size={16} style={{ marginRight: '6px' }} /> JSON
             </button>
-            <button onClick={() => navigate(`/analytics?id=${quizId}`)} className="flex-center" style={{ ...ghostBtnStyle, padding: '10px 18px' }}>
+            <button onClick={() => navigate(`/analytics-details?quizId=${quizId}${quiz?.is_personal ? '&mode=personal' : ''}`)} className="flex-center" style={{ ...ghostBtnStyle, padding: '10px 18px' }}>
               <BarChart2 size={16} style={{ marginRight: '6px' }} /> Аналитика
             </button>
             <button
@@ -1072,7 +1072,7 @@ const QuizRedactor = () => {
               <span style={{ fontWeight: '700', fontSize: '1rem' }}>Материалы и ресурсы ({resources.length} / 5)</span>
             </div>
             {resources.length < 5 && (
-              <button onClick={() => { pushHistory(title, questions, isHidden, resources, timeLimit); addResource(); }} style={{ padding: '6px 14px', fontSize: '0.85rem', background: 'white', color: 'var(--primary-color)', border: '1px solid rgba(99, 102, 241, 0.2)', boxShadow: 'none' }}>
+              <button onClick={() => { pushHistory(title, questions, isHidden, resources, timeLimit); addResource(); }} style={{ padding: '6px 14px', fontSize: '0.85rem', background: 'var(--card-bg)', color: 'var(--primary-color)', border: '1px solid rgba(99, 102, 241, 0.2)', boxShadow: 'none' }}>
                 <Plus size={16} style={{ marginRight: '5px' }} /> Добавить
               </button>
             )}
@@ -1156,7 +1156,7 @@ const QuizRedactor = () => {
               />
               <span style={{ opacity: 0.5 }}>сек</span>
             </div>
-            <div style={{ marginLeft: '10px', padding: '10px 15px', background: 'white', borderRadius: '10px', fontSize: '0.9rem', opacity: 0.8 }}>
+            <div style={{ marginLeft: '10px', padding: '10px 15px', background: 'var(--card-bg)', borderRadius: '10px', fontSize: '0.9rem', opacity: 0.8, border: '1px solid rgba(0,0,0,0.05)' }}>
               {timeLimit > 0 ? (
                 <>Всего: <strong>{timeLimit}</strong> сек</>
               ) : (
