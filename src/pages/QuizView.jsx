@@ -1341,14 +1341,38 @@ const QuizView = ({ session, profile }) => {
       )}
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
+        {/* STICKY TIMER (first attempt only) - Moved outside padded container */}
+        {isFirstAttempt && timeLeft !== null && !showResult && (
+          <div style={{
+            position: 'sticky', top: 0, zIndex: 100,
+            background: 'var(--card-bg)',
+            borderBottom: `3px solid ${timerColor}`,
+            padding: '10px 20px',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+            boxShadow: '0 2px 12px rgba(0,0,0,0.1)',
+            transition: 'border-color 0.5s',
+            borderRadius: '0 0 15px 15px',
+            marginBottom: '0' // No margin needed here now
+          }}>
+            <Clock size={18} color={timerColor} />
+            <span style={{ fontWeight: '700', fontSize: '1.1rem', color: timerColor, fontVariantNumeric: 'tabular-nums', transition: 'color 0.5s' }}>
+              {formatTime(timeLeft)}
+            </span>
+            <span style={{ opacity: 0.5, fontSize: '0.85rem' }}>— Оставшееся время</span>
+            <div style={{ flex: 1, maxWidth: '200px', height: '6px', background: 'rgba(0,0,0,0.08)', borderRadius: '10px', overflow: 'hidden', marginLeft: '10px' }}>
+              <div style={{ width: `${timerPercent * 100}%`, height: '100%', background: timerColor, transition: 'width 1s linear, background 0.5s' }} />
+            </div>
+          </div>
+        )}
+
         <div className="animate" style={{
           maxWidth: '800px',
           padding: isMobile ? '60px 20px 130px' : '60px 20px 0px',
           position: 'relative',
           margin: '0 auto'
         }}>
-          {/* Integrity Warning Modal */}
-          {showIntegrityModal && (
+          {/* Integrity Warning Modal - Now using Portal for full-screen overlay */}
+          {showIntegrityModal && createPortal(
             <div className="modal-overlay" style={{ zIndex: 3000 }}>
               <div className="modal-content animate" style={{ width: '450px', textAlign: 'center' }}>
                 <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', borderRadius: '20px', margin: '0 auto 20px' }}>
@@ -1367,11 +1391,12 @@ const QuizView = ({ session, profile }) => {
                   {integrityWarningLock > 0 ? `Подождите... ${integrityWarningLock}с` : 'Я понимаю, продолжить'}
                 </button>
               </div>
-            </div>
+            </div>,
+            document.body
           )}
 
-          {/* BLUR OVERLAY when tab is hidden */}
-          {isBlurred && (
+          {/* BLUR OVERLAY when tab is hidden - Now using Portal for full-screen overlay */}
+          {isBlurred && createPortal(
             <div style={{
               position: 'fixed', inset: 0, zIndex: 99999,
               backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
@@ -1382,31 +1407,8 @@ const QuizView = ({ session, profile }) => {
               <AlertTriangle size={48} color="#facc15" />
               <h2>Вкладка свёрнута</h2>
               <p style={{ opacity: 0.8, maxWidth: '350px' }}>Тест продолжается. Вернитесь обратно, чтобы продолжить прохождение.</p>
-            </div>
-          )}
-
-          {/* STICKY TIMER (first attempt only) */}
-          {isFirstAttempt && timeLeft !== null && !showResult && (
-            <div style={{
-              position: 'sticky', top: 0, zIndex: 100,
-              background: 'var(--card-bg)',
-              borderBottom: `3px solid ${timerColor}`,
-              padding: '10px 20px',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
-              boxShadow: '0 2px 12px rgba(0,0,0,0.1)',
-              transition: 'border-color 0.5s',
-              borderRadius: '0 0 15px 15px',
-              marginBottom: '20px'
-            }}>
-              <Clock size={18} color={timerColor} />
-              <span style={{ fontWeight: '700', fontSize: '1.1rem', color: timerColor, fontVariantNumeric: 'tabular-nums', transition: 'color 0.5s' }}>
-                {formatTime(timeLeft)}
-              </span>
-              <span style={{ opacity: 0.5, fontSize: '0.85rem' }}>— Оставшееся время</span>
-              <div style={{ flex: 1, maxWidth: '200px', height: '6px', background: 'rgba(0,0,0,0.08)', borderRadius: '10px', overflow: 'hidden', marginLeft: '10px' }}>
-                <div style={{ width: `${timerPercent * 100}%`, height: '100%', background: timerColor, transition: 'width 1s linear, background 0.5s' }} />
-              </div>
-            </div>
+            </div>,
+            document.body
           )}
 
           {/* Exit button */}
