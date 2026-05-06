@@ -1352,22 +1352,13 @@ const QuizView = ({ session, profile }) => {
             document.body
           )}
 
-          {/* Exit button */}
-          <button
-            onClick={handleExit}
-            className="flex-center"
-            style={{ position: 'absolute', top: '20px', right: '20px', width: '40px', height: '40px', borderRadius: '12px', background: 'rgba(255,0,0,0.05)', color: 'red', padding: 0, boxShadow: 'none', zIndex: 10, border: 'none' }}
-            title="Выйти из теста"
-          >
-            <X size={20} />
-          </button>
+          {/* Exit button moved to header info */}
 
           {/* Header Info */}
           <div className="flex-center" style={{
             justifyContent: 'space-between',
             marginBottom: '20px',
-            opacity: 0.8,
-            paddingRight: isMobile ? '65px' : '0'
+            opacity: 0.8
           }}>
             <span style={{ whiteSpace: 'nowrap', fontSize: '0.9rem', fontWeight: '500', opacity: 0.6 }}>Вопрос {currentIdx + 1} из {questions.length}</span>
             <div className="flex-center" style={{ gap: '15px' }}>
@@ -1415,9 +1406,24 @@ const QuizView = ({ session, profile }) => {
                   })}
                 </div>
               )}
-              <h3 style={{ fontSize: '0.95rem', fontWeight: '600', margin: 0, textAlign: 'right' }}>
-                {quiz.title}
-              </h3>
+              <div className="flex-center" style={{ gap: '15px' }}>
+                <h3 style={{ fontSize: '0.95rem', fontWeight: '600', margin: 0, textAlign: 'right' }}>
+                  {quiz.title}
+                </h3>
+                <button
+                  onClick={handleExit}
+                  className="flex-center animate"
+                  style={{ 
+                    width: '32px', height: '32px', borderRadius: '10px', 
+                    background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', 
+                    padding: 0, boxShadow: 'none', border: 'none',
+                    cursor: 'pointer'
+                  }}
+                  title="Выйти из теста"
+                >
+                  <X size={16} />
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1560,11 +1566,11 @@ const QuizView = ({ session, profile }) => {
                       border: `2px solid ${borderColor}`, padding: '18px 25px', borderRadius: '18px',
                       fontSize: '1.05rem', position: 'relative', boxShadow: 'none', transition: 'all 0.2s',
                       height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center',
-                      userSelect: 'none', WebkitUserSelect: 'none',
+                      userSelect: 'none', WebkitUserSelect: 'none', cursor: 'pointer'
                     }}>
-                    <div className="flex-center" style={{ justifyContent: 'space-between', gap: '10px' }}>
-                      <span><MathRenderer text={opt} noSelect={!showResult} /></span>
-                      <div style={{ flexShrink: 0 }}>
+                    <div className="flex-center" style={{ justifyContent: 'space-between', gap: '10px', pointerEvents: 'none' }}>
+                      <span style={{ pointerEvents: 'none' }}><MathRenderer text={opt} noSelect={!showResult} /></span>
+                      <div style={{ flexShrink: 0, pointerEvents: 'none' }}>
                         {!isFirstAttempt && chosen !== undefined && isCorrect && <CheckCircle size={20} color="#4ade80" />}
                         {!isFirstAttempt && chosen !== undefined && isSelected && !isCorrect && <XCircle size={20} color="#f87171" />}
                       </div>
