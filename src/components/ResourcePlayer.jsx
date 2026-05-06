@@ -34,7 +34,6 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
   const timeUpdateRef = useRef(null);
   const hoverTimeoutRef = useRef(null);
 
-  // Key for local storage persistence
   const storageKey = ytId ? `yt_pos_${ytId}` : null;
 
   useEffect(() => {
@@ -218,7 +217,7 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
     aspectRatio: ytId ? '16/9' : 'auto',
     minHeight: ytId ? '265px' : '650px',
     height: 'auto',
-    background: 'var(--card-bg)',
+    background: 'var(--bg-color)',
     borderRadius: '20px',
     border: '1px solid var(--border-color)',
     overflow: 'hidden',
@@ -229,7 +228,7 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
     height: '100%',
     display: 'flex',
     flexDirection: 'column',
-    background: 'var(--card-bg)',
+    background: 'var(--bg-color)',
     overflow: 'hidden'
   };
 
@@ -242,13 +241,13 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
       onMouseMove={handleMouseMove}
       onMouseLeave={() => playerState === 1 && setIsHovered(false)}
     >
-      {/* Header */}
+      {/* Header - Stays at top of container */}
       {inline && (
         <div className="flex-center" style={{ 
             padding: '12px 20px', 
-            background: 'rgba(99, 102, 241, 0.03)', 
+            background: 'rgba(var(--primary-color-rgb), 0.05)', 
             justifyContent: 'space-between', 
-            borderBottom: '1px solid rgba(0,0,0,0.05)',
+            borderBottom: '1px solid var(--border-color)',
             transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
             opacity: showUI ? 1 : 0,
             transform: showUI ? 'translateY(0)' : 'translateY(-20px)',
@@ -264,7 +263,7 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
             <button
               onClick={onOpenModal}
               className="flex-center"
-              style={{ background: 'rgba(99, 102, 241, 0.1)', padding: '6px', borderRadius: '8px', color: 'var(--primary-color)', boxShadow: 'none', border: 'none' }}
+              style={{ background: 'rgba(var(--primary-color-rgb), 0.1)', padding: '6px', borderRadius: '8px', color: 'var(--primary-color)', boxShadow: 'none', border: 'none' }}
             >
               <Maximize2 size={16} />
             </button>
@@ -273,213 +272,218 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
       )}
 
       {/* Main Content Area */}
-      <div style={{ flex: 1, position: 'relative', background: 'var(--bg-color)', overflow: 'hidden' }}>
+      <div style={{ flex: 1, position: 'relative', background: 'var(--bg-color)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {ytId ? (
-          <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}>
-            {/* Masking Bars - THEME AWARE */}
-            <div style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              height: '110px',
-              background: 'linear-gradient(to bottom, var(--bg-color) 0%, var(--bg-color) 70%, transparent 100%)',
-              zIndex: 15,
-              pointerEvents: 'none',
-              opacity: showUI ? 1 : 0,
-              transform: showUI ? 'translateY(0)' : 'translateY(-100%)',
-              transition: 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
-              willChange: 'transform, opacity'
-            }} />
+          <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             
-            <div style={{
-              position: 'absolute',
-              bottom: 0,
-              left: 0,
-              right: 0,
-              height: '170px',
-              background: 'linear-gradient(to top, var(--bg-color) 0%, var(--bg-color) 70%, transparent 100%)',
-              zIndex: 15,
-              pointerEvents: 'none',
-              opacity: showUI ? 1 : 0,
-              transform: showUI ? 'translateY(0)' : 'translateY(100%)',
-              transition: 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
-              willChange: 'transform, opacity'
-            }} />
+            {/* THE VIDEO BOX (16:9 Forced) - ALL UI IS NOW RELATIVE TO THIS BOX */}
+            <div style={{ width: '100%', aspectRatio: '16/9', position: 'relative', overflow: 'hidden', background: '#000', boxShadow: '0 10px 40px rgba(0,0,0,0.2)' }}>
+                <div id={`yt-player-${inline ? 'inline' : 'modal'}-${activeIdx}`} style={{ width: '100%', height: '100%' }}></div>
+                
+                {/* PAUSE DIMMING */}
+                {playerState !== 1 && (
+                  <div 
+                    onClick={togglePlay}
+                    style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <div style={{ width: '70px', height: '70px', borderRadius: '35px', background: 'var(--primary-color)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 40px rgba(var(--primary-color-rgb), 0.6)' }}>
+                      <Play size={34} fill="currentColor" style={{ marginLeft: '4px' }} />
+                    </div>
+                  </div>
+                )}
 
+                {/* THEME MASKS - NOW RELATIVE TO THE VIDEO BOX */}
+                <div style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: '80px',
+                  background: 'linear-gradient(to bottom, var(--bg-color) 0%, var(--bg-color) 70%, transparent 100%)',
+                  zIndex: 15,
+                  pointerEvents: 'none',
+                  opacity: showUI ? 1 : 0,
+                  transform: showUI ? 'translateY(0)' : 'translateY(-100%)',
+                  transition: 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
+                  willChange: 'transform, opacity'
+                }} />
+                
+                <div style={{
+                  position: 'absolute',
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  height: '110px',
+                  background: 'linear-gradient(to top, var(--bg-color) 0%, var(--bg-color) 70%, transparent 100%)',
+                  zIndex: 15,
+                  pointerEvents: 'none',
+                  opacity: showUI ? 1 : 0,
+                  transform: showUI ? 'translateY(0)' : 'translateY(100%)',
+                  transition: 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
+                  willChange: 'transform, opacity'
+                }} />
+
+                {/* CONTROLS - NOW RELATIVE TO THE VIDEO BOX */}
+                <div 
+                  className="player-controls"
+                  style={{
+                    position: 'absolute',
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    padding: '20px 30px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '12px',
+                    transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+                    opacity: showUI ? 1 : 0,
+                    transform: showUI ? 'translateY(0)' : 'translateY(10px)',
+                    zIndex: 20,
+                    color: 'var(--text-main)'
+                  }}
+                >
+                  <div style={{ position: 'relative', width: '100%', height: '6px', background: 'rgba(var(--text-main-rgb), 0.1)', borderRadius: '3px', cursor: 'pointer' }}>
+                    <input 
+                      type="range"
+                      min="0"
+                      max={duration || 100}
+                      step="0.1"
+                      value={currentTime}
+                      onChange={handleSeek}
+                      onClick={(e) => e.stopPropagation()}
+                      style={{
+                        position: 'absolute',
+                        top: '-10px',
+                        left: 0,
+                        width: '100%',
+                        height: '26px',
+                        opacity: 0,
+                        zIndex: 25,
+                        cursor: 'pointer',
+                        margin: 0,
+                        padding: 0,
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                    <div style={{ 
+                      position: 'absolute', 
+                      left: 0, 
+                      top: 0, 
+                      height: '100%', 
+                      width: `${(currentTime / (duration || 1)) * 100}%`, 
+                      background: 'var(--primary-color)',
+                      borderRadius: '3px',
+                      boxShadow: '0 0 10px var(--primary-color)',
+                      transition: 'width 0.1s linear'
+                    }} />
+                  </div>
+
+                  <div className="flex-center" style={{ justifyContent: 'space-between' }}>
+                    <div className="flex-center" style={{ gap: '15px' }}>
+                      <button onClick={togglePlay} style={{ background: 'transparent', color: 'inherit', padding: 0, boxShadow: 'none', border: 'none' }}>
+                        {playerState === 1 ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />}
+                      </button>
+                      
+                      <div className="flex-center" style={{ gap: '10px' }}>
+                        <button onClick={toggleMute} style={{ background: 'transparent', color: 'inherit', padding: 0, boxShadow: 'none', border: 'none' }}>
+                          {isMuted || volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}
+                        </button>
+                        <div style={{ width: '80px', height: '4px', background: 'rgba(var(--text-main-rgb), 0.1)', borderRadius: '2px', position: 'relative', cursor: 'pointer' }}>
+                            <input 
+                              type="range"
+                              min="0"
+                              max="100"
+                              value={isMuted ? 0 : volume}
+                              onChange={handleVolume}
+                              onClick={(e) => e.stopPropagation()}
+                              style={{ 
+                                position: 'absolute',
+                                inset: 0,
+                                width: '100%', 
+                                height: '100%', 
+                                cursor: 'pointer', 
+                                opacity: 0,
+                                zIndex: 2,
+                                margin: 0,
+                                padding: 0
+                              }}
+                            />
+                            <div style={{ 
+                                position: 'absolute', 
+                                left: 0, 
+                                top: 0, 
+                                height: '100%', 
+                                width: `${isMuted ? 0 : volume}%`, 
+                                background: 'var(--text-main)', 
+                                borderRadius: '2px',
+                                opacity: 0.8
+                            }} />
+                        </div>
+                      </div>
+
+                      <span style={{ color: 'inherit', fontSize: '0.85rem', fontWeight: '500', minWidth: '100px', textAlign: 'left', opacity: 0.8 }}>
+                        {formatTime(currentTime)} / {formatTime(duration)}
+                      </span>
+                    </div>
+
+                    <div className="flex-center" style={{ gap: '15px', position: 'relative' }}>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); setShowSettings(!showSettings); }} 
+                        style={{ background: 'transparent', color: 'inherit', padding: 0, boxShadow: 'none', border: 'none' }}
+                      >
+                        <Settings size={20} style={{ transform: showSettings ? 'rotate(90deg)' : 'none', transition: 'transform 0.3s' }} />
+                      </button>
+
+                      {showSettings && (
+                        <div style={{
+                          position: 'absolute',
+                          bottom: '40px',
+                          right: 0,
+                          background: 'var(--card-bg)',
+                          backdropFilter: 'blur(15px)',
+                          borderRadius: '12px',
+                          padding: '8px',
+                          border: '1px solid var(--border-color)',
+                          minWidth: '130px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '4px',
+                          zIndex: 100,
+                          boxShadow: '0 10px 30px rgba(0,0,0,0.1)'
+                        }}>
+                          <p style={{ margin: '4px 0 6px 8px', fontSize: '0.65rem', color: 'var(--text-main)', opacity: 0.4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Скорость</p>
+                          {[0.5, 0.75, 1, 1.25, 1.5, 2].map(rate => (
+                            <button 
+                              key={rate}
+                              onClick={(e) => { e.stopPropagation(); setPlaybackRate(rate); if (player) player.setPlaybackRate(rate); setShowSettings(false); }}
+                              style={{
+                                padding: '8px 12px',
+                                background: playbackRate === rate ? 'var(--primary-color)' : 'transparent',
+                                color: playbackRate === rate ? 'white' : 'var(--text-main)',
+                                fontSize: '0.8rem',
+                                textAlign: 'left',
+                                borderRadius: '8px',
+                                boxShadow: 'none',
+                                fontWeight: playbackRate === rate ? 'bold' : 'normal',
+                                border: 'none'
+                              }}
+                            >
+                              {rate === 1 ? 'Обычная' : `${rate}x`}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+            </div>
+
+            {/* INTERACTION LAYER */}
             <div 
               onClick={togglePlay}
               style={{ position: 'absolute', inset: 0, zIndex: 10, cursor: 'pointer' }}
             ></div>
-
-            <div style={{ width: '100%', height: '100%', position: 'relative' }}>
-                <div id={`yt-player-${inline ? 'inline' : 'modal'}-${activeIdx}`} style={{ width: '100%', height: '100%' }}></div>
-            </div>
             
-            <div 
-              className="player-controls"
-              style={{
-                position: 'absolute',
-                bottom: 0,
-                left: 0,
-                right: 0,
-                padding: '20px 30px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '12px',
-                transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-                opacity: showUI ? 1 : 0,
-                transform: showUI ? 'translateY(0)' : 'translateY(10px)',
-                zIndex: 20,
-                color: 'var(--text-main)'
-              }}
-            >
-              {/* Progress Slider Container */}
-              <div style={{ position: 'relative', width: '100%', height: '6px', background: 'rgba(99, 102, 241, 0.2)', borderRadius: '3px', cursor: 'pointer' }}>
-                <input 
-                  type="range"
-                  min="0"
-                  max={duration || 100}
-                  step="0.1"
-                  value={currentTime}
-                  onChange={handleSeek}
-                  onClick={(e) => e.stopPropagation()}
-                  style={{
-                    position: 'absolute',
-                    top: '-10px',
-                    left: 0,
-                    width: '100%',
-                    height: '26px',
-                    opacity: 0,
-                    zIndex: 25,
-                    cursor: 'pointer',
-                    margin: 0,
-                    padding: 0,
-                    boxSizing: 'border-box'
-                  }}
-                />
-                <div style={{ 
-                  position: 'absolute', 
-                  left: 0, 
-                  top: 0, 
-                  height: '100%', 
-                  width: `${(currentTime / (duration || 1)) * 100}%`, 
-                  background: 'var(--primary-color)',
-                  borderRadius: '3px',
-                  boxShadow: '0 0 10px var(--primary-color)',
-                  transition: 'width 0.1s linear'
-                }} />
-              </div>
-
-              <div className="flex-center" style={{ justifyContent: 'space-between' }}>
-                <div className="flex-center" style={{ gap: '15px' }}>
-                  <button onClick={togglePlay} style={{ background: 'transparent', color: 'inherit', padding: 0, boxShadow: 'none', border: 'none' }}>
-                    {playerState === 1 ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />}
-                  </button>
-                  
-                  <div className="flex-center" style={{ gap: '10px' }}>
-                    <button onClick={toggleMute} style={{ background: 'transparent', color: 'inherit', padding: 0, boxShadow: 'none', border: 'none' }}>
-                      {isMuted || volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}
-                    </button>
-                    <div style={{ width: '80px', height: '4px', background: 'rgba(0,0,0,0.1)', borderRadius: '2px', position: 'relative', cursor: 'pointer' }}>
-                        <input 
-                          type="range"
-                          min="0"
-                          max="100"
-                          value={isMuted ? 0 : volume}
-                          onChange={handleVolume}
-                          onClick={(e) => e.stopPropagation()}
-                          style={{ 
-                            position: 'absolute',
-                            inset: 0,
-                            width: '100%', 
-                            height: '100%', 
-                            cursor: 'pointer', 
-                            opacity: 0,
-                            zIndex: 2,
-                            margin: 0,
-                            padding: 0
-                          }}
-                        />
-                        <div style={{ 
-                            position: 'absolute', 
-                            left: 0, 
-                            top: 0, 
-                            height: '100%', 
-                            width: `${isMuted ? 0 : volume}%`, 
-                            background: 'var(--text-main)', 
-                            borderRadius: '2px',
-                            opacity: 0.8
-                        }} />
-                    </div>
-                  </div>
-
-                  <span style={{ color: 'inherit', fontSize: '0.85rem', fontWeight: '500', minWidth: '100px', textAlign: 'left', opacity: 0.8 }}>
-                    {formatTime(currentTime)} / {formatTime(duration)}
-                  </span>
-                </div>
-
-                <div className="flex-center" style={{ gap: '15px', position: 'relative' }}>
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); setShowSettings(!showSettings); }} 
-                    style={{ background: 'transparent', color: 'inherit', padding: 0, boxShadow: 'none', border: 'none' }}
-                  >
-                    <Settings size={20} style={{ transform: showSettings ? 'rotate(90deg)' : 'none', transition: 'transform 0.3s' }} />
-                  </button>
-
-                  {showSettings && (
-                    <div style={{
-                      position: 'absolute',
-                      bottom: '40px',
-                      right: 0,
-                      background: 'var(--card-bg)',
-                      backdropFilter: 'blur(15px)',
-                      borderRadius: '12px',
-                      padding: '8px',
-                      border: '1px solid var(--border-color)',
-                      minWidth: '130px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '4px',
-                      zIndex: 100,
-                      boxShadow: '0 10px 30px rgba(0,0,0,0.1)'
-                    }}>
-                      <p style={{ margin: '4px 0 6px 8px', fontSize: '0.65rem', color: 'var(--text-main)', opacity: 0.4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Скорость</p>
-                      {[0.5, 0.75, 1, 1.25, 1.5, 2].map(rate => (
-                        <button 
-                          key={rate}
-                          onClick={(e) => { e.stopPropagation(); setPlaybackRate(rate); if (player) player.setPlaybackRate(rate); setShowSettings(false); }}
-                          style={{
-                            padding: '8px 12px',
-                            background: playbackRate === rate ? 'var(--primary-color)' : 'transparent',
-                            color: playbackRate === rate ? 'white' : 'var(--text-main)',
-                            fontSize: '0.8rem',
-                            textAlign: 'left',
-                            borderRadius: '8px',
-                            boxShadow: 'none',
-                            fontWeight: playbackRate === rate ? 'bold' : 'normal',
-                            border: 'none'
-                          }}
-                        >
-                          {rate === 1 ? 'Обычная' : `${rate}x`}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-            
-            {playerState !== 1 && (
-              <div 
-                onClick={togglePlay}
-                style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', cursor: 'pointer', zIndex: 15, transition: 'all 0.1s' }}
-              >
-                <div style={{ width: '70px', height: '70px', borderRadius: '35px', background: 'var(--primary-color)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 40px rgba(99, 102, 241, 0.6)', transform: 'scale(1)', transition: 'transform 0.1s' }}>
-                  <Play size={34} fill="currentColor" style={{ marginLeft: '4px' }} />
-                </div>
-              </div>
-            )}
           </div>
         ) : (
           <div style={{ height: inline ? '300px' : '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px', textAlign: 'center' }}>
