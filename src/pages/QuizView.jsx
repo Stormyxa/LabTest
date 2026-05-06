@@ -51,8 +51,8 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
     height: 'calc(100vh - 67px)',
     display: 'flex',
     flexDirection: 'column',
-    background: 'white',
-    borderRight: '1px solid rgba(0,0,0,0.1)',
+    background: 'var(--card-bg)',
+    borderRight: '1px solid var(--border-color)',
     position: 'sticky',
     top: 0,
     overflow: 'hidden'
@@ -84,7 +84,7 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
             <iframe
               width="100%"
               height="100%"
-              src={`https://www.youtube.com/embed/${ytId}?rel=0&modestbranding=1&showinfo=0&autoplay=0`}
+              src={`https://www.youtube.com/embed/${ytId}?rel=0&controls=1&iv_load_policy=3&disablekb=1`}
               title={res.title}
               frameBorder="0"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -1367,7 +1367,7 @@ const QuizView = ({ session, profile }) => {
 
         <div className="animate" style={{
           maxWidth: '800px',
-          padding: isMobile ? '60px 20px 130px' : '60px 20px 0px',
+          padding: isMobile ? '60px 10px 130px' : '60px 20px 0px',
           position: 'relative',
           margin: '0 auto'
         }}>

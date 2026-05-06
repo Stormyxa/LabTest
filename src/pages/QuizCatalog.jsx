@@ -1948,7 +1948,7 @@ const QuizCatalog = ({ profile }) => {
                           key={idx}
                           onClick={() => setActivePrepResourceIdx(idx)}
                           className="flex-center animate"
-                          style={{ cursor: 'pointer', justifyContent: 'space-between', padding: '12px 15px', background: 'white', borderRadius: '12px', color: 'inherit', border: '1px solid rgba(0,0,0,0.05)' }}
+                          style={{ cursor: 'pointer', justifyContent: 'space-between', padding: '12px 15px', background: 'var(--card-bg)', borderRadius: '12px', color: 'inherit', border: '1px solid var(--border-color)' }}
                         >
                           <div className="flex-center" style={{ gap: '12px' }}>
                             <div style={{ color: isYoutube ? '#ef4444' : (isDrive ? '#22c55e' : 'var(--primary-color)') }}>

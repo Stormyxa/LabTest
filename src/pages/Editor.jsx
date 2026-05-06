@@ -913,7 +913,7 @@ const Editor = ({ session, profile }) => {
                             <span style={{ fontWeight: 'bold', fontSize: '0.9rem' }}>Материалы и ресурсы (до 5)</span>
                           </div>
                           {resources.length < 5 && (
-                            <button type="button" onClick={addResource} style={{ padding: '5px 12px', fontSize: '0.8rem', background: 'white', color: 'var(--primary-color)', border: '1px solid rgba(99, 102, 241, 0.2)', boxShadow: 'none' }}>
+                            <button type="button" onClick={addResource} style={{ padding: '5px 12px', fontSize: '0.8rem', background: 'var(--card-bg)', color: 'var(--primary-color)', border: '1px solid var(--border-color)', boxShadow: 'none' }}>
                               <Plus size={14} style={{ marginRight: '5px' }} /> Добавить
                             </button>
                           )}
