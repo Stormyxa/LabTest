@@ -706,22 +706,44 @@ const QuizCatalog = ({ profile }) => {
     }
   }, []);
   const [libraryUsers, setLibraryUsers] = useState([]);
-  const [selectedLibraryUser, setSelectedLibraryUserState] = useState(() => {
+  const [selectedPublicUser, setSelectedPublicUser] = useState(() => {
     try {
-      const saved = sessionStorage.getItem('catalog_selected_user');
+      const saved = sessionStorage.getItem('catalog_selected_public_user');
       return saved ? JSON.parse(saved) : null;
     } catch (e) { return null; }
   });
+  const [selectedSharedUser, setSelectedSharedUser] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem('catalog_selected_shared_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) { return null; }
+  });
+
+  const selectedLibraryUser = activeTab === 'public' ? selectedPublicUser : (activeTab === 'shared' ? selectedSharedUser : null);
+
+  const setSelectedLibraryUserState = (val) => {
+    if (activeTab === 'public') setSelectedPublicUser(val);
+    else if (activeTab === 'shared') setSelectedSharedUser(val);
+  };
+
   const [duplicateModal, setDuplicateModalState] = useState(null);
 
-  // Sync selected user to session storage
+  // Sync selected users to session storage
   useEffect(() => {
-    if (selectedLibraryUser) {
-      sessionStorage.setItem('catalog_selected_user', JSON.stringify(selectedLibraryUser));
+    if (selectedPublicUser) {
+      sessionStorage.setItem('catalog_selected_public_user', JSON.stringify(selectedPublicUser));
     } else {
-      sessionStorage.removeItem('catalog_selected_user');
+      sessionStorage.removeItem('catalog_selected_public_user');
     }
-  }, [selectedLibraryUser]);
+  }, [selectedPublicUser]);
+
+  useEffect(() => {
+    if (selectedSharedUser) {
+      sessionStorage.setItem('catalog_selected_shared_user', JSON.stringify(selectedSharedUser));
+    } else {
+      sessionStorage.removeItem('catalog_selected_shared_user');
+    }
+  }, [selectedSharedUser]);
 
   const [usersLoading, setUsersLoading] = useState(false);
   const fetchIdRef = useRef(0);

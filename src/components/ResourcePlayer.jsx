@@ -161,6 +161,9 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
                     videoId: ytId,
                     startSeconds: savedTime > 5 ? savedTime : 0
                 });
+            } else {
+                // If it's the same video but was paused (e.g. switched from doc), resume it
+                existingPlayer.playVideo();
             }
             setPlayer(existingPlayer);
             return;
