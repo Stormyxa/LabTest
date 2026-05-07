@@ -102,6 +102,15 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
       }
 
       checkAndInit();
+    } else {
+      // Pause if we switched to a non-video resource
+      const playerElementId = `yt-player-${inline ? 'inline' : 'modal'}`;
+      const existingPlayer = window.YT_INSTANCES?.[playerElementId];
+      if (existingPlayer && existingPlayer.pauseVideo) {
+        try {
+          existingPlayer.pauseVideo();
+        } catch (e) {}
+      }
     }
     return () => {
       if (timeUpdateRef.current) clearInterval(timeUpdateRef.current);

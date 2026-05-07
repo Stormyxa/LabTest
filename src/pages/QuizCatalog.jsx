@@ -1381,7 +1381,7 @@ const QuizCatalog = ({ profile }) => {
         </div>
       )}
 
-      {selectedLibraryUser && (
+      {selectedLibraryUser && (activeTab === 'public' || activeTab === 'shared') && (
         <div className="flex-center" style={{ marginBottom: '20px', gap: '10px', justifyContent: 'flex-start' }}>
           <button onClick={() => setSelectedLibraryUserState(null)} style={{ padding: '8px 15px', background: 'rgba(0,0,0,0.05)', color: 'inherit', boxShadow: 'none', borderRadius: '10px' }}>Назад</button>
           <h3 style={{ margin: 0 }}>Библиотека пользователя: {selectedLibraryUser.first_name}</h3>
