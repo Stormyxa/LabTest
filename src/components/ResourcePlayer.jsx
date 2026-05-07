@@ -71,6 +71,12 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
   const persistentTimeoutRef = useRef(null);
   const timeUpdateRef = useRef(null);
   const hoverTimeoutRef = useRef(null);
+  const ytIdRef = useRef(ytId);
+
+  // Keep ref in sync
+  useEffect(() => {
+    ytIdRef.current = ytId;
+  }, [ytId]);
 
   const storageKey = ytId ? `yt_pos_${ytId}` : null;
 
@@ -129,13 +135,28 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
     if (existingPlayer && existingPlayer.loadVideoById) {
         try {
             const currentVideoUrl = existingPlayer.getVideoUrl?.() || "";
+            // Extract old ID from URL to save its time before switching
+            const oldIdMatch = currentVideoUrl.match(/[?&]v=([^&]+)/) || currentVideoUrl.match(/embed\/([^?]+)/) || currentVideoUrl.match(/youtu\.be\/([^?]+)/);
+            const oldId = oldIdMatch ? oldIdMatch[1] : null;
+
+            if (oldId && oldId !== ytId) {
+                const currentTime = existingPlayer.getCurrentTime();
+                if (currentTime > 5) {
+                    localStorage.setItem(`yt_pos_${oldId}`, Math.floor(currentTime).toString());
+                }
+            }
+
             if (!currentVideoUrl.includes(ytId)) {
-                existingPlayer.loadVideoById(ytId);
+                const savedTime = parseInt(localStorage.getItem(`yt_pos_${ytId}`) || "0");
+                existingPlayer.loadVideoById({
+                    videoId: ytId,
+                    startSeconds: savedTime > 5 ? savedTime : 0
+                });
             }
             setPlayer(existingPlayer);
             return;
         } catch(e) {
-            console.warn("Could not reuse YT player, recreating...");
+            console.warn("Could not reuse YT player, recreating...", e);
         }
     }
 
@@ -199,7 +220,10 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
         const t = p.getCurrentTime();
         if (typeof t === 'number') {
           setCurrentTime(t);
-          if (storageKey) localStorage.setItem(storageKey, t.toString());
+          const currentId = ytIdRef.current;
+          if (currentId) {
+            localStorage.setItem(`yt_pos_${currentId}`, t.toString());
+          }
         }
         const d = p.getDuration();
         if (d > 0) setDuration(d);
@@ -254,9 +278,6 @@ const ResourcePlayer = ({ resources, activeIdx, setActiveIdx, isMobile, onOpenMo
     }
   };
 
-  // Stable ref for ytId to use in callbacks
-  const ytIdRef = useRef(ytId);
-  useEffect(() => { ytIdRef.current = ytId; }, [ytId]);
 
   const formatTime = (s) => {
     if (isNaN(s) || s === undefined) return "0:00";

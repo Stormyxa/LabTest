@@ -706,16 +706,29 @@ const QuizCatalog = ({ profile }) => {
     }
   }, []);
   const [libraryUsers, setLibraryUsers] = useState([]);
-  const [selectedLibraryUser, setSelectedLibraryUserState] = useState(null);
+  const [selectedLibraryUser, setSelectedLibraryUserState] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem('catalog_selected_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) { return null; }
+  });
   const [duplicateModal, setDuplicateModalState] = useState(null);
+
+  // Sync selected user to session storage
+  useEffect(() => {
+    if (selectedLibraryUser) {
+      sessionStorage.setItem('catalog_selected_user', JSON.stringify(selectedLibraryUser));
+    } else {
+      sessionStorage.removeItem('catalog_selected_user');
+    }
+  }, [selectedLibraryUser]);
+
   const [usersLoading, setUsersLoading] = useState(false);
   const fetchIdRef = useRef(0);
 
   useEffect(() => {
     sessionStorage.setItem('catalog_tab', activeTab);
-    if (activeTab === 'official' || activeTab === 'personal') {
-      setSelectedLibraryUserState(null);
-    } else if (!selectedLibraryUser) {
+    if (activeTab === 'public' || activeTab === 'shared') {
       const fetchLibraryUsers = async () => {
         setUsersLoading(true);
         try {
@@ -1332,7 +1345,7 @@ const QuizCatalog = ({ profile }) => {
           return (
             <button
               key={tab}
-              onClick={() => { setActiveTab(tab); setSelectedLibraryUserState(null); }}
+              onClick={() => { setActiveTab(tab); }}
               style={{
                 padding: '10px 20px',
                 borderRadius: '20px',
@@ -2186,13 +2199,20 @@ const QuizCatalog = ({ profile }) => {
                   </div>
                 )}
 
-                <button 
-                  onClick={() => window.open(activeStandaloneResource.resources[activeStandaloneResource.index].url, '_blank')} 
-                  style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', padding: '8px', borderRadius: '10px', boxShadow: 'none', cursor: 'pointer' }}
-                  title="Открыть в новой вкладке"
-                >
-                  <ExternalLink size={20} />
-                </button>
+                {(() => {
+                  const res = activeStandaloneResource.resources[activeStandaloneResource.index];
+                  const isYoutube = res.url.includes('youtube.com') || res.url.includes('youtu.be');
+                  if (isYoutube) return null;
+                  return (
+                    <button 
+                      onClick={() => window.open(res.url, '_blank')} 
+                      style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', padding: '8px', borderRadius: '10px', boxShadow: 'none', cursor: 'pointer' }}
+                      title="Открыть в новой вкладке"
+                    >
+                      <ExternalLink size={20} />
+                    </button>
+                  );
+                })()}
                 <button onClick={() => setActiveStandaloneResource(null)} style={{ background: 'transparent', boxShadow: 'none' }}><X size={20} /></button>
               </div>
             </div>
