@@ -1356,7 +1356,11 @@ const QuizView = ({ session, profile }) => {
           {isBlurred && createPortal(
             <div style={{
               position: 'fixed', inset: 0, zIndex: 99999,
-              backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+              backdropFilter: 'blur(20px)', 
+              WebkitBackdropFilter: 'blur(20px)',
+              MozBackdropFilter: 'blur(20px)',
+              msBackdropFilter: 'blur(20px)',
+              OBackdropFilter: 'blur(20px)',
               background: 'rgba(0,0,0,0.5)',
               display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '20px',
               color: 'white', textAlign: 'center', padding: '20px'
