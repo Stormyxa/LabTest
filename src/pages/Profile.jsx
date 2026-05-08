@@ -4,6 +4,9 @@ import { supabase } from '../lib/supabase';
 import { User, Mail, Calendar, GraduationCap, CheckCircle, Award, FileText, TrendingUp, Star, MapPin, Building, Shield, ShieldOff, Zap, BarChart2, Clock, XCircle, Info, AlertCircle, Check, AlertTriangle, Sparkles, Copy, RefreshCw } from 'lucide-react';
 import { buildStudentPrompt, downloadJSON } from '../lib/aiPromptBuilder';
 import { getCachedData } from '../lib/cache';
+import { buildAiCacheKey } from '../lib/aiService';
+import AiAnalysisModal from '../components/AiAnalysisModal';
+import { ChevronDown } from 'lucide-react';
 
 const Profile = ({ session, profile, refreshProfile }) => {
   const location = useLocation();
@@ -50,6 +53,11 @@ const Profile = ({ session, profile, refreshProfile }) => {
   const [isEmailConfirmed, setIsEmailConfirmed] = useState(true); // Default to true, will check session
   const [userBlacklistedClasses, setUserBlacklistedClasses] = useState([]);
   const [toast, setToast] = useState({ visible: false, opacity: 0 });
+  
+  // AI Modal States
+  const [showAiModal, setShowAiModal] = useState(false);
+  const [aiData, setAiData] = useState(null);
+  const [showLegacy, setShowLegacy] = useState(false);
 
   useEffect(() => {
     localStorage.setItem('quiz_auto_advance', autoAdvance);
@@ -482,61 +490,108 @@ const Profile = ({ session, profile, refreshProfile }) => {
                 <span>Нужно 10+ попыток (у вас {attemptCount})</span>
               </div>
             ) : (
-              <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px', marginTop: '15px' }}>
                 <button
                   onClick={async () => {
-                    setAiPromptStatus('loading_copy');
+                    setAiPromptStatus('loading_ai');
                     try {
                       const result = await buildStudentPrompt(session.user.id, 'student');
                       if (result && result.instruction) {
-                        await navigator.clipboard.writeText(result.instruction);
-                        setAiPromptStatus('copied');
-                        setTimeout(() => setAiPromptStatus('idle'), 2500);
+                        setAiData(result);
+                        setShowAiModal(true);
                       } else setAiPromptStatus('error');
                     } catch (e) { setAiPromptStatus('error'); }
+                    setAiPromptStatus('idle');
                   }}
                   disabled={aiPromptStatus.startsWith('loading') || attemptCount === null}
                   className="flex-center"
                   style={{
-                    flex: 1.2, padding: '10px', borderRadius: '12px', fontWeight: 'bold', fontSize: '0.8rem',
-                    background: aiPromptStatus === 'copied' ? 'rgba(34, 197, 94, 0.1)' : 'linear-gradient(135deg, rgba(168, 85, 247, 0.1), rgba(99, 102, 241, 0.1))',
-                    color: aiPromptStatus === 'copied' ? '#16a34a' : '#a855f7',
-                    boxShadow: 'none', border: '1px solid ' + (aiPromptStatus === 'copied' ? '#16a34a33' : '#a855f733'), gap: '6px',
-                    cursor: (aiPromptStatus.startsWith('loading') || attemptCount === null) ? 'wait' : 'pointer'
+                    width: '100%', padding: '12px', borderRadius: '15px', fontWeight: 'bold', fontSize: '0.9rem',
+                    background: 'linear-gradient(135deg, #7c3aed, #6366f1)',
+                    color: 'white', border: 'none',
+                    boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)', gap: '8px',
+                    cursor: (aiPromptStatus.startsWith('loading') || attemptCount === null) ? 'wait' : 'pointer',
+                    transition: 'all 0.3s'
                   }}
                 >
-                  {aiPromptStatus === 'loading_copy' ? <RefreshCw size={14} className="spinner" /> : aiPromptStatus === 'copied' ? <Check size={14} /> : <Copy size={14} />}
-                  {aiPromptStatus === 'copied' ? 'Промпт скопирован' : 'Копировать промпт'}
+                  {aiPromptStatus === 'loading_ai' ? <RefreshCw size={16} className="spinner" /> : <Sparkles size={16} />}
+                  Запустить ИИ-Анализ
                 </button>
 
-                <button
-                  onClick={async () => {
-                    setAiPromptStatus('loading_file');
-                    try {
-                      const result = await buildStudentPrompt(session.user.id, 'student');
-                      if (result && result.data) {
-                        downloadJSON(result.data, result.filename);
-                        setAiPromptStatus('downloaded');
-                        setTimeout(() => setAiPromptStatus('idle'), 2500);
-                      } else setAiPromptStatus('error');
-                    } catch (e) { setAiPromptStatus('error'); }
-                  }}
-                  disabled={aiPromptStatus.startsWith('loading') || attemptCount === null}
-                  className="flex-center"
-                  style={{
-                    flex: 0.8, padding: '10px', borderRadius: '12px', fontWeight: 'bold', fontSize: '0.8rem',
-                    background: aiPromptStatus === 'downloaded' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(99, 102, 241, 0.05)',
-                    color: aiPromptStatus === 'downloaded' ? '#16a34a' : 'var(--primary-color)',
-                    boxShadow: 'none', border: '1px solid ' + (aiPromptStatus === 'downloaded' ? '#16a34a33' : 'rgba(99, 102, 241, 0.1)'), gap: '6px',
-                    cursor: (aiPromptStatus.startsWith('loading') || attemptCount === null) ? 'wait' : 'pointer'
-                  }}
-                  title="Скачать данные в формате JSON"
-                >
-                  {aiPromptStatus === 'loading_file' ? <RefreshCw size={14} className="spinner" /> : aiPromptStatus === 'downloaded' ? <Check size={14} /> : <FileText size={14} />}
-                  JSON
+                {/* Legacy buttons toggle */}
+                <button className="ai-legacy-toggle" onClick={() => setShowLegacy(p => !p)} style={{ marginTop: '5px' }}>
+                  <ChevronDown size={12} style={{ transform: showLegacy ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+                  Ручной режим (старые кнопки)
                 </button>
+
+                <div className={`ai-legacy-panel ${showLegacy ? 'open' : ''}`} style={{ width: '100%' }}>
+                  <div className="ai-legacy-hint">Если вы хотите использовать внешний ИИ чат</div>
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <button
+                      onClick={async () => {
+                        setAiPromptStatus('loading_copy');
+                        try {
+                          const result = await buildStudentPrompt(session.user.id, 'student');
+                          if (result && result.instruction) {
+                            await navigator.clipboard.writeText(result.instruction);
+                            setAiPromptStatus('copied');
+                            setTimeout(() => setAiPromptStatus('idle'), 2500);
+                          } else setAiPromptStatus('error');
+                        } catch (e) { setAiPromptStatus('error'); }
+                      }}
+                      disabled={aiPromptStatus.startsWith('loading') || attemptCount === null}
+                      className="flex-center"
+                      style={{
+                        flex: 1, padding: '10px', borderRadius: '12px', fontWeight: 'bold', fontSize: '0.8rem',
+                        background: aiPromptStatus === 'copied' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(168, 85, 247, 0.05)',
+                        color: aiPromptStatus === 'copied' ? '#16a34a' : '#a855f7',
+                        boxShadow: 'none', border: '1px solid ' + (aiPromptStatus === 'copied' ? '#16a34a33' : '#a855f733'), gap: '6px'
+                      }}
+                    >
+                      {aiPromptStatus === 'loading_copy' ? <RefreshCw size={14} className="spinner" /> : aiPromptStatus === 'copied' ? <Check size={14} /> : <Copy size={14} />}
+                      Промпт
+                    </button>
+
+                    <button
+                      onClick={async () => {
+                        setAiPromptStatus('loading_file');
+                        try {
+                          const result = await buildStudentPrompt(session.user.id, 'student');
+                          if (result && result.data) {
+                            downloadJSON(result.data, result.filename);
+                            setAiPromptStatus('downloaded');
+                            setTimeout(() => setAiPromptStatus('idle'), 2500);
+                          } else setAiPromptStatus('error');
+                        } catch (e) { setAiPromptStatus('error'); }
+                      }}
+                      disabled={aiPromptStatus.startsWith('loading') || attemptCount === null}
+                      className="flex-center"
+                      style={{
+                        flex: 1, padding: '10px', borderRadius: '12px', fontWeight: 'bold', fontSize: '0.8rem',
+                        background: aiPromptStatus === 'downloaded' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(99, 102, 241, 0.05)',
+                        color: aiPromptStatus === 'downloaded' ? '#16a34a' : 'var(--primary-color)',
+                        boxShadow: 'none', border: '1px solid ' + (aiPromptStatus === 'downloaded' ? '#16a34a33' : 'rgba(99, 102, 241, 0.1)'), gap: '6px'
+                      }}
+                    >
+                      {aiPromptStatus === 'loading_file' ? <RefreshCw size={14} className="spinner" /> : aiPromptStatus === 'downloaded' ? <Check size={14} /> : <FileText size={14} />}
+                      JSON
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
+            
+            <AiAnalysisModal
+              isOpen={showAiModal}
+              onClose={() => setShowAiModal(false)}
+              title="Ваш личный ИИ-наставник"
+              cacheKey={buildAiCacheKey('student', session.user.id, 'student')}
+              contextType="student"
+              contextId={session.user.id}
+              viewerRole="student"
+              instruction={aiData?.instruction}
+              data={aiData?.data}
+            />
             {aiPromptLastUpdate && (
               <div style={{ marginTop: '8px', fontSize: '0.7rem', opacity: 0.4, textAlign: 'center' }}>
                 Данные обновляются автоматически каждый час

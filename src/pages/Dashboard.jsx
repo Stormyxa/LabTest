@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase';
 import { fetchWithCache, useCacheSync } from '../lib/cache';
 import { User, Shield, Search, Edit3, Trash2, Mail, X, AlertTriangle, MapPin, Building, GraduationCap, Plus, History, Ban, ShieldAlert, Unlock, Eye, EyeOff, Zap, ChevronDown, ChevronRight, Settings, Users, UserPlus, UserMinus, ArrowUp, ArrowDown, UserCheck, CheckCircle, XCircle, Sparkles, Check, RefreshCw, FileText } from 'lucide-react';
 import { buildClassPrompt, downloadJSON } from '../lib/aiPromptBuilder';
+import { buildAiCacheKey } from '../lib/aiService';
+import AiAnalysisModal from '../components/AiAnalysisModal';
 import { useScrollRestoration } from '../lib/useScrollRestoration';
 
 const DashboardSkeleton = () => (
@@ -155,7 +157,7 @@ const Dashboard = ({ session, profile }) => {
     if (c) {
       if (profile?.role === 'teacher') {
         // Filter cities that have schools that have assigned classes
-        const filteredCities = c.filter(city => 
+        const filteredCities = c.filter(city =>
           s.some(school => school.city_id === city.id && cl.some(cls => cls.school_id === school.id && assignedClasses.includes(cls.id)))
         );
         setCities(filteredCities);
@@ -163,7 +165,7 @@ const Dashboard = ({ session, profile }) => {
         setCities(c);
       }
     }
-    
+
     if (s) {
       if (profile?.role === 'teacher') {
         const filteredSchools = s.filter(school => cl.some(cls => cls.school_id === school.id && assignedClasses.includes(cls.id)));
@@ -212,7 +214,7 @@ const Dashboard = ({ session, profile }) => {
   const cacheSuffix = profile?.role || 'anon';
   useCacheSync(`cities_${cacheSuffix}`, (data) => { if (data) setCities(data); });
   useCacheSync(`schools_${cacheSuffix}`, (data) => { if (data) setSchools(data); });
-  useCacheSync(`classes_${cacheSuffix}`, (data) => { 
+  useCacheSync(`classes_${cacheSuffix}`, (data) => {
     if (data) {
       if (profile?.role === 'teacher') {
         // We need teacherClasses state to filter correctly in sync
@@ -226,16 +228,16 @@ const Dashboard = ({ session, profile }) => {
   // --- REALTIME SUBSCRIPTIONS ---
   useEffect(() => {
     if (!profile) return;
-    
+
     // Подписка на новые заявки
     const appsChannel = supabase.channel('class_apps_realtime')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'class_applications' }, (payload) => {
         const newApp = payload.new;
         // Если заявка в класс этого учителя (или он админ)
         if (profile.role === 'admin' || profile.role === 'creator' || teacherClasses.includes(newApp.class_id)) {
-           // Перезагружаем список заявок для этого класса
-           fetchClassApplications(newApp.class_id);
-           setActionFeedback({ type: 'success', message: 'Получена новая заявка в класс!' });
+          // Перезагружаем список заявок для этого класса
+          fetchClassApplications(newApp.class_id);
+          setActionFeedback({ type: 'success', message: 'Получена новая заявка в класс!' });
         }
       })
       .subscribe();
@@ -336,22 +338,22 @@ const Dashboard = ({ session, profile }) => {
     await supabase.from('audit_logs').insert({ admin_id: session.user.id, action, target_id: targetId, reason });
   };
 
-  const handleCreateCity = async (e) => { 
+  const handleCreateCity = async (e) => {
     e.preventDefault();
-    if (!newCity.trim()) return; 
-    await supabase.from('cities').insert({ name: newCity.trim() }); 
-    setNewCity(''); 
+    if (!newCity.trim()) return;
+    await supabase.from('cities').insert({ name: newCity.trim() });
+    setNewCity('');
     setAddingCity(false);
-    fetchStructure(); 
+    fetchStructure();
   };
 
-  const handleCreateSchool = async (e) => { 
+  const handleCreateSchool = async (e) => {
     e.preventDefault();
-    if (!newSchool.trim() || !newSchoolCityId) return; 
-    await supabase.from('schools').insert({ name: newSchool.trim(), city_id: newSchoolCityId, order_index: schools.length }); 
-    setNewSchool(''); 
+    if (!newSchool.trim() || !newSchoolCityId) return;
+    await supabase.from('schools').insert({ name: newSchool.trim(), city_id: newSchoolCityId, order_index: schools.length });
+    setNewSchool('');
     setAddingSchool(false);
-    fetchStructure(); 
+    fetchStructure();
   };
 
   const handleCreateClass = async (e) => {
@@ -393,7 +395,7 @@ const Dashboard = ({ session, profile }) => {
 
   const removeStudentFromClass = async () => {
     if (!removingStudent) return;
-    
+
     const cid = removingStudent.class_id;
     let email = removingStudent.email;
     const isBlacklist = removingStudent.blacklist;
@@ -405,14 +407,14 @@ const Dashboard = ({ session, profile }) => {
     }
 
     if (isBlacklist && !email) {
-       setRemovingStudent(null);
-       setActionFeedback({ type: 'error', message: 'Ошибка: Почта ученика не найдена. Бан невозможен.' });
-       return;
+      setRemovingStudent(null);
+      setActionFeedback({ type: 'error', message: 'Ошибка: Почта ученика не найдена. Бан невозможен.' });
+      return;
     }
 
     // 1. Убираем из состава
     const { error } = await supabase.from('profiles').update({ class_id: null }).eq('id', removingStudent.id);
-    
+
     if (error) {
       setActionFeedback({ type: 'error', message: 'Ошибка при удалении: ' + error.message });
       return;
@@ -434,9 +436,9 @@ const Dashboard = ({ session, profile }) => {
     }
 
     if (!error) {
-      await logAction(isBlacklist ? `Бан в классе` : `Удаление из класса`, removingStudent.id, 
+      await logAction(isBlacklist ? `Бан в классе` : `Удаление из класса`, removingStudent.id,
         isBlacklist ? `Исключен и заблокирован в классе` : `Убран из состава класса`);
-      
+
       // Update local state without crashing
       setClassStudents(prev => {
         const updated = { ...prev };
@@ -445,14 +447,14 @@ const Dashboard = ({ session, profile }) => {
         });
         return updated;
       });
-      
+
       setRemovingStudent(null);
       fetchUsers();
-      setActionFeedback({ 
-        type: 'success', 
-        message: isBlacklist 
-          ? 'Ученик исключен и занесен в черный список класса!' 
-          : 'Ученик успешно убран из состава класса!' 
+      setActionFeedback({
+        type: 'success',
+        message: isBlacklist
+          ? 'Ученик исключен и занесен в черный список класса!'
+          : 'Ученик успешно убран из состава класса!'
       });
     } else {
       setRemovingStudent(null);
@@ -462,9 +464,9 @@ const Dashboard = ({ session, profile }) => {
 
   const updateClassLimit = async () => {
     if (!editingClassLimit) return;
-    
+
     let finalLimit = newLimit;
-    
+
     // Если ввели 0 (или очистили поле), по умолчанию ставим 50
     if (finalLimit === 0) {
       finalLimit = 50;
@@ -477,11 +479,11 @@ const Dashboard = ({ session, profile }) => {
       }
     }
 
-    const { error } = await supabase.rpc('update_class_limit', { 
-      p_class_id: editingClassLimit.id, 
-      p_new_limit: finalLimit 
+    const { error } = await supabase.rpc('update_class_limit', {
+      p_class_id: editingClassLimit.id,
+      p_new_limit: finalLimit
     });
-    
+
     if (!error) {
       fetchStructure();
       setEditingClassLimit(null);
@@ -549,19 +551,19 @@ const Dashboard = ({ session, profile }) => {
       .select('*, profiles(id, first_name, last_name, patronymic)')
       .eq('class_id', cid)
       .eq('status', 'pending');
-    
+
     if (error) {
       // console.error("DEBUG: Error fetching applications:", error);
     }
     // console.log("DEBUG: Applications raw data from DB:", data);
-    
+
     if (data) setClassApplications(prev => ({ ...prev, [cid]: data }));
     else setClassApplications(prev => ({ ...prev, [cid]: [] }));
   };
 
   const handleApplication = async (app, status) => {
     // console.log(`DEBUG: Handling application ${app.id} for user ${app.user_id} with status: ${status}`);
-    
+
     // 1. Update Profile first
     let profileUpdate;
     if (status === 'accepted') {
@@ -582,7 +584,7 @@ const Dashboard = ({ session, profile }) => {
 
     // 2. Delete the application record to avoid "duplicate key" issues later
     const { error: deleteError } = await supabase.from('class_applications').delete().eq('id', app.id);
-    
+
     if (deleteError) {
       // console.error("DEBUG: Application deletion error:", deleteError);
     }
@@ -618,454 +620,454 @@ const Dashboard = ({ session, profile }) => {
   return (
     <>
       <div className="container animate" style={{ padding: '40px 20px' }}>
-      <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '40px', flexWrap: 'wrap', gap: '20px' }}>
-        <div className="flex-center" style={{ gap: '20px' }}>
-          <div>
-            <h2 style={{ fontSize: '2rem', marginBottom: '5px' }}>Панель управления</h2>
-            <p style={{ opacity: 0.5, margin: 0 }}>Управление доступом, пользователями и структурой</p>
-          </div>
-          {(profile?.role === 'admin' || profile?.role === 'creator') && (
-            <button onClick={() => navigate('/logs')} className="flex-center" style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', padding: '10px 20px', boxShadow: 'none' }}>
-              <History size={18} style={{ marginRight: '8px' }} /> Журнал логов
-            </button>
-          )}
-        </div>
-
-        <div className="flex-center" style={{ gap: '20px' }}>
-          {(profile?.role === 'creator' || profile?.role === 'admin' || profile?.role === 'teacher') && (
-            <div style={{ background: 'rgba(0,0,0,0.05)', padding: '5px', borderRadius: '15px', display: 'flex' }}>
-              {(profile?.role === 'creator' || profile?.role === 'admin') && <button onClick={() => setActiveTab('users')} style={{ background: activeTab === 'users' ? 'var(--primary-color)' : 'transparent', color: activeTab === 'users' ? 'white' : 'inherit', boxShadow: 'none' }}>Ученики</button>}
-              <button onClick={() => setActiveTab('structure')} style={{ background: activeTab === 'structure' ? 'var(--primary-color)' : 'transparent', color: activeTab === 'structure' ? 'white' : 'inherit', boxShadow: 'none' }}>Структура</button>
-              {(profile?.role === 'creator' || profile?.role === 'admin') && <button onClick={() => setActiveTab('blacklist')} style={{ background: activeTab === 'blacklist' ? 'red' : 'transparent', color: activeTab === 'blacklist' ? 'white' : 'red', boxShadow: 'none', fontWeight: 'bold' }}>Черный список</button>}
+        <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '40px', flexWrap: 'wrap', gap: '20px' }}>
+          <div className="flex-center" style={{ gap: '20px' }}>
+            <div>
+              <h2 style={{ fontSize: '2rem', marginBottom: '5px' }}>Панель управления</h2>
+              <p style={{ opacity: 0.5, margin: 0 }}>Управление доступом, пользователями и структурой</p>
             </div>
-          )}
-        </div>
-      </div>
-
-      {loading ? <DashboardSkeleton /> : (
-        <>
-          <div className="flex-center" style={{ gap: '15px', width: '100%', justifyContent: 'flex-start', flexWrap: 'wrap', marginBottom: '30px' }}>
-            {activeTab === 'users' && (
-              <>
-                <div style={{ position: 'relative', minWidth: '300px', flex: 1 }}>
-                  <Search size={20} style={{ position: 'absolute', left: '15px', top: '12px', opacity: 0.5 }} />
-                  <input 
-                    id="dashboard-user-search"
-                    name="search"
-                    type="text" 
-                    placeholder="Поиск по ФИО, Email..." 
-                    value={search} 
-                    onChange={(e) => setSearch(e.target.value)} 
-                    style={{ paddingLeft: '45px' }} 
-                  />
-                </div>
-                <select id="filter-role" name="role" value={filterRole} onChange={e => setFilterRole(e.target.value)} style={{ width: 'auto' }}>
-                  <option value="all">Все роли</option>
-                  {['player', 'teacher', 'editor', 'admin', 'creator'].map(r => (
-                    <option key={r} value={r}>{r === 'player' ? 'Ученик' : r === 'teacher' ? 'Учитель' : r === 'editor' ? 'Редактор' : r === 'admin' ? 'Админ' : 'Создатель'}</option>
-                  ))}
-                </select>
-                <select id="filter-city" name="city" value={filterCity} onChange={e => { setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all'); }} style={{ width: 'auto' }}>
-                  <option value="all">Все города</option>
-                  {cities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-                <select id="filter-school" name="school" value={filterSchool} onChange={e => { setFilterSchool(e.target.value); setFilterClass('all'); }} style={{ width: 'auto' }}>
-                  <option value="all">Все школы</option>
-                  {availableSchools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-                <select id="filter-class" name="class" value={filterClass} onChange={e => setFilterClass(e.target.value)} style={{ width: 'auto' }}>
-                  <option value="all">Все классы</option>
-                  {availableClassFilters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </>
-            )}
-          </div>
-
-          {errorMessage && (
-            <div className="card" style={{ background: 'rgba(239, 68, 68, 0.05)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)', marginBottom: '30px' }}>
-              <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px' }}>
-                <AlertTriangle size={18} />
-                <span>{errorMessage}</span>
-              </div>
-            </div>
-          )}
-
-      {activeTab === 'users' && (
-        <div className="card" style={{ padding: '0', overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead style={{ background: 'rgba(0,0,0,0.03)', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
-              <tr>
-                <th style={{ padding: '20px' }}>ID / Почта</th>
-                <th style={{ padding: '20px' }}>ФИО</th>
-                <th style={{ padding: '20px' }}>Роль</th>
-                <th style={{ padding: '20px' }}>Заведение</th>
-                <th style={{ padding: '20px' }}>Действия</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredUsers.map(user => {
-                const userCity = cities.find(c => c.id === user.city_id)?.name;
-                const userSchool = schools.find(s => s.id === user.school_id)?.name;
-                const userClass = classesList.find(c => c.id === user.class_id)?.name;
-
-                return (
-                  <tr key={user.id} style={{ borderBottom: '1px solid rgba(0,0,0,0.02)' }}>
-                    <td style={{ padding: '15px 20px' }}>
-                      <div style={{ fontSize: '0.8rem', opacity: 0.5 }}>{user.id.slice(0, 8)}...</div>
-                      <div style={{ fontSize: '0.9rem', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                        <Mail size={14} style={{ opacity: 0.3 }} /> {user.email || 'Нет почты'}
-                      </div>
-                    </td>
-                    <td style={{ padding: '15px 20px' }}>
-                      <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '8px' }}>
-                        <div style={{ fontWeight: '500' }}>{user.last_name || user.first_name ? `${user.last_name || ''} ${user.first_name || ''}` : 'Без имени'}</div>
-                        {user.is_observer && <span style={{ padding: '2px 8px', background: 'rgba(250, 204, 21, 0.1)', color: '#ca8a04', borderRadius: '50px', fontSize: '0.65rem', fontWeight: 'bold' }}>НАБЛЮДАТЕЛЬ</span>}
-                        {user.is_hidden && <span style={{ background: 'rgba(0,0,0,0.05)', color: 'rgba(0,0,0,0.5)', padding: '2px 8px', borderRadius: '50px', fontSize: '0.65rem' }} title="Скрытый пользователь"><EyeOff size={10} /></span>}
-                      </div>
-                      <span style={{ fontSize: '0.85rem', opacity: 0.5 }}>{user.patronymic || '—'}</span>
-                    </td>
-                    <td style={{ padding: '15px 20px' }}>
-                      <span style={{ padding: '5px 12px', borderRadius: '100px', fontSize: '0.8rem', fontWeight: '600', background: user.role === 'creator' ? 'var(--primary-color)' : (user.role === 'admin' ? 'var(--accent-color)' : 'rgba(0,0,0,0.08)'), color: user.role === 'creator' || user.role === 'admin' ? 'white' : 'inherit' }}>
-                        {user.role === 'creator' ? 'Создатель' : (user.role === 'admin' ? 'Админ' : (user.role === 'teacher' ? 'Учитель' : (user.role === 'editor' ? 'Редактор' : 'Ученик')))}
-                      </span>
-                    </td>
-                    <td style={{ padding: '15px 20px', fontSize: '0.85rem' }}>
-                      <div className="flex-center" style={{ gap: '10px', justifyContent: 'flex-start' }}>
-                        {user.is_observer && <span style={{ padding: '2px 8px', background: 'rgba(250, 204, 21, 0.1)', color: '#ca8a04', borderRadius: '50px', fontSize: '0.7rem', fontWeight: 'bold' }}>НАБЛЮДАТЕЛЬ</span>}
-                        {user.is_hidden && <span style={{ background: 'rgba(0,0,0,0.05)', color: 'rgba(0,0,0,0.5)', padding: '2px 8px', borderRadius: '50px', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '3px' }}><EyeOff size={10} /> СКРЫТ</span>}
-                      </div>
-                      {userCity && <div style={{ opacity: 0.6 }}>г. {userCity}</div>}
-                      {userSchool && <div style={{ opacity: 0.8 }}>{userSchool}</div>}
-                      {userClass ? <div style={{ fontWeight: 'bold' }}>{userClass}</div> : <div style={{ opacity: 0.3 }}>Не указано</div>}
-                    </td>
-                    <td style={{ padding: '15px 20px' }}>
-                      <div className="flex-center" style={{ gap: '10px', justifyContent: 'flex-start' }}>
-                        <button onClick={() => openEditModal(user)} className="flex-center" style={{ padding: '8px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', borderRadius: '10px', boxShadow: 'none' }} title="Редактировать"><Edit3 size={18} /></button>
-
-                        {(profile?.role === 'creator') && user.id !== session.user.id && (
-                          <>
-                            <button onClick={() => setDeletingUser(user)} className="flex-center" style={{ padding: '8px', background: 'rgba(255, 0, 0, 0.1)', color: 'red', borderRadius: '10px', boxShadow: 'none' }} title="Удалить аккаунт"><Trash2 size={18} /></button>
-                            <button onClick={() => setBlockingUser(user)} className="flex-center" style={{ padding: '8px', background: '#f87171', color: 'white', borderRadius: '10px', boxShadow: 'none' }} title="Удалить и заблокировать почту"><Ban size={18} /></button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {activeTab === 'blacklist' && profile?.role === 'creator' && (
-        <div className="card">
-          <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '15px', color: 'red', marginBottom: '25px' }}>
-            <ShieldAlert size={28} />
-            <h3 style={{ margin: 0 }}>Заблокированные адреса</h3>
-          </div>
-
-          <form onSubmit={handleAddBlacklist} className="flex-center" style={{ gap: '15px', marginBottom: '30px', padding: '20px', background: 'rgba(255,0,0,0.02)', borderRadius: '15px', border: '1px dashed red' }}>
-            <div style={{ flex: 1 }}>
-              <label htmlFor="blacklist-email" style={{ fontSize: '0.85rem', opacity: 0.6, marginBottom: '5px', display: 'block' }}>Заблокировать новую почту вручную</label>
-              <input id="blacklist-email" name="email" type="email" placeholder="example@mail.ru" value={newBlacklistEmail} onChange={(e) => setNewBlacklistEmail(e.target.value)} required style={{ width: '100%' }} />
-            </div>
-            <button type="submit" style={{ background: 'red', marginTop: '22px' }}>Заблокировать</button>
-          </form>
-
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead style={{ background: 'rgba(0,0,0,0.03)' }}>
-              <tr>
-                <th style={{ padding: '15px' }}>Заблокированная Почта</th>
-                <th style={{ padding: '15px' }}>Дата блокировки</th>
-                <th style={{ padding: '15px' }}>Действия</th>
-              </tr>
-            </thead>
-            <tbody>
-              {blacklist.map(item => (
-                <tr key={item.id} style={{ borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
-                  <td style={{ padding: '15px', fontWeight: 'bold' }}>{item.email}</td>
-                  <td style={{ padding: '15px', opacity: 0.6 }}>{new Date(item.created_at).toLocaleString()}</td>
-                  <td style={{ padding: '15px' }}>
-                    <button onClick={() => setUnblockingEmail(item)} style={{ padding: '6px 15px', background: 'rgba(74, 222, 128, 0.1)', color: '#4ade80', boxShadow: 'none' }}>
-                      Разблокировать
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {blacklist.length === 0 && <tr><td colSpan="3" style={{ padding: '30px', textAlign: 'center', opacity: 0.5 }}>Черный список пуст.</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* ВКЛАДКА СТРУКТУРА */}
-      {activeTab === 'structure' && (
-        <div className="animate">
-          <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '30px' }}>
-            <h3 style={{ margin: 0 }}>Структура</h3>
-            {profile?.role === 'creator' && (
-              <button onClick={() => setAddingCity(true)} className="flex-center" style={{ gap: '8px' }}>
-                <Plus size={18} /> Добавить город
+            {(profile?.role === 'admin' || profile?.role === 'creator') && (
+              <button onClick={() => navigate('/logs')} className="flex-center" style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', padding: '10px 20px', boxShadow: 'none' }}>
+                <History size={18} style={{ marginRight: '8px' }} /> Журнал логов
               </button>
             )}
           </div>
 
-          <div style={{ display: 'grid', gap: '20px' }}>
-            {cities.map(city => {
-              const isCityExpanded = expandedCities[city.id];
-              const citySchools = schools.filter(s => s.city_id === city.id);
-
-              return (
-                <div key={city.id} className="card animate" style={{ background: 'var(--card-bg)', borderRadius: '24px', border: '1px solid rgba(99, 102, 241, 0.2)', marginBottom: '15px', overflow: 'hidden', boxShadow: 'var(--soft-shadow)' }}>
-                  <div className="flex-center" style={{ padding: '15px 25px', justifyContent: 'space-between', background: 'rgba(99, 102, 241, 0.05)' }}>
-                    <div onClick={() => setExpandedCities(prev => ({ ...prev, [city.id]: !prev[city.id] }))} style={{ cursor: 'pointer', flex: 1, display: 'flex', alignItems: 'center', gap: '15px' }}>
-                      {isCityExpanded ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
-                      <div>
-                        <div style={{ fontSize: '0.75rem', opacity: 0.5 }}>Город</div>
-                        <h4 style={{ margin: 0, fontSize: '1.2rem' }}>{city.name}</h4>
-                      </div>
-                      <span style={{ padding: '2px 10px', background: 'rgba(0,0,0,0.05)', borderRadius: '50px', fontSize: '0.75rem', opacity: 0.6 }}>{citySchools.length} школ</span>
-                    </div>
-                    
-                    {profile?.role === 'creator' && (
-                      <div className="flex-center" style={{ gap: '10px' }}>
-                        <button onClick={() => setRenamingStructure({ table: 'cities', id: city.id, currentName: city.name, typeLabel: 'город' })} style={{ background: 'transparent', padding: '5px', color: 'var(--primary-color)', boxShadow: 'none' }} title="Переименовать город"><Edit3 size={18} /></button>
-                        <button onClick={() => {
-                          if (citySchools.length > 0) return alert("Нельзя удалить город, в котором есть школы!");
-                          setDeletingStructure({ table: 'cities', id: city.id, name: city.name, typeLabel: 'город' });
-                        }} style={{ background: 'transparent', padding: '5px', color: 'red', boxShadow: 'none' }} title="Удалить город"><Trash2 size={18} /></button>
-                        <button onClick={() => { setNewSchoolCityId(city.id); setAddingSchool(true); }} style={{ marginLeft: '15px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', padding: '8px 15px', boxShadow: 'none', borderRadius: '12px' }} title="Добавить школу в этот город">
-                          <Plus size={16} /> Школа
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  {isCityExpanded && (
-                    <div style={{ padding: '15px', background: 'var(--card-bg)' }}>
-                      <div style={{ display: 'grid', gap: '15px' }}>
-                        {citySchools.map(school => {
-                          const isSchoolExpanded = expandedSchools[school.id];
-                          const schoolClasses = classesList.filter(c => c.school_id === school.id);
-
-                          return (
-                            <div key={school.id} className="animate" style={{ background: 'var(--card-bg)', borderRadius: '20px', border: '1px solid rgba(0, 0, 0, 0.05)', overflow: 'hidden' }}>
-                              <div className="flex-center" style={{ padding: '12px 20px', justifyContent: 'space-between', background: 'rgba(0,0,0,0.02)' }}>
-                                <div onClick={() => setExpandedSchools(prev => ({ ...prev, [school.id]: !prev[school.id] }))} style={{ cursor: 'pointer', flex: 1, display: 'flex', alignItems: 'center', gap: '15px' }}>
-                                  {isSchoolExpanded ? <ChevronDown size={18} opacity={0.7} /> : <ChevronRight size={18} opacity={0.7} />}
-                                  <div>
-                                    <div style={{ fontSize: '0.7rem', opacity: 0.5 }}>Школа</div>
-                                    <h4 style={{ margin: 0, fontSize: '1.05rem' }}>{school.name}</h4>
-                                  </div>
-                                  <span style={{ padding: '2px 10px', background: 'rgba(0,0,0,0.05)', borderRadius: '50px', fontSize: '0.75rem', opacity: 0.6 }}>{schoolClasses.length} классов</span>
-                                </div>
-                                
-                                {profile?.role === 'creator' && (
-                                  <div className="flex-center" style={{ gap: '10px' }}>
-                                    <button onClick={() => setRenamingStructure({ table: 'schools', id: school.id, currentName: school.name, typeLabel: 'школу' })} style={{ background: 'transparent', padding: '5px', color: 'var(--primary-color)', boxShadow: 'none' }} title="Переименовать школу"><Edit3 size={16} /></button>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                      <button onClick={() => handleMoveStructure('schools', school.id, 'up', citySchools)} style={{ background: 'transparent', padding: '2px', color: 'inherit', boxShadow: 'none' }}><ArrowUp size={14} /></button>
-                                      <button onClick={() => handleMoveStructure('schools', school.id, 'down', citySchools)} style={{ background: 'transparent', padding: '2px', color: 'inherit', boxShadow: 'none' }}><ArrowDown size={14} /></button>
-                                    </div>
-                                    <button onClick={() => {
-                                      if (schoolClasses.length > 0) return alert("Нельзя удалить школу, в которой есть классы!");
-                                      setDeletingStructure({ table: 'schools', id: school.id, name: school.name, typeLabel: 'школу' });
-                                    }} style={{ background: 'transparent', padding: '5px', color: 'red', boxShadow: 'none' }} title="Удалить школу"><Trash2 size={16} /></button>
-                                    <button onClick={() => { setNewClassCityId(city.id); setNewClassSchoolId(school.id); setAddingClass(true); }} style={{ marginLeft: '10px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', padding: '6px 12px', boxShadow: 'none', borderRadius: '10px', fontSize: '0.85rem' }} title="Добавить класс">
-                                      <Plus size={14} /> Класс
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
-
-                              {isSchoolExpanded && (
-                                <div style={{ padding: '10px 15px', background: 'var(--card-bg)' }}>
-                                  <div style={{ display: 'grid', gap: '8px' }}>
-                                    {schoolClasses.map(cls => {
-                                      const isClassExpanded = expandedClasses[cls.id];
-                                      const studentsCount = users.filter(u => u.class_id === cls.id).length;
-                                      const isTeacherRole = profile?.role === 'teacher';
-                                      const canManage = isTeacherRole ? teacherClasses.includes(cls.id) : true;
-
-                                      return (
-                                        <div key={cls.id} className="animate" style={{ background: 'var(--card-bg)', border: '1px solid rgba(99, 102, 241, 0.1)', borderRadius: '12px', overflow: 'hidden' }}>
-                                          <div className="flex-center" style={{ justifyContent: 'space-between', padding: '10px 15px' }}>
-                                            <div onClick={() => {
-                                              if (isClassExpanded) {
-                                                setExpandedClasses(prev => {
-                                                  const next = { ...prev };
-                                                  delete next[cls.id];
-                                                  return next;
-                                                });
-                                              } else {
-                                                setExpandedClasses(prev => ({ ...prev, [cls.id]: true }));
-                                                fetchClassStudents(cls.id);
-                                                fetchClassApplications(cls.id);
-                                              }
-                                            }} style={{ cursor: 'pointer', flex: 1 }}>
-                                              <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px' }}>
-                                                {isClassExpanded ? <ChevronDown size={14} opacity={0.5} /> : <ChevronRight size={14} opacity={0.5} />}
-                                                <span style={{ fontWeight: '600', fontSize: '0.95rem' }}>{cls.name}</span>
-                                                <div className="flex-center" style={{ gap: '5px', opacity: 0.5, fontSize: '0.75rem' }}>
-                                                  <Users size={12} /> {studentsCount} / {cls.max_students || 50}
-                                                  {cls.max_students && studentsCount > cls.max_students && <AlertTriangle size={12} color="red" />}
-                                                </div>
-                                              </div>
-                                            </div>
-
-                                            <div className="flex-center" style={{ gap: '8px' }}>
-                                              {profile?.role === 'creator' && (
-                                                <button 
-                                                  onClick={() => { setShowTeachersModal(cls); fetchClassTeachers(cls.id); }} 
-                                                  style={{ background: '#f59e0b', color: 'white', padding: '4px 10px', borderRadius: '8px', boxShadow: 'none', display: 'flex', gap: '5px', alignItems: 'center', fontSize: '0.75rem' }}
-                                                >
-                                                  <Shield size={14} /> Учителя
-                                                </button>
-                                              )}
-
-                                              {canManage && (
-                                                <>
-                                                  <button onClick={() => { setShowApplicationsModal(cls); fetchClassApplications(cls.id); }} style={{ background: 'rgba(99,102,241,0.1)', color: 'var(--primary-color)', padding: '4px 10px', borderRadius: '8px', boxShadow: 'none', display: 'flex', gap: '5px', alignItems: 'center', fontSize: '0.75rem' }}>
-                                                    <UserPlus size={14} /> Заявки
-                                                  </button>
-                                                  <button onClick={() => { setShowListsModal({ class: cls, type: 'white' }); fetchClassLists(cls.id, 'white'); }} style={{ background: 'rgba(34,197,94,0.1)', color: '#16a34a', padding: '4px', borderRadius: '8px', boxShadow: 'none' }} title="Белый список"><UserCheck size={16} /></button>
-                                                  <button onClick={() => { setShowListsModal({ class: cls, type: 'black' }); fetchClassLists(cls.id, 'black'); }} style={{ background: 'rgba(239,68,68,0.1)', color: '#dc2626', padding: '4px', borderRadius: '8px', boxShadow: 'none' }} title="Черный список"><Ban size={16} /></button>
-                                                </>
-                                              )}
-
-                                              {profile?.role === 'creator' && (
-                                                <>
-                                                  <button onClick={() => setRenamingStructure({ table: 'classes', id: cls.id, currentName: cls.name, typeLabel: 'класс' })} style={{ background: 'transparent', padding: '4px', color: 'var(--primary-color)', boxShadow: 'none' }} title="Переименовать класс"><Edit3 size={16} /></button>
-                                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                                    <button onClick={() => handleMoveStructure('classes', cls.id, 'up', schoolClasses)} style={{ background: 'transparent', padding: '1px', color: 'inherit', boxShadow: 'none' }}><ArrowUp size={12} /></button>
-                                                    <button onClick={() => handleMoveStructure('classes', cls.id, 'down', schoolClasses)} style={{ background: 'transparent', padding: '1px', color: 'inherit', boxShadow: 'none' }}><ArrowDown size={12} /></button>
-                                                  </div>
-                                                  <button onClick={() => {
-                                                    if (studentsCount > 0) return alert("Нельзя удалить класс, в котором есть ученики!");
-                                                    setDeletingStructure({ table: 'classes', id: cls.id, name: cls.name, typeLabel: 'класс' });
-                                                  }} style={{ background: 'transparent', padding: '4px', color: 'red', boxShadow: 'none' }} title="Удалить класс"><Trash2 size={16} /></button>
-                                                </>
-                                              )}
-                                            </div>
-                                          </div>
-
-                                          {/* ... children render of Class (students and applications) will be same as before ... */}
-                                          {isClassExpanded && (
-                                            <div className="animate" style={{ borderTop: '1px solid rgba(99, 102, 241, 0.1)', background: 'rgba(99, 102, 241, 0.01)' }}>
-                                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px', marginBottom: '15px', padding: '0 20px' }}>
-                                                <div className="flex-center" style={{ gap: '10px' }}>
-                                                  <div style={{ fontSize: '0.85rem', fontWeight: 'bold', opacity: 0.6 }}>Список учеников</div>
-                                                  <DashboardAiButton classId={cls.id} className={cls.name} />
-                                                </div>
-                                                <button 
-                                                  onClick={() => { setNewLimit(cls.max_students || 50); setEditingClassLimit(cls); }}
-                                                  style={{ background: 'transparent', color: 'var(--primary-color)', fontSize: '0.85rem', padding: '4px 8px', border: '1px solid var(--primary-color)', borderRadius: '6px', boxShadow: 'none' }}
-                                                >
-                                                  Лимит: {cls.max_students || 50}
-                                                </button>
-                                              </div>
-
-                                              {/* APPLICATIONS SECTION */}
-                                              {classApplications[cls.id]?.length > 0 && (
-                                                <div style={{ margin: '0 20px 15px', padding: '12px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '12px', border: '1px dashed var(--primary-color)' }}>
-                                                  <div style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--primary-color)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                                    <UserPlus size={12} /> НОВЫЕ ЗАЯВКИ ({classApplications[cls.id].length})
-                                                  </div>
-                                                  <div style={{ display: 'grid', gap: '8px' }}>
-                                                    {classApplications[cls.id].map(app => (
-                                                      <div key={app.id} className="flex-center" style={{ justifyContent: 'space-between', background: 'var(--card-bg)', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-                                                        <div style={{ fontSize: '0.8rem' }}>
-                                                          <strong>{app.profiles?.last_name} {app.profiles?.first_name}</strong>
-                                                        </div>
-                                                        <div className="flex-center" style={{ gap: '8px' }}>
-                                                          <button onClick={() => handleApplication(app, 'accepted')} style={{ padding: '4px 10px', fontSize: '0.7rem', background: '#22c55e', color: 'white' }}>Принять</button>
-                                                          <button onClick={() => handleApplication(app, 'rejected')} style={{ padding: '4px 10px', fontSize: '0.7rem', background: 'rgba(0,0,0,0.05)', color: 'red', boxShadow: 'none' }}>Отклонить</button>
-                                                        </div>
-                                                      </div>
-                                                    ))}
-                                                  </div>
-                                                </div>
-                                              )}
-                                              <div style={{ padding: '0 20px 15px' }}>
-                                                {loadingStudents && !classStudents[cls.id] ? (
-                                                  <div style={{ textAlign: 'center', padding: '15px', opacity: 0.5 }}>Загрузка...</div>
-                                                ) : classStudents[cls.id]?.length > 0 ? (
-                                                  <div style={{ display: 'grid', gap: '6px' }}>
-                                                    {classStudents[cls.id].sort((a, b) => (a.last_name || '').localeCompare(b.last_name || '')).map(s => (
-                                                      <div key={s.id} className="flex-center" style={{ justifyContent: 'space-between', background: 'var(--card-bg)', padding: '10px 15px', borderRadius: '10px', border: '1px solid rgba(99, 102, 241, 0.05)' }}>
-                                                        <div>
-                                                          <div style={{ fontWeight: '500', fontSize: '0.9rem' }}>{s.last_name} {s.first_name} {s.patronymic}</div>
-                                                          <div style={{ fontSize: '0.7rem', opacity: 0.5 }}>{s.email}</div>
-                                                        </div>
-                                                        <div className="flex-center" style={{ gap: '8px' }}>
-                                                          <button 
-                                                            onClick={() => navigate(`/user-analytics?userId=${s.id}`)}
-                                                            style={{ background: 'transparent', color: 'var(--primary-color)', padding: '4px', boxShadow: 'none' }} 
-                                                            title="Аналитика ученика"
-                                                          >
-                                                            <Eye size={16} />
-                                                          </button>
-                                                          
-                                                          {/* Restricted actions for teachers on admins/creators */}
-                                                          {!(profile?.role === 'teacher' && (s.role === 'admin' || s.role === 'creator')) ? (
-                                                            <>
-                                                              <button onClick={() => openEditModal(s)} style={{ background: 'transparent', color: 'var(--primary-color)', padding: '4px', boxShadow: 'none' }} title="Изменить ФИО"><Edit3 size={16} /></button>
-                                                                                                                             <button onClick={() => setRemovingStudent({ ...s, blacklist: false })} style={{ background: 'transparent', color: 'var(--primary-color)', padding: '4px', boxShadow: 'none' }} title="Убрать из состава"><UserMinus size={16} /></button>
-                                                               <button onClick={() => setRemovingStudent({ ...s, blacklist: true })} style={{ background: 'transparent', color: 'red', padding: '4px', boxShadow: 'none' }} title="Исключить и заблокировать в классе"><Ban size={16} /></button>
-                                                               {(profile?.role === 'admin' || profile?.role === 'creator') && (
-                                                                 <button onClick={() => setBlockingUser(s)} style={{ background: 'transparent', color: '#dc2626', padding: '4px', boxShadow: 'none' }} title="Полная блокировка (удаление аккаунта)"><ShieldAlert size={16} /></button>
-                                                               )}
-                                                              
-                                                            </>
-                                                          ) : (
-                                                            <div title="Защищенный профиль" style={{ opacity: 0.3, padding: '4px' }}><Shield size={16} /></div>
-                                                          )}
-                                                        </div>
-                                                      </div>
-                                                    ))}
-                                                  </div>
-                                                ) : (
-                                                  <div style={{ textAlign: 'center', padding: '15px', opacity: 0.4, fontSize: '0.85rem' }}>В классе пока нет учеников</div>
-                                                )}
-                                              </div>
-                                            </div>
-                                          )}
-                                        </div>
-                                      );
-                                    })}
-                                    {schoolClasses.length === 0 && <div style={{ textAlign: 'center', padding: '15px', opacity: 0.4, fontSize: '0.9rem' }}>Нет добавленных классов</div>}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                        {citySchools.length === 0 && <div style={{ textAlign: 'center', padding: '15px', opacity: 0.4, fontSize: '0.95rem' }}>Нет добавленных школ</div>}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-            {cities.length === 0 && (
-              <div className="card flex-center" style={{ height: '200px', flexDirection: 'column', gap: '15px' }}>
-                <Building size={48} opacity={0.2} />
-                <div style={{ opacity: 0.5 }}>Список городов пуст</div>
+          <div className="flex-center" style={{ gap: '20px' }}>
+            {(profile?.role === 'creator' || profile?.role === 'admin' || profile?.role === 'teacher') && (
+              <div style={{ background: 'rgba(0,0,0,0.05)', padding: '5px', borderRadius: '15px', display: 'flex' }}>
+                {(profile?.role === 'creator' || profile?.role === 'admin') && <button onClick={() => setActiveTab('users')} style={{ background: activeTab === 'users' ? 'var(--primary-color)' : 'transparent', color: activeTab === 'users' ? 'white' : 'inherit', boxShadow: 'none' }}>Ученики</button>}
+                <button onClick={() => setActiveTab('structure')} style={{ background: activeTab === 'structure' ? 'var(--primary-color)' : 'transparent', color: activeTab === 'structure' ? 'white' : 'inherit', boxShadow: 'none' }}>Структура</button>
+                {(profile?.role === 'creator' || profile?.role === 'admin') && <button onClick={() => setActiveTab('blacklist')} style={{ background: activeTab === 'blacklist' ? 'red' : 'transparent', color: activeTab === 'blacklist' ? 'white' : 'red', boxShadow: 'none', fontWeight: 'bold' }}>Черный список</button>}
               </div>
             )}
           </div>
         </div>
-      )}
-      </>
-      )}
-    </div>
+
+        {loading ? <DashboardSkeleton /> : (
+          <>
+            <div className="flex-center" style={{ gap: '15px', width: '100%', justifyContent: 'flex-start', flexWrap: 'wrap', marginBottom: '30px' }}>
+              {activeTab === 'users' && (
+                <>
+                  <div style={{ position: 'relative', minWidth: '300px', flex: 1 }}>
+                    <Search size={20} style={{ position: 'absolute', left: '15px', top: '12px', opacity: 0.5 }} />
+                    <input
+                      id="dashboard-user-search"
+                      name="search"
+                      type="text"
+                      placeholder="Поиск по ФИО, Email..."
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      style={{ paddingLeft: '45px' }}
+                    />
+                  </div>
+                  <select id="filter-role" name="role" value={filterRole} onChange={e => setFilterRole(e.target.value)} style={{ width: 'auto' }}>
+                    <option value="all">Все роли</option>
+                    {['player', 'teacher', 'editor', 'admin', 'creator'].map(r => (
+                      <option key={r} value={r}>{r === 'player' ? 'Ученик' : r === 'teacher' ? 'Учитель' : r === 'editor' ? 'Редактор' : r === 'admin' ? 'Админ' : 'Создатель'}</option>
+                    ))}
+                  </select>
+                  <select id="filter-city" name="city" value={filterCity} onChange={e => { setFilterCity(e.target.value); setFilterSchool('all'); setFilterClass('all'); }} style={{ width: 'auto' }}>
+                    <option value="all">Все города</option>
+                    {cities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                  <select id="filter-school" name="school" value={filterSchool} onChange={e => { setFilterSchool(e.target.value); setFilterClass('all'); }} style={{ width: 'auto' }}>
+                    <option value="all">Все школы</option>
+                    {availableSchools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                  <select id="filter-class" name="class" value={filterClass} onChange={e => setFilterClass(e.target.value)} style={{ width: 'auto' }}>
+                    <option value="all">Все классы</option>
+                    {availableClassFilters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </>
+              )}
+            </div>
+
+            {errorMessage && (
+              <div className="card" style={{ background: 'rgba(239, 68, 68, 0.05)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)', marginBottom: '30px' }}>
+                <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px' }}>
+                  <AlertTriangle size={18} />
+                  <span>{errorMessage}</span>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'users' && (
+              <div className="card" style={{ padding: '0', overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                  <thead style={{ background: 'rgba(0,0,0,0.03)', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
+                    <tr>
+                      <th style={{ padding: '20px' }}>ID / Почта</th>
+                      <th style={{ padding: '20px' }}>ФИО</th>
+                      <th style={{ padding: '20px' }}>Роль</th>
+                      <th style={{ padding: '20px' }}>Заведение</th>
+                      <th style={{ padding: '20px' }}>Действия</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredUsers.map(user => {
+                      const userCity = cities.find(c => c.id === user.city_id)?.name;
+                      const userSchool = schools.find(s => s.id === user.school_id)?.name;
+                      const userClass = classesList.find(c => c.id === user.class_id)?.name;
+
+                      return (
+                        <tr key={user.id} style={{ borderBottom: '1px solid rgba(0,0,0,0.02)' }}>
+                          <td style={{ padding: '15px 20px' }}>
+                            <div style={{ fontSize: '0.8rem', opacity: 0.5 }}>{user.id.slice(0, 8)}...</div>
+                            <div style={{ fontSize: '0.9rem', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                              <Mail size={14} style={{ opacity: 0.3 }} /> {user.email || 'Нет почты'}
+                            </div>
+                          </td>
+                          <td style={{ padding: '15px 20px' }}>
+                            <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '8px' }}>
+                              <div style={{ fontWeight: '500' }}>{user.last_name || user.first_name ? `${user.last_name || ''} ${user.first_name || ''}` : 'Без имени'}</div>
+                              {user.is_observer && <span style={{ padding: '2px 8px', background: 'rgba(250, 204, 21, 0.1)', color: '#ca8a04', borderRadius: '50px', fontSize: '0.65rem', fontWeight: 'bold' }}>НАБЛЮДАТЕЛЬ</span>}
+                              {user.is_hidden && <span style={{ background: 'rgba(0,0,0,0.05)', color: 'rgba(0,0,0,0.5)', padding: '2px 8px', borderRadius: '50px', fontSize: '0.65rem' }} title="Скрытый пользователь"><EyeOff size={10} /></span>}
+                            </div>
+                            <span style={{ fontSize: '0.85rem', opacity: 0.5 }}>{user.patronymic || '—'}</span>
+                          </td>
+                          <td style={{ padding: '15px 20px' }}>
+                            <span style={{ padding: '5px 12px', borderRadius: '100px', fontSize: '0.8rem', fontWeight: '600', background: user.role === 'creator' ? 'var(--primary-color)' : (user.role === 'admin' ? 'var(--accent-color)' : 'rgba(0,0,0,0.08)'), color: user.role === 'creator' || user.role === 'admin' ? 'white' : 'inherit' }}>
+                              {user.role === 'creator' ? 'Создатель' : (user.role === 'admin' ? 'Админ' : (user.role === 'teacher' ? 'Учитель' : (user.role === 'editor' ? 'Редактор' : 'Ученик')))}
+                            </span>
+                          </td>
+                          <td style={{ padding: '15px 20px', fontSize: '0.85rem' }}>
+                            <div className="flex-center" style={{ gap: '10px', justifyContent: 'flex-start' }}>
+                              {user.is_observer && <span style={{ padding: '2px 8px', background: 'rgba(250, 204, 21, 0.1)', color: '#ca8a04', borderRadius: '50px', fontSize: '0.7rem', fontWeight: 'bold' }}>НАБЛЮДАТЕЛЬ</span>}
+                              {user.is_hidden && <span style={{ background: 'rgba(0,0,0,0.05)', color: 'rgba(0,0,0,0.5)', padding: '2px 8px', borderRadius: '50px', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '3px' }}><EyeOff size={10} /> СКРЫТ</span>}
+                            </div>
+                            {userCity && <div style={{ opacity: 0.6 }}>г. {userCity}</div>}
+                            {userSchool && <div style={{ opacity: 0.8 }}>{userSchool}</div>}
+                            {userClass ? <div style={{ fontWeight: 'bold' }}>{userClass}</div> : <div style={{ opacity: 0.3 }}>Не указано</div>}
+                          </td>
+                          <td style={{ padding: '15px 20px' }}>
+                            <div className="flex-center" style={{ gap: '10px', justifyContent: 'flex-start' }}>
+                              <button onClick={() => openEditModal(user)} className="flex-center" style={{ padding: '8px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', borderRadius: '10px', boxShadow: 'none' }} title="Редактировать"><Edit3 size={18} /></button>
+
+                              {(profile?.role === 'creator') && user.id !== session.user.id && (
+                                <>
+                                  <button onClick={() => setDeletingUser(user)} className="flex-center" style={{ padding: '8px', background: 'rgba(255, 0, 0, 0.1)', color: 'red', borderRadius: '10px', boxShadow: 'none' }} title="Удалить аккаунт"><Trash2 size={18} /></button>
+                                  <button onClick={() => setBlockingUser(user)} className="flex-center" style={{ padding: '8px', background: '#f87171', color: 'white', borderRadius: '10px', boxShadow: 'none' }} title="Удалить и заблокировать почту"><Ban size={18} /></button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {activeTab === 'blacklist' && profile?.role === 'creator' && (
+              <div className="card">
+                <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '15px', color: 'red', marginBottom: '25px' }}>
+                  <ShieldAlert size={28} />
+                  <h3 style={{ margin: 0 }}>Заблокированные адреса</h3>
+                </div>
+
+                <form onSubmit={handleAddBlacklist} className="flex-center" style={{ gap: '15px', marginBottom: '30px', padding: '20px', background: 'rgba(255,0,0,0.02)', borderRadius: '15px', border: '1px dashed red' }}>
+                  <div style={{ flex: 1 }}>
+                    <label htmlFor="blacklist-email" style={{ fontSize: '0.85rem', opacity: 0.6, marginBottom: '5px', display: 'block' }}>Заблокировать новую почту вручную</label>
+                    <input id="blacklist-email" name="email" type="email" placeholder="example@mail.ru" value={newBlacklistEmail} onChange={(e) => setNewBlacklistEmail(e.target.value)} required style={{ width: '100%' }} />
+                  </div>
+                  <button type="submit" style={{ background: 'red', marginTop: '22px' }}>Заблокировать</button>
+                </form>
+
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                  <thead style={{ background: 'rgba(0,0,0,0.03)' }}>
+                    <tr>
+                      <th style={{ padding: '15px' }}>Заблокированная Почта</th>
+                      <th style={{ padding: '15px' }}>Дата блокировки</th>
+                      <th style={{ padding: '15px' }}>Действия</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {blacklist.map(item => (
+                      <tr key={item.id} style={{ borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
+                        <td style={{ padding: '15px', fontWeight: 'bold' }}>{item.email}</td>
+                        <td style={{ padding: '15px', opacity: 0.6 }}>{new Date(item.created_at).toLocaleString()}</td>
+                        <td style={{ padding: '15px' }}>
+                          <button onClick={() => setUnblockingEmail(item)} style={{ padding: '6px 15px', background: 'rgba(74, 222, 128, 0.1)', color: '#4ade80', boxShadow: 'none' }}>
+                            Разблокировать
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {blacklist.length === 0 && <tr><td colSpan="3" style={{ padding: '30px', textAlign: 'center', opacity: 0.5 }}>Черный список пуст.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* ВКЛАДКА СТРУКТУРА */}
+            {activeTab === 'structure' && (
+              <div className="animate">
+                <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '30px' }}>
+                  <h3 style={{ margin: 0 }}>Структура</h3>
+                  {profile?.role === 'creator' && (
+                    <button onClick={() => setAddingCity(true)} className="flex-center" style={{ gap: '8px' }}>
+                      <Plus size={18} /> Добавить город
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ display: 'grid', gap: '20px' }}>
+                  {cities.map(city => {
+                    const isCityExpanded = expandedCities[city.id];
+                    const citySchools = schools.filter(s => s.city_id === city.id);
+
+                    return (
+                      <div key={city.id} className="card animate" style={{ background: 'var(--card-bg)', borderRadius: '24px', border: '1px solid rgba(99, 102, 241, 0.2)', marginBottom: '15px', overflow: 'hidden', boxShadow: 'var(--soft-shadow)' }}>
+                        <div className="flex-center" style={{ padding: '15px 25px', justifyContent: 'space-between', background: 'rgba(99, 102, 241, 0.05)' }}>
+                          <div onClick={() => setExpandedCities(prev => ({ ...prev, [city.id]: !prev[city.id] }))} style={{ cursor: 'pointer', flex: 1, display: 'flex', alignItems: 'center', gap: '15px' }}>
+                            {isCityExpanded ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
+                            <div>
+                              <div style={{ fontSize: '0.75rem', opacity: 0.5 }}>Город</div>
+                              <h4 style={{ margin: 0, fontSize: '1.2rem' }}>{city.name}</h4>
+                            </div>
+                            <span style={{ padding: '2px 10px', background: 'rgba(0,0,0,0.05)', borderRadius: '50px', fontSize: '0.75rem', opacity: 0.6 }}>{citySchools.length} школ</span>
+                          </div>
+
+                          {profile?.role === 'creator' && (
+                            <div className="flex-center" style={{ gap: '10px' }}>
+                              <button onClick={() => setRenamingStructure({ table: 'cities', id: city.id, currentName: city.name, typeLabel: 'город' })} style={{ background: 'transparent', padding: '5px', color: 'var(--primary-color)', boxShadow: 'none' }} title="Переименовать город"><Edit3 size={18} /></button>
+                              <button onClick={() => {
+                                if (citySchools.length > 0) return alert("Нельзя удалить город, в котором есть школы!");
+                                setDeletingStructure({ table: 'cities', id: city.id, name: city.name, typeLabel: 'город' });
+                              }} style={{ background: 'transparent', padding: '5px', color: 'red', boxShadow: 'none' }} title="Удалить город"><Trash2 size={18} /></button>
+                              <button onClick={() => { setNewSchoolCityId(city.id); setAddingSchool(true); }} style={{ marginLeft: '15px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', padding: '8px 15px', boxShadow: 'none', borderRadius: '12px' }} title="Добавить школу в этот город">
+                                <Plus size={16} /> Школа
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {isCityExpanded && (
+                          <div style={{ padding: '15px', background: 'var(--card-bg)' }}>
+                            <div style={{ display: 'grid', gap: '15px' }}>
+                              {citySchools.map(school => {
+                                const isSchoolExpanded = expandedSchools[school.id];
+                                const schoolClasses = classesList.filter(c => c.school_id === school.id);
+
+                                return (
+                                  <div key={school.id} className="animate" style={{ background: 'var(--card-bg)', borderRadius: '20px', border: '1px solid rgba(0, 0, 0, 0.05)', overflow: 'hidden' }}>
+                                    <div className="flex-center" style={{ padding: '12px 20px', justifyContent: 'space-between', background: 'rgba(0,0,0,0.02)' }}>
+                                      <div onClick={() => setExpandedSchools(prev => ({ ...prev, [school.id]: !prev[school.id] }))} style={{ cursor: 'pointer', flex: 1, display: 'flex', alignItems: 'center', gap: '15px' }}>
+                                        {isSchoolExpanded ? <ChevronDown size={18} opacity={0.7} /> : <ChevronRight size={18} opacity={0.7} />}
+                                        <div>
+                                          <div style={{ fontSize: '0.7rem', opacity: 0.5 }}>Школа</div>
+                                          <h4 style={{ margin: 0, fontSize: '1.05rem' }}>{school.name}</h4>
+                                        </div>
+                                        <span style={{ padding: '2px 10px', background: 'rgba(0,0,0,0.05)', borderRadius: '50px', fontSize: '0.75rem', opacity: 0.6 }}>{schoolClasses.length} классов</span>
+                                      </div>
+
+                                      {profile?.role === 'creator' && (
+                                        <div className="flex-center" style={{ gap: '10px' }}>
+                                          <button onClick={() => setRenamingStructure({ table: 'schools', id: school.id, currentName: school.name, typeLabel: 'школу' })} style={{ background: 'transparent', padding: '5px', color: 'var(--primary-color)', boxShadow: 'none' }} title="Переименовать школу"><Edit3 size={16} /></button>
+                                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                            <button onClick={() => handleMoveStructure('schools', school.id, 'up', citySchools)} style={{ background: 'transparent', padding: '2px', color: 'inherit', boxShadow: 'none' }}><ArrowUp size={14} /></button>
+                                            <button onClick={() => handleMoveStructure('schools', school.id, 'down', citySchools)} style={{ background: 'transparent', padding: '2px', color: 'inherit', boxShadow: 'none' }}><ArrowDown size={14} /></button>
+                                          </div>
+                                          <button onClick={() => {
+                                            if (schoolClasses.length > 0) return alert("Нельзя удалить школу, в которой есть классы!");
+                                            setDeletingStructure({ table: 'schools', id: school.id, name: school.name, typeLabel: 'школу' });
+                                          }} style={{ background: 'transparent', padding: '5px', color: 'red', boxShadow: 'none' }} title="Удалить школу"><Trash2 size={16} /></button>
+                                          <button onClick={() => { setNewClassCityId(city.id); setNewClassSchoolId(school.id); setAddingClass(true); }} style={{ marginLeft: '10px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', padding: '6px 12px', boxShadow: 'none', borderRadius: '10px', fontSize: '0.85rem' }} title="Добавить класс">
+                                            <Plus size={14} /> Класс
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {isSchoolExpanded && (
+                                      <div style={{ padding: '10px 15px', background: 'var(--card-bg)' }}>
+                                        <div style={{ display: 'grid', gap: '8px' }}>
+                                          {schoolClasses.map(cls => {
+                                            const isClassExpanded = expandedClasses[cls.id];
+                                            const studentsCount = users.filter(u => u.class_id === cls.id).length;
+                                            const isTeacherRole = profile?.role === 'teacher';
+                                            const canManage = isTeacherRole ? teacherClasses.includes(cls.id) : true;
+
+                                            return (
+                                              <div key={cls.id} className="animate" style={{ background: 'var(--card-bg)', border: '1px solid rgba(99, 102, 241, 0.1)', borderRadius: '12px', overflow: 'hidden' }}>
+                                                <div className="flex-center" style={{ justifyContent: 'space-between', padding: '10px 15px' }}>
+                                                  <div onClick={() => {
+                                                    if (isClassExpanded) {
+                                                      setExpandedClasses(prev => {
+                                                        const next = { ...prev };
+                                                        delete next[cls.id];
+                                                        return next;
+                                                      });
+                                                    } else {
+                                                      setExpandedClasses(prev => ({ ...prev, [cls.id]: true }));
+                                                      fetchClassStudents(cls.id);
+                                                      fetchClassApplications(cls.id);
+                                                    }
+                                                  }} style={{ cursor: 'pointer', flex: 1 }}>
+                                                    <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px' }}>
+                                                      {isClassExpanded ? <ChevronDown size={14} opacity={0.5} /> : <ChevronRight size={14} opacity={0.5} />}
+                                                      <span style={{ fontWeight: '600', fontSize: '0.95rem' }}>{cls.name}</span>
+                                                      <div className="flex-center" style={{ gap: '5px', opacity: 0.5, fontSize: '0.75rem' }}>
+                                                        <Users size={12} /> {studentsCount} / {cls.max_students || 50}
+                                                        {cls.max_students && studentsCount > cls.max_students && <AlertTriangle size={12} color="red" />}
+                                                      </div>
+                                                    </div>
+                                                  </div>
+
+                                                  <div className="flex-center" style={{ gap: '8px' }}>
+                                                    {profile?.role === 'creator' && (
+                                                      <button
+                                                        onClick={() => { setShowTeachersModal(cls); fetchClassTeachers(cls.id); }}
+                                                        style={{ background: '#f59e0b', color: 'white', padding: '4px 10px', borderRadius: '8px', boxShadow: 'none', display: 'flex', gap: '5px', alignItems: 'center', fontSize: '0.75rem' }}
+                                                      >
+                                                        <Shield size={14} /> Учителя
+                                                      </button>
+                                                    )}
+
+                                                    {canManage && (
+                                                      <>
+                                                        <button onClick={() => { setShowApplicationsModal(cls); fetchClassApplications(cls.id); }} style={{ background: 'rgba(99,102,241,0.1)', color: 'var(--primary-color)', padding: '4px 10px', borderRadius: '8px', boxShadow: 'none', display: 'flex', gap: '5px', alignItems: 'center', fontSize: '0.75rem' }}>
+                                                          <UserPlus size={14} /> Заявки
+                                                        </button>
+                                                        <button onClick={() => { setShowListsModal({ class: cls, type: 'white' }); fetchClassLists(cls.id, 'white'); }} style={{ background: 'rgba(34,197,94,0.1)', color: '#16a34a', padding: '4px', borderRadius: '8px', boxShadow: 'none' }} title="Белый список"><UserCheck size={16} /></button>
+                                                        <button onClick={() => { setShowListsModal({ class: cls, type: 'black' }); fetchClassLists(cls.id, 'black'); }} style={{ background: 'rgba(239,68,68,0.1)', color: '#dc2626', padding: '4px', borderRadius: '8px', boxShadow: 'none' }} title="Черный список"><Ban size={16} /></button>
+                                                      </>
+                                                    )}
+
+                                                    {profile?.role === 'creator' && (
+                                                      <>
+                                                        <button onClick={() => setRenamingStructure({ table: 'classes', id: cls.id, currentName: cls.name, typeLabel: 'класс' })} style={{ background: 'transparent', padding: '4px', color: 'var(--primary-color)', boxShadow: 'none' }} title="Переименовать класс"><Edit3 size={16} /></button>
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                          <button onClick={() => handleMoveStructure('classes', cls.id, 'up', schoolClasses)} style={{ background: 'transparent', padding: '1px', color: 'inherit', boxShadow: 'none' }}><ArrowUp size={12} /></button>
+                                                          <button onClick={() => handleMoveStructure('classes', cls.id, 'down', schoolClasses)} style={{ background: 'transparent', padding: '1px', color: 'inherit', boxShadow: 'none' }}><ArrowDown size={12} /></button>
+                                                        </div>
+                                                        <button onClick={() => {
+                                                          if (studentsCount > 0) return alert("Нельзя удалить класс, в котором есть ученики!");
+                                                          setDeletingStructure({ table: 'classes', id: cls.id, name: cls.name, typeLabel: 'класс' });
+                                                        }} style={{ background: 'transparent', padding: '4px', color: 'red', boxShadow: 'none' }} title="Удалить класс"><Trash2 size={16} /></button>
+                                                      </>
+                                                    )}
+                                                  </div>
+                                                </div>
+
+                                                {/* ... children render of Class (students and applications) will be same as before ... */}
+                                                {isClassExpanded && (
+                                                  <div className="animate" style={{ borderTop: '1px solid rgba(99, 102, 241, 0.1)', background: 'rgba(99, 102, 241, 0.01)' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px', marginBottom: '15px', padding: '0 20px' }}>
+                                                      <div className="flex-center" style={{ gap: '10px' }}>
+                                                        <div style={{ fontSize: '0.85rem', fontWeight: 'bold', opacity: 0.6 }}>Список учеников</div>
+                                                        <DashboardAiButton classId={cls.id} className={cls.name} />
+                                                      </div>
+                                                      <button
+                                                        onClick={() => { setNewLimit(cls.max_students || 50); setEditingClassLimit(cls); }}
+                                                        style={{ background: 'transparent', color: 'var(--primary-color)', fontSize: '0.85rem', padding: '4px 8px', border: '1px solid var(--primary-color)', borderRadius: '6px', boxShadow: 'none' }}
+                                                      >
+                                                        Лимит: {cls.max_students || 50}
+                                                      </button>
+                                                    </div>
+
+                                                    {/* APPLICATIONS SECTION */}
+                                                    {classApplications[cls.id]?.length > 0 && (
+                                                      <div style={{ margin: '0 20px 15px', padding: '12px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '12px', border: '1px dashed var(--primary-color)' }}>
+                                                        <div style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--primary-color)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                          <UserPlus size={12} /> НОВЫЕ ЗАЯВКИ ({classApplications[cls.id].length})
+                                                        </div>
+                                                        <div style={{ display: 'grid', gap: '8px' }}>
+                                                          {classApplications[cls.id].map(app => (
+                                                            <div key={app.id} className="flex-center" style={{ justifyContent: 'space-between', background: 'var(--card-bg)', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                                                              <div style={{ fontSize: '0.8rem' }}>
+                                                                <strong>{app.profiles?.last_name} {app.profiles?.first_name}</strong>
+                                                              </div>
+                                                              <div className="flex-center" style={{ gap: '8px' }}>
+                                                                <button onClick={() => handleApplication(app, 'accepted')} style={{ padding: '4px 10px', fontSize: '0.7rem', background: '#22c55e', color: 'white' }}>Принять</button>
+                                                                <button onClick={() => handleApplication(app, 'rejected')} style={{ padding: '4px 10px', fontSize: '0.7rem', background: 'rgba(0,0,0,0.05)', color: 'red', boxShadow: 'none' }}>Отклонить</button>
+                                                              </div>
+                                                            </div>
+                                                          ))}
+                                                        </div>
+                                                      </div>
+                                                    )}
+                                                    <div style={{ padding: '0 20px 15px' }}>
+                                                      {loadingStudents && !classStudents[cls.id] ? (
+                                                        <div style={{ textAlign: 'center', padding: '15px', opacity: 0.5 }}>Загрузка...</div>
+                                                      ) : classStudents[cls.id]?.length > 0 ? (
+                                                        <div style={{ display: 'grid', gap: '6px' }}>
+                                                          {classStudents[cls.id].sort((a, b) => (a.last_name || '').localeCompare(b.last_name || '')).map(s => (
+                                                            <div key={s.id} className="flex-center" style={{ justifyContent: 'space-between', background: 'var(--card-bg)', padding: '10px 15px', borderRadius: '10px', border: '1px solid rgba(99, 102, 241, 0.05)' }}>
+                                                              <div>
+                                                                <div style={{ fontWeight: '500', fontSize: '0.9rem' }}>{s.last_name} {s.first_name} {s.patronymic}</div>
+                                                                <div style={{ fontSize: '0.7rem', opacity: 0.5 }}>{s.email}</div>
+                                                              </div>
+                                                              <div className="flex-center" style={{ gap: '8px' }}>
+                                                                <button
+                                                                  onClick={() => navigate(`/user-analytics?userId=${s.id}`)}
+                                                                  style={{ background: 'transparent', color: 'var(--primary-color)', padding: '4px', boxShadow: 'none' }}
+                                                                  title="Аналитика ученика"
+                                                                >
+                                                                  <Eye size={16} />
+                                                                </button>
+
+                                                                {/* Restricted actions for teachers on admins/creators */}
+                                                                {!(profile?.role === 'teacher' && (s.role === 'admin' || s.role === 'creator')) ? (
+                                                                  <>
+                                                                    <button onClick={() => openEditModal(s)} style={{ background: 'transparent', color: 'var(--primary-color)', padding: '4px', boxShadow: 'none' }} title="Изменить ФИО"><Edit3 size={16} /></button>
+                                                                    <button onClick={() => setRemovingStudent({ ...s, blacklist: false })} style={{ background: 'transparent', color: 'var(--primary-color)', padding: '4px', boxShadow: 'none' }} title="Убрать из состава"><UserMinus size={16} /></button>
+                                                                    <button onClick={() => setRemovingStudent({ ...s, blacklist: true })} style={{ background: 'transparent', color: 'red', padding: '4px', boxShadow: 'none' }} title="Исключить и заблокировать в классе"><Ban size={16} /></button>
+                                                                    {(profile?.role === 'admin' || profile?.role === 'creator') && (
+                                                                      <button onClick={() => setBlockingUser(s)} style={{ background: 'transparent', color: '#dc2626', padding: '4px', boxShadow: 'none' }} title="Полная блокировка (удаление аккаунта)"><ShieldAlert size={16} /></button>
+                                                                    )}
+
+                                                                  </>
+                                                                ) : (
+                                                                  <div title="Защищенный профиль" style={{ opacity: 0.3, padding: '4px' }}><Shield size={16} /></div>
+                                                                )}
+                                                              </div>
+                                                            </div>
+                                                          ))}
+                                                        </div>
+                                                      ) : (
+                                                        <div style={{ textAlign: 'center', padding: '15px', opacity: 0.4, fontSize: '0.85rem' }}>В классе пока нет учеников</div>
+                                                      )}
+                                                    </div>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            );
+                                          })}
+                                          {schoolClasses.length === 0 && <div style={{ textAlign: 'center', padding: '15px', opacity: 0.4, fontSize: '0.9rem' }}>Нет добавленных классов</div>}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                              {citySchools.length === 0 && <div style={{ textAlign: 'center', padding: '15px', opacity: 0.4, fontSize: '0.95rem' }}>Нет добавленных школ</div>}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {cities.length === 0 && (
+                    <div className="card flex-center" style={{ height: '200px', flexDirection: 'column', gap: '15px' }}>
+                      <Building size={48} opacity={0.2} />
+                      <div style={{ opacity: 0.5 }}>Список городов пуст</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
 
       {/* МОДАЛКИ */}
 
       {/* МОДАЛКА ИСКЛЮЧЕНИЯ УЧЕНИКА ИЗ КЛАССА */}
       {removingStudent && (
-        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setRemovingStudent(null))(e); }}}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setRemovingStudent(null))(e); } }}>
           <div className="modal-content animate" style={{ width: '450px' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '50%', background: 'rgba(255, 0, 0, 0.1)', color: 'red', margin: '0 auto 25px' }}><X size={32} /></div>
             <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>
@@ -1073,8 +1075,8 @@ const Dashboard = ({ session, profile }) => {
             </h2>
             <p style={{ opacity: 0.7, marginBottom: '30px', lineHeight: '1.6', textAlign: 'center' }}>
               Вы собираетесь {removingStudent.blacklist ? 'исключить и заблокировать в этом классе' : 'убрать из состава класса'} <strong>{removingStudent.last_name} {removingStudent.first_name}</strong>.<br />
-              {removingStudent.blacklist 
-                ? 'Он больше не сможет подавать заявки в этот класс.' 
+              {removingStudent.blacklist
+                ? 'Он больше не сможет подавать заявки в этот класс.'
                 : 'Он сможет подать заявку в этот класс снова.'}
             </p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
@@ -1089,31 +1091,31 @@ const Dashboard = ({ session, profile }) => {
       {editingClassLimit && (() => {
         const maxAllowed = (profile?.role === 'admin' || profile?.role === 'creator') ? 500 : 50;
         const isOverLimit = newLimit > maxAllowed;
-        
+
         return (
-          <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setEditingClassLimit(null))(e); }}}>
+          <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setEditingClassLimit(null))(e); } }}>
             <div className="modal-content animate" style={{ width: '400px' }} onClick={e => e.stopPropagation()}>
               <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '50%', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', margin: '0 auto 25px' }}><Edit3 size={32} /></div>
               <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>Лимит учеников</h2>
               <p style={{ opacity: 0.7, marginBottom: '20px', textAlign: 'center' }}>
-                Класс: <strong>{editingClassLimit.name}</strong><br/>
+                Класс: <strong>{editingClassLimit.name}</strong><br />
                 Тип: {availableSchools.find(s => s.id === editingClassLimit.school_id)?.name}
               </p>
               <div style={{ marginBottom: '25px' }}>
                 <label htmlFor="class-limit-input" style={{ fontSize: '0.85rem', opacity: 0.5, display: 'block', marginBottom: '8px' }}>Новый лимит (учеников)</label>
-                <input 
+                <input
                   id="class-limit-input"
                   name="max_students"
-                  type="number" 
-                  value={newLimit} 
-                  onChange={(e) => setNewLimit(parseInt(e.target.value) || 0)} 
+                  type="number"
+                  value={newLimit}
+                  onChange={(e) => setNewLimit(parseInt(e.target.value) || 0)}
                   min="1"
                   max={maxAllowed}
-                  style={{ width: '100%', fontSize: '1.2rem', textAlign: 'center', borderColor: isOverLimit ? '#ef4444' : 'var(--border-color)', color: isOverLimit ? '#ef4444' : 'inherit' }} 
+                  style={{ width: '100%', fontSize: '1.2rem', textAlign: 'center', borderColor: isOverLimit ? '#ef4444' : 'var(--border-color)', color: isOverLimit ? '#ef4444' : 'inherit' }}
                 />
                 {isOverLimit && (
                   <div className="animate" style={{ fontSize: '0.8rem', color: '#ef4444', marginTop: '12px', textAlign: 'center', background: 'rgba(239, 68, 68, 0.1)', padding: '10px', borderRadius: '8px', lineHeight: '1.4' }}>
-                    Для вашей роли максимальный лимит составляет <strong>{maxAllowed}</strong> учеников.<br/>Измените значение, чтобы сохранить.
+                    Для вашей роли максимальный лимит составляет <strong>{maxAllowed}</strong> учеников.<br />Измените значение, чтобы сохранить.
                   </div>
                 )}
               </div>
@@ -1128,7 +1130,7 @@ const Dashboard = ({ session, profile }) => {
 
       {/* МОДАЛКА РАЗБЛОКИРОВКИ */}
       {unblockingEmail && (
-        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setUnblockingEmail(null))(e); }}}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setUnblockingEmail(null))(e); } }}>
           <div className="modal-content animate" style={{ width: '450px' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '50%', background: 'rgba(74, 222, 128, 0.1)', color: '#4ade80', margin: '0 auto 25px' }}><Unlock size={32} /></div>
             <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>Разблокировать почту?</h2>
@@ -1146,7 +1148,7 @@ const Dashboard = ({ session, profile }) => {
 
       {/* РЕДАКТИРОВАНИЕ ПОЛЬЗОВАТЕЛЯ */}
       {editingUser && (
-        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setEditingUser(null))(e); }}}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setEditingUser(null))(e); } }}>
           <div className="modal-content animate" style={{ width: '500px', textAlign: 'left', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '25px' }}>
               <h3 style={{ margin: 0 }}>Редактирование {editingUser.first_name}</h3>
@@ -1242,7 +1244,7 @@ const Dashboard = ({ session, profile }) => {
       )}
 
       {deletingUser && (
-        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setDeletingUser(null))(e); }}}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setDeletingUser(null))(e); } }}>
           <div className="modal-content animate modal-content-danger" style={{ width: '450px' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '50%', background: 'rgba(248, 113, 113, 0.1)', color: '#f87171', margin: '0 auto 25px' }}><Trash2 size={32} /></div>
             <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>Удалить пользователя?</h2>
@@ -1259,7 +1261,7 @@ const Dashboard = ({ session, profile }) => {
       )}
 
       {blockingUser && (
-        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setBlockingUser(null))(e); }}}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setBlockingUser(null))(e); } }}>
           <div className="modal-content animate modal-content-danger" style={{ width: '450px' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '50%', background: 'rgba(255, 0, 0, 0.1)', color: 'red', margin: '0 auto 25px' }}><Ban size={32} /></div>
             <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>Заблокировать пользователя?</h2>
@@ -1276,7 +1278,7 @@ const Dashboard = ({ session, profile }) => {
       )}
 
       {deletingStructure && (
-        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setDeletingStructure(null))(e); }}}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setDeletingStructure(null))(e); } }}>
           <div className="modal-content animate modal-content-danger" style={{ width: '450px' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '50%', background: 'rgba(248, 113, 113, 0.1)', color: '#f87171', margin: '0 auto 25px' }}><AlertTriangle size={32} /></div>
             <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>Удалить {deletingStructure.typeLabel}?</h2>
@@ -1294,7 +1296,7 @@ const Dashboard = ({ session, profile }) => {
 
       {/* МОДАЛКА УПРАВЛЕНИЯ УЧИТЕЛЯМИ КЛАССА */}
       {showTeachersModal && (
-        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setShowTeachersModal(null))(e); }}}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setShowTeachersModal(null))(e); } }}>
           <div className="modal-content animate" style={{ width: '500px' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '25px' }}>
               <div>
@@ -1305,12 +1307,12 @@ const Dashboard = ({ session, profile }) => {
             </div>
 
             <form onSubmit={(e) => { e.preventDefault(); handleAddTeacher(showTeachersModal.id, newTeacherEmail); }} className="flex-center" style={{ gap: '10px', marginBottom: '25px' }}>
-              <input 
-                type="email" 
-                placeholder="Email учителя..." 
-                value={newTeacherEmail} 
-                onChange={e => setNewTeacherEmail(e.target.value)} 
-                required 
+              <input
+                type="email"
+                placeholder="Email учителя..."
+                value={newTeacherEmail}
+                onChange={e => setNewTeacherEmail(e.target.value)}
+                required
                 style={{ flex: 1 }}
               />
               <button type="submit" style={{ background: 'var(--primary-color)', color: 'white' }}><Plus size={20} /></button>
@@ -1336,10 +1338,10 @@ const Dashboard = ({ session, profile }) => {
           </div>
         </div>
       )}
-      
+
       {/* МОДАЛКА ЗАЯВОК В КЛАСС */}
       {showApplicationsModal && (
-        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setShowApplicationsModal(null))(e); }}}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setShowApplicationsModal(null))(e); } }}>
           <div className="modal-content animate" style={{ width: '500px' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '25px' }}>
               <div>
@@ -1372,7 +1374,7 @@ const Dashboard = ({ session, profile }) => {
 
       {/* МОДАЛКА БЕЛОГО/ЧЕРНОГО СПИСКА */}
       {showListsModal && (
-        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setShowListsModal(null))(e); }}}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setShowListsModal(null))(e); } }}>
           <div className="modal-content animate" style={{ width: '450px' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '25px' }}>
               <div>
@@ -1382,8 +1384,8 @@ const Dashboard = ({ session, profile }) => {
               <button onClick={() => setShowListsModal(null)} style={{ background: 'transparent', color: 'inherit', padding: 0 }}><X size={24} /></button>
             </div>
 
-            <form onSubmit={(e) => { 
-              e.preventDefault(); 
+            <form onSubmit={(e) => {
+              e.preventDefault();
               const email = e.target.email.value.toLowerCase();
               const table = showListsModal.type === 'white' ? 'class_white_list' : 'class_black_list';
               supabase.from(table).insert({ class_id: showListsModal.class.id, email }).then(() => {
@@ -1413,7 +1415,7 @@ const Dashboard = ({ session, profile }) => {
 
       {/* НОВЫЕ МОДАЛКИ СТРУКТУРЫ */}
       {addingCity && (
-        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setAddingCity(false))(e); }}}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setAddingCity(false))(e); } }}>
           <div className="modal-content animate" style={{ width: '400px' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '25px' }}>
               <h3 style={{ margin: 0 }}>Добавить город</h3>
@@ -1431,7 +1433,7 @@ const Dashboard = ({ session, profile }) => {
       )}
 
       {addingSchool && (
-        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setAddingSchool(false))(e); }}}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setAddingSchool(false))(e); } }}>
           <div className="modal-content animate" style={{ width: '400px' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '25px' }}>
               <h3 style={{ margin: 0 }}>Добавить школу</h3>
@@ -1456,7 +1458,7 @@ const Dashboard = ({ session, profile }) => {
       )}
 
       {addingClass && (
-        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setAddingClass(false))(e); }}}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setAddingClass(false))(e); } }}>
           <div className="modal-content animate" style={{ width: '400px' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '25px' }}>
               <h3 style={{ margin: 0 }}>Добавить класс</h3>
@@ -1488,7 +1490,7 @@ const Dashboard = ({ session, profile }) => {
       )}
 
       {renamingStructure && (
-        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setRenamingStructure(null))(e); }}}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; (() => setRenamingStructure(null))(e); } }}>
           <div className="modal-content animate" style={{ width: '400px' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '25px' }}>
               <h3 style={{ margin: 0 }}>Переименовать {renamingStructure.typeLabel}</h3>
@@ -1507,9 +1509,9 @@ const Dashboard = ({ session, profile }) => {
           </div>
         </div>
       )}
-      {/* ФИДБЕК МОДАЛКА О РЕЗУЛЬТАТЕ */}
+
       {actionFeedback && (
-        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; setActionFeedback(null); }}}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; setActionFeedback(null); } }}>
           <div className="modal-content animate" style={{ width: '400px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
             <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', borderRadius: '50%', background: actionFeedback.type === 'success' ? 'rgba(74, 222, 128, 0.1)' : 'rgba(239, 68, 68, 0.1)', color: actionFeedback.type === 'success' ? '#4ade80' : '#ef4444', margin: '0 auto 25px' }}>
               {actionFeedback.type === 'success' ? <CheckCircle size={32} /> : <XCircle size={32} />}
@@ -1528,7 +1530,22 @@ const Dashboard = ({ session, profile }) => {
 
 // ─── AI Prompt Button for Dashboard (Class Level) ────────────────
 const DashboardAiButton = ({ classId, className }) => {
-  const [status, setStatus] = useState('idle'); // 'idle' | 'loading_copy' | 'loading_file' | 'copied' | 'downloaded' | 'error'
+  const [status, setStatus] = useState('idle');
+  const [showAiModal, setShowAiModal] = useState(false);
+  const [aiData, setAiData] = useState(null);
+  const [showLegacy, setShowLegacy] = useState(false);
+
+  const handleAiAnalysis = async () => {
+    setStatus('loading_ai');
+    try {
+      const result = await buildClassPrompt(classId);
+      if (result && result.instruction) {
+        setAiData(result);
+        setShowAiModal(true);
+      } else setStatus('error');
+    } catch (e) { setStatus('error'); }
+    setStatus('idle');
+  };
 
   const handleAction = async (type) => {
     setStatus(type === 'copy' ? 'loading_copy' : 'loading_file');
@@ -1551,44 +1568,87 @@ const DashboardAiButton = ({ classId, className }) => {
     }
   };
 
-  return (
-    <div style={{ display: 'flex', gap: '6px' }}>
-      <button
-        onClick={() => handleAction('copy')}
-        disabled={status.startsWith('loading')}
-        className="flex-center"
-        title={`Скопировать промпт для ИИ-анализа класса ${className}`}
-        style={{
-          padding: '6px 12px', borderRadius: '8px', fontSize: '0.7rem', fontWeight: 'bold',
-          background: status === 'copied' ? 'rgba(34, 197, 94, 0.12)' : 'linear-gradient(135deg, rgba(168, 85, 247, 0.1), rgba(99, 102, 241, 0.1))',
-          color: status === 'copied' ? '#16a34a' : '#a855f7',
-          border: '1px solid ' + (status === 'copied' ? '#16a34a33' : '#a855f733'),
-          boxShadow: 'none', gap: '5px', cursor: status.startsWith('loading') ? 'wait' : 'pointer',
-          transition: 'all 0.3s', flexShrink: 0, whiteSpace: 'nowrap'
-        }}
-      >
-        {status === 'loading_copy' ? <RefreshCw size={12} className="spinner" /> : status === 'copied' ? <Check size={12} /> : <Sparkles size={12} />}
-        {status === 'copied' ? 'Готово' : 'Промпт'}
-      </button>
+  const cacheKey = buildAiCacheKey('class', classId);
 
-      <button
-        onClick={() => handleAction('file')}
-        disabled={status.startsWith('loading')}
-        className="flex-center"
-        title="Скачать JSON данные класса"
-        style={{
-          padding: '6px 12px', borderRadius: '8px', fontSize: '0.7rem', fontWeight: 'bold',
-          background: status === 'downloaded' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(99, 102, 241, 0.05)',
-          color: status === 'downloaded' ? '#16a34a' : 'var(--primary-color)',
-          border: '1px solid ' + (status === 'downloaded' ? '#16a34a33' : 'rgba(99, 102, 241, 0.1)'),
-          boxShadow: 'none', gap: '5px', cursor: status.startsWith('loading') ? 'wait' : 'pointer',
-          transition: 'all 0.3s', flexShrink: 0, whiteSpace: 'nowrap'
-        }}
-      >
-        {status === 'loading_file' ? <RefreshCw size={12} className="spinner" /> : status === 'downloaded' ? <Check size={12} /> : <FileText size={12} />}
-        JSON
-      </button>
-    </div>
+  return (
+    <>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            onClick={handleAiAnalysis}
+            disabled={status === 'loading_ai'}
+            className="flex-center"
+            title="Запустить ИИ-анализ успеваемости класса"
+            style={{
+              padding: '8px 14px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 'bold',
+              background: 'linear-gradient(135deg, #7c3aed, #6366f1)',
+              color: 'white', border: 'none',
+              boxShadow: '0 2px 8px rgba(99, 102, 241, 0.3)', gap: '7px',
+              cursor: status === 'loading_ai' ? 'wait' : 'pointer',
+              transition: 'all 0.3s', flexShrink: 0, whiteSpace: 'nowrap'
+            }}
+          >
+            {status === 'loading_ai' ? <RefreshCw size={14} className="spinner" /> : <Sparkles size={14} />}
+            ИИ-Анализ
+          </button>
+        </div>
+
+        {/* Legacy toggle */}
+        <button className="ai-legacy-toggle" onClick={() => setShowLegacy(p => !p)}>
+          <ChevronDown size={10} style={{ transform: showLegacy ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+          Ручной режим
+        </button>
+
+        <div className={`ai-legacy-panel ${showLegacy ? 'open' : ''}`}>
+          <div className="ai-legacy-hint">Для ручной вставки промпта в AI Studio</div>
+          <div style={{ display: 'flex', gap: '6px' }}>
+            <button
+              onClick={() => handleAction('copy')}
+              disabled={status.startsWith('loading')}
+              className="flex-center"
+              style={{
+                padding: '6px 12px', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 'bold',
+                background: status === 'copied' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(168, 85, 247, 0.05)',
+                color: status === 'copied' ? '#16a34a' : '#a855f7',
+                border: '1px solid ' + (status === 'copied' ? '#16a34a33' : '#a855f733'),
+                boxShadow: 'none', gap: '5px'
+              }}
+            >
+              {status === 'loading_copy' ? <RefreshCw size={12} className="spinner" /> : status === 'copied' ? <Check size={12} /> : <Copy size={12} />}
+              Промпт
+            </button>
+
+            <button
+              onClick={() => handleAction('file')}
+              disabled={status.startsWith('loading')}
+              className="flex-center"
+              style={{
+                padding: '6px 12px', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 'bold',
+                background: status === 'downloaded' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(99, 102, 241, 0.05)',
+                color: status === 'downloaded' ? '#16a34a' : 'var(--primary-color)',
+                border: '1px solid ' + (status === 'downloaded' ? '#16a34a33' : 'rgba(99, 102, 241, 0.1)'),
+                boxShadow: 'none', gap: '5px'
+              }}
+            >
+              {status === 'loading_file' ? <RefreshCw size={12} className="spinner" /> : status === 'downloaded' ? <Check size={12} /> : <FileText size={12} />}
+              JSON
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <AiAnalysisModal
+        isOpen={showAiModal}
+        onClose={() => setShowAiModal(false)}
+        title={`ИИ-Анализ класса: ${className}`}
+        cacheKey={cacheKey}
+        contextType="class"
+        contextId={classId}
+        viewerRole="teacher"
+        instruction={aiData?.instruction}
+        data={aiData?.data}
+      />
+    </>
   );
 };
 

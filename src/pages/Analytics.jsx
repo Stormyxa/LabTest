@@ -8,6 +8,9 @@ import { resolveImgUrl } from '../lib/imageUtils';
 import { ChevronLeft, User, BarChart, Calendar, CheckCircle, XCircle, Mail, Trash2, AlertTriangle, Filter, Download, Pencil, Shield, EyeOff, ArrowDown, ArrowUp, Info, Lock, Image as ImageIcon, ChevronRight, X, Sparkles, Copy, Check, RefreshCw, FileText } from 'lucide-react';
 import MathRenderer from '../components/MathRenderer';
 import { buildQuizPromptFromData, downloadJSON } from '../lib/aiPromptBuilder';
+import { buildAiCacheKey } from '../lib/aiService';
+import AiAnalysisModal from '../components/AiAnalysisModal';
+import { ChevronDown } from 'lucide-react';
 
 const Analytics = () => {
   const [searchParams] = useSearchParams();
@@ -988,54 +991,65 @@ const AnalyticsSkeleton = () => (
 
 // ─── AI Prompt Button for Analytics ──────────────────────────────
 const AnalyticsAiButton = ({ quiz, filteredResults, cities, schools, classes, filterCity, filterSchool, filterClass, profile, teacherClasses, allStudents }) => {
-  const [status, setStatus] = React.useState('idle'); // 'idle' | 'loading_copy' | 'loading_file' | 'copied' | 'downloaded' | 'error'
+  const [status, setStatus] = React.useState('idle');
+  const [showAiModal, setShowAiModal] = React.useState(false);
+  const [aiData, setAiData] = React.useState(null);
+  const [showLegacy, setShowLegacy] = React.useState(false);
+
+  const getAiData = () => {
+    const parts = [];
+    if (filterCity && filterCity !== 'all') {
+      const city = cities.find(c => c.id === filterCity);
+      if (city) parts.push(city.name);
+    } else parts.push('Все города');
+    if (filterSchool && filterSchool !== 'all') {
+      const school = schools.find(s => s.id === filterSchool);
+      if (school) parts.push(school.name);
+    } else parts.push('Все школы');
+    if (filterClass && filterClass !== 'all') {
+      const cls = classes.find(c => c.id === filterClass);
+      if (cls) parts.push(cls.name);
+    } else parts.push('Все классы');
+    const scopeLabel = parts.join(', ');
+
+    let missingStudents = [];
+    try {
+      if (allStudents && allStudents.length > 0) {
+        const takenIds = new Set(filteredResults.map(r => r.user_id));
+        missingStudents = allStudents.filter(s => {
+          if (s.is_observer) return false;
+          if (filterCity !== 'all' && s.city_id !== filterCity) return false;
+          if (filterSchool !== 'all' && s.school_id !== filterSchool) return false;
+          if (filterClass !== 'all' && s.class_id !== filterClass) return false;
+          if (profile?.role === 'teacher' && quiz?.author_id !== profile?.id && filterClass === 'all') {
+            if (!teacherClasses.includes(s.class_id)) return false;
+          }
+          return !takenIds.has(s.id);
+        });
+      }
+    } catch (err) {
+      console.error('Failed to process missing students locally:', err);
+    }
+
+    return buildQuizPromptFromData({ quiz, filteredResults, scopeLabel, cities, schools, classes, missingStudents });
+  };
+
+  const handleAiAnalysis = async () => {
+    setStatus('loading_ai');
+    try {
+      const result = getAiData();
+      if (result && result.instruction) {
+        setAiData(result);
+        setShowAiModal(true);
+      } else setStatus('error');
+    } catch (e) { setStatus('error'); }
+    setStatus('idle');
+  };
 
   const handleAction = async (type) => {
     setStatus(type === 'copy' ? 'loading_copy' : 'loading_file');
     try {
-      // Build scope label from current filters
-      const parts = [];
-      if (filterCity && filterCity !== 'all') {
-        const city = cities.find(c => c.id === filterCity);
-        if (city) parts.push(city.name);
-      } else parts.push('Все города');
-      if (filterSchool && filterSchool !== 'all') {
-        const school = schools.find(s => s.id === filterSchool);
-        if (school) parts.push(school.name);
-      } else parts.push('Все школы');
-      if (filterClass && filterClass !== 'all') {
-        const cls = classes.find(c => c.id === filterClass);
-        if (cls) parts.push(cls.name);
-      } else parts.push('Все классы');
-      const scopeLabel = parts.join(', ');
-
-      // Fetch missing students from local allStudents state (faster than DB query)
-      let missingStudents = [];
-      try {
-        if (allStudents && allStudents.length > 0) {
-          const takenIds = new Set(filteredResults.map(r => r.user_id));
-          
-          missingStudents = allStudents.filter(s => {
-            if (s.is_observer) return false;
-            
-            // Apply scope filters
-            if (filterCity !== 'all' && s.city_id !== filterCity) return false;
-            if (filterSchool !== 'all' && s.school_id !== filterSchool) return false;
-            if (filterClass !== 'all' && s.class_id !== filterClass) return false;
-            
-            // Role-based filtering for teachers
-            if (profile?.role === 'teacher' && quiz?.author_id !== profile?.id && filterClass === 'all') {
-              if (!teacherClasses.includes(s.class_id)) return false;
-            }
-            
-            return !takenIds.has(s.id);
-          });
-        }
-      } catch (err) {
-        console.error('Failed to process missing students locally:', err);
-      }
-
-      const result = buildQuizPromptFromData({ quiz, filteredResults, scopeLabel, cities, schools, classes, missingStudents });
+      const result = getAiData();
       if (result) {
         if (type === 'copy' && result.instruction) {
           await navigator.clipboard.writeText(result.instruction);
@@ -1058,42 +1072,87 @@ const AnalyticsAiButton = ({ quiz, filteredResults, cities, schools, classes, fi
 
   if (!filteredResults?.length) return null;
 
-  return (
-    <div className="flex-center" style={{ gap: '10px' }}>
-      <button
-        onClick={() => handleAction('copy')}
-        disabled={status.startsWith('loading')}
-        className="flex-center card"
-        title="Скопировать инструкцию для ИИ"
-        style={{
-          background: status === 'copied' ? 'rgba(34, 197, 94, 0.12)' : 'linear-gradient(135deg, rgba(168, 85, 247, 0.1), rgba(99, 102, 241, 0.1))',
-          color: status === 'copied' ? '#16a34a' : '#a855f7',
-          boxShadow: 'none', padding: '12px 18px', marginBottom: 0,
-          cursor: 'pointer', border: '1px solid ' + (status === 'copied' ? '#16a34a33' : '#a855f733'),
-          fontWeight: 'bold', gap: '8px', transition: 'all 0.3s'
-        }}
-      >
-        {status === 'loading_copy' ? <RefreshCw size={18} style={{ animation: 'spin 1s linear infinite' }} /> : status === 'copied' ? <Check size={18} /> : <Sparkles size={18} />}
-        {status === 'copied' ? 'Промпт скопирован' : 'ИИ-Промпт'}
-      </button>
+  const cacheKey = buildAiCacheKey('quiz', quiz?.id);
 
-      <button
-        onClick={() => handleAction('file')}
-        disabled={status.startsWith('loading')}
-        className="flex-center card"
-        title="Скачать данные теста (JSON)"
-        style={{
-          background: status === 'downloaded' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(99, 102, 241, 0.05)',
-          color: status === 'downloaded' ? '#16a34a' : 'var(--primary-color)',
-          boxShadow: 'none', padding: '12px 18px', marginBottom: 0,
-          cursor: 'pointer', border: '1px solid ' + (status === 'downloaded' ? '#16a34a33' : 'rgba(99, 102, 241, 0.1)'),
-          fontWeight: 'bold', gap: '8px', transition: 'all 0.3s'
-        }}
-      >
-        {status === 'loading_file' ? <RefreshCw size={18} style={{ animation: 'spin 1s linear infinite' }} /> : status === 'downloaded' ? <Check size={18} /> : <FileText size={18} />}
-        JSON
-      </button>
-    </div>
+  return (
+    <>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+        <div className="flex-center" style={{ gap: '10px' }}>
+          <button
+            onClick={handleAiAnalysis}
+            disabled={status === 'loading_ai'}
+            className="flex-center card"
+            title="Запустить общий ИИ-анализ теста"
+            style={{
+              background: 'linear-gradient(135deg, #7c3aed, #6366f1)',
+              color: 'white',
+              boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)', padding: '12px 24px', marginBottom: 0,
+              cursor: 'pointer', border: 'none',
+              borderRadius: '16px',
+              fontWeight: 'bold', gap: '10px', transition: 'all 0.3s'
+            }}
+          >
+            {status === 'loading_ai' ? <RefreshCw size={18} className="spinner" /> : <Sparkles size={18} />}
+            Запустить ИИ-Анализ
+          </button>
+        </div>
+
+        {/* Legacy toggle */}
+        <button className="ai-legacy-toggle" onClick={() => setShowLegacy(p => !p)}>
+          <ChevronDown size={12} style={{ transform: showLegacy ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+          Ручной режим
+        </button>
+
+        <div className={`ai-legacy-panel ${showLegacy ? 'open' : ''}`}>
+          <div className="ai-legacy-hint">Для ручной вставки промпта в AI Studio</div>
+          <div className="flex-center" style={{ gap: '10px' }}>
+            <button
+              onClick={() => handleAction('copy')}
+              disabled={status.startsWith('loading')}
+              className="flex-center card"
+              style={{
+                background: status === 'copied' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(168, 85, 247, 0.05)',
+                color: status === 'copied' ? '#16a34a' : '#a855f7',
+                boxShadow: 'none', padding: '8px 16px', marginBottom: 0,
+                cursor: 'pointer', border: '1px solid ' + (status === 'copied' ? '#16a34a33' : '#a855f733'),
+                fontWeight: 'bold', gap: '8px', fontSize: '0.85rem'
+              }}
+            >
+              {status === 'loading_copy' ? <RefreshCw size={16} className="spinner" /> : status === 'copied' ? <Check size={16} /> : <Copy size={16} />}
+              Промпт
+            </button>
+
+            <button
+              onClick={() => handleAction('file')}
+              disabled={status.startsWith('loading')}
+              className="flex-center card"
+              style={{
+                background: status === 'downloaded' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(99, 102, 241, 0.05)',
+                color: status === 'downloaded' ? '#16a34a' : 'var(--primary-color)',
+                boxShadow: 'none', padding: '8px 16px', marginBottom: 0,
+                cursor: 'pointer', border: '1px solid ' + (status === 'downloaded' ? '#16a34a33' : 'rgba(99, 102, 241, 0.1)'),
+                fontWeight: 'bold', gap: '8px', fontSize: '0.85rem'
+              }}
+            >
+              {status === 'loading_file' ? <RefreshCw size={16} className="spinner" /> : status === 'downloaded' ? <Check size={16} /> : <FileText size={16} />}
+              JSON
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <AiAnalysisModal
+        isOpen={showAiModal}
+        onClose={() => setShowAiModal(false)}
+        title={`ИИ-Анализ теста: ${quiz?.title || 'Без названия'}`}
+        cacheKey={cacheKey}
+        contextType="quiz"
+        contextId={quiz?.id}
+        viewerRole="teacher"
+        instruction={aiData?.instruction}
+        data={aiData?.data}
+      />
+    </>
   );
 };
 

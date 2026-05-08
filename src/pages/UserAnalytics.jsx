@@ -2,8 +2,10 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { fetchWithCache, useCacheSync, getCachedData } from '../lib/cache';
-import { ChevronLeft, BarChart2, Search, Filter, Shield, EyeOff, AlertTriangle, Menu, X, Clock, Calendar, Sparkles, Copy, Check, RefreshCw, FileText } from 'lucide-react';
+import { ChevronLeft, BarChart2, Search, Filter, Shield, EyeOff, AlertTriangle, Menu, X, Clock, Calendar, Sparkles, Copy, Check, RefreshCw, FileText, ChevronDown } from 'lucide-react';
 import { buildStudentPrompt, downloadJSON } from '../lib/aiPromptBuilder';
+import { buildAiCacheKey } from '../lib/aiService';
+import AiAnalysisModal from '../components/AiAnalysisModal';
 
 const UserListItem = React.memo(({ u, isSelected, onSelect }) => (
   <button 
@@ -722,7 +724,7 @@ const UserAnalytics = ({ session, profile: initialProfile }) => {
                 </h2>
                 <h3 style={{ opacity: 0.6, fontSize: '1.2rem', marginBottom: '30px' }}>Общая успеваемость по тестам</h3>
               </div>
-              <AiPromptButton userId={targetUser.id} viewerUserId={session.user.id} viewerProfile={profile} />
+              <AiAnalysisButton userId={targetUser.id} viewerUserId={session.user.id} viewerProfile={profile} />
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '20px', marginBottom: '30px' }}>
@@ -1043,7 +1045,6 @@ const mobileStyles = `
   }
 }
 
-/* Performance optimizations for HeatMap and large lists */
 .heatmap-day {
   transition: transform 0.1s ease-out;
 }
@@ -1065,6 +1066,11 @@ const mobileStyles = `
 .user-sidebar-item:active {
   transform: scale(0.98);
 }
+
+.ai-legacy-toggle { background: none; border: none; padding: 5px; font-size: 0.7rem; opacity: 0.5; display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.ai-legacy-panel { display: none; margin-top: 5px; background: rgba(0,0,0,0.03); padding: 10px; border-radius: 8px; }
+.ai-legacy-panel.open { display: block; }
+.ai-legacy-hint { font-size: 0.7rem; opacity: 0.6; margin-bottom: 8px; }
 `;
 
 // Inject styles
@@ -1074,10 +1080,13 @@ if (typeof document !== 'undefined') {
   document.head.append(style);
 }
 
-// ─── AI Prompt Button Component ──────────────────────────────────
-const AiPromptButton = ({ userId, viewerUserId, viewerProfile }) => {
-  const [status, setStatus] = useState('idle'); // 'idle' | 'loading_copy' | 'loading_file' | 'copied' | 'downloaded' | 'error'
+// ─── AI Analysis Button Component ────────────────────────────────
+const AiAnalysisButton = ({ userId, viewerUserId, viewerProfile }) => {
+  const [status, setStatus] = useState('idle');
   const [count, setCount] = useState(null);
+  const [showAiModal, setShowAiModal] = useState(false);
+  const [aiData, setAiData] = useState(null);
+  const [showLegacy, setShowLegacy] = useState(false);
   const isSelf = viewerUserId === userId;
   const viewerRole = isSelf ? 'student' : 'teacher';
 
@@ -1096,7 +1105,22 @@ const AiPromptButton = ({ userId, viewerUserId, viewerProfile }) => {
     fetchCount();
   }, [userId]);
 
-  const handleAction = async (type) => {
+  const handleAiAnalysis = async () => {
+    if (count < 10) return;
+    setStatus('loading_ai');
+    try {
+      const result = await buildStudentPrompt(userId, viewerRole, isSelf ? null : viewerProfile);
+      if (result && result.instruction) {
+        setAiData(result);
+        setShowAiModal(true);
+      }
+    } catch (e) {
+      console.error('AI prep failed:', e);
+    }
+    setStatus('idle');
+  };
+
+  const handleLegacyAction = async (type) => {
     if (count < 10) return;
     setStatus(type === 'copy' ? 'loading_copy' : 'loading_file');
     try {
@@ -1108,16 +1132,11 @@ const AiPromptButton = ({ userId, viewerUserId, viewerProfile }) => {
         } else if (type === 'file' && result.data) {
           downloadJSON(result.data, result.filename);
           setStatus('downloaded');
-        } else {
-          setStatus('error');
-        }
+        } else setStatus('error');
         setTimeout(() => setStatus('idle'), 2500);
-      } else {
-        setStatus('error');
-        setTimeout(() => setStatus('idle'), 3000);
-      }
+      } else { setStatus('error'); setTimeout(() => setStatus('idle'), 3000); }
     } catch (e) {
-      console.error('AI action failed:', e);
+      console.error('Legacy AI action failed:', e);
       setStatus('error');
       setTimeout(() => setStatus('idle'), 3000);
     }
@@ -1136,45 +1155,87 @@ const AiPromptButton = ({ userId, viewerUserId, viewerProfile }) => {
     );
   }
 
-  return (
-    <div style={{ display: 'flex', gap: '8px' }}>
-      <button
-        onClick={() => handleAction('copy')}
-        disabled={status.startsWith('loading') || count === null}
-        className="flex-center"
-        title={isSelf ? 'Скопировать промпт для ИИ-наставника' : 'Скопировать промпт педагогического анализа'}
-        style={{
-          padding: '8px 14px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 'bold',
-          background: status === 'copied' ? 'rgba(34, 197, 94, 0.12)' : 'linear-gradient(135deg, rgba(168, 85, 247, 0.1), rgba(99, 102, 241, 0.1))',
-          color: status === 'copied' ? '#16a34a' : '#a855f7',
-          border: '1px solid ' + (status === 'copied' ? '#16a34a33' : '#a855f733'),
-          boxShadow: 'none', gap: '6px', cursor: (status.startsWith('loading') || count === null) ? 'wait' : 'pointer',
-          transition: 'all 0.3s', flexShrink: 0, whiteSpace: 'nowrap'
-        }}
-      >
-        {status === 'loading_copy' ? <RefreshCw size={14} className="spinner" /> : status === 'copied' ? <Check size={14} /> : <Sparkles size={14} />}
-        {status === 'copied' ? 'Промпт скопирован' : 'Промпт'}
-      </button>
+  const cacheKey = buildAiCacheKey('student', userId, viewerRole);
 
-      <button
-        onClick={() => handleAction('file')}
-        disabled={status.startsWith('loading') || count === null}
-        className="flex-center"
-        title="Скачать данные аналитики (JSON)"
-        style={{
-          padding: '8px 14px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 'bold',
-          background: status === 'downloaded' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(99, 102, 241, 0.05)',
-          color: status === 'downloaded' ? '#16a34a' : 'var(--primary-color)',
-          border: '1px solid ' + (status === 'downloaded' ? '#16a34a33' : 'rgba(99, 102, 241, 0.1)'),
-          boxShadow: 'none', gap: '6px', cursor: (status.startsWith('loading') || count === null) ? 'wait' : 'pointer',
-          transition: 'all 0.3s', flexShrink: 0, whiteSpace: 'nowrap'
-        }}
-      >
-        {status === 'loading_file' ? <RefreshCw size={14} className="spinner" /> : status === 'downloaded' ? <Check size={14} /> : <FileText size={14} />}
-        JSON
-      </button>
-    </div>
+  return (
+    <>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            onClick={handleAiAnalysis}
+            disabled={status === 'loading_ai' || count === null}
+            className="flex-center"
+            title={isSelf ? 'Запустить ИИ-наставника' : 'Запустить педагогический ИИ-анализ'}
+            style={{
+              padding: '8px 16px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 'bold',
+              background: 'linear-gradient(135deg, #7c3aed, #6366f1)',
+              color: 'white', border: 'none',
+              boxShadow: '0 2px 8px rgba(99, 102, 241, 0.3)', gap: '7px',
+              cursor: (status === 'loading_ai' || count === null) ? 'wait' : 'pointer',
+              transition: 'all 0.3s', flexShrink: 0, whiteSpace: 'nowrap'
+            }}
+          >
+            {status === 'loading_ai' ? <RefreshCw size={14} className="spinner" /> : <Sparkles size={14} />}
+            ИИ-Анализ
+          </button>
+        </div>
+
+        {/* Legacy buttons toggle */}
+        <button className="ai-legacy-toggle" onClick={() => setShowLegacy(p => !p)}>
+          <ChevronDown size={10} style={{ transform: showLegacy ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+          Ручной режим
+        </button>
+        <div className={`ai-legacy-panel ${showLegacy ? 'open' : ''}`}>
+          <div className="ai-legacy-hint">Для ручной вставки промпта в AI Studio</div>
+          <div style={{ display: 'flex', gap: '6px' }}>
+            <button
+              onClick={() => handleLegacyAction('copy')}
+              disabled={status.startsWith('loading') || count === null}
+              className="flex-center"
+              style={{
+                padding: '6px 12px', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 'bold',
+                background: status === 'copied' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(99, 102, 241, 0.05)',
+                color: status === 'copied' ? '#16a34a' : '#a855f7',
+                border: '1px solid ' + (status === 'copied' ? '#16a34a33' : '#a855f733'),
+                boxShadow: 'none', gap: '5px'
+              }}
+            >
+              {status === 'loading_copy' ? <RefreshCw size={12} className="spinner" /> : status === 'copied' ? <Check size={12} /> : <Copy size={12} />}
+              Промпт
+            </button>
+            <button
+              onClick={() => handleLegacyAction('file')}
+              disabled={status.startsWith('loading') || count === null}
+              className="flex-center"
+              style={{
+                padding: '6px 12px', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 'bold',
+                background: status === 'downloaded' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(99, 102, 241, 0.05)',
+                color: status === 'downloaded' ? '#16a34a' : 'var(--primary-color)',
+                border: '1px solid ' + (status === 'downloaded' ? '#16a34a33' : 'rgba(99, 102, 241, 0.1)'),
+                boxShadow: 'none', gap: '5px'
+              }}
+            >
+              {status === 'loading_file' ? <RefreshCw size={12} className="spinner" /> : status === 'downloaded' ? <Check size={12} /> : <FileText size={12} />}
+              JSON
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <AiAnalysisModal
+        isOpen={showAiModal}
+        onClose={() => setShowAiModal(false)}
+        title={isSelf ? 'Личный ИИ-наставник' : 'Педагогический анализ ученика'}
+        cacheKey={cacheKey}
+        contextType="student"
+        contextId={userId}
+        viewerRole={viewerRole}
+        instruction={aiData?.instruction}
+        data={aiData?.data}
+      />
+    </>
   );
 };
 
 export default UserAnalytics;
+

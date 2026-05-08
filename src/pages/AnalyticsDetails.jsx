@@ -6,6 +6,9 @@ import { resolveImgUrl } from '../lib/imageUtils';
 import { ChevronLeft, BarChart2, Clock, CheckCircle, XCircle, Search, Filter, AlertTriangle, Menu, Pencil, Trash2, Eye, X, ChevronRight, Sparkles, Copy, Check, RefreshCw, FileText, Book, Shield } from 'lucide-react';
 import MathRenderer from '../components/MathRenderer';
 import { buildDetailedQuizPrompt, downloadJSON } from '../lib/aiPromptBuilder';
+import { buildAiCacheKey } from '../lib/aiService';
+import AiAnalysisModal from '../components/AiAnalysisModal';
+import { ChevronDown } from 'lucide-react';
 
 const UserListItem = React.memo(({ u, isSelected, onSelect }) => {
   return (
@@ -581,10 +584,13 @@ const AttemptDetailsView = React.memo(({
   );
 });
 
-// ─── AI Prompt Button Component ──────────────────────────────────
-const AiDetailedPromptButton = ({ userId, quizId, viewerProfile }) => {
-  const [status, setStatus] = useState('idle'); // 'idle' | 'loading_copy' | 'loading_file' | 'copied' | 'downloaded' | 'error'
+// ─── AI Detailed Analysis Button Component ──────────────────────
+const AiDetailedAnalysisButton = ({ userId, quizId, viewerProfile }) => {
+  const [status, setStatus] = useState('idle');
   const [count, setCount] = useState(null);
+  const [showAiModal, setShowAiModal] = useState(false);
+  const [aiData, setAiData] = useState(null);
+  const [showLegacy, setShowLegacy] = useState(false);
   const isSelf = viewerProfile?.id === userId;
   const viewerRole = isSelf ? 'student' : 'teacher';
 
@@ -604,6 +610,19 @@ const AiDetailedPromptButton = ({ userId, quizId, viewerProfile }) => {
     fetchCount();
   }, [userId, quizId]);
 
+  const handleAiAnalysis = async () => {
+    if (count < 3) return;
+    setStatus('loading_ai');
+    try {
+      const result = await buildDetailedQuizPrompt(userId, quizId, viewerRole, isSelf ? null : viewerProfile);
+      if (result && result.instruction) {
+        setAiData(result);
+        setShowAiModal(true);
+      } else setStatus('error');
+    } catch (e) { setStatus('error'); }
+    setStatus('idle');
+  };
+
   const handleAction = async (type) => {
     if (count < 3) return;
     setStatus(type === 'copy' ? 'loading_copy' : 'loading_file');
@@ -616,9 +635,7 @@ const AiDetailedPromptButton = ({ userId, quizId, viewerProfile }) => {
         } else if (type === 'file' && result.data) {
           downloadJSON(result.data, result.filename);
           setStatus('downloaded');
-        } else {
-          setStatus('error');
-        }
+        } else setStatus('error');
         setTimeout(() => setStatus('idle'), 2500);
       } else {
         setStatus('error');
@@ -644,44 +661,87 @@ const AiDetailedPromptButton = ({ userId, quizId, viewerProfile }) => {
     );
   }
 
-  return (
-    <div style={{ display: 'flex', gap: '8px' }}>
-      <button
-        onClick={() => handleAction('copy')}
-        disabled={status.startsWith('loading') || count === null}
-        className="flex-center"
-        title="Скопировать промпт для детального ИИ-анализа"
-        style={{
-          padding: '8px 12px', borderRadius: '10px', fontSize: '0.8rem', fontWeight: 'bold',
-          background: status === 'copied' ? 'rgba(34, 197, 94, 0.12)' : 'linear-gradient(135deg, rgba(168, 85, 247, 0.1), rgba(99, 102, 241, 0.1))',
-          color: status === 'copied' ? '#16a34a' : '#a855f7',
-          border: '1px solid ' + (status === 'copied' ? '#16a34a33' : '#a855f733'),
-          boxShadow: 'none', gap: '6px', cursor: (status.startsWith('loading') || count === null) ? 'wait' : 'pointer',
-          transition: 'all 0.3s', flexShrink: 0, whiteSpace: 'nowrap'
-        }}
-      >
-        {status === 'loading_copy' ? <RefreshCw size={14} className="spinner" /> : status === 'copied' ? <Check size={14} /> : <Sparkles size={14} />}
-        {status === 'copied' ? 'Промпт скопирован' : 'ИИ-Разбор'}
-      </button>
+  const cacheKey = buildAiCacheKey('detailed_quiz', userId, viewerRole, quizId);
 
-      <button
-        onClick={() => handleAction('file')}
-        disabled={status.startsWith('loading') || count === null}
-        className="flex-center"
-        title="Скачать историю попыток (JSON)"
-        style={{
-          padding: '8px 12px', borderRadius: '10px', fontSize: '0.8rem', fontWeight: 'bold',
-          background: status === 'downloaded' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(99, 102, 241, 0.05)',
-          color: status === 'downloaded' ? '#16a34a' : 'var(--primary-color)',
-          border: '1px solid ' + (status === 'downloaded' ? '#16a34a33' : 'rgba(99, 102, 241, 0.1)'),
-          boxShadow: 'none', gap: '6px', cursor: (status.startsWith('loading') || count === null) ? 'wait' : 'pointer',
-          transition: 'all 0.3s', flexShrink: 0, whiteSpace: 'nowrap'
-        }}
-      >
-        {status === 'loading_file' ? <RefreshCw size={14} className="spinner" /> : status === 'downloaded' ? <Check size={14} /> : <FileText size={14} />}
-        JSON
-      </button>
-    </div>
+  return (
+    <>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            onClick={handleAiAnalysis}
+            disabled={status === 'loading_ai' || count === null}
+            className="flex-center"
+            title="Запустить детальный ИИ-анализ попыток"
+            style={{
+              padding: '8px 16px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 'bold',
+              background: 'linear-gradient(135deg, #7c3aed, #6366f1)',
+              color: 'white', border: 'none',
+              boxShadow: '0 2px 8px rgba(99, 102, 241, 0.3)', gap: '7px',
+              cursor: (status === 'loading_ai' || count === null) ? 'wait' : 'pointer',
+              transition: 'all 0.3s', flexShrink: 0, whiteSpace: 'nowrap'
+            }}
+          >
+            {status === 'loading_ai' ? <RefreshCw size={14} className="spinner" /> : <Sparkles size={14} />}
+            ИИ-Анализ
+          </button>
+        </div>
+
+        {/* Legacy toggle */}
+        <button className="ai-legacy-toggle" onClick={() => setShowLegacy(p => !p)}>
+          <ChevronDown size={10} style={{ transform: showLegacy ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+          Ручной режим
+        </button>
+
+        <div className={`ai-legacy-panel ${showLegacy ? 'open' : ''}`}>
+          <div className="ai-legacy-hint">Для ручной вставки промпта в AI Studio</div>
+          <div style={{ display: 'flex', gap: '6px' }}>
+            <button
+              onClick={() => handleAction('copy')}
+              disabled={status.startsWith('loading') || count === null}
+              className="flex-center"
+              style={{
+                padding: '6px 12px', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 'bold',
+                background: status === 'copied' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(168, 85, 247, 0.05)',
+                color: status === 'copied' ? '#16a34a' : '#a855f7',
+                border: '1px solid ' + (status === 'copied' ? '#16a34a33' : '#a855f733'),
+                boxShadow: 'none', gap: '5px'
+              }}
+            >
+              {status === 'loading_copy' ? <RefreshCw size={12} className="spinner" /> : status === 'copied' ? <Check size={12} /> : <Copy size={12} />}
+              Промпт
+            </button>
+
+            <button
+              onClick={() => handleAction('file')}
+              disabled={status.startsWith('loading') || count === null}
+              className="flex-center"
+              style={{
+                padding: '6px 12px', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 'bold',
+                background: status === 'downloaded' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(99, 102, 241, 0.05)',
+                color: status === 'downloaded' ? '#16a34a' : 'var(--primary-color)',
+                border: '1px solid ' + (status === 'downloaded' ? '#16a34a33' : 'rgba(99, 102, 241, 0.1)'),
+                boxShadow: 'none', gap: '5px'
+              }}
+            >
+              {status === 'loading_file' ? <RefreshCw size={12} className="spinner" /> : status === 'downloaded' ? <Check size={12} /> : <FileText size={12} />}
+              JSON
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <AiAnalysisModal
+        isOpen={showAiModal}
+        onClose={() => setShowAiModal(false)}
+        title="Детальный ИИ-разбор результатов"
+        cacheKey={cacheKey}
+        contextType="detailed_quiz"
+        contextId={userId}
+        viewerRole={viewerRole}
+        instruction={aiData?.instruction}
+        data={aiData?.data}
+      />
+    </>
   );
 };
 
@@ -1385,7 +1445,7 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
               </>
             )}
             {targetUser && targetQuiz && (
-              <AiDetailedPromptButton userId={targetUser.id} quizId={targetQuiz.id} viewerProfile={profile} />
+              <AiDetailedAnalysisButton userId={targetUser.id} quizId={targetQuiz.id} viewerProfile={profile} />
             )}
             {(profile?.role === 'admin' || profile?.role === 'creator') && targetUser && targetQuiz && (
               <button
