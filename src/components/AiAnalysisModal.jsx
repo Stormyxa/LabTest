@@ -134,15 +134,14 @@ const AiAnalysisModal = ({
       viewerRole,
       title,
       signal: controller.signal,
-      onChunk: (chunk, fullText) => {
-        setStreamingText(fullText);
+      onChunk: (chunk) => {
+        setStreamingText(prev => prev + chunk);
         scrollToBottom();
       },
-      onDone: (fullText, allMessages, model) => {
-        setMessages(allMessages);
+      onDone: (fullText) => {
+        setMessages(prev => [...prev, { role: 'assistant', content: fullText }]);
         setStreamingText('');
         setIsStreaming(false);
-        setUsedModel(model);
         scrollToBottom();
       },
       onError: (errMsg) => {
@@ -280,7 +279,7 @@ const AiAnalysisModal = ({
             </div>
           )}
 
-          {messages.map((msg, idx) => {
+          {messages.filter(msg => msg.role !== 'system').map((msg, idx) => {
             if (msg.role === 'user') {
               const isLong = msg.content.length > 500;
               return (

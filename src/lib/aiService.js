@@ -62,6 +62,92 @@ export const deleteAiAnalysis = async (id) => {
 };
 
 /**
+ * Builds initial message for AI analysis (hidden from user)
+ */
+export const buildInitialMessage = (instruction, data) => {
+  // System message with instruction and data (not shown to user)
+  const systemContent = `${instruction}
+
+Данные для анализа:
+${JSON.stringify(data, null, 2)}`;
+  
+  return {
+    role: 'system',
+    content: systemContent,
+    ts: new Date().toISOString()
+  };
+};
+
+/**
+ * Get cached analysis from localStorage or Supabase
+ */
+export const getCachedAnalysis = async (cacheKey) => {
+  try {
+    // First check localStorage
+    const localKey = `ai_analysis_${cacheKey}`;
+    const localData = localStorage.getItem(localKey);
+    
+    if (localData) {
+      const parsed = JSON.parse(localData);
+      if (parsed.expiresAt > Date.now()) {
+        return parsed.data;
+      }
+      localStorage.removeItem(localKey);
+    }
+    
+    // Then check Supabase
+    const { data, error } = await supabase
+      .from('ai_analyses')
+      .select('data, expires_at')
+      .eq('cache_key', cacheKey)
+      .single();
+    
+    if (error) return null;
+    
+    if (new Date(data.expires_at) > new Date()) {
+      // Cache in localStorage for faster access
+      localStorage.setItem(localKey, JSON.stringify({
+        data: data.data,
+        expiresAt: new Date(data.expires_at).getTime()
+      }));
+      return data.data;
+    }
+    
+    return null;
+  } catch (e) {
+    console.error('Cache check failed:', e);
+    return null;
+  }
+};
+
+/**
+ * Clear local AI cache
+ */
+export const clearLocalAiCache = (cacheKey) => {
+  const localKey = `ai_analysis_${cacheKey}`;
+  localStorage.removeItem(localKey);
+};
+
+/**
+ * Download chat as markdown file
+ */
+export const downloadChatAsMarkdown = (messages, title) => {
+  const content = `# ${title}\n\n${messages.map(msg => {
+    if (msg.role === 'system') return ''; // Skip system messages
+    const role = msg.role === 'user' ? '👤 **Пользователь**' : '🤖 **AI**';
+    return `${role}:\n${msg.content}\n\n---\n\n`;
+  }).join('')}`;
+  
+  const blob = new Blob([content], { type: 'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${title.replace(/[^a-z0-9]/gi, '_')}_${new Date().toISOString().split('T')[0]}.md`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+/**
  * Send messages to AI and stream the response.
  */
 export const streamAiAnalysis = async ({
@@ -99,24 +185,49 @@ export const streamAiAnalysis = async ({
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let fullText = '';
+    let buffer = '';
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       
-      const chunk = decoder.decode(value);
-      fullText += chunk;
-      if (onChunk) onChunk(chunk);
-    }
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || ''; // Keep incomplete line in buffer
 
-    // Save to history automatically
-    await saveAiAnalysis({
-      user_id: session.user.id,
-      context_type: contextType,
-      context_id: contextId,
-      title: title || 'AI Chat',
-      messages: [...messages, { role: 'assistant', content: fullText }]
-    });
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6);
+          if (data === '[DONE]') {
+            // Save to history before calling onDone
+            await saveAiAnalysis({
+              user_id: session.user.id,
+              context_type: contextType,
+              context_id: contextId,
+              title: title || 'AI Chat',
+              messages: [...messages, { role: 'assistant', content: fullText }]
+            });
+            if (onDone) onDone(fullText);
+            return;
+          }
+          
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.text) {
+              fullText += parsed.text;
+              if (onChunk) onChunk(parsed.text);
+            } else if (parsed.error) {
+              throw new Error(parsed.error);
+            } else if (parsed.model) {
+              // Model info, can be ignored or handled
+              console.log('Using model:', parsed.model);
+            }
+          } catch (e) {
+            console.error('Failed to parse SSE data:', data, e);
+          }
+        }
+      }
+    }
 
     if (onDone) onDone(fullText);
   } catch (err) {
