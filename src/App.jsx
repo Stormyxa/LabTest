@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo } from 'react';
 import { createBrowserRouter, RouterProvider, Navigate, Link, Outlet, createRoutesFromElements, Route } from 'react-router-dom';
+import { Sparkles } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import Home from './pages/Home';
 import Auth from './pages/Auth';
@@ -14,6 +15,7 @@ import Analytics from './pages/Analytics';
 import QuizRedactor from './pages/QuizRedactor';
 import AnalyticsDetails from './pages/AnalyticsDetails';
 import UserAnalytics from './pages/UserAnalytics';
+import AiHub from './components/AiHub';
 import './index.css';
 
 function App() {
@@ -107,6 +109,14 @@ function App() {
               </Link>
               <div className="nav-links flex-center" style={{ gap: '10px' }}>
                 <ThemeToggle theme={theme} onToggle={toggleTheme} />
+                <button 
+                  onClick={() => window.dispatchEvent(new CustomEvent('open-ai-hub', { detail: { title: 'ИИ-Помощник' } }))}
+                  className="flex-center"
+                  style={{ background: 'rgba(124, 58, 237, 0.1)', color: '#7c3aed', padding: '8px 12px', border: '1px solid rgba(124, 58, 237, 0.2)', borderRadius: '12px' }}
+                  title="Открыть ИИ-Чат"
+                >
+                  <Sparkles size={18} />
+                </button>
                 <Link to="/catalog"><NavButton label="Тесты" /></Link>
                 <Link to="/statistics"><NavButton label="Статистика" /></Link>
                 {isEditor && <Link to="/analytics-details"><NavButton label="Аналитика" variant="accent" /></Link>}
@@ -120,6 +130,7 @@ function App() {
               </div>
             </div>
           </nav>
+          <AiHub session={session} profile={profile} />
           <Outlet />
         </div>
       }>

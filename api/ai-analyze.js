@@ -9,9 +9,9 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+  const apiKey = process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return res.status(500).json({ error: 'GEMINI_API_KEY not configured. Please add it to .env.local as VITE_GEMINI_API_KEY for local development.' });
+    return res.status(500).json({ error: 'VITE_GEMINI_API_KEY not configured. Please add it to .env.local in the project root directory.' });
   }
 
   try {
@@ -47,7 +47,10 @@ export default async function handler(req, res) {
     try {
       stream = await ai.models.generateContentStream({
         model,
-        contents,
+        contents: [
+          { role: 'user', parts: [{ text: "System: Ты — элитный педагогический ИИ-аналитик LabTest. Твои ответы должны быть глубокими, профессиональными, но структурированными. Избегай лишней 'воды', чтобы ответ не обрывался. Если информации очень много, используй таблицы и списки. Всегда отвечай на языке пользователя (русский)." }] },
+          ...contents
+        ],
         config: {
           temperature: 0.7,
           maxOutputTokens: 8192,
@@ -61,7 +64,10 @@ export default async function handler(req, res) {
       try {
         stream = await ai.models.generateContentStream({
           model,
-          contents,
+          contents: [
+            { role: 'user', parts: [{ text: "System: Ты — элитный педагогический ИИ-аналитик LabTest. Твои ответы должны быть глубокими, профессиональными, но структурированными. Избегай лишней 'воды', чтобы ответ не обрывался. Если информации очень много, используй таблицы и списки. Всегда отвечай на языке пользователя (русский)." }] },
+            ...contents
+          ],
           config: {
             temperature: 0.7,
             maxOutputTokens: 8192,

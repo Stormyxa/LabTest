@@ -5,7 +5,6 @@ import { fetchWithCache, useCacheSync, getCachedData } from '../lib/cache';
 import { ChevronLeft, BarChart2, Search, Filter, Shield, EyeOff, AlertTriangle, Menu, X, Clock, Calendar, Sparkles, Copy, Check, RefreshCw, FileText, ChevronDown } from 'lucide-react';
 import { buildStudentPrompt, downloadJSON } from '../lib/aiPromptBuilder';
 import { buildAiCacheKey } from '../lib/aiService';
-import AiAnalysisModal from '../components/AiAnalysisModal';
 
 const UserListItem = React.memo(({ u, isSelected, onSelect }) => (
   <button 
@@ -1084,8 +1083,6 @@ if (typeof document !== 'undefined') {
 const AiAnalysisButton = ({ userId, viewerUserId, viewerProfile }) => {
   const [status, setStatus] = useState('idle');
   const [count, setCount] = useState(null);
-  const [showAiModal, setShowAiModal] = useState(false);
-  const [aiData, setAiData] = useState(null);
   const [showLegacy, setShowLegacy] = useState(false);
   const isSelf = viewerUserId === userId;
   const viewerRole = isSelf ? 'student' : 'teacher';
@@ -1111,8 +1108,15 @@ const AiAnalysisButton = ({ userId, viewerUserId, viewerProfile }) => {
     try {
       const result = await buildStudentPrompt(userId, viewerRole, isSelf ? null : viewerProfile);
       if (result && result.instruction) {
-        setAiData(result);
-        setShowAiModal(true);
+        window.dispatchEvent(new CustomEvent('open-ai-hub', { 
+          detail: { 
+            contextType: 'student', 
+            contextId: userId, 
+            instruction: result.instruction, 
+            data: result.data, 
+            title: isSelf ? 'Личный ИИ-наставник' : 'Анализ ученика' 
+          } 
+        }));
       }
     } catch (e) {
       console.error('AI prep failed:', e);
@@ -1154,8 +1158,6 @@ const AiAnalysisButton = ({ userId, viewerUserId, viewerProfile }) => {
       </div>
     );
   }
-
-  const cacheKey = buildAiCacheKey('student', userId, viewerRole);
 
   return (
     <>
@@ -1221,18 +1223,6 @@ const AiAnalysisButton = ({ userId, viewerUserId, viewerProfile }) => {
           </div>
         </div>
       </div>
-
-      <AiAnalysisModal
-        isOpen={showAiModal}
-        onClose={() => setShowAiModal(false)}
-        title={isSelf ? 'Личный ИИ-наставник' : 'Педагогический анализ ученика'}
-        cacheKey={cacheKey}
-        contextType="student"
-        contextId={userId}
-        viewerRole={viewerRole}
-        instruction={aiData?.instruction}
-        data={aiData?.data}
-      />
     </>
   );
 };

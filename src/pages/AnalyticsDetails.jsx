@@ -7,7 +7,6 @@ import { ChevronLeft, BarChart2, Clock, CheckCircle, XCircle, Search, Filter, Al
 import MathRenderer from '../components/MathRenderer';
 import { buildDetailedQuizPrompt, downloadJSON } from '../lib/aiPromptBuilder';
 import { buildAiCacheKey } from '../lib/aiService';
-import AiAnalysisModal from '../components/AiAnalysisModal';
 import { ChevronDown } from 'lucide-react';
 
 const UserListItem = React.memo(({ u, isSelected, onSelect }) => {
@@ -588,8 +587,6 @@ const AttemptDetailsView = React.memo(({
 const AiDetailedAnalysisButton = ({ userId, quizId, viewerProfile }) => {
   const [status, setStatus] = useState('idle');
   const [count, setCount] = useState(null);
-  const [showAiModal, setShowAiModal] = useState(false);
-  const [aiData, setAiData] = useState(null);
   const [showLegacy, setShowLegacy] = useState(false);
   const isSelf = viewerProfile?.id === userId;
   const viewerRole = isSelf ? 'student' : 'teacher';
@@ -616,8 +613,15 @@ const AiDetailedAnalysisButton = ({ userId, quizId, viewerProfile }) => {
     try {
       const result = await buildDetailedQuizPrompt(userId, quizId, viewerRole, isSelf ? null : viewerProfile);
       if (result && result.instruction) {
-        setAiData(result);
-        setShowAiModal(true);
+        window.dispatchEvent(new CustomEvent('open-ai-hub', { 
+          detail: { 
+            contextType: 'detailed_quiz', 
+            contextId: userId, 
+            instruction: result.instruction, 
+            data: result.data, 
+            title: 'Детальный разбор' 
+          } 
+        }));
       } else setStatus('error');
     } catch (e) { setStatus('error'); }
     setStatus('idle');
@@ -660,8 +664,6 @@ const AiDetailedAnalysisButton = ({ userId, quizId, viewerProfile }) => {
       </div>
     );
   }
-
-  const cacheKey = buildAiCacheKey('detailed_quiz', userId, viewerRole, quizId);
 
   return (
     <>
@@ -729,18 +731,6 @@ const AiDetailedAnalysisButton = ({ userId, quizId, viewerProfile }) => {
           </div>
         </div>
       </div>
-
-      <AiAnalysisModal
-        isOpen={showAiModal}
-        onClose={() => setShowAiModal(false)}
-        title="Детальный ИИ-разбор результатов"
-        cacheKey={cacheKey}
-        contextType="detailed_quiz"
-        contextId={userId}
-        viewerRole={viewerRole}
-        instruction={aiData?.instruction}
-        data={aiData?.data}
-      />
     </>
   );
 };

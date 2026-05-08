@@ -5,7 +5,6 @@ import { User, Mail, Calendar, GraduationCap, CheckCircle, Award, FileText, Tren
 import { buildStudentPrompt, downloadJSON } from '../lib/aiPromptBuilder';
 import { getCachedData } from '../lib/cache';
 import { buildAiCacheKey } from '../lib/aiService';
-import AiAnalysisModal from '../components/AiAnalysisModal';
 import { ChevronDown } from 'lucide-react';
 
 const Profile = ({ session, profile, refreshProfile }) => {
@@ -54,9 +53,6 @@ const Profile = ({ session, profile, refreshProfile }) => {
   const [userBlacklistedClasses, setUserBlacklistedClasses] = useState([]);
   const [toast, setToast] = useState({ visible: false, opacity: 0 });
   
-  // AI Modal States
-  const [showAiModal, setShowAiModal] = useState(false);
-  const [aiData, setAiData] = useState(null);
   const [showLegacy, setShowLegacy] = useState(false);
 
   useEffect(() => {
@@ -497,8 +493,15 @@ const Profile = ({ session, profile, refreshProfile }) => {
                     try {
                       const result = await buildStudentPrompt(session.user.id, 'student');
                       if (result && result.instruction) {
-                        setAiData(result);
-                        setShowAiModal(true);
+                        window.dispatchEvent(new CustomEvent('open-ai-hub', { 
+                          detail: { 
+                            contextType: 'student', 
+                            contextId: session.user.id, 
+                            instruction: result.instruction, 
+                            data: result.data, 
+                            title: 'Личный ИИ-наставник' 
+                          } 
+                        }));
                       } else setAiPromptStatus('error');
                     } catch (e) { setAiPromptStatus('error'); }
                     setAiPromptStatus('idle');
@@ -581,17 +584,6 @@ const Profile = ({ session, profile, refreshProfile }) => {
               </div>
             )}
             
-            <AiAnalysisModal
-              isOpen={showAiModal}
-              onClose={() => setShowAiModal(false)}
-              title="Ваш личный ИИ-наставник"
-              cacheKey={buildAiCacheKey('student', session.user.id, 'student')}
-              contextType="student"
-              contextId={session.user.id}
-              viewerRole="student"
-              instruction={aiData?.instruction}
-              data={aiData?.data}
-            />
             {aiPromptLastUpdate && (
               <div style={{ marginTop: '8px', fontSize: '0.7rem', opacity: 0.4, textAlign: 'center' }}>
                 Данные обновляются автоматически каждый час

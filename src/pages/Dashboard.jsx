@@ -5,7 +5,6 @@ import { fetchWithCache, useCacheSync } from '../lib/cache';
 import { User, Shield, Search, Edit3, Trash2, Mail, X, AlertTriangle, MapPin, Building, GraduationCap, Plus, History, Ban, ShieldAlert, Unlock, Eye, EyeOff, Zap, ChevronDown, ChevronRight, Settings, Users, UserPlus, UserMinus, ArrowUp, ArrowDown, UserCheck, CheckCircle, XCircle, Sparkles, Check, RefreshCw, FileText } from 'lucide-react';
 import { buildClassPrompt, downloadJSON } from '../lib/aiPromptBuilder';
 import { buildAiCacheKey } from '../lib/aiService';
-import AiAnalysisModal from '../components/AiAnalysisModal';
 import { useScrollRestoration } from '../lib/useScrollRestoration';
 
 const DashboardSkeleton = () => (
@@ -1531,8 +1530,6 @@ const Dashboard = ({ session, profile }) => {
 // ─── AI Prompt Button for Dashboard (Class Level) ────────────────
 const DashboardAiButton = ({ classId, className }) => {
   const [status, setStatus] = useState('idle');
-  const [showAiModal, setShowAiModal] = useState(false);
-  const [aiData, setAiData] = useState(null);
   const [showLegacy, setShowLegacy] = useState(false);
 
   const handleAiAnalysis = async () => {
@@ -1540,35 +1537,19 @@ const DashboardAiButton = ({ classId, className }) => {
     try {
       const result = await buildClassPrompt(classId);
       if (result && result.instruction) {
-        setAiData(result);
-        setShowAiModal(true);
+        window.dispatchEvent(new CustomEvent('open-ai-hub', { 
+          detail: { 
+            contextType: 'class', 
+            contextId: classId, 
+            instruction: result.instruction, 
+            data: result.data, 
+            title: `Класс: ${className}` 
+          } 
+        }));
       } else setStatus('error');
     } catch (e) { setStatus('error'); }
     setStatus('idle');
   };
-
-  const handleAction = async (type) => {
-    setStatus(type === 'copy' ? 'loading_copy' : 'loading_file');
-    try {
-      const result = await buildClassPrompt(classId);
-      if (result) {
-        if (type === 'copy' && result.instruction) {
-          await navigator.clipboard.writeText(result.instruction);
-          setStatus('copied');
-        } else if (type === 'file' && result.data) {
-          downloadJSON(result.data, result.filename);
-          setStatus('downloaded');
-        } else setStatus('error');
-        setTimeout(() => setStatus('idle'), 2500);
-      } else setStatus('error');
-    } catch (e) {
-      console.error('AI class action failed:', e);
-      setStatus('error');
-      setTimeout(() => setStatus('idle'), 3000);
-    }
-  };
-
-  const cacheKey = buildAiCacheKey('class', classId);
 
   return (
     <>
@@ -1636,18 +1617,6 @@ const DashboardAiButton = ({ classId, className }) => {
           </div>
         </div>
       </div>
-
-      <AiAnalysisModal
-        isOpen={showAiModal}
-        onClose={() => setShowAiModal(false)}
-        title={`ИИ-Анализ класса: ${className}`}
-        cacheKey={cacheKey}
-        contextType="class"
-        contextId={classId}
-        viewerRole="teacher"
-        instruction={aiData?.instruction}
-        data={aiData?.data}
-      />
     </>
   );
 };
