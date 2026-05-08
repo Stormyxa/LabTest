@@ -39,8 +39,45 @@ const Home = ({ session, profile }) => {
 
   return (
     <>
+      <style>{`
+        @keyframes gradientShift {
+          0% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
+        }
+        
+        .premium-gradient-bg {
+          background: linear-gradient(
+            135deg,
+            rgba(124, 58, 237, 0.1) 0%,
+            rgba(99, 102, 241, 0.05) 25%,
+            rgba(139, 92, 246, 0.1) 50%,
+            rgba(99, 102, 241, 0.05) 75%,
+            rgba(124, 58, 237, 0.1) 100%
+          );
+          background-size: 200% 200%;
+          animation: gradientShift 8s ease infinite;
+        }
+        
+        [data-theme='dark'] .premium-gradient-bg {
+          background: linear-gradient(
+            135deg,
+            rgba(124, 58, 237, 0.15) 0%,
+            rgba(99, 102, 241, 0.08) 25%,
+            rgba(139, 92, 246, 0.12) 50%,
+            rgba(99, 102, 241, 0.08) 75%,
+            rgba(124, 58, 237, 0.15) 100%
+          );
+        }
+        
+        @media (max-width: 768px) {
+          .premium-gradient-bg {
+            animation-duration: 12s;
+          }
+        }
+      `}</style>
       <div className="container animate" style={{ padding: '60px 20px', textAlign: 'center' }}>
-        <div className="card" style={{ maxWidth: '800px', margin: '0 auto', background: 'var(--card-bg)', border: '1px solid rgba(0,0,0,0.05)', position: 'relative' }}>
+        <div className="card premium-gradient-bg" style={{ maxWidth: '800px', margin: '0 auto', border: '1px solid rgba(0,0,0,0.05)', position: 'relative' }}>
 
           {/* Top Left Icons */}
           <div style={{ position: 'absolute', top: '20px', left: '20px', display: 'flex', gap: '10px' }}>

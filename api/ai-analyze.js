@@ -16,8 +16,24 @@ export default async function handler(req, res) {
   const geminiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
   const openaiKey = process.env.OPENAI_API_KEY;
   
+  // Debug logging (remove in production)
+  console.log('API Keys Debug:', {
+    geminiKey: geminiKey ? 'SET' : 'NOT SET',
+    openaiKey: openaiKey ? 'SET' : 'NOT SET',
+    envGemini: process.env.GEMINI_API_KEY ? 'SET' : 'NOT SET',
+    envViteGemini: process.env.VITE_GEMINI_API_KEY ? 'SET' : 'NOT SET',
+    envOpenAI: process.env.OPENAI_API_KEY ? 'SET' : 'NOT SET'
+  });
+  
   if (!geminiKey && !openaiKey) {
-    return res.status(500).json({ error: 'No API keys configured. Please add GEMINI_API_KEY and/or OPENAI_API_KEY to your Vercel Environment Variables.' });
+    return res.status(500).json({ 
+      error: 'API keys not configured. Please add GEMINI_API_KEY and/or OPENAI_API_KEY to your Vercel Environment Variables.',
+      debug: {
+        geminiKey: !!geminiKey,
+        openaiKey: !!openaiKey,
+        availableEnvVars: Object.keys(process.env).filter(k => k.includes('API_KEY') || k.includes('GEMINI') || k.includes('OPENAI'))
+      }
+    });
   }
 
   try {
