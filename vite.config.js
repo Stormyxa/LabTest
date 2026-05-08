@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -34,6 +34,7 @@ const vercelApiMock = () => ({
                  res.setHeader('Content-Type', 'application/json'); 
                  res.end(JSON.stringify(data)); 
                },
+               write: (data) => res.write(data),
                end: () => res.end(),
                setHeader: (k, v) => res.setHeader(k, v)
              };
@@ -53,6 +54,13 @@ const vercelApiMock = () => ({
   }
 });
 
-export default defineConfig({
-  plugins: [react(), vercelApiMock()],
+export default defineConfig(({ mode }) => {
+  // Загружаем переменные окружения и прокидываем их в process.env
+  // чтобы они были доступны в API-плагине
+  const env = loadEnv(mode, process.cwd(), '');
+  Object.assign(process.env, env);
+
+  return {
+    plugins: [react(), vercelApiMock()],
+  }
 })
