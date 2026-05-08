@@ -83,19 +83,19 @@ ${JSON.stringify(data, null, 2)}`;
  */
 export const getCachedAnalysis = async (cacheKey) => {
   try {
-    // First check localStorage
+    // First check localStorage (user-specific cache)
     const localKey = `ai_analysis_${cacheKey}`;
     const localData = localStorage.getItem(localKey);
     
     if (localData) {
       const parsed = JSON.parse(localData);
       if (parsed.expiresAt > Date.now()) {
-        return parsed.data;
+        return { messages: parsed.data.messages, title: parsed.data.title };
       }
       localStorage.removeItem(localKey);
     }
     
-    // Then check Supabase
+    // Then check Supabase (shared cache)
     const { data, error } = await supabase
       .from('ai_analyses')
       .select('data, expires_at')
@@ -110,7 +110,7 @@ export const getCachedAnalysis = async (cacheKey) => {
         data: data.data,
         expiresAt: new Date(data.expires_at).getTime()
       }));
-      return data.data;
+      return { messages: data.data.messages, title: data.data.title };
     }
     
     return null;

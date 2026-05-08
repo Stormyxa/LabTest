@@ -44,11 +44,14 @@ const AiAnalysisModal = ({
   const [userInput, setUserInput] = useState('');
   const [copyStatus, setCopyStatus] = useState(false);
   const [usedModel, setUsedModel] = useState(null);
+  const [modalSize, setModalSize] = useState({ width: 800, height: 600 });
+  const [isResizing, setIsResizing] = useState(false);
 
   const messagesEndRef = useRef(null);
   const abortRef = useRef(null);
   const inputRef = useRef(null);
   const hasInitialized = useRef(false);
+  const modalRef = useRef(null);
 
   // Scroll to bottom
   const scrollToBottom = useCallback(() => {
@@ -204,6 +207,32 @@ const AiAnalysisModal = ({
     }
   }, [handleSendFollowUp]);
 
+  // Resize handlers
+  const handleMouseDown = useCallback((e) => {
+    e.preventDefault();
+    setIsResizing(true);
+    
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startWidth = modalSize.width;
+    const startHeight = modalSize.height;
+
+    const handleMouseMove = (moveEvent) => {
+      const newWidth = Math.max(400, startWidth + (moveEvent.clientX - startX));
+      const newHeight = Math.max(300, startHeight + (moveEvent.clientY - startY));
+      setModalSize({ width: newWidth, height: newHeight });
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  }, [modalSize]);
+
   if (!isOpen) return null;
 
   const hasAssistantMessages = messages.some(m => m.role === 'assistant');
@@ -214,7 +243,17 @@ const AiAnalysisModal = ({
       onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = 'true'; }}
       onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === 'true') { e.target.dataset.md = 'false'; onClose(); } }}
     >
-      <div className="ai-modal-container" onClick={e => e.stopPropagation()}>
+      <div 
+        ref={modalRef}
+        className="ai-modal-container" 
+        onClick={e => e.stopPropagation()}
+        style={{ 
+          width: modalSize.width, 
+          height: modalSize.height,
+          minWidth: '400px',
+          minHeight: '300px'
+        }}
+      >
         {/* Header */}
         <div className="ai-modal-header">
           <div className="ai-modal-header-left">
@@ -361,6 +400,13 @@ const AiAnalysisModal = ({
             </button>
           </div>
         )}
+        
+        {/* Resizer handle */}
+        <div 
+          className="ai-resizer"
+          onMouseDown={handleMouseDown}
+          style={{ cursor: isResizing ? 'nwse-resize' : 'nwse-resize' }}
+        />
       </div>
     </div>
   );
