@@ -28,6 +28,14 @@ const AiHub = ({ session, profile }) => {
   // Global event listener to open AI Hub
   useEffect(() => {
     const handleOpen = (e) => {
+      // Check if user is in first attempt mode
+      const isFirstAttemptMode = localStorage.getItem('quiz_first_attempt_mode') === 'true';
+      if (isFirstAttemptMode) {
+        // Show restriction modal instead of opening AI
+        showRestrictionModal();
+        return;
+      }
+      
       const { contextType, contextId, instruction, data, title } = e.detail;
       setIsOpen(true);
       setIsMinimized(false);
@@ -41,6 +49,114 @@ const AiHub = ({ session, profile }) => {
     window.addEventListener('open-ai-hub', handleOpen);
     return () => window.removeEventListener('open-ai-hub', handleOpen);
   }, []);
+
+  // Auto-close AI chat when user starts first attempt
+  useEffect(() => {
+    const checkFirstAttemptStart = () => {
+      const isFirstAttemptMode = localStorage.getItem('quiz_first_attempt_mode') === 'true';
+      if (isFirstAttemptMode && isOpen) {
+        setIsOpen(false);
+        setIsMinimized(false);
+      }
+    };
+
+    // Check periodically
+    const interval = setInterval(checkFirstAttemptStart, 1000);
+    return () => clearInterval(interval);
+  }, [isOpen]);
+
+  const showRestrictionModal = () => {
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(10px);
+      z-index: 10001;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: fadeIn 0.3s ease-out;
+    `;
+    
+    modal.innerHTML = `
+      <div style="
+        background: linear-gradient(135deg, #7c3aed, #6366f1);
+        color: white;
+        padding: 30px;
+        border-radius: 20px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        text-align: center;
+        max-width: 400px;
+        margin: 20px;
+        animation: slideUp 0.4s ease-out;
+      ">
+        <div style="font-size: 48px; margin-bottom: 15px;">🚫</div>
+        <h2 style="margin: 0 0 15px 0; font-size: 24px; font-weight: 700;">Доступ к ИИ ограничен</h2>
+        <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.5; opacity: 0.9;">
+          Во время <strong>первой попытки теста</strong> ("Проверочная попытка") доступ к ИИ-помощнику временно запрещён.
+        </p>
+        <p style="margin: 0 0 10px 0; font-size: 14px; opacity: 0.8;">
+          Это необходимо для обеспечения <strong>честности результатов</strong> и предотвращения возможных подсказок.
+        </p>
+        <p style="margin: 15px 0 25px 0; font-size: 15px; font-weight: 600;">
+          🎯 Завершите тест, и ИИ-чат станет доступен!
+        </p>
+        <button onclick="this.parentElement.parentElement.remove()" style="
+          background: rgba(255, 255, 255, 0.2);
+          color: white;
+          border: none;
+          padding: 12px 24px;
+          border-radius: 12px;
+          font-size: 16px;
+          font-weight: 600;
+          cursor: pointer;
+          margin-top: 10px;
+          transition: all 0.2s ease;
+        " onmouseover="this.style.background='rgba(255, 255, 255, 0.3)'" onmouseout="this.style.background='rgba(255, 255, 255, 0.2)'">
+          Понятно
+        </button>
+      </div>
+    `;
+    
+    // Add styles
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      @keyframes slideUp {
+        from { 
+          opacity: 0;
+          transform: translateY(20px);
+        }
+        to { 
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+    `;
+    document.head.appendChild(style);
+    document.body.appendChild(modal);
+    
+    // Auto-close after 5 seconds or on click outside
+    const timeout = setTimeout(() => {
+      modal.remove();
+      style.remove();
+    }, 5000);
+    
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        clearTimeout(timeout);
+        modal.remove();
+        style.remove();
+      }
+    });
+  };
 
   // Fetch history
   useEffect(() => {
@@ -148,6 +264,10 @@ const AiHub = ({ session, profile }) => {
       x: e.clientX - position.x,
       y: e.clientY - position.y
     });
+    
+    // Prevent text selection during resize
+    document.body.style.userSelect = 'none';
+    document.body.style.webkitUserSelect = 'none';
   };
 
   useEffect(() => {
@@ -159,7 +279,13 @@ const AiHub = ({ session, profile }) => {
       });
     };
     
-    const handleMouseUp = () => setIsDragging(false);
+    const handleMouseUp = () => {
+      setIsDragging(false);
+      
+      // Restore text selection after resize
+      document.body.style.userSelect = '';
+      document.body.style.webkitUserSelect = '';
+    };
     
     if (isDragging) {
       window.addEventListener('mousemove', handleMouseMove);

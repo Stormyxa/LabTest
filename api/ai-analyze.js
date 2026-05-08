@@ -1,7 +1,11 @@
 import { GoogleGenAI } from '@google/genai';
+import OpenAI from 'openai';
 
-const PRIMARY_MODEL = 'gemini-2.5-flash';
-const FALLBACK_MODEL = 'gemini-2.0-flash';
+// Model priorities - highest to lowest
+const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash'];
+const GPT_MODELS = ['gpt-5.4-mini', 'gpt-5.4-nano', 'gpt-5-mini', 'gpt-5-nano'];
+const ALL_MODELS = [...GEMINI_MODELS, ...GPT_MODELS];
+
 const MAX_BODY_SIZE = 150 * 1024; // 150KB
 
 export default async function handler(req, res) {
@@ -9,9 +13,11 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const apiKey = process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({ error: 'VITE_GEMINI_API_KEY not configured. Please add it to .env.local in the project root directory.' });
+  const geminiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+  const openaiKey = process.env.OPENAI_API_KEY;
+  
+  if (!geminiKey && !openaiKey) {
+    return res.status(500).json({ error: 'No API keys configured. Please add GEMINI_API_KEY and/or OPENAI_API_KEY to your Vercel Environment Variables.' });
   }
 
   try {
@@ -26,72 +32,96 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Messages array required' });
     }
 
-    // Convert messages to Gemini format
-    // messages: [{ role: 'user'|'assistant', content: string }]
-    const contents = messages.map(m => ({
-      role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }],
-    }));
-
-    const ai = new GoogleGenAI({ apiKey });
-
     // Setup SSE streaming
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no');
 
-    let model = PRIMARY_MODEL;
-    let stream;
-
-    try {
-      stream = await ai.models.generateContentStream({
-        model,
-        contents: [
-          { role: 'user', parts: [{ text: "System: Ты — элитный педагогический ИИ-аналитик LabTest. Твои ответы должны быть глубокими, профессиональными, но структурированными. Избегай лишней 'воды', чтобы ответ не обрывался. Если информации очень много, используй таблицы и списки. Всегда отвечай на языке пользователя (русский)." }] },
-          ...contents
-        ],
-        config: {
-          temperature: 0.7,
-          maxOutputTokens: 8192,
-        },
-      });
-    } catch (primaryErr) {
-      // Fallback to secondary model on rate limit or unavailability
-      console.warn(`Primary model ${PRIMARY_MODEL} failed:`, primaryErr.message);
-      model = FALLBACK_MODEL;
-
+    const systemPrompt = "Ты — элитный педагогический ИИ-аналитик LabTest. Твои ответы должны быть глубокими, профессиональными, но структурированными. Избегай лишней 'воды', чтобы ответ не обрывался. Если информации очень много, используй таблицы и списки. Всегда отвечай на языке пользователя (русский).";
+    
+    // Smart fallback: try Gemini first, then GPT
+    let lastError = null;
+    
+    for (const model of ALL_MODELS) {
       try {
-        stream = await ai.models.generateContentStream({
-          model,
-          contents: [
-            { role: 'user', parts: [{ text: "System: Ты — элитный педагогический ИИ-аналитик LabTest. Твои ответы должны быть глубокими, профессиональными, но структурированными. Избегай лишней 'воды', чтобы ответ не обрывался. Если информации очень много, используй таблицы и списки. Всегда отвечай на языке пользователя (русский)." }] },
-            ...contents
-          ],
-          config: {
+        if (GEMINI_MODELS.includes(model)) {
+          if (!geminiKey) continue;
+          
+          const ai = new GoogleGenAI({ apiKey: geminiKey });
+          const contents = messages.map(m => ({
+            role: m.role === 'assistant' ? 'model' : 'user',
+            parts: [{ text: m.content }],
+          }));
+
+          const stream = await ai.models.generateContentStream({
+            model,
+            contents: [
+              { role: 'user', parts: [{ text: `System: ${systemPrompt}` }] },
+              ...contents
+            ],
+            config: {
+              temperature: 0.7,
+              maxOutputTokens: 8192,
+            },
+          });
+
+          // Send model info
+          res.write(`data: ${JSON.stringify({ model })}\n\n`);
+
+          // Stream chunks
+          for await (const chunk of stream) {
+            const text = chunk.text;
+            if (text) {
+              res.write(`data: ${JSON.stringify({ text })}\n\n`);
+            }
+          }
+          
+          res.write('data: [DONE]\n\n');
+          res.end();
+          return;
+          
+        } else if (GPT_MODELS.includes(model)) {
+          if (!openaiKey) continue;
+          
+          const openai = new OpenAI({ apiKey: openaiKey });
+          
+          const stream = await openai.chat.completions.create({
+            model,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              ...messages
+            ],
             temperature: 0.7,
-            maxOutputTokens: 8192,
-          },
-        });
-      } catch (fallbackErr) {
-        console.error(`Fallback model ${FALLBACK_MODEL} also failed:`, fallbackErr.message);
-        res.write(`data: ${JSON.stringify({ error: 'AI temporarily unavailable. Please try again later.' })}\n\n`);
-        res.write('data: [DONE]\n\n');
-        return res.end();
+            max_tokens: 8192,
+            stream: true,
+          });
+
+          // Send model info
+          res.write(`data: ${JSON.stringify({ model })}\n\n`);
+
+          // Stream chunks
+          for await (const chunk of stream) {
+            const text = chunk.choices[0]?.delta?.content || '';
+            if (text) {
+              res.write(`data: ${JSON.stringify({ text })}\n\n`);
+            }
+          }
+          
+          res.write('data: [DONE]\n\n');
+          res.end();
+          return;
+        }
+      } catch (err) {
+        lastError = err;
+        console.warn(`Model ${model} failed:`, err.message);
+        continue; // Try next model
       }
     }
 
-    // Send model info
-    res.write(`data: ${JSON.stringify({ model })}\n\n`);
-
-    // Stream chunks
-    for await (const chunk of stream) {
-      const text = chunk.text;
-      if (text) {
-        res.write(`data: ${JSON.stringify({ text })}\n\n`);
-      }
-    }
-
+    // All models failed
+    console.error('All models failed:', lastError?.message);
+    res.write(`data: ${JSON.stringify({ error: 'All AI models temporarily unavailable. Please try again later.' })}\n\n`);
     res.write('data: [DONE]\n\n');
     res.end();
   } catch (error) {

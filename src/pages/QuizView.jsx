@@ -565,6 +565,13 @@ const QuizView = ({ session, profile }) => {
         first = (count || 0) === 0;
       }
       setIsFirstAttempt(first);
+      
+      // Set global flag for AI chat restriction
+      if (first) {
+        localStorage.setItem('quiz_first_attempt_mode', 'true');
+      } else {
+        localStorage.removeItem('quiz_first_attempt_mode');
+      }
 
       if (data.resources && data.resources.length > 0) {
         setShowResources(false);
@@ -925,6 +932,10 @@ const QuizView = ({ session, profile }) => {
     localStorage.removeItem(`quiz_current_idx_${id}`);
     localStorage.removeItem(`quiz_times_${id}`);
     localStorage.removeItem(`quiz_start_time_${id}`);
+    
+    // Clear first attempt mode flag when quiz is finished
+    localStorage.removeItem('quiz_first_attempt_mode');
+    
     await saveResultRef.current(finalAnswers, false);
     if (blocker.state === 'blocked') blocker.proceed();
     setShowResult(true);
@@ -935,6 +946,11 @@ const QuizView = ({ session, profile }) => {
     const elapsed = Math.round((Date.now() - startTimeRef.current) / 1000);
     exitElapsedRef.current = elapsed;
     setShowExitModal(true);
+    
+    // Clear first attempt mode flag when user exits quiz
+    if (isFirstAttempt) {
+      localStorage.removeItem('quiz_first_attempt_mode');
+    }
   };
 
   const handleRetry = () => {
