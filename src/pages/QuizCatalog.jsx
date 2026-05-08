@@ -128,7 +128,7 @@ const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, pass
                 {quiz.is_public ? <Eye size={15} /> : <EyeOff size={15} />}
               </button>
             )}
-            {(userRole === 'admin' || userRole === 'creator' || userRole === 'teacher' || userId === quiz.author_id) && <button onClick={() => navigate(`/analytics-details?quizId=${quiz.id}${quiz.is_personal ? '&mode=personal' : ''}`)} style={{ padding: '8px', background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none', borderRadius: '10px' }} title="Аналитика"><BarChart2 size={15} /></button>}
+            {(userRole === 'admin' || userRole === 'creator' || userRole === 'teacher' || userId === quiz.author_id) && <button onClick={() => navigate(`/analytics?id=${quiz.id}`)} style={{ padding: '8px', background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none', borderRadius: '10px' }} title="Аналитика"><BarChart2 size={15} /></button>}
             <button
               onClick={onShareClick}
               style={{ padding: '8px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none', borderRadius: '10px' }}
