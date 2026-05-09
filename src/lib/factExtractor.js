@@ -157,12 +157,14 @@ export const extractFactsFromAttempt = (attempt, quiz, subject, sectionName = nu
   const classStr = quizClass ? `, Grade: ${quizClass}` : '';
   const bookUrl = quiz?.quiz_sections?.book_url ? `, Book: ${quiz.quiz_sections.book_url}` : '';
   
+  const kzTime = new Date(attempt.created_at).toLocaleString('ru-RU', { timeZone: 'Asia/Almaty' });
+  
   // Metadata fact
   const resources = quiz?.resources || [];
   const hasResources = resources.length > 0 || quiz?.quiz_sections?.book_url;
   const resourceStr = hasResources ? `, Has Resources: true (${resources.length + (quiz?.quiz_sections?.book_url ? 1 : 0)})` : '';
   
-  facts.push(`[METADATA] Quiz: "${quiz?.title || 'Неизвестный'}"${quizTypeStr}, Subject: ${subjectStr}, Section ID: ${quiz?.section_id || '—'}${classStr}${bookUrl}${resourceStr}. Timestamp: ${new Date(attempt.created_at).toISOString()}`);
+  facts.push(`[METADATA] Quiz: "${quiz?.title || 'Неизвестный'}"${quizTypeStr}, Subject: ${subjectStr}, Section ID: ${quiz?.section_id || '—'}${classStr}${bookUrl}${resourceStr}. Time: ${kzTime}`);
 
   if (!answersData.length || !questions.length) {
     return facts;
@@ -284,8 +286,8 @@ export const extractFactsFromAttempt = (attempt, quiz, subject, sectionName = nu
 
   // Add summary metrics if provided
   if (summary) {
-    let summaryFact = `[SUMMARY] Total Attempts: ${summary.attempts_count || 0}, Avg Score: ${Math.round(summary.avg_score || 0)}%, Best Score: ${Math.round(summary.best_score || 0)}%, Avg Time: ${Math.round(summary.avg_time || 0)}s. `;
-    summaryFact += `Role in History: ${summary.is_first ? 'First attempt' : (summary.is_best ? 'New best score' : 'Regular attempt')}.`;
+    const summaryKzTime = new Date(attempt.created_at).toLocaleString('ru-RU', { timeZone: 'Asia/Almaty' });
+    let summaryFact = `[SUMMARY] Total Attempts: ${summary.attempts_count || 0}, Avg Score: ${Math.round(summary.avg_score || 0)}%, Best Score: ${Math.round(summary.best_score || 0)}%, Avg Time: ${Math.round(summary.avg_time || 0)}s. Role in History: ${summary.is_first ? 'First (Diagnostic)' : (summary.is_best ? 'Personal Best' : 'Regular attempt')}. Time: ${summaryKzTime}.`;
     
     // Progress benchmark (compared to 1st attempt or overall avg)
     if (summary.progress !== undefined) {

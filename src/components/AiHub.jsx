@@ -5,7 +5,7 @@ import remarkGfm from 'remark-gfm';
 import MathRenderer from './MathRenderer';
 import { X, Maximize2, Minimize2, Sparkles, Send, Download, Copy, RefreshCw, History, Trash2, ChevronLeft, ChevronRight, MessageSquare, Check, User, Shield, AlertTriangle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { streamAiAnalysis, getAiHistory, saveAiAnalysis, deleteAiAnalysis } from '../lib/aiService';
+import { streamAiAnalysis, getAiHistory, saveAiAnalysis, deleteAiAnalysis, searchUserFacts } from '../lib/aiService';
 import { createModalOverlay } from '../utils/blurUtils';
 import './AiAnalysisModal.css';
 
@@ -365,46 +365,28 @@ const AiHub = ({ session, profile }) => {
         if (!profile || !session?.user?.id) return null;
         
         try {
-          // Fetch user's recent quiz attempts and performance data
-          const { data: attempts, error: attemptsError } = await supabase
-            .from('quiz_results')
-            .select('*')
+          // Fetch user's recent detailed attempts for deep analysis
+          const { data: recentAttempts, error: attemptsError } = await supabase
+            .from('quiz_attempts')
+            .select('*, quizzes(id, title, section_id, is_verified, is_public)')
             .eq('user_id', session.user.id)
-            .order('completed_at', { ascending: false })
-            .limit(10);
+            .order('created_at', { ascending: false })
+            .limit(5);
           
           if (attemptsError) {
-            console.error('Error fetching quiz_results:', attemptsError);
+            console.error('Error fetching quiz_attempts:', attemptsError);
           }
           
-          // Fetch quiz titles and sections for the attempts
-          let quizDetails = {};
-          if (attempts && attempts.length > 0) {
-            const quizIds = attempts.map(a => a.quiz_id).filter(Boolean);
-            if (quizIds.length > 0) {
-              const { data: quizzes } = await supabase
-                .from('quizzes')
-                .select('id, title, section_id, is_verified, is_public')
-                .in('id', quizIds);
-              
-              if (quizzes) {
-                const sectionIds = quizzes.map(q => q.section_id).filter(Boolean);
-                let sections = {};
-                if (sectionIds.length > 0) {
-                  const { data: sectionsData } = await supabase
-                    .from('quiz_sections')
-                    .select('id, name')
-                    .in('id', sectionIds);
-                  sections = Object.fromEntries((sectionsData || []).map(s => [s.id, s.name]));
-                }
-                
-                quizDetails = Object.fromEntries(quizzes.map(q => [q.id, {
-                  title: q.title,
-                  sectionName: sections[q.section_id] || null,
-                  isVerified: q.is_verified,
-                  isPublic: q.is_public
-                }]));
-              }
+          // Fetch sections for the attempts
+          let sections = {};
+          if (recentAttempts && recentAttempts.length > 0) {
+            const sectionIds = [...new Set(recentAttempts.map(a => a.quizzes?.section_id).filter(Boolean))];
+            if (sectionIds.length > 0) {
+              const { data: sectionsData } = await supabase
+                .from('quiz_sections')
+                .select('id, name, book_url')
+                .in('id', sectionIds);
+              sections = Object.fromEntries((sectionsData || []).map(s => [s.id, s]));
             }
           }
           
@@ -419,17 +401,38 @@ const AiHub = ({ session, profile }) => {
             profile: {
               name: `${profile.first_name} ${profile.last_name}`,
               role: profile.role,
-              email: profile.email,
-              school_id: profile.school_id,
-              city_id: profile.city_id
+              geo: `${profile.city_id ? 'City:' + profile.city_id : ''} ${profile.school_id ? 'School:' + profile.school_id : ''}`,
+              class: userClass?.name || '—'
             },
-            recentAttempts: attempts || [],
-            quizDetails: quizDetails,
-            classInfo: userClass || null,
+            recentDetailedAttempts: (recentAttempts || []).map(a => ({
+              id: a.id,
+              quiz: a.quizzes?.title,
+              subject: sections[a.quizzes?.section_id]?.name,
+              book: sections[a.quizzes?.section_id]?.book_url,
+              score: `${a.score}/${a.max_score}`,
+              time: a.time_spent_total,
+              timestamp: a.created_at,
+              telemetry: {
+                focus_lost: a.focus_lost_cnt,
+                off_site_ms: a.off_site_ms,
+                is_suspicious: a.is_suspicious,
+                reason: a.suspicion_reason
+              },
+              // Include errors with question texts (from aiPromptBuilder logic but simplified)
+              errors: (a.answers_data || [])
+                .filter(ans => !ans.isCorrect && ans.chosenIndex !== null)
+                .map(ans => {
+                  const q = a.quizzes?.content?.questions?.[ans.originalIndex];
+                  return q ? {
+                    q: q.question,
+                    ua: q.options?.[ans.chosenIndex] || '—',
+                    ca: q.options?.[ans.correctIndex] || '—'
+                  } : null;
+                }).filter(Boolean).slice(0, 3)
+            })),
             summary: {
-              totalAttempts: attempts?.length || 0,
-              averageScore: attempts?.reduce((sum, a) => sum + (a.score || 0), 0) / (attempts?.length || 1),
-              recentActivity: attempts?.[0]?.created_at
+              totalRecent: recentAttempts?.length || 0,
+              avgScorePercent: recentAttempts?.reduce((sum, a) => sum + (a.score / (a.max_score || 1)) * 100, 0) / (recentAttempts?.length || 1)
             }
           };
         } catch (e) {
@@ -442,22 +445,32 @@ const AiHub = ({ session, profile }) => {
       if (instruction && chatMessages.length === 1) {
         apiMessages[0].content = `${instruction}\n\nКонтекст данных: ${JSON.stringify(contextData)}\n\nПользователь запросил анализ этого контекста.`;
       } else if (instruction && chatMessages.length > 1) {
-        // For continued conversations, include comprehensive user data if talking about themselves
-        if (isAboutUser) {
-          const userInfo = await getUserInfo();
-          if (userInfo) {
-            apiMessages[0].content = `${instruction}\n\nДанные пользователя: ${JSON.stringify(userInfo, null, 2)}\n\nПродолжение диалога. Пользователь говорит о себе.`;
-          } else {
-            apiMessages[0].content = `${instruction}\n\nПродолжение диалога на основе предыдущего анализа.`;
-          }
-        } else {
-          apiMessages[0].content = `${instruction}\n\nПродолжение диалога на основе предыдущего анализа.`;
-        }
-      } else if (!instruction && isAboutUser && profile && chatMessages.length === 1) {
-        // For personal chat without analysis, include comprehensive user data
-        const userInfo = await getUserInfo();
-        if (userInfo) {
-          apiMessages[0].content = `Пользователь говорит о себе. Данные пользователя: ${JSON.stringify(userInfo, null, 2)}\n\n${input}`;
+        // For continued conversations, search for relevant facts (RAG)
+        const relevantFacts = await searchUserFacts(session.user.id, chatMessages[chatMessages.length - 1].content);
+        const factStr = relevantFacts.length > 0 
+          ? `\n\nРелевантные факты из истории (RAG):\n${relevantFacts.map(f => `- ${f.fact}`).join('\n')}`
+          : '';
+        
+        apiMessages[0].content = `${instruction}${factStr}\n\nПродолжение диалога на основе предыдущего анализа.`;
+      } else if (!instruction && profile && chatMessages.length === 1) {
+        // For fresh personal chat, gather both general info and RAG facts
+        const [userInfo, relevantFacts] = await Promise.all([
+          getUserInfo(),
+          searchUserFacts(session.user.id, chatMessages[0].content)
+        ]);
+
+        const userInfoStr = userInfo ? `\nОбщая сводка: ${JSON.stringify(userInfo, null, 2)}` : '';
+        const factStr = relevantFacts.length > 0 
+          ? `\nРелевантные факты из памяти (RAG):\n${relevantFacts.map(f => `- ${f.fact}`).join('\n')}`
+          : '';
+
+        apiMessages[0].content = `Контекст пользователя:${userInfoStr}${factStr}\n\nЗапрос: ${chatMessages[0].content}`;
+      } else if (!instruction && chatMessages.length > 1) {
+        // For continued general chat, search for RAG facts related to the new message
+        const relevantFacts = await searchUserFacts(session.user.id, chatMessages[chatMessages.length - 1].content);
+        if (relevantFacts.length > 0) {
+          const factStr = `\n\nДополнительные факты из памяти (RAG) для текущего вопроса:\n${relevantFacts.map(f => `- ${f.fact}`).join('\n')}`;
+          apiMessages[0].content += factStr;
         }
       }
 

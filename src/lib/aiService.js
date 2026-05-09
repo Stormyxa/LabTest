@@ -275,3 +275,27 @@ export const streamAiAnalysis = async ({
     if (onError) onError(err);
   }
 };
+
+/**
+ * Searches for relevant user facts in Qdrant (RAG)
+ */
+export const searchUserFacts = async (userId, query, limit = 20) => {
+  try {
+    const response = await fetch('/api/search-facts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, query, limit })
+    });
+
+    if (!response.ok) {
+      throw new Error('Fact search failed');
+    }
+
+    const data = await response.json();
+    return data.facts || [];
+  } catch (e) {
+    console.error('Search user facts failed:', e);
+    return [];
+  }
+};
+
