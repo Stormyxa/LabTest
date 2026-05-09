@@ -35,10 +35,34 @@ const AiHub = ({ session, profile }) => {
     sessionStorage.setItem('ai_history_width', historyPanelWidth.toString());
   }, [historyPanelWidth]);
   
-  const [position, setPosition] = useState({ x: window.innerWidth - 450, y: window.innerHeight - 650 });
-  const [size, setSize] = useState({ width: 400, height: 600 });
+  const [position, setPosition] = useState(() => {
+    const savedPos = sessionStorage.getItem('ai_hub_position');
+    const savedSize = sessionStorage.getItem('ai_hub_size');
+    if (savedPos && savedSize) {
+      const pos = JSON.parse(savedPos);
+      const size = JSON.parse(savedSize);
+      // Ensure position is within window bounds
+      const x = Math.min(pos.x, window.innerWidth - size.width - 20);
+      const y = Math.min(pos.y, window.innerHeight - size.height - 20);
+      return { x: Math.max(0, x), y: Math.max(0, y) };
+    }
+    return { x: window.innerWidth - 450, y: window.innerHeight - 650 };
+  });
+  const [size, setSize] = useState(() => {
+    const saved = sessionStorage.getItem('ai_hub_size');
+    return saved ? JSON.parse(saved) : { width: 400, height: 600 };
+  });
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+
+  // Save position and size to sessionStorage when changed
+  useEffect(() => {
+    sessionStorage.setItem('ai_hub_position', JSON.stringify(position));
+  }, [position]);
+
+  useEffect(() => {
+    sessionStorage.setItem('ai_hub_size', JSON.stringify(size));
+  }, [size]);
 
   // Handle window resize to keep AI hub within bounds
   useEffect(() => {
@@ -167,7 +191,7 @@ const AiHub = ({ session, profile }) => {
           const initialMessages = [{ role: 'user', content: userMessage }];
           setMessages(initialMessages);
           setTimeout(() => {
-            runStreaming(initialMessages, e.detail.instruction, e.detail.data, e.detail.contextType, e.detail.contextId, e.detail.title);
+            runStreaming(initialMessages, e.detail.instruction, e.detail.data, e.detail.contextType, e.detail.contextId, e.detail.title, initialMessages);
           }, 100);
         }
       }
@@ -295,10 +319,10 @@ const AiHub = ({ session, profile }) => {
     setMessages(initialMessages);
     setCurrentChatId(null);
     
-    await runStreaming(initialMessages, instruction, data, type, id, title);
+    await runStreaming(initialMessages, instruction, data, type, id, title, initialMessages);
   };
 
-  const runStreaming = async (chatMessages, instruction = null, contextData = null, type = null, id = null, title = null) => {
+  const runStreaming = async (chatMessages, instruction = null, contextData = null, type = null, id = null, title = null, displayMessages = null) => {
     setIsStreaming(true);
     setStatus('streaming');
     setAccessError(null); // Clear previous access errors
@@ -391,6 +415,7 @@ const AiHub = ({ session, profile }) => {
         title: title || 'AI Chat',
         profile: profile,
         chatId: currentChatId, // Pass current chat ID to update existing chat
+        displayMessages: displayMessages || chatMessages, // Pass user-friendly messages for display
         onChunk: (chunk) => {
           fullText += chunk;
           setMessages(prev => {
@@ -483,7 +508,7 @@ const AiHub = ({ session, profile }) => {
     setMessages(newMessages);
     setInput('');
     
-    await runStreaming(newMessages);
+    await runStreaming(newMessages, null, null, null, null, null, newMessages);
   };
 
   // Dragging logic
@@ -614,90 +639,95 @@ const AiHub = ({ session, profile }) => {
 
       <div className="ai-hub-content">
         {/* History Panel */}
-        <div className={`ai-history-panel ${isHistoryOpen ? 'open' : ''}`} style={{ width: isHistoryOpen ? `${historyPanelWidth}px` : '0px' }}>
-          <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '15px' }}>
-            <h4 style={{ margin: 0 }}>История</h4>
-            <button className="no-drag" style={{ background: 'transparent', padding: 0 }} onClick={() => setIsHistoryOpen(false)}><X size={18} /></button>
-          </div>
-          <div className="custom-scrollbar" style={{ overflowY: 'auto', flex: 1 }}>
-            {history.map(item => (
-              <div 
-                key={item.id} 
-                className={`history-item ${currentChatId === item.id ? 'active' : ''}`}
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
-              >
-                <button
-                  className="no-drag"
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: '#ef4444',
-                    padding: '4px',
-                    cursor: 'pointer',
-                    opacity: 0.6,
-                    transition: 'opacity 0.2s',
-                    marginRight: '8px'
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDeleteChat(item.id);
-                  }}
-                  onMouseEnter={(e) => e.target.style.opacity = '1'}
-                  onMouseLeave={(e) => e.target.style.opacity = '0.6'}
-                  title="Удалить чат"
-                >
-                  <Trash2 size={14} />
-                </button>
-                <div 
-                  style={{ flex: 1, cursor: 'pointer' }}
-                  onClick={() => {
-                    setMessages(item.data?.messages || [{ role: 'assistant', content: item.content }]);
-                    setCurrentChatId(item.id);
-                    setIsHistoryOpen(false);
-                  }}
-                >
-                  {item.data?.messages?.[0]?.content || item.cache_key}
-                </div>
-              </div>
-            ))}
-            {history.length === 0 && <div style={{ opacity: 0.4, fontSize: '0.8rem', textAlign: 'center' }}>История пуста</div>}
-          </div>
-          {/* History Panel Resizer */}
+        <div className={`ai-history-panel ${isHistoryOpen ? 'open' : ''}`} style={{ 
+          width: isHistoryOpen ? `${historyPanelWidth}px` : '0px',
+          overflow: isHistoryOpen ? 'visible' : 'hidden'
+        }}>
           {isHistoryOpen && (
-            <div 
-              className="no-drag"
-              style={{
-                position: 'absolute',
-                right: 0,
-                top: 0,
-                bottom: 0,
-                width: '5px',
-                cursor: 'ew-resize',
-                background: 'transparent',
-                transition: 'background 0.2s'
-              }}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const startX = e.clientX;
-                const startWidth = historyPanelWidth;
-                
-                const onMouseMove = (e) => {
-                  const newWidth = startWidth + (e.clientX - startX);
-                  setHistoryPanelWidth(Math.max(200, Math.min(newWidth, size.width - 200)));
-                };
-                
-                const onMouseUp = () => {
-                  window.removeEventListener('mousemove', onMouseMove);
-                  window.removeEventListener('mouseup', onMouseUp);
-                };
-                
-                window.addEventListener('mousemove', onMouseMove);
-                window.addEventListener('mouseup', onMouseUp);
-              }}
-              onMouseEnter={(e) => e.target.style.background = 'rgba(255,255,255,0.2)'}
-              onMouseLeave={(e) => e.target.style.background = 'transparent'}
-            />
+            <>
+              <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '15px' }}>
+                <h4 style={{ margin: 0 }}>История</h4>
+                <button className="no-drag" style={{ background: 'transparent', padding: 0 }} onClick={() => setIsHistoryOpen(false)}><X size={18} /></button>
+              </div>
+              <div className="custom-scrollbar" style={{ overflowY: 'auto', flex: 1 }}>
+                {history.map(item => (
+                  <div 
+                    key={item.id} 
+                    className={`history-item ${currentChatId === item.id ? 'active' : ''}`}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+                  >
+                    <button
+                      className="no-drag"
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#ef4444',
+                        padding: '4px',
+                        cursor: 'pointer',
+                        opacity: 0.6,
+                        transition: 'opacity 0.2s',
+                        marginRight: '8px'
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteChat(item.id);
+                      }}
+                      onMouseEnter={(e) => e.target.style.opacity = '1'}
+                      onMouseLeave={(e) => e.target.style.opacity = '0.6'}
+                      title="Удалить чат"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                    <div 
+                      style={{ flex: 1, cursor: 'pointer' }}
+                      onClick={() => {
+                        setMessages(item.data?.messages || [{ role: 'assistant', content: item.content }]);
+                        setCurrentChatId(item.id);
+                        setIsHistoryOpen(false);
+                      }}
+                    >
+                      {item.data?.messages?.[0]?.content || item.cache_key}
+                    </div>
+                  </div>
+                ))}
+                {history.length === 0 && <div style={{ opacity: 0.4, fontSize: '0.8rem', textAlign: 'center' }}>История пуста</div>}
+              </div>
+              {/* History Panel Resizer */}
+              <div 
+                className="no-drag"
+                style={{
+                  position: 'absolute',
+                  right: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: '5px',
+                  cursor: 'ew-resize',
+                  background: 'transparent',
+                  transition: 'background 0.2s'
+                }}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const startX = e.clientX;
+                  const startWidth = historyPanelWidth;
+                  
+                  const onMouseMove = (e) => {
+                    const newWidth = startWidth + (e.clientX - startX);
+                    setHistoryPanelWidth(Math.max(200, Math.min(newWidth, size.width - 200)));
+                  };
+                  
+                  const onMouseUp = () => {
+                    window.removeEventListener('mousemove', onMouseMove);
+                    window.removeEventListener('mouseup', onMouseUp);
+                  };
+                  
+                  window.addEventListener('mousemove', onMouseMove);
+                  window.addEventListener('mouseup', onMouseUp);
+                }}
+                onMouseEnter={(e) => e.target.style.background = 'rgba(255,255,255,0.2)'}
+                onMouseLeave={(e) => e.target.style.background = 'transparent'}
+              />
+            </>
           )}
         </div>
 
@@ -824,9 +854,10 @@ const AiHub = ({ session, profile }) => {
             const onMouseMove = (e) => {
               const maxWidth = window.innerWidth - position.x - 20;
               const maxHeight = window.innerHeight - position.y - 20;
+              const minWidth = isHistoryOpen ? historyPanelWidth + 250 : 300; // Ensure space for chat when history is open
               
               setSize({
-                width: Math.max(300, Math.min(startW + (e.clientX - startX), maxWidth)),
+                width: Math.max(minWidth, Math.min(startW + (e.clientX - startX), maxWidth)),
                 height: Math.max(400, Math.min(startH + (e.clientY - startY), maxHeight))
               });
             };

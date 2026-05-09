@@ -38,18 +38,24 @@ export const saveAiAnalysis = async ({
   title,
   messages,
   cache_key,
-  id // Optional: if provided, update existing chat instead of creating new one
+  id, // Optional: if provided, update existing chat instead of creating new one
+  displayMessages // Optional: user-friendly messages to display (separate from API messages)
 }) => {
   try {
     const finalCacheKey = cache_key || buildAiCacheKey(context_type, context_id, 'history', Date.now());
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+    const dataToSave = {
+      messages: displayMessages || messages, // Save display messages if provided, otherwise API messages
+      title: title || 'AI Chat'
+    };
 
     if (id) {
       // Update existing chat
       const { error } = await supabase.from('ai_analyses')
         .update({
           content: messages[messages.length - 1].content,
-          data: { messages, title: title || 'AI Chat' },
+          data: dataToSave,
           expires_at: expiresAt
         })
         .eq('id', id);
@@ -61,7 +67,7 @@ export const saveAiAnalysis = async ({
         cache_key: finalCacheKey,
         user_id,
         content: messages[messages.length - 1].content,
-        data: { messages, title: title || 'AI Chat' },
+        data: dataToSave,
         expires_at: expiresAt
       }, { onConflict: 'cache_key' })
       .select()
@@ -175,6 +181,7 @@ export const streamAiAnalysis = async ({
   title,
   profile,
   chatId, // Optional: if provided, update existing chat instead of creating new one
+  displayMessages, // Optional: user-friendly messages to display (separate from API messages)
   onChunk,
   onDone,
   onError,
@@ -229,7 +236,8 @@ export const streamAiAnalysis = async ({
               context_type: contextType,
               context_id: contextId,
               title: title || 'AI Chat',
-              messages: [...messages, { role: 'assistant', content: fullText }]
+              messages: [...messages, { role: 'assistant', content: fullText }],
+              displayMessages: displayMessages || [...messages, { role: 'assistant', content: fullText }]
             });
             if (onDone) onDone(fullText, savedChat);
             return;
