@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -30,9 +30,12 @@ const AiHub = ({ session, profile }) => {
     return saved ? parseInt(saved) : 250;
   });
 
-  // Save history panel width when changed
+  // Save history panel width when changed (debounced)
   useEffect(() => {
-    sessionStorage.setItem('ai_history_width', historyPanelWidth.toString());
+    const timeout = setTimeout(() => {
+      sessionStorage.setItem('ai_history_width', historyPanelWidth.toString());
+    }, 300);
+    return () => clearTimeout(timeout);
   }, [historyPanelWidth]);
   
   const [position, setPosition] = useState(() => {
@@ -55,70 +58,83 @@ const AiHub = ({ session, profile }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
-  // Save position and size to sessionStorage when changed
+  // Save position and size to sessionStorage when changed (debounced)
   useEffect(() => {
-    sessionStorage.setItem('ai_hub_position', JSON.stringify(position));
+    const timeout = setTimeout(() => {
+      sessionStorage.setItem('ai_hub_position', JSON.stringify(position));
+    }, 300);
+    return () => clearTimeout(timeout);
   }, [position]);
 
   useEffect(() => {
-    sessionStorage.setItem('ai_hub_size', JSON.stringify(size));
+    const timeout = setTimeout(() => {
+      sessionStorage.setItem('ai_hub_size', JSON.stringify(size));
+    }, 300);
+    return () => clearTimeout(timeout);
   }, [size]);
 
-  // Handle window resize to keep AI hub within bounds
+  // Handle window resize to keep AI hub within bounds (debounced)
   useEffect(() => {
+    let timeout;
     const handleResize = () => {
-      const windowWidth = window.innerWidth;
-      const windowHeight = window.innerHeight;
-      
-      // Check if AI hub is out of bounds
-      let needsUpdate = false;
-      const newPosition = { ...position };
-      const newSize = { ...size };
-      
-      // Check if AI hub is too far right
-      if (position.x + size.width > windowWidth - 20) {
-        newPosition.x = Math.max(0, windowWidth - size.width - 20);
-        needsUpdate = true;
-      }
-      
-      // Check if AI hub is too far down
-      if (position.y + size.height > windowHeight - 20) {
-        newPosition.y = Math.max(0, windowHeight - size.height - 20);
-        needsUpdate = true;
-      }
-      
-      // Check if AI hub is too far left
-      if (position.x < 0) {
-        newPosition.x = 0;
-        needsUpdate = true;
-      }
-      
-      // Check if AI hub is too far up
-      if (position.y < 0) {
-        newPosition.y = 0;
-        needsUpdate = true;
-      }
-      
-      // Check if AI hub is too wide for window
-      if (size.width > windowWidth - 20) {
-        newSize.width = windowWidth - 20;
-        needsUpdate = true;
-      }
-      
-      // Check if AI hub is too tall for window
-      if (size.height > windowHeight - 20) {
-        newSize.height = windowHeight - 20;
-        needsUpdate = true;
-      }
-      
-      if (needsUpdate) {
-        setPosition(newPosition);
-        setSize(newSize);
-      }
+      clearTimeout(timeout);
+      timeout = setTimeout(() => {
+        const windowWidth = window.innerWidth;
+        const windowHeight = window.innerHeight;
+        
+        // Check if AI hub is out of bounds
+        let needsUpdate = false;
+        const newPosition = { ...position };
+        const newSize = { ...size };
+        
+        // Check if AI hub is too far right
+        if (position.x + size.width > windowWidth - 20) {
+          newPosition.x = Math.max(0, windowWidth - size.width - 20);
+          needsUpdate = true;
+        }
+        
+        // Check if AI hub is too far down
+        if (position.y + size.height > windowHeight - 20) {
+          newPosition.y = Math.max(0, windowHeight - size.height - 20);
+          needsUpdate = true;
+        }
+        
+        // Check if AI hub is too far left
+        if (position.x < 0) {
+          newPosition.x = 0;
+          needsUpdate = true;
+        }
+        
+        // Check if AI hub is too far up
+        if (position.y < 0) {
+          newPosition.y = 0;
+          needsUpdate = true;
+        }
+        
+        // Check if AI hub is too wide for window
+        if (size.width > windowWidth - 20) {
+          newSize.width = windowWidth - 20;
+          needsUpdate = true;
+        }
+        
+        // Check if AI hub is too tall for window
+        if (size.height > windowHeight - 20) {
+          newSize.height = windowHeight - 20;
+          needsUpdate = true;
+        }
+        
+        if (needsUpdate) {
+          setPosition(newPosition);
+          setSize(newSize);
+        }
+      }, 100);
     };
 
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    return () => {
+      clearTimeout(timeout);
+      window.removeEventListener('resize', handleResize);
+    };
   }, [position, size]);
   
   const scrollRef = useRef(null);
@@ -304,14 +320,14 @@ const AiHub = ({ session, profile }) => {
     }
   }, [session]);
 
-  const loadHistory = async () => {
+  const loadHistory = useCallback(async () => {
     try {
       const data = await getAiHistory(session.user.id);
       setHistory(data || []);
     } catch (e) {
       console.error('History load failed:', e);
     }
-  };
+  }, [session.user.id]);
 
   const startNewAnalysis = async (type, id, instruction, data, title) => {
     const userMsg = { role: 'user', content: `Анализ: ${title || type}` };
@@ -467,21 +483,21 @@ const AiHub = ({ session, profile }) => {
     }
   };
 
-  const startNewChat = () => {
+  const startNewChat = useCallback(() => {
     setMessages([]);
     setInput('');
     setCurrentChatId(null);
     setAiChatTitle('ИИ-Хаб LabTest');
     setAccessError(null);
     setInputDisabled(false);
-  };
+  }, []);
 
-  const handleDeleteChat = (chatId) => {
+  const handleDeleteChat = useCallback((chatId) => {
     setChatToDelete(chatId);
     setShowDeleteModal(true);
-  };
+  }, []);
 
-  const confirmDeleteChat = async () => {
+  const confirmDeleteChat = useCallback(async () => {
     if (!chatToDelete) return;
     
     try {
@@ -498,9 +514,9 @@ const AiHub = ({ session, profile }) => {
     } catch (e) {
       console.error('Failed to delete chat:', e);
     }
-  };
+  }, [chatToDelete, currentChatId, loadHistory, startNewChat]);
 
-  const handleSend = async () => {
+  const handleSend = useCallback(async () => {
     if (!input.trim() || isStreaming) return;
     
     const userMsg = { role: 'user', content: input };
@@ -509,10 +525,10 @@ const AiHub = ({ session, profile }) => {
     setInput('');
     
     await runStreaming(newMessages, null, null, null, null, null, newMessages);
-  };
+  }, [input, isStreaming, messages]);
 
   // Dragging logic
-  const handleMouseDown = (e) => {
+  const handleMouseDown = useCallback((e) => {
     if (e.target.closest('.no-drag')) return;
     setIsDragging(true);
     setDragOffset({
@@ -523,7 +539,7 @@ const AiHub = ({ session, profile }) => {
     // Prevent text selection during resize
     document.body.style.userSelect = 'none';
     document.body.style.webkitUserSelect = 'none';
-  };
+  }, [position]);
 
   useEffect(() => {
     let animationFrameId = null;
@@ -538,40 +554,31 @@ const AiHub = ({ session, profile }) => {
       
       animationFrameId = requestAnimationFrame(() => {
         setPosition({
-          x: Math.max(0, Math.min(window.innerWidth - size.width, e.clientX - dragOffset.x)),
-          y: Math.max(0, Math.min(window.innerHeight - size.height, e.clientY - dragOffset.y))
+          x: e.clientX - dragOffset.x,
+          y: e.clientY - dragOffset.y
         });
       });
     };
-    
+
     const handleMouseUp = () => {
       setIsDragging(false);
-      
-      // Cleanup animation frame
       if (animationFrameId) {
         cancelAnimationFrame(animationFrameId);
-        animationFrameId = null;
       }
-      
-      // Restore text selection after resize
       document.body.style.userSelect = '';
       document.body.style.webkitUserSelect = '';
     };
-    
-    if (isDragging) {
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
-    }
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-      
-      // Cleanup animation frame on unmount
       if (animationFrameId) {
         cancelAnimationFrame(animationFrameId);
       }
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging, dragOffset, size]);
+  }, [isDragging, dragOffset]);
 
   // Auto-scroll
   useEffect(() => {
@@ -710,13 +717,22 @@ const AiHub = ({ session, profile }) => {
                   e.stopPropagation();
                   const startX = e.clientX;
                   const startWidth = historyPanelWidth;
+                  let animationFrameId = null;
                   
                   const onMouseMove = (e) => {
-                    const newWidth = startWidth + (e.clientX - startX);
-                    setHistoryPanelWidth(Math.max(200, Math.min(newWidth, size.width - 200)));
+                    if (animationFrameId) {
+                      cancelAnimationFrame(animationFrameId);
+                    }
+                    animationFrameId = requestAnimationFrame(() => {
+                      const newWidth = startWidth + (e.clientX - startX);
+                      setHistoryPanelWidth(Math.max(200, Math.min(newWidth, size.width - 200)));
+                    });
                   };
                   
                   const onMouseUp = () => {
+                    if (animationFrameId) {
+                      cancelAnimationFrame(animationFrameId);
+                    }
                     window.removeEventListener('mousemove', onMouseMove);
                     window.removeEventListener('mouseup', onMouseUp);
                   };
@@ -850,18 +866,27 @@ const AiHub = ({ session, profile }) => {
             const startY = e.clientY;
             const startW = size.width;
             const startH = size.height;
+            let animationFrameId = null;
             
             const onMouseMove = (e) => {
-              const maxWidth = window.innerWidth - position.x - 20;
-              const maxHeight = window.innerHeight - position.y - 20;
-              const minWidth = isHistoryOpen ? historyPanelWidth + 250 : 300; // Ensure space for chat when history is open
-              
-              setSize({
-                width: Math.max(minWidth, Math.min(startW + (e.clientX - startX), maxWidth)),
-                height: Math.max(400, Math.min(startH + (e.clientY - startY), maxHeight))
+              if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+              }
+              animationFrameId = requestAnimationFrame(() => {
+                const maxWidth = window.innerWidth - position.x - 20;
+                const maxHeight = window.innerHeight - position.y - 20;
+                const minWidth = isHistoryOpen ? historyPanelWidth + 250 : 300; // Ensure space for chat when history is open
+                
+                setSize({
+                  width: Math.max(minWidth, Math.min(startW + (e.clientX - startX), maxWidth)),
+                  height: Math.max(400, Math.min(startH + (e.clientY - startY), maxHeight))
+                });
               });
             };
             const onMouseUp = () => {
+              if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+              }
               window.removeEventListener('mousemove', onMouseMove);
               window.removeEventListener('mouseup', onMouseUp);
             };
