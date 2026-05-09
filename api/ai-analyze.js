@@ -16,14 +16,24 @@ export default async function handler(req, res) {
   const geminiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
   const openaiKey = process.env.OPENAI_API_KEY;
   
-  // Debug logging (remove in production)
-  console.log('API Keys Debug:', {
+  // Enhanced debugging for creators
+  const isCreator = req.body?.viewerRole === 'creator' || req.body?.viewerRole === 'admin';
+  const debugInfo = {
+    timestamp: new Date().toISOString(),
     geminiKey: geminiKey ? 'SET' : 'NOT SET',
     openaiKey: openaiKey ? 'SET' : 'NOT SET',
     envGemini: process.env.GEMINI_API_KEY ? 'SET' : 'NOT SET',
     envViteGemini: process.env.VITE_GEMINI_API_KEY ? 'SET' : 'NOT SET',
-    envOpenAI: process.env.OPENAI_API_KEY ? 'SET' : 'NOT SET'
-  });
+    envOpenAI: process.env.OPENAI_API_KEY ? 'SET' : 'NOT SET',
+    availableModels: ALL_MODELS,
+    bodySize: JSON.stringify(req.body || {}).length,
+    userAgent: req.headers['user-agent']?.substring(0, 100),
+    isCreator
+  };
+  
+  if (isCreator) {
+    console.log('🔍 AI API Debug (Creator):', debugInfo);
+  }
   
   if (!geminiKey && !openaiKey) {
     return res.status(500).json({ 
@@ -130,7 +140,18 @@ export default async function handler(req, res) {
         }
       } catch (err) {
         lastError = err;
-        console.warn(`Model ${model} failed:`, err.message);
+        const errorInfo = {
+          model,
+          error: err.message,
+          stack: err.stack?.substring(0, 200),
+          timestamp: new Date().toISOString()
+        };
+        
+        if (isCreator) {
+          console.warn(`🔴 Model ${model} failed:`, errorInfo);
+        } else {
+          console.warn(`Model ${model} failed:`, err.message);
+        }
         continue; // Try next model
       }
     }

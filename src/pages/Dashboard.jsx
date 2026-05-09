@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { fetchWithCache, useCacheSync } from '../lib/cache';
-import { User, Shield, Search, Edit3, Trash2, Mail, X, AlertTriangle, MapPin, Building, GraduationCap, Plus, History, Ban, ShieldAlert, Unlock, Eye, EyeOff, Zap, ChevronDown, ChevronRight, Settings, Users, UserPlus, UserMinus, ArrowUp, ArrowDown, UserCheck, CheckCircle, XCircle, Sparkles, Check, RefreshCw, FileText } from 'lucide-react';
+import { User, Shield, Search, Edit3, Trash2, Mail, X, AlertTriangle, MapPin, Building, GraduationCap, Plus, History, Ban, ShieldAlert, Unlock, Eye, EyeOff, Zap, ChevronDown, ChevronRight, Settings, Users, UserPlus, UserMinus, ArrowUp, ArrowDown, UserCheck, CheckCircle, XCircle, Sparkles, Check, RefreshCw, FileText, Copy } from 'lucide-react';
 import { buildClassPrompt, downloadJSON } from '../lib/aiPromptBuilder';
 import { buildAiCacheKey } from '../lib/aiService';
 import { useScrollRestoration } from '../lib/useScrollRestoration';

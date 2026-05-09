@@ -271,16 +271,32 @@ const AiHub = ({ session, profile }) => {
   };
 
   useEffect(() => {
+    let animationFrameId = null;
+    
     const handleMouseMove = (e) => {
       if (!isDragging) return;
-      setPosition({
-        x: Math.max(0, Math.min(window.innerWidth - size.width, e.clientX - dragOffset.x)),
-        y: Math.max(0, Math.min(window.innerHeight - size.height, e.clientY - dragOffset.y))
+      
+      // Throttle with requestAnimationFrame for smooth performance
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+      
+      animationFrameId = requestAnimationFrame(() => {
+        setPosition({
+          x: Math.max(0, Math.min(window.innerWidth - size.width, e.clientX - dragOffset.x)),
+          y: Math.max(0, Math.min(window.innerHeight - size.height, e.clientY - dragOffset.y))
+        });
       });
     };
     
     const handleMouseUp = () => {
       setIsDragging(false);
+      
+      // Cleanup animation frame
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+      }
       
       // Restore text selection after resize
       document.body.style.userSelect = '';
@@ -294,6 +310,11 @@ const AiHub = ({ session, profile }) => {
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
+      
+      // Cleanup animation frame on unmount
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
     };
   }, [isDragging, dragOffset, size]);
 
