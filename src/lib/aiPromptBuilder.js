@@ -792,6 +792,7 @@ export const buildDetailedQuizPrompt = async (userId, quizId, viewerRole = 'stud
       const answers = Array.isArray(a.answers_data) ? a.answers_data : [];
       return {
         id: a.id.slice(0, 8),
+        iso: a.created_at, // Full ISO 8601 timestamp for AI
         ts: toKZTime(a.created_at) + ' ' + formatDateShort(toKZDate(a.created_at)),
         sc: a.score,
         dur: a.time_spent_total || a.time_spent,

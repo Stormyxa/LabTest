@@ -449,10 +449,16 @@ const AiHub = ({ session, profile }) => {
         const contextJson = contextData ? `\n\nКонтекст данных: ${JSON.stringify(contextData)}` : '';
         const recentMessage = chatMessages[chatMessages.length - 1].content;
         
+        // Intent detection for better RAG search
+        let searchQuery = recentMessage;
+        if (recentMessage.toLowerCase().includes('ошибк') || recentMessage.toLowerCase().includes('неверн')) {
+          searchQuery = `[STATUS: WRONG] ${recentMessage}`;
+        }
+
         // Search RAG for every message if we have a user message
         let ragStr = '';
         if (chatMessages.length > 1) {
-          const relevantFacts = await searchUserFacts(session.user.id, recentMessage);
+          const relevantFacts = await searchUserFacts(session.user.id, searchQuery);
           if (relevantFacts.length > 0) {
             ragStr = `\n\nРелевантные факты из памяти (RAG):\n${relevantFacts.map(f => `- ${f.fact}`).join('\n')}`;
           }
@@ -492,6 +498,25 @@ const AiHub = ({ session, profile }) => {
           });
         },
         onDone: (fullText, savedChat) => {
+          // After successful analysis, save a summary to RAG for long-term memory
+          if (fullText && fullText.length > 50) {
+            try {
+              const summaryPrompt = `Кратко суммаризируй суть этого педагогического анализа для долгосрочной памяти (1 предложение): ${fullText.slice(0, 500)}`;
+              setTimeout(async () => {
+                const summary = await streamAiAnalysis({
+                  messages: [{ role: 'user', content: summaryPrompt }],
+                  contextType: 'internal_summary'
+                });
+                if (summary && !summary.includes('error')) {
+                  const { storeUserFact } = await import('../lib/ragService');
+                  await storeUserFact(session.user.id, `[CHAT_SUMMARY] ${new Date().toISOString()}: ${summary}`, 0.6);
+                }
+              }, 1000);
+            } catch (e) {
+              console.warn('Failed to save chat summary to RAG:', e);
+            }
+          }
+
           // Reload history after streaming completes
           loadHistory();
           // If this was a new chat, get the saved chat ID and set it as current
