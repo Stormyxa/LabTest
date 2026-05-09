@@ -204,8 +204,42 @@ const AiHub = ({ session, profile }) => {
     try {
       // Prepare full messages for API
       const apiMessages = chatMessages.map(m => ({ role: m.role, content: m.content }));
-      if (instruction) {
+      
+      // Check if user is talking about themselves
+      const isAboutUser = input.toLowerCase().includes('я ') || 
+                         input.toLowerCase().includes('меня') || 
+                         input.toLowerCase().includes('мой') || 
+                         input.toLowerCase().includes('моя') || 
+                         input.toLowerCase().includes('мои') ||
+                         input.toLowerCase().includes('мне');
+      
+      // Only include JSON context for the initial message or when instruction is provided
+      if (instruction && chatMessages.length === 1) {
         apiMessages[0].content = `${instruction}\n\nКонтекст данных: ${JSON.stringify(contextData)}\n\nПользователь запросил анализ этого контекста.`;
+      } else if (instruction && chatMessages.length > 1) {
+        // For continued conversations, include user data if talking about themselves
+        if (isAboutUser && profile) {
+          const userData = {
+            name: `${profile.first_name} ${profile.last_name}`,
+            role: profile.role,
+            email: profile.email,
+            school_id: profile.school_id,
+            city_id: profile.city_id
+          };
+          apiMessages[0].content = `${instruction}\n\nДанные пользователя: ${JSON.stringify(userData)}\n\nПродолжение диалога. Пользователь говорит о себе.`;
+        } else {
+          apiMessages[0].content = `${instruction}\n\nПродолжение диалога на основе предыдущего анализа.`;
+        }
+      } else if (!instruction && isAboutUser && profile && chatMessages.length === 1) {
+        // For personal chat without analysis, include user data
+        const userData = {
+          name: `${profile.first_name} ${profile.last_name}`,
+          role: profile.role,
+          email: profile.email,
+          school_id: profile.school_id,
+          city_id: profile.city_id
+        };
+        apiMessages[0].content = `Пользователь говорит о себе. Данные пользователя: ${JSON.stringify(userData)}\n\n${input}`;
       }
 
       await streamAiAnalysis({

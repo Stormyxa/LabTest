@@ -64,7 +64,7 @@ export default async function handler(req, res) {
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no');
 
-    const systemPrompt = "Ты — элитный педагогический ИИ-аналитик LabTest. Твои ответы должны быть глубокими, профессиональными, но структурированными. Избегай лишней 'воды', чтобы ответ не обрывался. Если информации очень много, используй таблицы и списки. Всегда отвечай на языке пользователя (русский).";
+    const systemPrompt = "Ты — элитный педагогический ИИ-аналитик LabTest. Твои ответы должны быть глубокими, профессиональными, но структурированными. Избегай лишней 'воды', чтобы ответ не обрывался. Если информации очень много, используй таблицы и списки. Всегда отвечай на языке пользователя (русский). ВАЖНО: Никогда не повторяй один и тот же символ или слово много раз подряд. Не создавай бесконечные повторения. Отвечай кратко и по существу.";
     
     // Token estimation (rough approximation: 1 token ≈ 4 characters for English, 1 token ≈ 1 character for Russian)
     const estimateTokens = (text) => {
@@ -77,8 +77,16 @@ export default async function handler(req, res) {
     const totalTokens = messages.reduce((sum, msg) => sum + estimateTokens(msg.content), 0);
     
     // Smart switching: Gemini for analysis, GPT for continued chat, token-based selection
-    const isInitialAnalysis = messages.length === 1 && messages[0].content.includes('Анализ:');
+    const isInitialAnalysis = messages.length === 1 && (
+      messages[0].content.includes('Анализ:') || 
+      messages[0].content.includes('Проведи детальный анализ') ||
+      messages[0].content.includes('анализ попыток')
+    );
     const isContinuedChat = messages.length > 1;
+    const hasAnalysisContext = messages.some(msg => 
+      msg.content.includes('Анализ:') || 
+      msg.content.includes('анализ попыток')
+    );
     
     let modelsToTry;
     if (isInitialAnalysis) {
@@ -90,15 +98,18 @@ export default async function handler(req, res) {
         // Normal analysis - use specified priority
         modelsToTry = GEMINI_MODELS;
       }
-    } else if (isContinuedChat) {
-      // Switch to GPT for continued chat, but consider token count
+    } else if (isContinuedChat && hasAnalysisContext) {
+      // After analysis - always switch to GPT for continued conversation
       if (totalTokens > 20000) {
         // Large conversation - use models with better limits
         modelsToTry = ['gpt-5.4-mini', 'gpt-5.4-nano', 'gemini-2.5-flash'];
       } else {
-        // Normal chat - use GPT models
+        // Normal chat after analysis - use GPT models
         modelsToTry = GPT_MODELS;
       }
+    } else if (isContinuedChat) {
+      // Regular chat without analysis context - use GPT for better limits
+      modelsToTry = GPT_MODELS;
     } else {
       // Default fallback: try all models
       modelsToTry = ALL_MODELS;

@@ -214,6 +214,13 @@ export const streamAiAnalysis = async ({
           try {
             const parsed = JSON.parse(data);
             if (parsed.text) {
+              // Check for recursion patterns (repeated characters/words)
+              const repeatedPattern = /(.)\1{10,}|(.{2,})\2{5,}/;
+              if (repeatedPattern.test(parsed.text)) {
+                console.warn('Detected potential AI recursion, stopping stream');
+                throw new Error('AI response contains repetitive patterns - possible recursion');
+              }
+              
               fullText += parsed.text;
               if (onChunk) onChunk(parsed.text);
             } else if (parsed.error) {
