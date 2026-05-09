@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { X, Maximize2, Minimize2, Sparkles, Send, Download, Copy, RefreshCw, History, Trash2, ChevronLeft, ChevronRight, MessageSquare, Check, User } from 'lucide-react';
 import { streamAiAnalysis, getAiHistory, saveAiAnalysis, deleteAiAnalysis } from '../lib/aiService';
+import { createModalOverlay } from '../utils/blurUtils';
 import './AiAnalysisModal.css';
 
 const AiHub = ({ session, profile }) => {
@@ -11,6 +12,7 @@ const AiHub = ({ session, profile }) => {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [history, setHistory] = useState([]);
   const [currentChatId, setCurrentChatId] = useState(null);
+  const [aiChatTitle, setAiChatTitle] = useState('ИИ-Хаб LabTest');
   
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -45,6 +47,15 @@ const AiHub = ({ session, profile }) => {
         if (e.detail?.title) {
           setAiChatTitle(e.detail.title);
         }
+        
+        // Auto-run analysis if instruction and data provided
+        if (e.detail?.instruction && e.detail?.data) {
+          const initialMessages = [{ role: 'user', content: e.detail.instruction }];
+          setMessages(initialMessages);
+          setTimeout(() => {
+            runStreaming(initialMessages, e.detail.instruction, e.detail.data, e.detail.contextType, e.detail.contextId, e.detail.title);
+          }, 100);
+        }
       }
     };
 
@@ -69,20 +80,8 @@ const AiHub = ({ session, profile }) => {
 
   const showRestrictionModal = () => {
     const modal = document.createElement('div');
-    modal.style.cssText = `
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0, 0, 0, 0.8);
-      backdrop-filter: blur(10px);
-      z-index: 10001;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      animation: fadeIn 0.3s ease-out;
-    `;
+    Object.assign(modal.style, createModalOverlay(10001));
+    modal.style.animation = 'fadeIn 0.3s ease-out';
     
     modal.innerHTML = `
       <div style="
@@ -215,33 +214,68 @@ const AiHub = ({ session, profile }) => {
                          input.toLowerCase().includes('мои') ||
                          input.toLowerCase().includes('мне');
       
+      // Gather comprehensive user info for personal conversations
+      const getUserInfo = async () => {
+        if (!profile || !session?.user?.id) return null;
+        
+        try {
+          // Fetch user's recent quiz attempts and performance data
+          const { data: attempts } = await supabase
+            .from('quiz_results')
+            .select('*, quizzes!inner(title)')
+            .eq('user_id', session.user.id)
+            .order('created_at', { ascending: false })
+            .limit(10);
+          
+          // Fetch user's classes and schools
+          const { data: userClasses } = await supabase
+            .from('class_members')
+            .select('*, classes!inner(name)')
+            .eq('user_id', session.user.id);
+          
+          return {
+            profile: {
+              name: `${profile.first_name} ${profile.last_name}`,
+              role: profile.role,
+              email: profile.email,
+              school_id: profile.school_id,
+              city_id: profile.city_id
+            },
+            recentAttempts: attempts || [],
+            classes: userClasses || [],
+            summary: {
+              totalAttempts: attempts?.length || 0,
+              averageScore: attempts?.reduce((sum, a) => sum + (a.score || 0), 0) / (attempts?.length || 1),
+              recentActivity: attempts?.[0]?.created_at
+            }
+          };
+        } catch (e) {
+          console.error('Failed to gather user info:', e);
+          return null;
+        }
+      };
+      
       // Only include JSON context for the initial message or when instruction is provided
       if (instruction && chatMessages.length === 1) {
         apiMessages[0].content = `${instruction}\n\nКонтекст данных: ${JSON.stringify(contextData)}\n\nПользователь запросил анализ этого контекста.`;
       } else if (instruction && chatMessages.length > 1) {
-        // For continued conversations, include user data if talking about themselves
-        if (isAboutUser && profile) {
-          const userData = {
-            name: `${profile.first_name} ${profile.last_name}`,
-            role: profile.role,
-            email: profile.email,
-            school_id: profile.school_id,
-            city_id: profile.city_id
-          };
-          apiMessages[0].content = `${instruction}\n\nДанные пользователя: ${JSON.stringify(userData)}\n\nПродолжение диалога. Пользователь говорит о себе.`;
+        // For continued conversations, include comprehensive user data if talking about themselves
+        if (isAboutUser) {
+          const userInfo = await getUserInfo();
+          if (userInfo) {
+            apiMessages[0].content = `${instruction}\n\nДанные пользователя: ${JSON.stringify(userInfo, null, 2)}\n\nПродолжение диалога. Пользователь говорит о себе.`;
+          } else {
+            apiMessages[0].content = `${instruction}\n\nПродолжение диалога на основе предыдущего анализа.`;
+          }
         } else {
           apiMessages[0].content = `${instruction}\n\nПродолжение диалога на основе предыдущего анализа.`;
         }
       } else if (!instruction && isAboutUser && profile && chatMessages.length === 1) {
-        // For personal chat without analysis, include user data
-        const userData = {
-          name: `${profile.first_name} ${profile.last_name}`,
-          role: profile.role,
-          email: profile.email,
-          school_id: profile.school_id,
-          city_id: profile.city_id
-        };
-        apiMessages[0].content = `Пользователь говорит о себе. Данные пользователя: ${JSON.stringify(userData)}\n\n${input}`;
+        // For personal chat without analysis, include comprehensive user data
+        const userInfo = await getUserInfo();
+        if (userInfo) {
+          apiMessages[0].content = `Пользователь говорит о себе. Данные пользователя: ${JSON.stringify(userInfo, null, 2)}\n\n${input}`;
+        }
       }
 
       await streamAiAnalysis({

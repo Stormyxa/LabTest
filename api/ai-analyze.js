@@ -1,10 +1,11 @@
 import { GoogleGenAI } from '@google/genai';
 import OpenAI from 'openai';
 
-// Model priorities - highest to lowest (user specifications)
+// Model priorities - highest to lowest (Gemini only)
+// const GPT_MODELS = ['gpt-5.4-mini', 'gpt-5.4-nano', 'gpt-5-mini', 'gpt-5-nano'];
+const GPT_MODELS = []; // Disabled GPT models
 const GEMINI_MODELS = ['gemini-3.0-flash', 'gemini-2.5-flash', 'gemini-3.1-flash-lite', 'gemma-27b', 'gemma-21b'];
-const GPT_MODELS = ['gpt-5.4-mini', 'gpt-5.4-nano', 'gpt-5-mini', 'gpt-5-nano'];
-const ALL_MODELS = [...GEMINI_MODELS, ...GPT_MODELS];
+const ALL_MODELS = [...GEMINI_MODELS]; // Only Gemini models
 
 const MAX_BODY_SIZE = 1024 * 1024; // 1MB - increased for large JSON content
 
