@@ -19,7 +19,10 @@ The RAG system replaces the previous JSON-heavy approach (10-150KB per request) 
 
 ## Environment Variables
 
-Add these variables to your `.env.local` file for local development and to Vercel Environment Variables for production:
+Add these variables to both `.env.local` files:
+
+1. **`temp_app/.env.local`** - For client-side (Vite)
+2. **`../.env.local`** (parent directory) - For reference
 
 ### Qdrant Configuration (Required for RAG)
 ```
@@ -27,7 +30,11 @@ VITE_QDRANT_URL=https://782f351a-291d-422c-bd09-88c135a771c2.europe-west3-0.gcp.
 VITE_QDRANT_API_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3MiOiJtIiwic3ViamVjdCI6ImFwaS1rZXk6YjUyYzFhOTMtMWM4My00YTQzLTkxMDEtNTdmNTQwMGE0OWI2In0.U4_u87w43QHAXUNGcJxbqzDNjS6jCB-3NsKilzawglg
 ```
 
-**Important**: Client-side environment variables in Vite must be prefixed with `VITE_`. The Qdrant client will only work if these variables are set.
+**Important**: 
+- Client-side environment variables in Vite must be prefixed with `VITE_`
+- Add the same variables to Vercel Environment Variables (without `VITE_` prefix) for server-side API:
+  - `QDRANT_URL`
+  - `QDRANT_API_KEY`
 
 ### Existing Variables (Already configured)
 ```
