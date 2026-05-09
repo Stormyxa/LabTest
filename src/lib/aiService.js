@@ -37,21 +37,38 @@ export const saveAiAnalysis = async ({
   context_id,
   title,
   messages,
-  cache_key
+  cache_key,
+  id // Optional: if provided, update existing chat instead of creating new one
 }) => {
   try {
     const finalCacheKey = cache_key || buildAiCacheKey(context_type, context_id, 'history', Date.now());
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
-    const { error } = await supabase.from('ai_analyses').upsert({
-      cache_key: finalCacheKey,
-      user_id,
-      content: messages[messages.length - 1].content,
-      data: { messages, title: title || 'AI Chat' }, // Store title inside data as well
-      expires_at: expiresAt
-    }, { onConflict: 'cache_key' });
-
-    if (error) throw error;
+    if (id) {
+      // Update existing chat
+      const { error } = await supabase.from('ai_analyses')
+        .update({
+          content: messages[messages.length - 1].content,
+          data: { messages, title: title || 'AI Chat' },
+          expires_at: expiresAt
+        })
+        .eq('id', id);
+      if (error) throw error;
+      return { id };
+    } else {
+      // Create new chat
+      const { data, error } = await supabase.from('ai_analyses').upsert({
+        cache_key: finalCacheKey,
+        user_id,
+        content: messages[messages.length - 1].content,
+        data: { messages, title: title || 'AI Chat' },
+        expires_at: expiresAt
+      }, { onConflict: 'cache_key' })
+      .select()
+      .single();
+      if (error) throw error;
+      return data;
+    }
   } catch (e) {
     console.error('Save AI analysis failed:', e);
   }
@@ -157,6 +174,7 @@ export const streamAiAnalysis = async ({
   viewerRole,
   title,
   profile,
+  chatId, // Optional: if provided, update existing chat instead of creating new one
   onChunk,
   onDone,
   onError,
@@ -205,14 +223,15 @@ export const streamAiAnalysis = async ({
           const data = line.slice(6);
           if (data === '[DONE]') {
             // Save to history before calling onDone
-            await saveAiAnalysis({
+            const savedChat = await saveAiAnalysis({
+              id: chatId, // Pass chatId to update existing chat if provided
               user_id: session.user.id,
               context_type: contextType,
               context_id: contextId,
               title: title || 'AI Chat',
               messages: [...messages, { role: 'assistant', content: fullText }]
             });
-            if (onDone) onDone(fullText);
+            if (onDone) onDone(fullText, savedChat);
             return;
           }
           

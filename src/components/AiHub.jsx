@@ -23,11 +23,79 @@ const AiHub = ({ session, profile }) => {
   const [accessError, setAccessError] = useState(null); // Access denial error
   const [showAccessModal, setShowAccessModal] = useState(false);
   const [inputDisabled, setInputDisabled] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [chatToDelete, setChatToDelete] = useState(null);
+  const [historyPanelWidth, setHistoryPanelWidth] = useState(() => {
+    const saved = sessionStorage.getItem('ai_history_width');
+    return saved ? parseInt(saved) : 250;
+  });
+
+  // Save history panel width when changed
+  useEffect(() => {
+    sessionStorage.setItem('ai_history_width', historyPanelWidth.toString());
+  }, [historyPanelWidth]);
   
   const [position, setPosition] = useState({ x: window.innerWidth - 450, y: window.innerHeight - 650 });
   const [size, setSize] = useState({ width: 400, height: 600 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+
+  // Handle window resize to keep AI hub within bounds
+  useEffect(() => {
+    const handleResize = () => {
+      const windowWidth = window.innerWidth;
+      const windowHeight = window.innerHeight;
+      
+      // Check if AI hub is out of bounds
+      let needsUpdate = false;
+      const newPosition = { ...position };
+      const newSize = { ...size };
+      
+      // Check if AI hub is too far right
+      if (position.x + size.width > windowWidth - 20) {
+        newPosition.x = Math.max(0, windowWidth - size.width - 20);
+        needsUpdate = true;
+      }
+      
+      // Check if AI hub is too far down
+      if (position.y + size.height > windowHeight - 20) {
+        newPosition.y = Math.max(0, windowHeight - size.height - 20);
+        needsUpdate = true;
+      }
+      
+      // Check if AI hub is too far left
+      if (position.x < 0) {
+        newPosition.x = 0;
+        needsUpdate = true;
+      }
+      
+      // Check if AI hub is too far up
+      if (position.y < 0) {
+        newPosition.y = 0;
+        needsUpdate = true;
+      }
+      
+      // Check if AI hub is too wide for window
+      if (size.width > windowWidth - 20) {
+        newSize.width = windowWidth - 20;
+        needsUpdate = true;
+      }
+      
+      // Check if AI hub is too tall for window
+      if (size.height > windowHeight - 20) {
+        newSize.height = windowHeight - 20;
+        needsUpdate = true;
+      }
+      
+      if (needsUpdate) {
+        setPosition(newPosition);
+        setSize(newSize);
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [position, size]);
   
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
@@ -322,6 +390,7 @@ const AiHub = ({ session, profile }) => {
         viewerRole: profile?.role || 'student',
         title: title || 'AI Chat',
         profile: profile,
+        chatId: currentChatId, // Pass current chat ID to update existing chat
         onChunk: (chunk) => {
           fullText += chunk;
           setMessages(prev => {
@@ -330,9 +399,19 @@ const AiHub = ({ session, profile }) => {
             return newMsgs;
           });
         },
-        onDone: () => {
+        onDone: (fullText, savedChat) => {
           // Reload history after streaming completes
           loadHistory();
+          // If this was a new chat, get the saved chat ID and set it as current
+          if (!currentChatId && savedChat) {
+            // Find the newly saved chat in history
+            setTimeout(() => {
+              loadHistory().then(() => {
+                const newChat = history.find(h => h.data?.messages === chatMessages);
+                if (newChat) setCurrentChatId(newChat.id);
+              });
+            }, 100);
+          }
         }
       });
       
@@ -370,6 +449,30 @@ const AiHub = ({ session, profile }) => {
     setAiChatTitle('ИИ-Хаб LabTest');
     setAccessError(null);
     setInputDisabled(false);
+  };
+
+  const handleDeleteChat = (chatId) => {
+    setChatToDelete(chatId);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDeleteChat = async () => {
+    if (!chatToDelete) return;
+    
+    try {
+      await deleteAiAnalysis(chatToDelete);
+      loadHistory();
+      
+      // If the deleted chat was the current one, start a new chat
+      if (currentChatId === chatToDelete) {
+        startNewChat();
+      }
+      
+      setShowDeleteModal(false);
+      setChatToDelete(null);
+    } catch (e) {
+      console.error('Failed to delete chat:', e);
+    }
   };
 
   const handleSend = async () => {
@@ -511,7 +614,7 @@ const AiHub = ({ session, profile }) => {
 
       <div className="ai-hub-content">
         {/* History Panel */}
-        <div className={`ai-history-panel ${isHistoryOpen ? 'open' : ''}`}>
+        <div className={`ai-history-panel ${isHistoryOpen ? 'open' : ''}`} style={{ width: isHistoryOpen ? `${historyPanelWidth}px` : '0px' }}>
           <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '15px' }}>
             <h4 style={{ margin: 0 }}>История</h4>
             <button className="no-drag" style={{ background: 'transparent', padding: 0 }} onClick={() => setIsHistoryOpen(false)}><X size={18} /></button>
@@ -521,17 +624,81 @@ const AiHub = ({ session, profile }) => {
               <div 
                 key={item.id} 
                 className={`history-item ${currentChatId === item.id ? 'active' : ''}`}
-                onClick={() => {
-                  setMessages(item.data?.messages || [{ role: 'assistant', content: item.content }]);
-                  setCurrentChatId(item.id);
-                  setIsHistoryOpen(false);
-                }}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
               >
-                {item.data?.messages?.[0]?.content || item.cache_key}
+                <button
+                  className="no-drag"
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#ef4444',
+                    padding: '4px',
+                    cursor: 'pointer',
+                    opacity: 0.6,
+                    transition: 'opacity 0.2s',
+                    marginRight: '8px'
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteChat(item.id);
+                  }}
+                  onMouseEnter={(e) => e.target.style.opacity = '1'}
+                  onMouseLeave={(e) => e.target.style.opacity = '0.6'}
+                  title="Удалить чат"
+                >
+                  <Trash2 size={14} />
+                </button>
+                <div 
+                  style={{ flex: 1, cursor: 'pointer' }}
+                  onClick={() => {
+                    setMessages(item.data?.messages || [{ role: 'assistant', content: item.content }]);
+                    setCurrentChatId(item.id);
+                    setIsHistoryOpen(false);
+                  }}
+                >
+                  {item.data?.messages?.[0]?.content || item.cache_key}
+                </div>
               </div>
             ))}
             {history.length === 0 && <div style={{ opacity: 0.4, fontSize: '0.8rem', textAlign: 'center' }}>История пуста</div>}
           </div>
+          {/* History Panel Resizer */}
+          {isHistoryOpen && (
+            <div 
+              className="no-drag"
+              style={{
+                position: 'absolute',
+                right: 0,
+                top: 0,
+                bottom: 0,
+                width: '5px',
+                cursor: 'ew-resize',
+                background: 'transparent',
+                transition: 'background 0.2s'
+              }}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const startX = e.clientX;
+                const startWidth = historyPanelWidth;
+                
+                const onMouseMove = (e) => {
+                  const newWidth = startWidth + (e.clientX - startX);
+                  setHistoryPanelWidth(Math.max(200, Math.min(newWidth, size.width - 200)));
+                };
+                
+                const onMouseUp = () => {
+                  window.removeEventListener('mousemove', onMouseMove);
+                  window.removeEventListener('mouseup', onMouseUp);
+                };
+                
+                window.addEventListener('mousemove', onMouseMove);
+                window.addEventListener('mouseup', onMouseUp);
+              }}
+              onMouseEnter={(e) => e.target.style.background = 'rgba(255,255,255,0.2)'}
+              onMouseLeave={(e) => e.target.style.background = 'transparent'}
+            />
+          )}
         </div>
 
         <div className="ai-chat-messages custom-scrollbar" ref={scrollRef}>
@@ -655,9 +822,12 @@ const AiHub = ({ session, profile }) => {
             const startH = size.height;
             
             const onMouseMove = (e) => {
+              const maxWidth = window.innerWidth - position.x - 20;
+              const maxHeight = window.innerHeight - position.y - 20;
+              
               setSize({
-                width: Math.max(300, startW + (e.clientX - startX)),
-                height: Math.max(400, startH + (e.clientY - startY))
+                width: Math.max(300, Math.min(startW + (e.clientX - startX), maxWidth)),
+                height: Math.max(400, Math.min(startH + (e.clientY - startY), maxHeight))
               });
             };
             const onMouseUp = () => {
@@ -698,6 +868,88 @@ const AiHub = ({ session, profile }) => {
           </div>
         </div>,
         document.body
+      )}
+
+      {/* Delete Chat Confirmation Modal - Inside AI Hub */}
+      {showDeleteModal && (
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.8)',
+          zIndex: 100,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px'
+        }}>
+          <div style={{
+            background: 'var(--bg-secondary, #1e1e2e)',
+            color: 'var(--text-primary, white)',
+            padding: '30px',
+            borderRadius: '20px',
+            boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
+            textAlign: 'center',
+            width: '100%',
+            maxWidth: '400px',
+            animation: 'slideUp 0.3s ease-out'
+          }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '60px',
+              height: '60px',
+              background: 'rgba(239, 68, 68, 0.1)',
+              color: '#ef4444',
+              borderRadius: '20px',
+              margin: '0 auto 20px'
+            }}>
+              <Trash2 size={32} />
+            </div>
+            <h2 style={{ marginBottom: '15px' }}>Удалить чат?</h2>
+            <p style={{ opacity: 0.7, lineHeight: '1.6', marginBottom: '25px' }}>
+              Вы уверены, что хотите удалить этот чат? Это действие нельзя отменить.
+            </p>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setChatToDelete(null);
+                }}
+                style={{
+                  flex: 1,
+                  background: 'var(--bg-tertiary, rgba(255,255,255,0.1))',
+                  color: 'var(--text-primary, white)',
+                  border: 'none',
+                  padding: '12px',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '14px'
+                }}
+              >
+                Отмена
+              </button>
+              <button
+                onClick={confirmDeleteChat}
+                style={{
+                  flex: 1,
+                  background: '#ef4444',
+                  color: 'white',
+                  border: 'none',
+                  padding: '12px',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '14px'
+                }}
+              >
+                Удалить
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
