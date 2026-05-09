@@ -26,15 +26,20 @@ Add these variables to both `.env.local` files:
 
 ### Qdrant Configuration (Required for RAG)
 ```
+QDRANT_URL=https://782f351a-291d-422c-bd09-88c135a771c2.europe-west3-0.gcp.cloud.qdrant.io
+QDRANT_API_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3MiOiJtIiwic3ViamVjdCI6ImFwaS1rZXk6YjUyYzFhOTMtMWM4My00YTQzLTkxMDEtNTdmNTQwMGE0OWI2In0.U4_u87w43QHAXUNGcJxbqzDNjS6jCB-3NsKilzawglg
+```
+
+**For local development (optional)** - add both prefixes to work with Vite dev server:
+```
 VITE_QDRANT_URL=https://782f351a-291d-422c-bd09-88c135a771c2.europe-west3-0.gcp.cloud.qdrant.io
 VITE_QDRANT_API_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3MiOiJtIiwic3ViamVjdCI6ImFwaS1rZXk6YjUyYzFhOTMtMWM4My00YTQzLTkxMDEtNTdmNTQwMGE0OWI2In0.U4_u87w43QHAXUNGcJxbqzDNjS6jCB-3NsKilzawglg
 ```
 
 **Important**: 
-- Client-side environment variables in Vite must be prefixed with `VITE_`
-- Add the same variables to Vercel Environment Variables (without `VITE_` prefix) for server-side API:
-  - `QDRANT_URL`
-  - `QDRANT_API_KEY`
+- Server-side API functions support both `QDRANT_*` and `VITE_QDRANT_*` prefixes
+- On Vercel, use `QDRANT_URL` and `QDRANT_API_KEY` (without VITE_ prefix)
+- Client-side code uses proxy endpoints (`/api/search-facts`, `/api/store-facts`) to keep API key secured)
 
 ### Existing Variables (Already configured)
 ```
@@ -69,6 +74,7 @@ The collection `user_memory` is already configured with:
 
 ### Server-side API
 - `api/store-facts.js` - Vercel server function for automatic fact extraction
+- `api/search-facts.js` - Vercel server function for fact retrieval (proxy)
 
 ### Modified Files
 - `src/lib/quizEvaluation.js` - Added trigger for fact storage after quiz completion

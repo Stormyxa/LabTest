@@ -10,46 +10,48 @@ import { supabase } from './supabase';
 /**
  * Build RAG context for student analysis
  * @param {string} userId - User UUID
- * @param {string} [quizId] - Optional quiz ID filter
- * @param {string} [query] - Optional custom query for fact retrieval
- * @returns {Promise<string>} Context string with relevant facts
  */
-export const buildStudentRagContext = async (userId, quizId = null, query = null) => {
-  if (!isQdrantConfigured()) {
-    console.warn('Qdrant not configured, RAG disabled');
-    return null;
-  }
-
+export const buildStudentRagContext = async (userId) => {
   try {
-    // Default query for student analysis
-    const searchQuery = query || 
-      'Анализ обучения ученика: ошибки, прогресс, слабые места, паттерны ответов, время на вопросы';
-
-    // Generate embedding for the query
-    const queryVector = await generateEmbedding(searchQuery);
-
-    // Search for relevant facts
-    const facts = await searchFacts({
-      userId,
-      queryVector,
-      limit: 15,
-      quizId
+    // Search for relevant facts via server proxy
+    const response = await fetch('/api/search-facts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId,
+        query: 'student performance quiz results errors strengths weaknesses learning progress',
+        limit: 15,
+        enableTimeDecay: true
+      })
     });
 
-    if (facts.length === 0) {
+    if (!response.ok) {
+      throw new Error('Failed to search facts');
+    }
+
+    const { facts } = await response.json();
+
+    if (!facts || facts.length === 0) {
       return null;
     }
 
-    // Build context string
-    const context = `## Релевантные факты об ученике (из векторной памяти)\n\n` +
-      facts.map((fact, idx) => 
-        `${idx + 1}. ${fact.fact} (релевантность: ${Math.round(fact.score * 100)}%)`
-      ).join('\n');
+    // Group facts by type
+    const grouped = {
+      errors: facts.filter(f => f.fact.includes('ошибся') || f.fact.includes('Выбрал ответ')),
+      performance: facts.filter(f => f.fact.includes('результат') || f.fact.includes('балл') || f.fact.includes('%')),
+      behavior: facts.filter(f => f.fact.includes('подозритель') || f.fact.includes('незавершен') || f.fact.includes('досрочно')),
+      timing: facts.filter(f => f.fact.includes('сек') || f.fact.includes('времени')),
+      context: facts.filter(f => f.fact.includes('Пользователь') || f.fact.includes('Класс'))
+    };
 
-    return context;
+    return {
+      facts: facts.map(f => f.fact),
+      grouped,
+      summary: `Found ${facts.length} relevant facts from ${grouped.errors.length} errors, ${grouped.performance.length} performance metrics, and ${grouped.behavior.length} behavioral observations.`
+    };
   } catch (error) {
-    console.error('Failed to build RAG context:', error);
-    return null;
+    console.error('Failed to build RAG context for student:', error);
+    throw error;
   }
 };
 
@@ -60,15 +62,7 @@ export const buildStudentRagContext = async (userId, quizId = null, query = null
  * @returns {Promise<string>} Context string with relevant facts
  */
 export const buildQuizRagContext = async (quizId, classId = null) => {
-  if (!isQdrantConfigured()) {
-    console.warn('Qdrant not configured, RAG disabled');
-    return null;
-  }
-
   try {
-    const query = 'Анализ результатов теста: общие ошибки, проблемные вопросы, успеваемость класса';
-    const queryVector = await generateEmbedding(query);
-
     // Get all students in the class if classId is provided
     let userIds = [];
     if (classId) {
@@ -81,21 +75,54 @@ export const buildQuizRagContext = async (quizId, classId = null) => {
       userIds = profiles?.map(p => p.id) || [];
     }
 
-    // Search for facts (note: Qdrant search is per-tenant, so we might need to aggregate)
-    // For now, we'll search without userId filter to get all facts for this quiz
-    const facts = await searchFacts({
-      userId: 'all', // This won't work with current implementation, need to modify
-      queryVector,
-      limit: 20,
-      quizId
-    });
-
-    if (facts.length === 0) {
+    if (userIds.length === 0) {
       return null;
     }
 
+    // Search facts for each student and aggregate via proxy
+    const allFacts = [];
+    const query = 'Анализ результатов теста: общие ошибки, проблемные вопросы, успеваемость класса';
+    
+    const batchSize = 10;
+    for (let i = 0; i < userIds.length; i += batchSize) {
+      const batch = userIds.slice(i, i + batchSize);
+      const batchPromises = batch.map(async (userId) => {
+        try {
+          const response = await fetch('/api/search-facts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId,
+              query,
+              quizId,
+              limit: 5,
+              enableTimeDecay: true
+            })
+          });
+
+          if (!response.ok) return [];
+          const { facts } = await response.json();
+          return facts || [];
+        } catch (error) {
+          console.error(`Failed to fetch facts for user ${userId}:`, error);
+          return [];
+        }
+      });
+
+      const batchResults = await Promise.all(batchPromises);
+      allFacts.push(...batchResults.flat());
+    }
+
+    if (allFacts.length === 0) {
+      return null;
+    }
+
+    // Sort by score and limit
+    allFacts.sort((a, b) => b.score - a.score);
+    const topFacts = allFacts.slice(0, 30);
+
     const context = `## Релевантные факты по тесту (из векторной памяти)\n\n` +
-      facts.map((fact, idx) => 
+      topFacts.map((fact, idx) => 
         `${idx + 1}. ${fact.fact} (релевантность: ${Math.round(fact.score * 100)}%)`
       ).join('\n');
 
@@ -112,14 +139,8 @@ export const buildQuizRagContext = async (quizId, classId = null) => {
  * @returns {Promise<string>} Context string with relevant facts
  */
 export const buildClassRagContext = async (classId) => {
-  if (!isQdrantConfigured()) {
-    console.warn('Qdrant not configured, RAG disabled');
-    return null;
-  }
-
   try {
     const query = 'Анализ класса: общая успеваемость, слабые ученики, проблемные предметы, прогресс';
-    const queryVector = await generateEmbedding(query);
 
     // Get all students in the class
     const { data: profiles } = await supabase
@@ -134,16 +155,37 @@ export const buildClassRagContext = async (classId) => {
       return null;
     }
 
-    // Search facts for each student and aggregate
+    // Search facts for each student and aggregate via proxy
     const allFacts = [];
-    for (const userId of userIds) {
-      const facts = await searchFacts({
-        userId,
-        queryVector,
-        limit: 5,
-        classId
+    const batchSize = 10;
+    
+    for (let i = 0; i < userIds.length; i += batchSize) {
+      const batch = userIds.slice(i, i + batchSize);
+      const batchPromises = batch.map(async (userId) => {
+        try {
+          const response = await fetch('/api/search-facts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId,
+              query,
+              classId,
+              limit: 5,
+              enableTimeDecay: true
+            })
+          });
+
+          if (!response.ok) return [];
+          const { facts } = await response.json();
+          return facts || [];
+        } catch (error) {
+          console.error(`Failed to fetch facts for user ${userId}:`, error);
+          return [];
+        }
       });
-      allFacts.push(...facts);
+
+      const batchResults = await Promise.all(batchPromises);
+      allFacts.push(...batchResults.flat());
     }
 
     // Sort by score and limit

@@ -3,39 +3,18 @@ import { QdrantClient } from '@qdrant/js-client-rest';
 /**
  * Qdrant client utility for RAG implementation
  * Manages connection to user_memory collection
+ * NOTE: Client-side direct access is disabled for security.
+ * Use server-side API endpoints (/api/search-facts, /api/store-facts) instead.
  */
 
-const QDRANT_URL = import.meta.env.VITE_QDRANT_URL;
-const QDRANT_API_KEY = import.meta.env.VITE_QDRANT_API_KEY;
 const COLLECTION_NAME = 'user_memory';
-
-let client = null;
-
-// Initialize Qdrant client only if credentials are available
-if (QDRANT_URL && QDRANT_API_KEY) {
-  client = new QdrantClient({
-    url: QDRANT_URL,
-    apiKey: QDRANT_API_KEY,
-  });
-} else {
-  console.warn('⚠️ Qdrant credentials not configured (VITE_QDRANT_URL, VITE_QDRANT_API_KEY). RAG features will be disabled.');
-}
 
 /**
  * Check if Qdrant is properly configured
+ * NOTE: Always returns false on client-side for security
  */
 export const isQdrantConfigured = () => {
-  return !!(QDRANT_URL && QDRANT_API_KEY && client);
-};
-
-/**
- * Get the Qdrant client (lazy initialization)
- */
-const getClient = () => {
-  if (!isQdrantConfigured()) {
-    throw new Error('Qdrant is not configured. Please set VITE_QDRANT_URL and VITE_QDRANT_API_KEY environment variables.');
-  }
-  return client;
+  return false; // Client-side disabled, use server proxy
 };
 
 /**
