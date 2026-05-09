@@ -6,7 +6,7 @@ const GEMINI_MODELS = ['gemini-3.0-flash', 'gemini-2.5-flash', 'gemini-3.1-flash
 const GPT_MODELS = ['gpt-5.4-mini', 'gpt-5.4-nano', 'gpt-5-mini', 'gpt-5-nano'];
 const ALL_MODELS = [...GEMINI_MODELS, ...GPT_MODELS];
 
-const MAX_BODY_SIZE = 500 * 1024; // 500KB - increased for large JSON content
+const MAX_BODY_SIZE = 1024 * 1024; // 1MB - increased for large JSON content
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {

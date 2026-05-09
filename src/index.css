@@ -8,7 +8,7 @@
   --border-radius: 24px;
   --border-color: #6366f1;
   --soft-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.02);
-  --glass: blur(10px);
+  --glass: blur(5px);
   --font-main: 'Outfit', 'Inter', sans-serif;
 }
 
@@ -50,7 +50,7 @@ body {
   flex-direction: column;
 }
 
-/* Blur overlay styles for quiz integrity */
+/* Simple blur overlay styles */
 .blur-overlay-enhanced {
   position: fixed !important;
   top: 0 !important;
@@ -58,9 +58,7 @@ body {
   right: 0 !important;
   bottom: 0 !important;
   z-index: 99999 !important;
-  background: rgba(0, 0, 0, 0.6) !important;
-  -webkit-backdrop-filter: blur(20px) !important;
-  backdrop-filter: blur(20px) !important;
+  background: rgba(0, 0, 0, 0.7) !important;
   display: flex !important;
   flex-direction: column !important;
   align-items: center !important;
@@ -70,22 +68,6 @@ body {
   text-align: center !important;
   padding: 20px !important;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
-}
-
-/* Fallback for browsers that don't support backdrop-filter */
-@supports not (backdrop-filter: blur(20px)) {
-  .blur-overlay-enhanced {
-    background: rgba(0, 0, 0, 0.8) !important;
-    -webkit-filter: blur(10px) !important;
-    filter: blur(10px) !important;
-  }
-}
-
-/* Safari specific */
-@supports (-webkit-backdrop-filter: blur(20px)) and (not (backdrop-filter: blur(20px))) {
-  .blur-overlay-enhanced {
-    -webkit-backdrop-filter: blur(20px) !important;
-  }
 }
 
 #root {
