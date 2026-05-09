@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import MathRenderer from './MathRenderer';
 import { X, Maximize2, Minimize2, Sparkles, Send, Download, Copy, RefreshCw, History, Trash2, ChevronLeft, ChevronRight, MessageSquare, Check, User } from 'lucide-react';
 import { streamAiAnalysis, getAiHistory, saveAiAnalysis, deleteAiAnalysis } from '../lib/aiService';
 import { createModalOverlay } from '../utils/blurUtils';
@@ -50,7 +51,19 @@ const AiHub = ({ session, profile }) => {
         
         // Auto-run analysis if instruction and data provided
         if (e.detail?.instruction && e.detail?.data) {
-          const initialMessages = [{ role: 'user', content: e.detail.instruction }];
+          // Create user-friendly message instead of showing system instructions
+          let userMessage = '';
+          if (e.detail.contextType === 'detailed_quiz') {
+            userMessage = 'Проведи детальный анализ моих результатов по тесту';
+          } else if (e.detail.contextType === 'quiz') {
+            userMessage = 'Проанализируй мои результаты по тесту';
+          } else if (e.detail.title) {
+            userMessage = `Проведи анализ: ${e.detail.title}`;
+          } else {
+            userMessage = 'Проведи анализ предоставленных данных';
+          }
+          
+          const initialMessages = [{ role: 'user', content: userMessage }];
           setMessages(initialMessages);
           setTimeout(() => {
             runStreaming(initialMessages, e.detail.instruction, e.detail.data, e.detail.contextType, e.detail.contextId, e.detail.title);
@@ -499,7 +512,14 @@ const AiHub = ({ session, profile }) => {
           {messages.map((msg, i) => (
             <div key={i} className={`ai-message ${msg.role}`}>
               <div className="ai-markdown-content">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                <ReactMarkdown 
+                  remarkPlugins={[remarkGfm]}
+                  components={{ 
+                    math: ({ node, inline, ...props }) => {
+                      return <MathRenderer text={node.value} noSelect={false} />;
+                    }
+                  }}
+                >{msg.content}</ReactMarkdown>
               </div>
               <div className="ai-message-actions">
                 <button className="ai-action-btn" onClick={() => copyToClipboard(msg.content)} title="Копировать">
