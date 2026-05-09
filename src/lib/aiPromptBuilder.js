@@ -851,7 +851,12 @@ export const buildDetailedQuizPrompt = async (userId, quizId, viewerRole = 'stud
     const json = {
       meta: { v: 1, generated: new Date().toLocaleString('ru-RU', { timeZone: 'Asia/Almaty' }), limit: '1st+Best+Last10' },
       student: { n: fullName, id: userId.slice(0, 8) },
-      quiz: { tn: quiz.title, q_count: quiz.total_questions, c_avg: quiz.avg_success_rate || 0 },
+      quiz: { 
+        tn: quiz.title, 
+        q_count: quiz.total_questions, 
+        c_avg: quiz.avg_success_rate || 0,
+        resources: quiz.resources || []
+      },
       questions,
       attempts: processedAttempts,
       q_summary: Object.keys(qStats).map(qid => ({

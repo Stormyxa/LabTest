@@ -162,8 +162,9 @@ export const extractFactsFromAttempt = (attempt, quiz, subject, sectionName = nu
   
   // Metadata fact
   const resources = quiz?.resources || [];
+  const resourcesStr = resources.map(r => `[${r.title || 'Resource'}]: ${r.url}`).join(', ');
   const hasResources = resources.length > 0 || quiz?.quiz_sections?.book_url;
-  const resourceStr = hasResources ? `, Has Resources: true (${resources.length + (quiz?.quiz_sections?.book_url ? 1 : 0)})` : '';
+  const resourceStr = hasResources ? `, Resources: ${resourcesStr || 'None'}` : '';
   
   facts.push(`[METADATA] Quiz: "${quiz?.title || 'Неизвестный'}"${quizTypeStr}, Subject: ${subjectStr}, Section ID: ${quiz?.section_id || '—'}${classStr}${bookUrl}${resourceStr}. Time: ${kzTime}`);
 

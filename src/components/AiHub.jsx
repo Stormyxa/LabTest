@@ -455,13 +455,11 @@ const AiHub = ({ session, profile }) => {
           searchQuery = `[STATUS: WRONG] ${recentMessage}`;
         }
 
-        // Search RAG for every message if we have a user message
+        // Search RAG for every message to provide maximum context
         let ragStr = '';
-        if (chatMessages.length > 1) {
-          const relevantFacts = await searchUserFacts(session.user.id, searchQuery);
-          if (relevantFacts.length > 0) {
-            ragStr = `\n\nРелевантные факты из памяти (RAG):\n${relevantFacts.map(f => `- ${f.fact}`).join('\n')}`;
-          }
+        const relevantFacts = await searchUserFacts(session.user.id, searchQuery);
+        if (relevantFacts.length > 0) {
+          ragStr = `\n\nРелевантные факты из памяти (RAG):\n${relevantFacts.map(f => `- ${f.fact}`).join('\n')}`;
         }
         
         apiMessages[0].content = `${instruction}${contextJson}${ragStr}\n\nПользователь запросил анализ этого контекста.`;
