@@ -1,10 +1,11 @@
 import { GoogleGenAI } from '@google/genai';
 import OpenAI from 'openai';
 
-// Model priorities - highest to lowest (Gemini primary, GPT fallback)
-const GPT_MODELS = ['gpt-4o-mini', 'gpt-4o']; // Basic GPT models for continued chat
+// Model priorities - highest to lowest (Gemini only)
+// const GPT_MODELS = ['gpt-4o-mini', 'gpt-4o']; // Disabled - never used
+const GPT_MODELS = []; // Completely disabled
 const GEMINI_MODELS = ['gemini-3.0-flash', 'gemini-2.5-flash', 'gemini-3.1-flash-lite', 'gemma-27b', 'gemma-21b'];
-const ALL_MODELS = [...GEMINI_MODELS, ...GPT_MODELS]; // Gemini first, then GPT
+const ALL_MODELS = [...GEMINI_MODELS]; // Only Gemini models
 
 const MAX_BODY_SIZE = 1024 * 1024; // 1MB - increased for large JSON content
 
@@ -202,6 +203,13 @@ export default async function handler(req, res) {
         
         if (isCreator) {
           console.warn(`🔴 Model ${model} failed:`, errorInfo);
+          console.warn('🔍 Full error details:', {
+            geminiKey: geminiKey ? 'SET' : 'NOT SET',
+            model,
+            errorMessage: err.message,
+            errorStack: err.stack,
+            requestBody: JSON.stringify(req.body).substring(0, 500)
+          });
         } else {
           console.warn(`Model ${model} failed:`, err.message);
         }
