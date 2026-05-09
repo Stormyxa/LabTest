@@ -366,18 +366,23 @@ const AiHub = ({ session, profile }) => {
         
         try {
           // Fetch user's recent quiz attempts and performance data
-          const { data: attempts } = await supabase
+          const { data: attempts, error: attemptsError } = await supabase
             .from('quiz_results')
-            .select('*, quizzes!inner(title)')
+            .select('*')
             .eq('user_id', session.user.id)
-            .order('created_at', { ascending: false })
+            .order('completed_at', { ascending: false })
             .limit(10);
           
-          // Fetch user's classes and schools
-          const { data: userClasses } = await supabase
-            .from('class_members')
-            .select('*, classes!inner(name)')
-            .eq('user_id', session.user.id);
+          if (attemptsError) {
+            console.error('Error fetching quiz_results:', attemptsError);
+          }
+          
+          // Fetch user's class info
+          const { data: userClass } = await supabase
+            .from('classes')
+            .select('name, school_id')
+            .eq('id', profile.class_id)
+            .maybeSingle();
           
           return {
             profile: {
@@ -388,7 +393,7 @@ const AiHub = ({ session, profile }) => {
               city_id: profile.city_id
             },
             recentAttempts: attempts || [],
-            classes: userClasses || [],
+            classInfo: userClass || null,
             summary: {
               totalAttempts: attempts?.length || 0,
               averageScore: attempts?.reduce((sum, a) => sum + (a.score || 0), 0) / (attempts?.length || 1),

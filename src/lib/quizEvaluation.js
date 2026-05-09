@@ -132,9 +132,13 @@ export const evaluateAndSaveExpiredAttempt = async (att, userId) => {
 
   // Trigger RAG fact extraction asynchronously
   // This sends facts to Qdrant for personalized AI analysis
-  triggerFactStorage(att.id, qId, uId).catch(err => {
-    console.warn('Failed to trigger fact storage:', err);
-  });
+  try {
+    console.log(`🔄 Triggering fact storage for attempt ${att.id}, quiz ${qId}, user ${uId}`);
+    await triggerFactStorage(att.id, qId, uId);
+    console.log(`✅ Fact storage triggered successfully`);
+  } catch (err) {
+    console.error('❌ Failed to trigger fact storage:', err);
+  }
 };
 
 /**
