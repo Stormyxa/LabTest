@@ -1,21 +1,21 @@
 import { GoogleGenAI } from '@google/genai';
 import OpenAI from 'openai';
 
-// Model priority: Gemini -> OpenAI -> Others
+// Model priority: Gemini -> Others -> OpenAI (last due to 0 free tries)
 const MODELS = {
   google: ['gemini-3.1-flash-lite'], // Free plan model
-  openai: ['gpt-4o-mini'], // Smart and fast OpenAI model
   groq: ['llama-3.1-8b-instant'], // Best Groq model
   cerebras: ['llama-3.1-8b'], // Best Cerebras model  
-  openrouter: ['meta-llama/llama-3.1-8b-instruct:free'] // Best OpenRouter free model
+  openrouter: ['meta-llama/llama-3.1-8b-instruct:free'], // Best OpenRouter free model
+  openai: ['gpt-4o-mini'], // Smart and fast OpenAI model (last priority due to 0 free tries)
 };
 
 const ALL_MODELS = [
   ...MODELS.google,
-  ...MODELS.openai,
   ...MODELS.groq, 
   ...MODELS.cerebras,
-  ...MODELS.openrouter
+  ...MODELS.openrouter,
+  ...MODELS.openai
 ];
 
 const MAX_BODY_SIZE = 1024 * 1024; // 1MB - increased for large JSON content
