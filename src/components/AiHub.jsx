@@ -35,20 +35,22 @@ const AiHub = ({ session, profile }) => {
         showRestrictionModal();
         return;
       }
-      
-      const { contextType, contextId, instruction, data, title } = e.detail;
-      setIsOpen(true);
-      setIsMinimized(false);
-      
-      // If new analysis requested
-      if (instruction) {
-        startNewAnalysis(contextType, contextId, instruction, data, title);
+
+      // Toggle logic: if open and not minimized, minimize to bubble; otherwise open normally
+      if (isOpen && !isMinimized) {
+        setIsMinimized(true);
+      } else {
+        setIsOpen(true);
+        setIsMinimized(false);
+        if (e.detail?.title) {
+          setAiChatTitle(e.detail.title);
+        }
       }
     };
-    
+
     window.addEventListener('open-ai-hub', handleOpen);
     return () => window.removeEventListener('open-ai-hub', handleOpen);
-  }, []);
+  }, [isOpen, isMinimized]);
 
   // Auto-close AI chat when user starts first attempt
   useEffect(() => {
@@ -258,17 +260,19 @@ const AiHub = ({ session, profile }) => {
         }
       });
 
-      // Save to history
-      const cacheKey = instruction ? `${type}_${id}_${session.user.id}` : `chat_${Date.now()}_${session.user.id}`;
-      await saveAiAnalysis({
-        cache_key: cacheKey,
-        user_id: session.user.id,
-        context_type: type,
-        context_id: id,
-        title: title || 'AI Chat',
-        messages: [...chatMessages, { role: 'assistant', content: fullText }]
-      });
-      loadHistory();
+      // Save to history only if not already saved by streaming completion
+      if (!instruction) {
+        const cacheKey = `chat_${Date.now()}_${session.user.id}`;
+        await saveAiAnalysis({
+          cache_key: cacheKey,
+          user_id: session.user.id,
+          context_type: 'chat',
+          context_id: null,
+          title: 'AI Chat',
+          messages: [...chatMessages, { role: 'assistant', content: fullText }]
+        });
+        loadHistory();
+      }
       
       setStatus('idle');
     } catch (e) {

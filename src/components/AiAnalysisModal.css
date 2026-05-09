@@ -211,13 +211,39 @@
   left: 0;
   top: 50px;
   bottom: 0;
-  width: 250px;
+  width: 280px;
   background: var(--card-bg);
-  border-right: 1px solid rgba(0, 0, 0, 0.05);
+  border-right: 1px solid rgba(0, 0, 0, 0.1);
   transform: translateX(-100%);
   transition: transform 0.3s ease;
-  z-index: 5;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
   padding: 15px;
+}
+
+.ai-history-panel .custom-scrollbar {
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-behavior: smooth;
+}
+
+.ai-history-panel .custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.ai-history-panel .custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 3px;
+}
+
+.ai-history-panel .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.3);
+  border-radius: 3px;
+}
+
+.ai-history-panel .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.5);
 }
 
 .ai-history-panel.open {
