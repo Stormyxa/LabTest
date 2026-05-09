@@ -3,10 +3,10 @@ import OpenAI from 'openai';
 
 // Model priority: Gemini -> Others -> OpenAI (last due to 0 free tries)
 const MODELS = {
-  google: ['gemini-2.0-flash-expert'], // Better performance and higher limits
-  groq: ['llama-3.1-8b-instant'], // Best Groq model
-  cerebras: ['llama-3.1-8b'], // Best Cerebras model  
-  siliconflow: ['r1'], // Best Silicon Flow model
+  google: ['gemini-3.1-flash-lite'], // Free plan model with good performance
+  groq: ['llama3-8b-8192'], // Correct Groq model name
+  cerebras: ['llama3.1-8b'], // Correct Cerebras model name  
+  siliconflow: ['Qwen/Qwen2.5-7B-Instruct'], // Best Silicon Flow model
   openrouter: ['meta-llama/llama-3.1-8b-instruct:free'], // Best OpenRouter free model
   openai: ['gpt-4o-mini'], // Smart and fast OpenAI model (last priority due to 0 free tries)
 };
@@ -134,7 +134,36 @@ export default async function handler(req, res) {
       });
     }
     
-    // Log token info for creators
+    // Creator role bypass - unlimited access
+    if (isCreator) {
+      console.log('🚀 Creator detected - bypassing all rate limits');
+      console.log('🔍 Creator debug:', { userRole, isCreator, reqBody: req.body });
+      // Continue to model execution without any rate limiting
+    } else {
+      console.log('🔍 Non-creator user detected:', { userRole, isCreator, reqBody: req.body });
+      // Apply rate limiting for non-creator roles
+      const rateLimits = getRateLimits(userRole);
+      if (rateLimits.daily === 0 && rateLimits.perMinute === 0) {
+        return res.status(403).json({ 
+          error: 'Доступ к ИИ-анализу ограничен. Пожалуйста, свяжитесь с администратором.',
+          reason: 'NO_ACCESS_ROLE',
+          userRole: userRole || 'unknown'
+        });
+      }
+    }
+    
+    // Log token info and API key status for debugging
+    console.log('🔍 API Key Status:', {
+      geminiKey: geminiKey ? 'SET' : 'NOT SET',
+      groqKey: groqKey ? 'SET' : 'NOT SET',
+      cerebrasKey: cerebrasKey ? 'SET' : 'NOT SET',
+      siliconflowKey: siliconflowKey ? 'SET' : 'NOT SET',
+      openrouterKey: openrouterKey ? 'SET' : 'NOT SET',
+      openaiKey: openaiKey ? 'SET' : 'NOT SET',
+      modelsToTry,
+      userRole
+    });
+    
     if (isCreator) {
       console.log(`🔍 Token Analysis: ${totalTokens} tokens, using models:`, modelsToTry);
     }
@@ -143,6 +172,7 @@ export default async function handler(req, res) {
     let isRateLimited = false;
     
     for (const model of modelsToTry) {
+      console.log(`🔄 Trying model: ${model}`);
       try {
         // Google Gemini models
         if (MODELS.google.includes(model)) {
@@ -154,13 +184,13 @@ export default async function handler(req, res) {
             parts: [{ text: m.content }],
           }));
 
-          const stream = await ai.models.generateContentStream({
+          const stream = await ai.generateContentStream({
             model,
             contents: [
               { role: 'user', parts: [{ text: `System: ${systemPrompt}` }] },
               ...contents
             ],
-            config: {
+            generationConfig: {
               temperature: 0.7,
               maxOutputTokens: 32768,
             },
@@ -332,6 +362,13 @@ export default async function handler(req, res) {
         }
       } catch (err) {
         lastError = err;
+        console.error(`🔴 Model ${model} failed with error:`, {
+          message: err.message,
+          status: err.status,
+          stack: err.stack?.substring(0, 300),
+          name: err.name,
+          code: err.code
+        });
         
         // Check for 429 rate limit error
         if (err.status === 429 || err.message?.includes('429') || err.message?.includes('rate limit')) {
