@@ -1354,21 +1354,45 @@ const QuizView = ({ session, profile }) => {
 
           {/* BLUR OVERLAY when tab is hidden - Now using Portal for full-screen overlay */}
           {isBlurred && createPortal(
-            <div style={{
-              position: 'fixed', inset: 0, zIndex: 99999,
-              backdropFilter: 'blur(20px)', 
-              WebkitBackdropFilter: 'blur(20px)',
-              MozBackdropFilter: 'blur(20px)',
-              msBackdropFilter: 'blur(20px)',
-              OBackdropFilter: 'blur(20px)',
-              background: 'rgba(0,0,0,0.5)',
-              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '20px',
-              color: 'white', textAlign: 'center', padding: '20px'
-            }}>
-              <AlertTriangle size={48} color="#facc15" />
-              <h2>Вкладка свёрнута</h2>
-              <p style={{ opacity: 0.8, maxWidth: '350px' }}>Тест продолжается. Вернитесь обратно, чтобы продолжить прохождение.</p>
-            </div>,
+            <>
+              <style>{`
+                .blur-fallback {
+                  position: fixed;
+                  inset: 0;
+                  z-index: 99998;
+                  background: rgba(0,0,0,0.3);
+                  filter: blur(10px);
+                  -webkit-filter: blur(10px);
+                }
+                .blur-overlay {
+                  position: fixed;
+                  inset: 0;
+                  z-index: 99999;
+                  backdrop-filter: blur(20px);
+                  -webkit-backdrop-filter: blur(20px);
+                  background: rgba(0,0,0,0.5);
+                  display: flex;
+                  flex-direction: column;
+                  align-items: center;
+                  justify-content: center;
+                  gap: 20px;
+                  color: white;
+                  text-align: center;
+                  padding: 20px;
+                }
+                @supports not (backdrop-filter: blur(20px)) {
+                  .blur-overlay {
+                    background: rgba(0,0,0,0.7);
+                  }
+                }
+              `}</style>
+              <div className="blur-fallback" />
+              <div className="blur-overlay">
+                <AlertTriangle size={48} color="#facc15" />
+                <h2>Вкладка свёрнута</h2>
+                <p style={{ opacity: 0.8, maxWidth: '350px' }}>Тест продолжается. Вернитесь обратно, чтобы продолжить прохождение.</p>
+              </div>
+            </>,
             document.body
           )}
 

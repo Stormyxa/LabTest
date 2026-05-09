@@ -6,7 +6,7 @@ const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash'];
 const GPT_MODELS = ['gpt-5.4-mini', 'gpt-5.4-nano', 'gpt-5-mini', 'gpt-5-nano'];
 const ALL_MODELS = [...GEMINI_MODELS, ...GPT_MODELS];
 
-const MAX_BODY_SIZE = 150 * 1024; // 150KB
+const MAX_BODY_SIZE = 500 * 1024; // 500KB - increased for large JSON content
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -78,7 +78,7 @@ export default async function handler(req, res) {
             ],
             config: {
               temperature: 0.7,
-              maxOutputTokens: 8192,
+              maxOutputTokens: 32768, // Increased for large content analysis
             },
           });
 
@@ -109,7 +109,7 @@ export default async function handler(req, res) {
               ...messages
             ],
             temperature: 0.7,
-            max_tokens: 8192,
+            max_tokens: 32768, // Increased for large content analysis
             stream: true,
           });
 
