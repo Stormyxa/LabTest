@@ -61,9 +61,10 @@ export const calculateFactImportance = (fact) => {
   if (fact.startsWith('[BEHAVIOR]')) score += 0.45;
   if (fact.startsWith('[SUMMARY]')) score += 0.4;
   if (fact.startsWith('[QUESTION]')) {
-    score += 0.3;
-    if (fact.includes('Correct: false')) score += 0.2; // Errors are more important
-    if (fact.includes('Changes:')) score += 0.15; // Hesitation is important
+    score += 0.4; // Increased base importance
+    if (fact.includes('Correct: false')) score += 0.25; // Errors are much more important
+    if (fact.includes('Changes:')) score += 0.15;
+    if (fact.includes('Explanation:')) score += 0.1;
   }
 
   // Legacy/fallback checks
@@ -182,11 +183,15 @@ export const extractFactsFromAttempt = (attempt, quiz, subject, sectionName = nu
     const qType = question.type || (question.options ? 'test' : 'open');
 
     // Base fact about this question with structured prefix
-    let questionFact = `[QUESTION ${idx + 1}] Type: ${qType}, Time: ${timeSpent}s, Correct: ${isCorrect}. `;
-    questionFact += `Text: "${question.question}". `;
+    const hasImage = (question.images && question.images.length > 0) || question.image_url;
+    const imgInfo = hasImage ? `Has Image: true (URL: ${question.images?.[0] || question.image_url}). ` : 'Has Image: false. ';
+    const optionsStr = (question.options || []).map((o, i) => `${i}: "${o}"`).join(', ');
+    
+    let questionFact = `[QUESTION ${idx + 1}] Type: ${qType}, Time: ${timeSpent}s, Correct: ${isCorrect}, ${imgInfo}`;
+    questionFact += `Text: "${question.question}". Options: [${optionsStr}]. `;
     questionFact += isCorrect 
-      ? `User Answer: "${correctAnswer}". `
-      : `Error: User chose "${userAnswer}", Correct: "${correctAnswer}". `;
+      ? `User Answer: "${correctAnswer}" (Index ${answer.chosenIndex}). `
+      : `Error: User chose "${userAnswer}" (Index ${answer.chosenIndex}), Correct: "${correctAnswer}" (Index ${answer.correctIndex ?? question.correctIndex}). `;
     
     // Add explanation if available
     if (question.explanation) {

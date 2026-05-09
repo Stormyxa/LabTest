@@ -766,11 +766,22 @@ export const buildDetailedQuizPrompt = async (userId, quizId, viewerRole = 'stud
     const qDict = {}; // hash -> { key, text, correct }
     let qCounter = 1;
 
-    const getQKey = (qText, cAns) => {
+    const getQKey = (qObj) => {
+      const qText = qObj?.question || '—';
+      const cIdx = qObj?.correctIndex;
+      const cAns = qObj?.options?.[cIdx] || '—';
       const hash = `${qText}|${cAns}`;
+      
       if (!qDict[hash]) {
         const key = `Q${qCounter++}`;
-        qDict[hash] = { key, text: qText, correct: cAns };
+        qDict[hash] = { 
+          key, 
+          text: qText, 
+          correct: cAns,
+          options: qObj?.options || [],
+          img: !!((qObj?.images && qObj.images.length > 0) || qObj?.image_url),
+          exp: qObj?.explanation || ''
+        };
       }
       return qDict[hash].key;
     };
@@ -790,35 +801,24 @@ export const buildDetailedQuizPrompt = async (userId, quizId, viewerRole = 'stud
         fl: a.focus_lost_cnt || 0,
         os: Math.round((a.off_site_ms || 0) / 1000),
         a_log: (a.answer_log || []).map(log => ({
-          q: getQKey(log.qText || quizQuestions[log.qIdx]?.question || '—', ''),
+          q: getQKey(log.qIdx !== undefined ? quizQuestions[log.qIdx] : { question: log.qText }),
           f: log.from,
           t: log.to,
           ts: Math.round(log.ts / 1000)
         })),
         ans: answers.map(ans => {
-          // Resolve question data from index if string is missing
           const qObj = (ans.originalIndex !== undefined) ? quizQuestions[ans.originalIndex] : null;
-          const qText = ans.question || qObj?.question || '—';
-          
-          let cText = ans.correct_answer;
-          if (!cText && qObj) {
-            const cIdx = ans.correctIndex !== undefined ? ans.correctIndex : qObj.correctIndex;
-            cText = qObj.options?.[cIdx] || '—';
-          }
-          if (!cText) cText = '—';
+          const qKey = getQKey(qObj || { 
+            question: ans.question || '—', 
+            options: ans.options, // Fallback if available
+            correctIndex: ans.correctIndex 
+          });
 
-          let uText = ans.user_answer;
-          if (!uText && qObj && ans.chosenIndex !== undefined) {
-            uText = qObj.options?.[ans.chosenIndex] || '—';
-          }
-          if (!uText) uText = '—';
-
-          const qKey = getQKey(qText, cText);
           return {
             qid: qKey,
             ok: !!(ans.isCorrect ?? ans.is_correct),
             t: (ans.timeSpent ?? ans.time_spent) || 0,
-            u: uText
+            u: ans.user_answer || (qObj && ans.chosenIndex !== undefined ? qObj.options[ans.chosenIndex] : '—')
           };
         })
       };
@@ -827,7 +827,13 @@ export const buildDetailedQuizPrompt = async (userId, quizId, viewerRole = 'stud
     // 4. Final questions dictionary for JSON
     const questions = {};
     Object.values(qDict).forEach(q => {
-      questions[q.key] = { text: q.text, correct: q.correct };
+      questions[q.key] = { 
+        text: q.text, 
+        correct: q.correct,
+        options: q.options,
+        img: q.img,
+        exp: q.exp
+      };
     });
 
     // 5. Compute global question stats

@@ -441,37 +441,37 @@ const AiHub = ({ session, profile }) => {
         }
       };
       
-      // Only include JSON context for the initial message or when instruction is provided
-      if (instruction && chatMessages.length === 1) {
-        apiMessages[0].content = `${instruction}\n\nКонтекст данных: ${JSON.stringify(contextData)}\n\nПользователь запросил анализ этого контекста.`;
-      } else if (instruction && chatMessages.length > 1) {
-        // For continued conversations, search for relevant facts (RAG)
-        const relevantFacts = await searchUserFacts(session.user.id, chatMessages[chatMessages.length - 1].content);
-        const factStr = relevantFacts.length > 0 
-          ? `\n\nРелевантные факты из истории (RAG):\n${relevantFacts.map(f => `- ${f.fact}`).join('\n')}`
-          : '';
+      // Construction of the prompt with context
+      let currentContextStr = '';
+      
+      if (instruction) {
+        // Case: Detailed analysis mode (e.g. from AnalyticsDetails)
+        const contextJson = contextData ? `\n\nКонтекст данных: ${JSON.stringify(contextData)}` : '';
+        const recentMessage = chatMessages[chatMessages.length - 1].content;
         
-        apiMessages[0].content = `${instruction}${factStr}\n\nПродолжение диалога на основе предыдущего анализа.`;
-      } else if (!instruction && profile && chatMessages.length === 1) {
-        // For fresh personal chat, gather both general info and RAG facts
+        // Search RAG for every message if we have a user message
+        let ragStr = '';
+        if (chatMessages.length > 1) {
+          const relevantFacts = await searchUserFacts(session.user.id, recentMessage);
+          if (relevantFacts.length > 0) {
+            ragStr = `\n\nРелевантные факты из памяти (RAG):\n${relevantFacts.map(f => `- ${f.fact}`).join('\n')}`;
+          }
+        }
+        
+        apiMessages[0].content = `${instruction}${contextJson}${ragStr}\n\nПользователь запросил анализ этого контекста.`;
+      } else if (profile) {
+        // Case: General chat mode
         const [userInfo, relevantFacts] = await Promise.all([
-          getUserInfo(),
-          searchUserFacts(session.user.id, chatMessages[0].content)
+          getUserInfo(), // Refresh summary info
+          searchUserFacts(session.user.id, chatMessages[chatMessages.length - 1].content)
         ]);
 
-        const userInfoStr = userInfo ? `\nОбщая сводка: ${JSON.stringify(userInfo, null, 2)}` : '';
+        const userInfoStr = userInfo ? `\nОбщая сводка: ${JSON.stringify(userInfo)}` : '';
         const factStr = relevantFacts.length > 0 
-          ? `\nРелевантные факты из памяти (RAG):\n${relevantFacts.map(f => `- ${f.fact}`).join('\n')}`
+          ? `\n\nРелевантные факты из памяти (RAG):\n${relevantFacts.map(f => `- ${f.fact}`).join('\n')}`
           : '';
 
         apiMessages[0].content = `Контекст пользователя:${userInfoStr}${factStr}\n\nЗапрос: ${chatMessages[0].content}`;
-      } else if (!instruction && chatMessages.length > 1) {
-        // For continued general chat, search for RAG facts related to the new message
-        const relevantFacts = await searchUserFacts(session.user.id, chatMessages[chatMessages.length - 1].content);
-        if (relevantFacts.length > 0) {
-          const factStr = `\n\nДополнительные факты из памяти (RAG) для текущего вопроса:\n${relevantFacts.map(f => `- ${f.fact}`).join('\n')}`;
-          apiMessages[0].content += factStr;
-        }
       }
 
       await streamAiAnalysis({
