@@ -100,17 +100,17 @@ export default async function handler(req, res) {
         modelsToTry = GEMINI_MODELS;
       }
     } else if (isContinuedChat && hasAnalysisContext) {
-      // After analysis - always switch to GPT for continued conversation
+      // After analysis - continue with Gemini models
       if (totalTokens > 20000) {
-        // Large conversation - use models with better limits
-        modelsToTry = ['gpt-5.4-mini', 'gpt-5.4-nano', 'gemini-2.5-flash'];
+        // Large conversation - use models with better token limits
+        modelsToTry = ['gemini-2.5-flash', 'gemini-3.0-flash'];
       } else {
-        // Normal chat after analysis - use GPT models
-        modelsToTry = GPT_MODELS;
+        // Normal chat after analysis - use Gemini models
+        modelsToTry = GEMINI_MODELS;
       }
     } else if (isContinuedChat) {
-      // Regular chat without analysis context - use GPT for better limits
-      modelsToTry = GPT_MODELS;
+      // Regular chat without analysis context - use Gemini models
+      modelsToTry = GEMINI_MODELS;
     } else {
       // Default fallback: try all models
       modelsToTry = ALL_MODELS;
