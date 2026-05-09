@@ -66,20 +66,47 @@ export default async function handler(req, res) {
 
     const systemPrompt = "Ты — элитный педагогический ИИ-аналитик LabTest. Твои ответы должны быть глубокими, профессиональными, но структурированными. Избегай лишней 'воды', чтобы ответ не обрывался. Если информации очень много, используй таблицы и списки. Всегда отвечай на языке пользователя (русский).";
     
-    // Smart switching: Gemini for analysis, GPT for continued chat
+    // Token estimation (rough approximation: 1 token ≈ 4 characters for English, 1 token ≈ 1 character for Russian)
+    const estimateTokens = (text) => {
+      // Russian text typically uses ~1 token per character, English ~4 chars per token
+      const russianChars = (text.match(/[а-яёА-ЯЁ]/g) || []).length;
+      const otherChars = text.length - russianChars;
+      return Math.ceil(russianChars + otherChars / 4);
+    };
+    
+    const totalTokens = messages.reduce((sum, msg) => sum + estimateTokens(msg.content), 0);
+    
+    // Smart switching: Gemini for analysis, GPT for continued chat, token-based selection
     const isInitialAnalysis = messages.length === 1 && messages[0].content.includes('Анализ:');
     const isContinuedChat = messages.length > 1;
     
     let modelsToTry;
     if (isInitialAnalysis) {
-      // Use Gemini for initial analysis
-      modelsToTry = GEMINI_MODELS;
+      // Use Gemini for initial analysis, but consider token count
+      if (totalTokens > 50000) {
+        // Very large content - use models with better token limits
+        modelsToTry = ['gemini-2.5-flash', 'gemini-3.0-flash', 'gpt-5.4-mini', 'gpt-5.4-nano'];
+      } else {
+        // Normal analysis - use specified priority
+        modelsToTry = GEMINI_MODELS;
+      }
     } else if (isContinuedChat) {
-      // Switch to GPT for continued chat
-      modelsToTry = GPT_MODELS;
+      // Switch to GPT for continued chat, but consider token count
+      if (totalTokens > 20000) {
+        // Large conversation - use models with better limits
+        modelsToTry = ['gpt-5.4-mini', 'gpt-5.4-nano', 'gemini-2.5-flash'];
+      } else {
+        // Normal chat - use GPT models
+        modelsToTry = GPT_MODELS;
+      }
     } else {
       // Default fallback: try all models
       modelsToTry = ALL_MODELS;
+    }
+    
+    // Log token info for creators
+    if (isCreator) {
+      console.log(`🔍 Token Analysis: ${totalTokens} tokens, using models:`, modelsToTry);
     }
     
     let lastError = null;

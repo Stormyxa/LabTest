@@ -4,20 +4,18 @@
   z-index: 10000;
   display: flex;
   flex-direction: column;
-  background: var(--card-bg);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(248, 250, 252, 0.9));
+  border: 1px solid rgba(99, 102, 241, 0.2);
   border-radius: 24px;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 20px 50px rgba(99, 102, 241, 0.15), 0 10px 25px rgba(0, 0, 0, 0.1);
   overflow: hidden;
   transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease;
 }
 
 [data-theme='dark'] .ai-hub-container {
-  background: rgba(30, 31, 33, 0.85);
-  border-color: rgba(255, 255, 255, 0.05);
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+  background: linear-gradient(135deg, rgba(30, 31, 33, 0.98), rgba(20, 21, 23, 0.95));
+  border-color: rgba(109, 112, 255, 0.3);
+  box-shadow: 0 20px 50px rgba(109, 112, 255, 0.2), 0 10px 25px rgba(0, 0, 0, 0.4);
 }
 
 .ai-hub-header {
