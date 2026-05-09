@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { triggerFactStorage } from './ragService';
 
 export const evaluateAndSaveExpiredAttempt = async (att, userId) => {
   const qId = att.quiz_id;
@@ -143,23 +144,4 @@ export const evaluateAndSaveExpiredAttempt = async (att, userId) => {
   }
 };
 
-/**
- * Trigger fact storage to Qdrant for RAG
- * Runs asynchronously in the background
- */
-const triggerFactStorage = async (attemptId, quizId, userId, sectionName = null, quizClass = null) => {
-  try {
-    const response = await fetch('/api/store-facts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ attemptId, quizId, userId, sectionName, quizClass })
-    });
 
-    if (response.ok) {
-      const result = await response.json();
-      console.log(`✅ RAG: Stored ${result.factsStored} facts for user ${userId}`);
-    }
-  } catch (error) {
-    console.warn('RAG fact storage failed (non-critical):', error);
-  }
-};

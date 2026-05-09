@@ -158,15 +158,19 @@ export const extractFactsFromAttempt = (attempt, quiz, subject, sectionName = nu
   const classStr = quizClass ? `, Grade: ${quizClass}` : '';
   const bookUrl = quiz?.quiz_sections?.book_url ? `, Book: ${quiz.quiz_sections.book_url}` : '';
   
-  const kzTime = new Date(attempt.created_at).toLocaleString('ru-RU', { timeZone: 'Asia/Almaty' });
-  
   // Metadata fact
   const resources = quiz?.resources || [];
   const resourcesStr = resources.map(r => `[${r.title || 'Resource'}]: ${r.url}`).join(', ');
   const hasResources = resources.length > 0 || quiz?.quiz_sections?.book_url;
   const resourceStr = hasResources ? `, Resources: ${resourcesStr || 'None'}` : '';
+
+  const finishedAt = new Date(attempt.created_at);
+  const durationSec = attempt.time_spent_total || attempt.time_spent || 0;
+  const startedAt = new Date(finishedAt.getTime() - durationSec * 1000);
+  const startedStr = startedAt.toLocaleString('ru-RU', { timeZone: 'Asia/Almaty' });
+  const finishedStr = finishedAt.toLocaleString('ru-RU', { timeZone: 'Asia/Almaty' });
   
-  facts.push(`[METADATA] Quiz: "${quiz?.title || 'Неизвестный'}"${quizTypeStr}, Subject: ${subjectStr}, Section ID: ${quiz?.section_id || '—'}${classStr}${bookUrl}${resourceStr}. Time: ${kzTime}`);
+  facts.push(`[METADATA] Quiz: "${quiz?.title || 'Неизвестный'}"${quizTypeStr}, Subject: ${subjectStr}, Section ID: ${quiz?.section_id || '—'}${classStr}${bookUrl}${resourceStr}. Started: ${startedStr}, Finished: ${finishedStr}, Duration: ${durationSec}s.`);
 
   if (!answersData.length || !questions.length) {
     return facts;

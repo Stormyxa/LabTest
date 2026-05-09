@@ -480,3 +480,23 @@ ${ragSection}
     return null;
   }
 };
+/**
+ * Trigger fact storage to Qdrant for RAG
+ * Runs asynchronously in the background
+ */
+export const triggerFactStorage = async (attemptId, quizId, userId, sectionName = null, quizClass = null) => {
+  try {
+    const response = await fetch('/api/store-facts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ attemptId, quizId, userId, sectionName, quizClass })
+    });
+
+    if (response.ok) {
+      const result = await response.json();
+      console.log(`✅ RAG: Stored ${result.factsStored} facts for user ${userId}`);
+    }
+  } catch (error) {
+    console.warn('RAG fact storage failed (non-critical):', error);
+  }
+};

@@ -771,12 +771,12 @@ export const buildDetailedQuizPrompt = async (userId, quizId, viewerRole = 'stud
       const cIdx = qObj?.correctIndex;
       const cAns = qObj?.options?.[cIdx] || '—';
       const hash = `${qText}|${cAns}`;
-      
+
       if (!qDict[hash]) {
         const key = `Q${qCounter++}`;
-        qDict[hash] = { 
-          key, 
-          text: qText, 
+        qDict[hash] = {
+          key,
+          text: qText,
           correct: cAns,
           options: qObj?.options || [],
           img: !!((qObj?.images && qObj.images.length > 0) || qObj?.image_url),
@@ -809,10 +809,10 @@ export const buildDetailedQuizPrompt = async (userId, quizId, viewerRole = 'stud
         })),
         ans: answers.map(ans => {
           const qObj = (ans.originalIndex !== undefined) ? quizQuestions[ans.originalIndex] : null;
-          const qKey = getQKey(qObj || { 
-            question: ans.question || '—', 
+          const qKey = getQKey(qObj || {
+            question: ans.question || '—',
             options: ans.options, // Fallback if available
-            correctIndex: ans.correctIndex 
+            correctIndex: ans.correctIndex
           });
 
           return {
@@ -828,8 +828,8 @@ export const buildDetailedQuizPrompt = async (userId, quizId, viewerRole = 'stud
     // 4. Final questions dictionary for JSON
     const questions = {};
     Object.values(qDict).forEach(q => {
-      questions[q.key] = { 
-        text: q.text, 
+      questions[q.key] = {
+        text: q.text,
         correct: q.correct,
         options: q.options,
         img: q.img,
@@ -851,9 +851,9 @@ export const buildDetailedQuizPrompt = async (userId, quizId, viewerRole = 'stud
     const json = {
       meta: { v: 1, generated: new Date().toLocaleString('ru-RU', { timeZone: 'Asia/Almaty' }), limit: '1st+Best+Last10' },
       student: { n: fullName, id: userId.slice(0, 8) },
-      quiz: { 
-        tn: quiz.title, 
-        q_count: quiz.total_questions, 
+      quiz: {
+        tn: quiz.title,
+        q_count: quiz.total_questions,
         c_avg: quiz.avg_success_rate || 0,
         resources: quiz.resources || []
       },

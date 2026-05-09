@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate, useBlocker } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { triggerFactStorage } from '../lib/ragService';
 import {
   CheckCircle, XCircle, ChevronRight, ChevronLeft, RotateCcw, X,
   AlertTriangle, Book, FileText, ChevronDown, ChevronUp, Clock, Zap,
@@ -871,7 +872,14 @@ const QuizView = ({ session, profile }) => {
         focus_lost_cnt: focusLostCntRef.current,
         answer_log: answerLogRef.current
       };
-      await supabase.from('quiz_attempts').insert(attemptData);
+      const { data: savedAttempt } = await supabase.from('quiz_attempts').insert(attemptData).select('id').single();
+
+      // 1b. Trigger RAG fact extraction asynchronously
+      if (savedAttempt?.id) {
+        const sectionName = quiz.quiz_sections?.name;
+        const qClass = quiz.quiz_sections?.quiz_classes?.name;
+        triggerFactStorage(savedAttempt.id, id, session.user.id, sectionName, qClass);
+      }
 
       // 2. Update summary data in quiz_results for leaderboard and legacy analytics
       const { data: existing, error: checkError } = await supabase
