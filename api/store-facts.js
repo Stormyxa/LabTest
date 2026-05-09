@@ -27,7 +27,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { attemptId, quizId, userId } = req.body;
+  const { attemptId, quizId, userId, sectionName: passedSection, quizClass: passedClass } = req.body;
 
   if (!attemptId || !quizId || !userId) {
     return res.status(400).json({ error: 'Missing required parameters: attemptId, quizId, userId' });
@@ -48,10 +48,10 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'Attempt not found' });
     }
 
-    // 2. Fetch the quiz with questions
+    // 2. Fetch the quiz with questions and section info (including class_id)
     const { data: quiz, error: quizError } = await supabase
       .from('quizzes')
-      .select('*, quiz_sections(name)')
+      .select('*, quiz_sections(name, class_id)')
       .eq('id', quizId)
       .single();
 
@@ -72,13 +72,52 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'Profile not found' });
     }
 
-    // 4. Extract facts from the attempt
-    const subject = quiz.quiz_sections?.name || 'Неизвестный предмет';
+    // 4. Fetch class name if class_id exists
+    let quizClass = passedClass || null;
+    if (!quizClass && quiz.quiz_sections?.class_id) {
+      const { data: quizClassData } = await supabase
+        .from('quiz_classes')
+        .select('name')
+        .eq('id', quiz.quiz_sections.class_id)
+        .single();
+      quizClass = quizClassData?.name || null;
+    }
+
+    // 4b. Fetch all attempts for this quiz and user to calculate statistics
+    const { data: allAttempts, error: allAttemptsError } = await supabase
+      .from('quiz_attempts')
+      .select('score, max_score, time_spent_total, created_at')
+      .eq('quiz_id', quizId)
+      .eq('user_id', userId)
+      .order('created_at', { ascending: true });
+
+    let summary = null;
+    if (allAttempts && allAttempts.length > 0) {
+      const totalScorePercent = allAttempts.reduce((sum, a) => sum + (a.score / (a.max_score || 1)) * 100, 0);
+      const totalTime = allAttempts.reduce((sum, a) => sum + (a.time_spent_total || 0), 0);
+      const bestScorePercent = Math.max(...allAttempts.map(a => (a.score / (a.max_score || 1)) * 100));
+      const currentScorePercent = (attempt.score / (attempt.max_score || 1)) * 100;
+
+      summary = {
+        avg_score: totalScorePercent / allAttempts.length,
+        avg_time: totalTime / allAttempts.length,
+        attempts_count: allAttempts.length,
+        is_first: allAttempts.length === 1 || (allAttempts[0]?.created_at === attempt.created_at),
+        is_best: currentScorePercent >= bestScorePercent
+      };
+    }
+
+    // 5. Extract facts from the attempt with full metadata
+    const sectionName = passedSection || quiz.quiz_sections?.name || null;
+    const subject = sectionName || 'Неизвестный предмет';
     const { facts, language } = await extractAllFacts({
       attempt,
       quiz,
       profile,
-      subject
+      subject,
+      sectionName,
+      quizClass,
+      summary
     });
 
     // Limit to most important facts (max 20) with deduplication and importance scoring

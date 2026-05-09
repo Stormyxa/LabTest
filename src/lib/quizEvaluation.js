@@ -134,7 +134,9 @@ export const evaluateAndSaveExpiredAttempt = async (att, userId) => {
   // This sends facts to Qdrant for personalized AI analysis
   try {
     console.log(`🔄 Triggering fact storage for attempt ${att.id}, quiz ${qId}, user ${uId}`);
-    await triggerFactStorage(att.id, qId, uId);
+    const sectionName = att.quizzes?.quiz_sections?.name;
+    const quizClass = att.quizzes?.quiz_sections?.quiz_classes?.name;
+    await triggerFactStorage(att.id, qId, uId, sectionName, quizClass);
     console.log(`✅ Fact storage triggered successfully`);
   } catch (err) {
     console.error('❌ Failed to trigger fact storage:', err);
@@ -145,12 +147,12 @@ export const evaluateAndSaveExpiredAttempt = async (att, userId) => {
  * Trigger fact storage to Qdrant for RAG
  * Runs asynchronously in the background
  */
-const triggerFactStorage = async (attemptId, quizId, userId) => {
+const triggerFactStorage = async (attemptId, quizId, userId, sectionName = null, quizClass = null) => {
   try {
     const response = await fetch('/api/store-facts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ attemptId, quizId, userId })
+      body: JSON.stringify({ attemptId, quizId, userId, sectionName, quizClass })
     });
 
     if (response.ok) {

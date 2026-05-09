@@ -377,6 +377,37 @@ const AiHub = ({ session, profile }) => {
             console.error('Error fetching quiz_results:', attemptsError);
           }
           
+          // Fetch quiz titles and sections for the attempts
+          let quizDetails = {};
+          if (attempts && attempts.length > 0) {
+            const quizIds = attempts.map(a => a.quiz_id).filter(Boolean);
+            if (quizIds.length > 0) {
+              const { data: quizzes } = await supabase
+                .from('quizzes')
+                .select('id, title, section_id, is_verified, is_public')
+                .in('id', quizIds);
+              
+              if (quizzes) {
+                const sectionIds = quizzes.map(q => q.section_id).filter(Boolean);
+                let sections = {};
+                if (sectionIds.length > 0) {
+                  const { data: sectionsData } = await supabase
+                    .from('quiz_sections')
+                    .select('id, name')
+                    .in('id', sectionIds);
+                  sections = Object.fromEntries((sectionsData || []).map(s => [s.id, s.name]));
+                }
+                
+                quizDetails = Object.fromEntries(quizzes.map(q => [q.id, {
+                  title: q.title,
+                  sectionName: sections[q.section_id] || null,
+                  isVerified: q.is_verified,
+                  isPublic: q.is_public
+                }]));
+              }
+            }
+          }
+          
           // Fetch user's class info
           const { data: userClass } = await supabase
             .from('classes')
@@ -393,6 +424,7 @@ const AiHub = ({ session, profile }) => {
               city_id: profile.city_id
             },
             recentAttempts: attempts || [],
+            quizDetails: quizDetails,
             classInfo: userClass || null,
             summary: {
               totalAttempts: attempts?.length || 0,
