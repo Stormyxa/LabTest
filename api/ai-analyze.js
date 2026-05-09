@@ -3,10 +3,9 @@ import OpenAI from 'openai';
 
 // Model priority: Gemini -> Others -> OpenAI (last due to 0 free tries)
 const MODELS = {
-  google: ['gemini-2.0-flash-expert'], // Better performance and higher limits
+  google: ['gemini-3.1-flash-lite'], // Free plan model
   groq: ['llama-3.1-8b-instant'], // Best Groq model
   cerebras: ['llama-3.1-8b'], // Best Cerebras model  
-  siliconflow: ['r1'], // Best Silicon Flow model
   openrouter: ['meta-llama/llama-3.1-8b-instruct:free'], // Best OpenRouter free model
   openai: ['gpt-4o-mini'], // Smart and fast OpenAI model (last priority due to 0 free tries)
 };
@@ -15,7 +14,6 @@ const ALL_MODELS = [
   ...MODELS.google,
   ...MODELS.groq, 
   ...MODELS.cerebras,
-  ...MODELS.siliconflow,
   ...MODELS.openrouter,
   ...MODELS.openai
 ];
@@ -30,64 +28,38 @@ export default async function handler(req, res) {
   const geminiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
   const groqKey = process.env.GROQ_API_KEY;
   const cerebrasKey = process.env.CEREBRAS_API_KEY;
-  const siliconflowKey = process.env.SILICON_FLOW_API_KEY;
   const openrouterKey = process.env.OPENROUTER_API_KEY;
   const openaiKey = process.env.OPENAI_API_KEY;
   
-  // Enhanced debugging and user role checking
-  const userRole = req.body?.viewerRole;
-  const isCreator = userRole === 'creator' || userRole === 'admin';
-  const isTeacher = userRole === 'teacher';
-  const isPlayer = userRole === 'player';
-  const isAuthenticated = userRole && userRole !== 'player';
-  
-  // User-based rate limits
-  const getRateLimits = (role) => {
-    switch (role) {
-      case 'player':
-        return { daily: 50, perMinute: { min: 5, max: 10 } };
-      case 'teacher':
-        return { daily: 300, perMinute: { min: 15, max: 20 } };
-      case 'admin':
-      return { daily: 250, perMinute: 100 };
-      case 'creator':
-        return { daily: Infinity, perMinute: Infinity }; // No limits
-      default:
-        return { daily: 0, perMinute: 0 }; // No access
-    }
-  };
-  
+  // Enhanced debugging for creators
+  const isCreator = req.body?.viewerRole === 'creator' || req.body?.viewerRole === 'admin';
   const debugInfo = {
     timestamp: new Date().toISOString(),
     geminiKey: geminiKey ? 'SET' : 'NOT SET',
     groqKey: groqKey ? 'SET' : 'NOT SET',
     cerebrasKey: cerebrasKey ? 'SET' : 'NOT SET',
-    siliconflowKey: siliconflowKey ? 'SET' : 'NOT SET',
     openrouterKey: openrouterKey ? 'SET' : 'NOT SET',
     openaiKey: openaiKey ? 'SET' : 'NOT SET',
     availableModels: ALL_MODELS,
     bodySize: JSON.stringify(req.body || {}).length,
     userAgent: req.headers['user-agent']?.substring(0, 100),
-    userRole,
-    isCreator,
-    rateLimits: getRateLimits(userRole)
+    isCreator
   };
   
   if (isCreator) {
     console.log('🔍 AI API Debug (Creator):', debugInfo);
   }
   
-  if (!geminiKey && !groqKey && !cerebrasKey && !siliconflowKey && !openrouterKey && !openaiKey) {
+  if (!geminiKey && !groqKey && !cerebrasKey && !openrouterKey && !openaiKey) {
     return res.status(500).json({ 
       error: 'API keys not configured. Please add at least one API key to your Vercel Environment Variables.',
       debug: {
         geminiKey: !!geminiKey,
         groqKey: !!groqKey,
         cerebrasKey: !!cerebrasKey,
-        siliconflowKey: !!siliconflowKey,
         openrouterKey: !!openrouterKey,
         openaiKey: !!openaiKey,
-        availableEnvVars: Object.keys(process.env).filter(k => k.includes('API_KEY') || k.includes('GEMINI') || k.includes('GROQ') || k.includes('CEREBRAS') || k.includes('SILICON_FLOW') || k.includes('OPENROUTER') || k.includes('OPENAI'))
+        availableEnvVars: Object.keys(process.env).filter(k => k.includes('API_KEY') || k.includes('GEMINI') || k.includes('GROQ') || k.includes('CEREBRAS') || k.includes('OPENROUTER') || k.includes('OPENAI'))
       }
     });
   }
@@ -124,15 +96,6 @@ export default async function handler(req, res) {
     
     // Use priority order: Gemini -> OpenAI -> Others
     let modelsToTry = ALL_MODELS;
-    
-    // Check authentication and provide explicit reason for non-authed users
-    if (!isAuthenticated) {
-      return res.status(403).json({ 
-        error: 'Доступ к ИИ-анализу доступен только авторизованным пользователям. Пожалуйста, войдите в систему, чтобы использовать эту функцию.',
-        reason: 'NON_AUTHENTICATED_USER',
-        userRole: userRole || 'unknown'
-      });
-    }
     
     // Log token info for creators
     if (isCreator) {
@@ -236,43 +199,11 @@ export default async function handler(req, res) {
           return;
         }
         
-        // Silicon Flow models
-        else if (MODELS.siliconflow.includes(model)) {
-          if (!siliconflowKey) continue;
-          
-          const siliconflow = new OpenAI({ 
-            apiKey: siliconflowKey, 
-            baseURL: 'https://api.siliconflow.cn/v1'
-          });
-          
-          const stream = await siliconflow.chat.completions.create({
-            model,
-            messages: [
-              { role: 'system', content: systemPrompt },
-              ...messages
-            ],
-            stream: true,
-            temperature: 0.7,
-            max_tokens: 32768
-          });
-
-          res.write(`data: ${JSON.stringify({ model })}\n\n`);
-          for await (const chunk of stream) {
-            const text = chunk.choices[0]?.delta?.content || '';
-            if (text) {
-              res.write(`data: ${JSON.stringify({ text })}\n\n`);
-            }
-          }
-          res.write('data: [DONE]\n\n');
-          res.end();
-          return;
-        }
-        
         // OpenRouter models
         else if (MODELS.openrouter.includes(model)) {
           if (!openrouterKey) continue;
           
-          const openRouter = new OpenAI({ 
+          const openrouter = new OpenAI({ 
             apiKey: openrouterKey, 
             baseURL: 'https://openrouter.ai/api/v1',
             defaultHeaders: {
@@ -281,7 +212,7 @@ export default async function handler(req, res) {
             }
           });
           
-          const stream = await openRouter.chat.completions.create({
+          const stream = await openrouter.chat.completions.create({
             model,
             messages: [
               { role: 'system', content: systemPrompt },
@@ -356,7 +287,6 @@ export default async function handler(req, res) {
             geminiKey: geminiKey ? 'SET' : 'NOT SET',
             groqKey: groqKey ? 'SET' : 'NOT SET',
             cerebrasKey: cerebrasKey ? 'SET' : 'NOT SET',
-            siliconflowKey: siliconflowKey ? 'SET' : 'NOT SET',
             openrouterKey: openrouterKey ? 'SET' : 'NOT SET',
             openaiKey: openaiKey ? 'SET' : 'NOT SET',
             model,
