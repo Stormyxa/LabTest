@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { User, Mail, Calendar, GraduationCap, CheckCircle, Award, FileText, TrendingUp, Star, MapPin, Building, Shield, ShieldOff, Zap, BarChart2, Clock, XCircle, Info, AlertCircle, Check, AlertTriangle, Sparkles, Copy, RefreshCw } from 'lucide-react';
 import { buildStudentPrompt, downloadJSON } from '../lib/aiPromptBuilder';
+import { buildStudentRagPrompt } from '../lib/ragService';
 import { getCachedData } from '../lib/cache';
 import { buildAiCacheKey } from '../lib/aiService';
 import { ChevronDown } from 'lucide-react';
@@ -491,7 +492,15 @@ const Profile = ({ session, profile, refreshProfile }) => {
                   onClick={async () => {
                     setAiPromptStatus('loading_ai');
                     try {
-                      const result = await buildStudentPrompt(session.user.id, 'student');
+                      // Try RAG first, fall back to JSON if not available
+                      let result;
+                      try {
+                        result = await buildStudentRagPrompt(session.user.id, 'student');
+                      } catch (ragError) {
+                        console.warn('RAG failed, falling back to JSON:', ragError);
+                        result = await buildStudentPrompt(session.user.id, 'student');
+                      }
+                      
                       if (result && result.instruction) {
                         window.dispatchEvent(new CustomEvent('open-ai-hub', { 
                           detail: { 
@@ -503,7 +512,10 @@ const Profile = ({ session, profile, refreshProfile }) => {
                           } 
                         }));
                       } else setAiPromptStatus('error');
-                    } catch (e) { setAiPromptStatus('error'); }
+                    } catch (e) { 
+                      console.error('AI analysis failed:', e);
+                      setAiPromptStatus('error'); 
+                    }
                     setAiPromptStatus('idle');
                   }}
                   disabled={aiPromptStatus.startsWith('loading') || attemptCount === null}
@@ -534,7 +546,15 @@ const Profile = ({ session, profile, refreshProfile }) => {
                       onClick={async () => {
                         setAiPromptStatus('loading_copy');
                         try {
-                          const result = await buildStudentPrompt(session.user.id, 'student');
+                          // Try RAG first, fall back to JSON if not available
+                          let result;
+                          try {
+                            result = await buildStudentRagPrompt(session.user.id, 'student');
+                          } catch (ragError) {
+                            console.warn('RAG failed, falling back to JSON:', ragError);
+                            result = await buildStudentPrompt(session.user.id, 'student');
+                          }
+                          
                           if (result && result.instruction) {
                             await navigator.clipboard.writeText(result.instruction);
                             setAiPromptStatus('copied');
@@ -559,7 +579,15 @@ const Profile = ({ session, profile, refreshProfile }) => {
                       onClick={async () => {
                         setAiPromptStatus('loading_file');
                         try {
-                          const result = await buildStudentPrompt(session.user.id, 'student');
+                          // Try RAG first, fall back to JSON if not available
+                          let result;
+                          try {
+                            result = await buildStudentRagPrompt(session.user.id, 'student');
+                          } catch (ragError) {
+                            console.warn('RAG failed, falling back to JSON:', ragError);
+                            result = await buildStudentPrompt(session.user.id, 'student');
+                          }
+                          
                           if (result && result.data) {
                             downloadJSON(result.data, result.filename);
                             setAiPromptStatus('downloaded');

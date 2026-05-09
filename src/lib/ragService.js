@@ -277,3 +277,164 @@ ${ragSection}
 
 **Стиль**: Профессиональный, педагогический. Используй термины: «зона ближайшего развития», «учебная мотивация», «самостоятельность». Обращайся к учителю на «вы».`;
 };
+
+/**
+ * Build RAG-enabled quiz prompt for test analysis
+ * @param {object} quiz - Quiz object
+ * @param {Array} filteredResults - Quiz results
+ * @param {string} scopeLabel - Scope description
+ * @returns {Promise<{instruction: string, data: object}>}
+ */
+export const buildQuizRagPrompt = async (quiz, filteredResults, scopeLabel) => {
+  if (!quiz || !filteredResults || filteredResults.length === 0) {
+    return { instruction: 'Нет данных для анализа.', data: null };
+  }
+
+  const subject = quiz.quiz_sections?.name || '—';
+  const quizId = quiz.id;
+
+  // Build RAG context for this quiz
+  let ragContext = null;
+  if (isQdrantConfigured()) {
+    try {
+      const query = `Анализ теста "${quiz.title}" (${subject}): общие ошибки, проблемные вопросы, успеваемость учеников`;
+      const queryVector = await generateEmbedding(query);
+
+      // Get all user IDs from results
+      const userIds = [...new Set(filteredResults.map(r => r.user_id))];
+
+      // Search facts for each user and aggregate
+      const allFacts = [];
+      for (const userId of userIds.slice(0, 20)) { // Limit to 20 users for performance
+        try {
+          const facts = await searchFacts({
+            userId,
+            queryVector,
+            limit: 3,
+            quizId
+          });
+          allFacts.push(...facts);
+        } catch (e) {
+          // Skip users with errors
+        }
+      }
+
+      // Sort by score and limit
+      allFacts.sort((a, b) => b.score - a.score);
+      const topFacts = allFacts.slice(0, 15);
+
+      if (topFacts.length > 0) {
+        ragContext = `## Релевантные факты по тесту (из векторной памяти)\n\n` +
+          topFacts.map((fact, idx) => 
+            `${idx + 1}. ${fact.fact} (релевантность: ${Math.round(fact.score * 100)}%)`
+          ).join('\n');
+      }
+    } catch (error) {
+      console.warn('Failed to build quiz RAG context:', error);
+    }
+  }
+
+  const ragSection = ragContext 
+    ? `\n${ragContext}\n\n**Примечание**: Используй эти факты для анализа. Они извлечены из векторной памяти и содержат наиболее релевантную информацию об учениках.`
+    : '\n\n**Примечание**: Векторная память недоступна. Анализ основан на агрегированных данных.';
+
+  const instruction = `# Инструкция для ИИ (Аналитик Теста LabTest с RAG)
+
+**Цель**: Провести детальный, честный, без подобострастия и угодничества анализ результатов одного теста по группе учеников на основе релевантных фактов из векторной памяти.
+
+**Тест**: ${quiz.title}
+**Предмет**: ${subject}
+**Область**: ${scopeLabel}
+
+${ragSection}
+
+## Задание
+
+На основе предоставленных фактов выполни:
+
+1. **Обзор теста**: Оцени общую сложность теста на основе фактов об успеваемости.
+2. **Проблемные вопросы**: Определи вопросы с наибольшим количеством ошибок (из фактов).
+3. **Группировка учеников**: Раздели учеников на группы по уровню на основе фактов об их результатах.
+4. **Паттерны ошибок**: Есть ли вопросы, где большинство ошибается (из фактов)?
+5. **Рекомендации учителю**: 3-5 конкретных действий на основе выявленных проблем.
+
+**Стиль**: Профессиональный, педагогический. Обращайся к учителю на «вы».`;
+
+  return {
+    instruction,
+    data: { quizId, subject, scopeLabel, hasRagContext: !!ragContext }
+  };
+};
+
+/**
+ * Build RAG-enabled class prompt for class analysis
+ * @param {string} classId - Class UUID
+ * @returns {Promise<{instruction: string, data: object}>}
+ */
+export const buildClassRagPrompt = async (classId) => {
+  if (!isQdrantConfigured()) {
+    return null;
+  }
+
+  try {
+    // Fetch class info
+    const { data: cls } = await supabase
+      .from('classes')
+      .select('*, schools(name, city_id)')
+      .eq('id', classId)
+      .single();
+
+    if (!cls) return null;
+
+    let cityName = '—';
+    if (cls.schools?.city_id) {
+      const { data: city } = await supabase
+        .from('cities')
+        .select('name')
+        .eq('id', cls.schools.city_id)
+        .single();
+      cityName = city?.name || '—';
+    }
+
+    // Build RAG context for this class
+    const ragContext = await buildClassRagContext(classId);
+
+    if (!ragContext) {
+      return null;
+    }
+
+    const ragSection = ragContext 
+      ? `\n${ragContext}\n\n**Примечание**: Используй эти факты для анализа. Они извлечены из векторной памяти учеников класса.`
+      : '';
+
+    const instruction = `# Инструкция для ИИ (Аналитик Класса LabTest с RAG)
+
+**Цель**: Провести детальный анализ класса на основе релевантных фактов из векторной памяти учеников.
+
+**Класс**: ${cls.name}
+**Школа**: ${cls.schools?.name || '—'}
+**Город**: ${cityName}
+
+${ragSection}
+
+## Задание
+
+На основе предоставленных фактов выполни:
+
+1. **Общая успеваемость**: Оцени общую успеваемость класса на основе фактов.
+2. **Слабые ученики**: Определи учеников с наибольшими трудностями (из фактов).
+3. **Проблемные предметы**: Определи предметы/тесты с наименьшей успеваемостью (из фактов).
+4. **Паттерны поведения**: Есть ли общие паттерны ошибок или подозрительной активности (из фактов)?
+5. **Рекомендации**: 3-5 конкретных действий для улучшения результатов класса.
+
+**Стиль**: Профессиональный, педагогический. Обращайся к учителю на «вы».`;
+
+    return {
+      instruction,
+      data: { classId, className: cls.name, hasRagContext: true }
+    };
+  } catch (error) {
+    console.error('Failed to build class RAG prompt:', error);
+    return null;
+  }
+};

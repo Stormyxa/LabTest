@@ -137,8 +137,28 @@ Test the RAG system:
 
 ## Future Enhancements
 
-- Add fact expiration (old facts become less relevant)
-- Implement fact deduplication
-- Add fact importance scoring
-- Support for multi-language embeddings
-- Real-time fact updates during quiz attempts
+- ✅ Add fact expiration (old facts become less relevant) - **IMPLEMENTED**
+  - Time decay with configurable half-life (default 30 days)
+  - Exponential decay formula: score = 0.5 ^ (days / halfLife)
+  - Clamped between 0.1 and 1 to prevent complete exclusion
+
+- ✅ Implement fact deduplication - **IMPLEMENTED**
+  - Hash-based exact duplicate detection
+  - Semantic similarity detection using Jaccard index
+  - Configurable similarity threshold (default 0.8)
+
+- ✅ Add fact importance scoring - **IMPLEMENTED**
+  - Error facts: +0.3 importance
+  - Suspicious behavior: +0.4 importance
+  - Performance facts: +0.2 importance
+  - Incomplete attempts: +0.3 importance
+  - Timing facts: +0.1 importance
+
+- ✅ Support for multi-language embeddings - **IMPLEMENTED**
+  - Language detection for Russian, Kazakh, English
+  - Xenova/multilingual-e5-small model supports 100+ languages
+  - Language stored in fact metadata for filtering
+
+- Real-time fact updates during quiz attempts - **PENDING**
+  - Send facts to Qdrant as student answers each question
+  - Update AI analysis in real-time during quiz

@@ -60,15 +60,15 @@ export default async function handler(req, res) {
 
     // 4. Extract facts from the attempt
     const subject = quiz.quiz_sections?.name || 'Неизвестный предмет';
-    const facts = await extractAllFacts({
+    const { facts, language } = await extractAllFacts({
       attempt,
       quiz,
       profile,
       subject
     });
 
-    // Limit to most important facts (max 20)
-    const limitedFacts = limitFacts(facts, 20);
+    // Limit to most important facts (max 20) with deduplication and importance scoring
+    const limitedFacts = limitFacts(facts, 20, true);
 
     console.log(`📝 Extracted ${limitedFacts.length} facts from attempt`);
 
@@ -91,7 +91,8 @@ export default async function handler(req, res) {
             maxScore: attempt.max_score,
             isPassed: attempt.is_passed,
             isSuspicious: attempt.is_suspicious,
-            isIncomplete: attempt.is_incomplete
+            isIncomplete: attempt.is_incomplete,
+            language
           }
         });
 

@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { fetchWithCache, useCacheSync } from '../lib/cache';
 import { User, Shield, Search, Edit3, Trash2, Mail, X, AlertTriangle, MapPin, Building, GraduationCap, Plus, History, Ban, ShieldAlert, Unlock, Eye, EyeOff, Zap, ChevronDown, ChevronRight, Settings, Users, UserPlus, UserMinus, ArrowUp, ArrowDown, UserCheck, CheckCircle, XCircle, Sparkles, Check, RefreshCw, FileText, Copy } from 'lucide-react';
 import { buildClassPrompt, downloadJSON } from '../lib/aiPromptBuilder';
+import { buildClassRagPrompt } from '../lib/ragService';
 import { buildAiCacheKey } from '../lib/aiService';
 import { useScrollRestoration } from '../lib/useScrollRestoration';
 
@@ -1535,7 +1536,15 @@ const DashboardAiButton = ({ classId, className }) => {
   const handleAiAnalysis = async () => {
     setStatus('loading_ai');
     try {
-      const result = await buildClassPrompt(classId);
+      // Try RAG first, fall back to JSON if not available
+      let result;
+      try {
+        result = await buildClassRagPrompt(classId);
+      } catch (ragError) {
+        console.warn('RAG failed, falling back to JSON:', ragError);
+        result = await buildClassPrompt(classId);
+      }
+      
       if (result && result.instruction) {
         window.dispatchEvent(new CustomEvent('open-ai-hub', { 
           detail: { 
@@ -1547,7 +1556,10 @@ const DashboardAiButton = ({ classId, className }) => {
           } 
         }));
       } else setStatus('error');
-    } catch (e) { setStatus('error'); }
+    } catch (e) { 
+      console.error('AI analysis failed:', e);
+      setStatus('error'); 
+    }
     setStatus('idle');
   };
 

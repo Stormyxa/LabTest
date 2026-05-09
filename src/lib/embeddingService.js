@@ -3,6 +3,7 @@ import { pipeline, env } from '@xenova/transformers';
 // Configure transformers.js to use local cache
 env.allowLocalModels = false;
 env.useBrowserCache = true;
+env.disableRemoteModels = false;
 
 let embeddingPipeline = null;
 let isInitializing = false;

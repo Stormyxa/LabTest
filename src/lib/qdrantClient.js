@@ -81,20 +81,41 @@ export const upsertFact = async ({
 };
 
 /**
- * Search for relevant facts for a user
+ * Calculate time decay score for a fact
+ * @param {string} timestamp - ISO timestamp of the fact
+ * @param {number} halfLifeDays - Half-life in days (default: 30)
+ * @returns {number} Decay factor between 0 and 1
+ */
+export const calculateTimeDecay = (timestamp, halfLifeDays = 30) => {
+  const factDate = new Date(timestamp);
+  const now = new Date();
+  const daysSinceFact = (now - factDate) / (1000 * 60 * 60 * 24);
+  
+  // Exponential decay: score = 0.5 ^ (days / halfLife)
+  const decay = Math.pow(0.5, daysSinceFact / halfLifeDays);
+  
+  return Math.max(0.1, Math.min(1, decay)); // Clamp between 0.1 and 1
+};
+
+/**
+ * Search for relevant facts for a user with time decay
  * @param {object} params
  * @param {string} params.userId - User UUID (tenant)
  * @param {number[]} params.queryVector - 384-dimensional query vector
  * @param {number} [params.limit=10] - Number of results to return
  * @param {string} [params.quizId] - Optional filter by quiz
  * @param {string} [params.classId] - Optional filter by class
+ * @param {boolean} [params.enableTimeDecay=true] - Enable time decay scoring
+ * @param {number} [params.halfLifeDays=30] - Half-life for time decay
  */
 export const searchFacts = async ({
   userId,
   queryVector,
   limit = 10,
   quizId,
-  classId
+  classId,
+  enableTimeDecay = true,
+  halfLifeDays = 30
 }) => {
   if (!isQdrantConfigured()) {
     console.warn('Qdrant not configured, returning empty search');
@@ -118,22 +139,35 @@ export const searchFacts = async ({
 
     const response = await client.search(COLLECTION_NAME, {
       vector: queryVector,
-      limit,
+      limit: limit * 2, // Fetch more to account for decay filtering
       filter,
       with_payload: true
     });
 
-    return response.map(result => ({
-      fact: result.payload.fact,
-      score: result.score,
-      metadata: {
-        quizId: result.payload.quizId,
-        classId: result.payload.classId,
-        subject: result.payload.subject,
-        timestamp: result.payload.timestamp,
-        ...result.payload
-      }
-    }));
+    const results = response.map(result => {
+      const decayFactor = enableTimeDecay && result.payload.timestamp
+        ? calculateTimeDecay(result.payload.timestamp, halfLifeDays)
+        : 1;
+      
+      return {
+        fact: result.payload.fact,
+        score: result.score * decayFactor, // Apply time decay
+        originalScore: result.score,
+        decayFactor,
+        metadata: {
+          quizId: result.payload.quizId,
+          classId: result.payload.classId,
+          subject: result.payload.subject,
+          timestamp: result.payload.timestamp,
+          language: result.payload.language || 'unknown',
+          ...result.payload
+        }
+      };
+    });
+
+    // Sort by adjusted score and limit
+    results.sort((a, b) => b.score - a.score);
+    return results.slice(0, limit);
   } catch (error) {
     console.error('❌ Failed to search facts in Qdrant:', error);
     throw error;

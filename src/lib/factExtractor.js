@@ -4,6 +4,140 @@
  */
 
 /**
+ * Detect language of text (simple version)
+ * @param {string} text - Text to analyze
+ * @returns {string} Language code ('ru', 'kk', 'en', 'unknown')
+ */
+export const detectLanguage = (text) => {
+  // Kazakh character ranges
+  const kazakhChars = /[әіңғүұөһӘІҢҒҮҰӨҺ]/;
+  // Cyrillic range (Russian, Kazakh)
+  const cyrillicChars = /[а-яёА-ЯЁ]/;
+  // Latin range (English)
+  const latinChars = /[a-zA-Z]/;
+
+  if (kazakhChars.test(text)) {
+    return 'kk';
+  }
+  
+  const cyrillicCount = (text.match(cyrillicChars) || []).length;
+  const latinCount = (text.match(latinChars) || []).length;
+
+  if (cyrillicCount > latinCount) {
+    return 'ru';
+  } else if (latinCount > cyrillicCount) {
+    return 'en';
+  }
+  
+  return 'unknown';
+};
+
+/**
+ * Generate a unique hash for a fact to detect duplicates
+ * @param {string} fact - Fact string
+ * @returns {string} Hash string
+ */
+const generateFactHash = (fact) => {
+  // Simple hash function for deduplication
+  let hash = 0;
+  for (let i = 0; i < fact.length; i++) {
+    const char = fact.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return Math.abs(hash).toString(36);
+};
+
+/**
+ * Calculate importance score for a fact
+ * @param {string} fact - Fact string
+ * @returns {number} Importance score between 0 and 1
+ */
+export const calculateFactImportance = (fact) => {
+  let score = 0.5; // Base score
+
+  // Error facts are more important
+  if (fact.includes('ошибся') || fact.includes('Ошибка')) {
+    score += 0.3;
+  }
+
+  // Suspicious behavior is very important
+  if (fact.includes('подозритель') || fact.includes('списыв')) {
+    score += 0.4;
+  }
+
+  // Performance facts are moderately important
+  if (fact.includes('%') || fact.includes('балл')) {
+    score += 0.2;
+  }
+
+  // Timing facts are less important
+  if (fact.includes('сек') || fact.includes('времени')) {
+    score += 0.1;
+  }
+
+  // Incomplete attempts are important
+  if (fact.includes('незавершен') || fact.includes('ранний выход')) {
+    score += 0.3;
+  }
+
+  return Math.min(1, score);
+};
+
+/**
+ * Detect and remove duplicate facts
+ * @param {string[]} facts - Array of fact strings
+ * @param {number} [similarityThreshold=0.8] - Similarity threshold for deduplication
+ * @returns {string[]} Deduplicated facts
+ */
+export const deduplicateFacts = (facts, similarityThreshold = 0.8) => {
+  const seen = new Set();
+  const deduplicated = [];
+
+  for (const fact of facts) {
+    const hash = generateFactHash(fact);
+    
+    // Check for exact hash match
+    if (seen.has(hash)) {
+      continue;
+    }
+
+    // Check for semantic similarity (simple version)
+    let isDuplicate = false;
+    for (const seenFact of deduplicated) {
+      const similarity = calculateStringSimilarity(fact, seenFact);
+      if (similarity > similarityThreshold) {
+        isDuplicate = true;
+        break;
+      }
+    }
+
+    if (!isDuplicate) {
+      seen.add(hash);
+      deduplicated.push(fact);
+    }
+  }
+
+  return deduplicated;
+};
+
+/**
+ * Calculate string similarity (Jaccard-like)
+ * @param {string} str1 - First string
+ * @param {string} str2 - Second string
+ * @returns {number} Similarity between 0 and 1
+ */
+const calculateStringSimilarity = (str1, str2) => {
+  const words1 = new Set(str1.toLowerCase().split(/\s+/));
+  const words2 = new Set(str2.toLowerCase().split(/\s+/));
+  
+  const intersection = new Set([...words1].filter(x => words2.has(x)));
+  const union = new Set([...words1, ...words2]);
+  
+  return union.size === 0 ? 0 : intersection.size / union.size;
+};
+
+/**
  * Extract facts from a single quiz attempt
  * @param {object} attempt - Quiz attempt object with answers_data
  * @param {object} quiz - Quiz object with content.questions
@@ -122,7 +256,7 @@ export const extractFactsFromResult = (result, quiz, subject) => {
  * @param {object} params.quiz - Quiz with content.questions
  * @param {object} params.profile - User profile
  * @param {string} params.subject - Subject name
- * @returns {Promise<string[]>} Array of fact strings ready for embedding
+ * @returns {Promise<{facts: string[], language: string}>} Facts and detected language
  */
 export const extractAllFacts = async ({ attempt, quiz, profile, subject }) => {
   const facts = [];
@@ -135,7 +269,11 @@ export const extractAllFacts = async ({ attempt, quiz, profile, subject }) => {
   const attemptFacts = extractFactsFromAttempt(attempt, quiz, subject);
   facts.push(...attemptFacts);
 
-  return facts;
+  // Detect language from all facts
+  const allText = facts.join(' ');
+  const language = detectLanguage(allText);
+
+  return { facts, language };
 };
 
 /**
@@ -157,19 +295,34 @@ export const groupFacts = (facts) => {
  * Limit facts to most important ones (for efficiency)
  * @param {string[]} facts - Array of fact strings
  * @param {number} [maxFacts=20] - Maximum number of facts to keep
+ * @param {boolean} [useImportanceScoring=true] - Use importance scoring
  * @returns {string[]} Filtered facts
  */
-export const limitFacts = (facts, maxFacts = 20) => {
-  const grouped = groupFacts(facts);
+export const limitFacts = (facts, maxFacts = 20, useImportanceScoring = true) => {
+  // First deduplicate
+  const deduplicated = deduplicateFacts(facts);
   
-  // Prioritize: errors > performance > behavior > timing > context
-  const prioritized = [
-    ...grouped.errors.slice(0, 8),
-    ...grouped.performance.slice(0, 5),
-    ...grouped.behavior.slice(0, 3),
-    ...grouped.timing.slice(0, 3),
-    ...grouped.context.slice(0, 1)
-  ];
+  if (!useImportanceScoring) {
+    const grouped = groupFacts(deduplicated);
+    
+    // Prioritize: errors > performance > behavior > timing > context
+    const prioritized = [
+      ...grouped.errors.slice(0, 8),
+      ...grouped.performance.slice(0, 5),
+      ...grouped.behavior.slice(0, 3),
+      ...grouped.timing.slice(0, 3),
+      ...grouped.context.slice(0, 1)
+    ];
 
-  return prioritized.slice(0, maxFacts);
+    return prioritized.slice(0, maxFacts);
+  }
+
+  // Score and sort by importance
+  const scored = deduplicated.map(fact => ({
+    fact,
+    importance: calculateFactImportance(fact)
+  }));
+
+  scored.sort((a, b) => b.importance - a.importance);
+  return scored.slice(0, maxFacts).map(s => s.fact);
 };

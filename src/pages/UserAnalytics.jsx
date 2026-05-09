@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { fetchWithCache, useCacheSync, getCachedData } from '../lib/cache';
 import { ChevronLeft, BarChart2, Search, Filter, Shield, EyeOff, AlertTriangle, Menu, X, Clock, Calendar, Sparkles, Copy, Check, RefreshCw, FileText, ChevronDown } from 'lucide-react';
 import { buildStudentPrompt, downloadJSON } from '../lib/aiPromptBuilder';
+import { buildStudentRagPrompt } from '../lib/ragService';
 import { buildAiCacheKey } from '../lib/aiService';
 
 const UserListItem = React.memo(({ u, isSelected, onSelect }) => (
@@ -1106,7 +1107,15 @@ const AiAnalysisButton = ({ userId, viewerUserId, viewerProfile }) => {
     if (count < 10) return;
     setStatus('loading_ai');
     try {
-      const result = await buildStudentPrompt(userId, viewerRole, isSelf ? null : viewerProfile);
+      // Try RAG first, fall back to JSON if not available
+      let result;
+      try {
+        result = await buildStudentRagPrompt(userId, viewerRole, isSelf ? null : viewerProfile);
+      } catch (ragError) {
+        console.warn('RAG failed, falling back to JSON:', ragError);
+        result = await buildStudentPrompt(userId, viewerRole, isSelf ? null : viewerProfile);
+      }
+      
       if (result && result.instruction) {
         window.dispatchEvent(new CustomEvent('open-ai-hub', { 
           detail: { 
@@ -1128,7 +1137,15 @@ const AiAnalysisButton = ({ userId, viewerUserId, viewerProfile }) => {
     if (count < 10) return;
     setStatus(type === 'copy' ? 'loading_copy' : 'loading_file');
     try {
-      const result = await buildStudentPrompt(userId, viewerRole, isSelf ? null : viewerProfile);
+      // Try RAG first, fall back to JSON if not available
+      let result;
+      try {
+        result = await buildStudentRagPrompt(userId, viewerRole, isSelf ? null : viewerProfile);
+      } catch (ragError) {
+        console.warn('RAG failed, falling back to JSON:', ragError);
+        result = await buildStudentPrompt(userId, viewerRole, isSelf ? null : viewerProfile);
+      }
+      
       if (result) {
         if (type === 'copy' && result.instruction) {
           await navigator.clipboard.writeText(result.instruction);

@@ -8,6 +8,7 @@ import { resolveImgUrl } from '../lib/imageUtils';
 import { ChevronLeft, User, BarChart, Calendar, CheckCircle, XCircle, Mail, Trash2, AlertTriangle, Filter, Download, Pencil, Shield, EyeOff, ArrowDown, ArrowUp, Info, Lock, Image as ImageIcon, ChevronRight, X, Sparkles, Copy, Check, RefreshCw, FileText } from 'lucide-react';
 import MathRenderer from '../components/MathRenderer';
 import { buildQuizPromptFromData, downloadJSON } from '../lib/aiPromptBuilder';
+import { buildQuizRagPrompt } from '../lib/ragService';
 import { buildAiCacheKey } from '../lib/aiService';
 import { ChevronDown } from 'lucide-react';
 
@@ -997,7 +998,31 @@ const AnalyticsAiButton = ({ quiz, filteredResults, cities, schools, classes, fi
     if (filteredResults.length < 5) return;
     setStatus('loading_ai');
     try {
-      const result = await buildQuizPromptFromData({ quiz, filteredResults, cities, schools, classes, filterCity, filterSchool, filterClass, profile, teacherClasses, allStudents });
+      // Build scope label
+      const scopeParts = [];
+      if (filterCity) {
+        const city = cities.find(c => c.id === filterCity);
+        if (city) scopeParts.push(city.name);
+      }
+      if (filterSchool) {
+        const school = schools.find(s => s.id === filterSchool);
+        if (school) scopeParts.push(school.name);
+      }
+      if (filterClass) {
+        const cls = classes.find(c => c.id === filterClass);
+        if (cls) scopeParts.push(cls.name);
+      }
+      const scopeLabel = scopeParts.length > 0 ? scopeParts.join(', ') : 'Все';
+
+      // Try RAG first, fall back to JSON if not available
+      let result;
+      try {
+        result = await buildQuizRagPrompt(quiz, filteredResults, scopeLabel);
+      } catch (ragError) {
+        console.warn('RAG failed, falling back to JSON:', ragError);
+        result = await buildQuizPromptFromData({ quiz, filteredResults, cities, schools, classes, filterCity, filterSchool, filterClass, profile, teacherClasses, allStudents });
+      }
+      
       if (result && result.instruction) {
         window.dispatchEvent(new CustomEvent('open-ai-hub', { 
           detail: { 
@@ -1019,7 +1044,31 @@ const AnalyticsAiButton = ({ quiz, filteredResults, cities, schools, classes, fi
     if (filteredResults.length < 5) return;
     setStatus(type === 'copy' ? 'loading_copy' : 'loading_file');
     try {
-      const result = await buildQuizPromptFromData({ quiz, filteredResults, cities, schools, classes, filterCity, filterSchool, filterClass, profile, teacherClasses, allStudents });
+      // Build scope label
+      const scopeParts = [];
+      if (filterCity) {
+        const city = cities.find(c => c.id === filterCity);
+        if (city) scopeParts.push(city.name);
+      }
+      if (filterSchool) {
+        const school = schools.find(s => s.id === filterSchool);
+        if (school) scopeParts.push(school.name);
+      }
+      if (filterClass) {
+        const cls = classes.find(c => c.id === filterClass);
+        if (cls) scopeParts.push(cls.name);
+      }
+      const scopeLabel = scopeParts.length > 0 ? scopeParts.join(', ') : 'Все';
+
+      // Try RAG first, fall back to JSON if not available
+      let result;
+      try {
+        result = await buildQuizRagPrompt(quiz, filteredResults, scopeLabel);
+      } catch (ragError) {
+        console.warn('RAG failed, falling back to JSON:', ragError);
+        result = await buildQuizPromptFromData({ quiz, filteredResults, cities, schools, classes, filterCity, filterSchool, filterClass, profile, teacherClasses, allStudents });
+      }
+      
       if (result) {
         if (type === 'copy' && result.instruction) {
           await navigator.clipboard.writeText(result.instruction);
