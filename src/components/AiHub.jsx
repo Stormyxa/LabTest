@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import MathRenderer from './MathRenderer';
 import { X, Maximize2, Minimize2, Sparkles, Send, Download, Copy, RefreshCw, History, Trash2, ChevronLeft, ChevronRight, MessageSquare, Check, User, Shield, AlertTriangle } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 import { streamAiAnalysis, getAiHistory, saveAiAnalysis, deleteAiAnalysis } from '../lib/aiService';
 import { createModalOverlay } from '../utils/blurUtils';
 import './AiAnalysisModal.css';
