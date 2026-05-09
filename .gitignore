@@ -6,3 +6,4 @@ build/
 .vscode/
 *.log
 .vercel
+API_KEYS.md

@@ -1,11 +1,22 @@
 import { GoogleGenAI } from '@google/genai';
 import OpenAI from 'openai';
 
-// Model priorities - highest to lowest (Gemini only)
-// const GPT_MODELS = ['gpt-4o-mini', 'gpt-4o']; // Disabled - never used
-const GPT_MODELS = []; // Completely disabled
-const GEMINI_MODELS = ['gemini-3.0-flash', 'gemini-2.5-flash', 'gemini-3.1-flash-lite', 'gemma-27b', 'gemma-21b'];
-const ALL_MODELS = [...GEMINI_MODELS]; // Only Gemini models
+// Model priority: Gemini -> OpenAI -> Others
+const MODELS = {
+  google: ['gemini-3.1-flash-lite'], // Free plan model
+  openai: ['gpt-4o-mini'], // Smart and fast OpenAI model
+  groq: ['llama-3.1-8b-instant'], // Best Groq model
+  cerebras: ['llama-3.1-8b'], // Best Cerebras model  
+  openrouter: ['meta-llama/llama-3.1-8b-instruct:free'] // Best OpenRouter free model
+};
+
+const ALL_MODELS = [
+  ...MODELS.google,
+  ...MODELS.openai,
+  ...MODELS.groq, 
+  ...MODELS.cerebras,
+  ...MODELS.openrouter
+];
 
 const MAX_BODY_SIZE = 1024 * 1024; // 1MB - increased for large JSON content
 
@@ -15,6 +26,9 @@ export default async function handler(req, res) {
   }
 
   const geminiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+  const groqKey = process.env.GROQ_API_KEY;
+  const cerebrasKey = process.env.CEREBRAS_API_KEY;
+  const openrouterKey = process.env.OPENROUTER_API_KEY;
   const openaiKey = process.env.OPENAI_API_KEY;
   
   // Enhanced debugging for creators
@@ -22,10 +36,10 @@ export default async function handler(req, res) {
   const debugInfo = {
     timestamp: new Date().toISOString(),
     geminiKey: geminiKey ? 'SET' : 'NOT SET',
+    groqKey: groqKey ? 'SET' : 'NOT SET',
+    cerebrasKey: cerebrasKey ? 'SET' : 'NOT SET',
+    openrouterKey: openrouterKey ? 'SET' : 'NOT SET',
     openaiKey: openaiKey ? 'SET' : 'NOT SET',
-    envGemini: process.env.GEMINI_API_KEY ? 'SET' : 'NOT SET',
-    envViteGemini: process.env.VITE_GEMINI_API_KEY ? 'SET' : 'NOT SET',
-    envOpenAI: process.env.OPENAI_API_KEY ? 'SET' : 'NOT SET',
     availableModels: ALL_MODELS,
     bodySize: JSON.stringify(req.body || {}).length,
     userAgent: req.headers['user-agent']?.substring(0, 100),
@@ -36,13 +50,16 @@ export default async function handler(req, res) {
     console.log('🔍 AI API Debug (Creator):', debugInfo);
   }
   
-  if (!geminiKey && !openaiKey) {
+  if (!geminiKey && !groqKey && !cerebrasKey && !openrouterKey && !openaiKey) {
     return res.status(500).json({ 
-      error: 'API keys not configured. Please add GEMINI_API_KEY and/or OPENAI_API_KEY to your Vercel Environment Variables.',
+      error: 'API keys not configured. Please add at least one API key to your Vercel Environment Variables.',
       debug: {
         geminiKey: !!geminiKey,
+        groqKey: !!groqKey,
+        cerebrasKey: !!cerebrasKey,
+        openrouterKey: !!openrouterKey,
         openaiKey: !!openaiKey,
-        availableEnvVars: Object.keys(process.env).filter(k => k.includes('API_KEY') || k.includes('GEMINI') || k.includes('OPENAI'))
+        availableEnvVars: Object.keys(process.env).filter(k => k.includes('API_KEY') || k.includes('GEMINI') || k.includes('GROQ') || k.includes('CEREBRAS') || k.includes('OPENROUTER') || k.includes('OPENAI'))
       }
     });
   }
@@ -77,44 +94,8 @@ export default async function handler(req, res) {
     
     const totalTokens = messages.reduce((sum, msg) => sum + estimateTokens(msg.content), 0);
     
-    // Smart switching: Gemini for analysis, GPT for continued chat, token-based selection
-    const isInitialAnalysis = messages.length === 1 && (
-      messages[0].content.includes('Анализ:') || 
-      messages[0].content.includes('Проведи детальный анализ') ||
-      messages[0].content.includes('анализ попыток')
-    );
-    const isContinuedChat = messages.length > 1;
-    const hasAnalysisContext = messages.some(msg => 
-      msg.content.includes('Анализ:') || 
-      msg.content.includes('анализ попыток')
-    );
-    
-    let modelsToTry;
-    if (isInitialAnalysis) {
-      // Use Gemini for initial analysis, but consider token count
-      if (totalTokens > 50000) {
-        // Very large content - use models with better token limits
-        modelsToTry = ['gemini-2.5-flash', 'gemini-3.0-flash', 'gpt-5.4-mini', 'gpt-5.4-nano'];
-      } else {
-        // Normal analysis - use specified priority
-        modelsToTry = GEMINI_MODELS;
-      }
-    } else if (isContinuedChat && hasAnalysisContext) {
-      // After analysis - continue with Gemini models
-      if (totalTokens > 20000) {
-        // Large conversation - use models with better token limits
-        modelsToTry = ['gemini-2.5-flash', 'gemini-3.0-flash'];
-      } else {
-        // Normal chat after analysis - use Gemini models
-        modelsToTry = GEMINI_MODELS;
-      }
-    } else if (isContinuedChat) {
-      // Regular chat without analysis context - use Gemini models
-      modelsToTry = GEMINI_MODELS;
-    } else {
-      // Default fallback: try all models
-      modelsToTry = ALL_MODELS;
-    }
+    // Use priority order: Gemini -> OpenAI -> Others
+    let modelsToTry = ALL_MODELS;
     
     // Log token info for creators
     if (isCreator) {
@@ -122,10 +103,12 @@ export default async function handler(req, res) {
     }
     
     let lastError = null;
+    let isRateLimited = false;
     
     for (const model of modelsToTry) {
       try {
-        if (GEMINI_MODELS.includes(model)) {
+        // Google Gemini models
+        if (MODELS.google.includes(model)) {
           if (!geminiKey) continue;
           
           const ai = new GoogleGenAI({ apiKey: geminiKey });
@@ -142,28 +125,118 @@ export default async function handler(req, res) {
             ],
             config: {
               temperature: 0.7,
-              maxOutputTokens: 32768, // Increased for large content analysis
+              maxOutputTokens: 32768,
             },
           });
 
-          // Send model info
           res.write(`data: ${JSON.stringify({ model })}\n\n`);
-
-          // Stream chunks
           for await (const chunk of stream) {
             const text = chunk.text;
             if (text) {
               res.write(`data: ${JSON.stringify({ text })}\n\n`);
             }
           }
-          
           res.write('data: [DONE]\n\n');
           res.end();
           return;
+        }
+        
+        // Groq models
+        else if (MODELS.groq.includes(model)) {
+          if (!groqKey) continue;
           
-        } else if (GPT_MODELS.includes(model)) {
-          if (!openaiKey) continue;
+          const groq = new OpenAI({ apiKey: groqKey, baseURL: 'https://api.groq.com/openai/v1' });
           
+          const stream = await groq.chat.completions.create({
+            model,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              ...messages
+            ],
+            stream: true,
+            temperature: 0.7,
+            max_tokens: 32768
+          });
+
+          res.write(`data: ${JSON.stringify({ model })}\n\n`);
+          for await (const chunk of stream) {
+            const text = chunk.choices[0]?.delta?.content || '';
+            if (text) {
+              res.write(`data: ${JSON.stringify({ text })}\n\n`);
+            }
+          }
+          res.write('data: [DONE]\n\n');
+          res.end();
+          return;
+        }
+        
+        // Cerebras models
+        else if (MODELS.cerebras.includes(model)) {
+          if (!cerebrasKey) continue;
+          
+          const cerebras = new OpenAI({ apiKey: cerebrasKey, baseURL: 'https://api.cerebras.ai/v1' });
+          
+          const stream = await cerebras.chat.completions.create({
+            model,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              ...messages
+            ],
+            stream: true,
+            temperature: 0.7,
+            max_tokens: 32768
+          });
+
+          res.write(`data: ${JSON.stringify({ model })}\n\n`);
+          for await (const chunk of stream) {
+            const text = chunk.choices[0]?.delta?.content || '';
+            if (text) {
+              res.write(`data: ${JSON.stringify({ text })}\n\n`);
+            }
+          }
+          res.write('data: [DONE]\n\n');
+          res.end();
+          return;
+        }
+        
+        // OpenRouter models
+        else if (MODELS.openrouter.includes(model)) {
+          if (!openrouterKey) continue;
+          
+          const openrouter = new OpenAI({ 
+            apiKey: openrouterKey, 
+            baseURL: 'https://openrouter.ai/api/v1',
+            defaultHeaders: {
+              'HTTP-Referer': 'https://labtest.kz',
+              'X-Title': 'LabTest AI Analysis'
+            }
+          });
+          
+          const stream = await openrouter.chat.completions.create({
+            model,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              ...messages
+            ],
+            stream: true,
+            temperature: 0.7,
+            max_tokens: 32768
+          });
+
+          res.write(`data: ${JSON.stringify({ model })}\n\n`);
+          for await (const chunk of stream) {
+            const text = chunk.choices[0]?.delta?.content || '';
+            if (text) {
+              res.write(`data: ${JSON.stringify({ text })}\n\n`);
+            }
+          }
+          res.write('data: [DONE]\n\n');
+          res.end();
+          return;
+        }
+        
+        // OpenAI models (fallback)
+        else if (openaiKey && model.includes('gpt')) {
           const openai = new OpenAI({ apiKey: openaiKey });
           
           const stream = await openai.chat.completions.create({
@@ -172,28 +245,35 @@ export default async function handler(req, res) {
               { role: 'system', content: systemPrompt },
               ...messages
             ],
-            temperature: 0.7,
-            max_tokens: 32768, // Increased for large content analysis
             stream: true,
+            temperature: 0.7,
+            max_tokens: 32768
           });
 
-          // Send model info
           res.write(`data: ${JSON.stringify({ model })}\n\n`);
-
-          // Stream chunks
           for await (const chunk of stream) {
             const text = chunk.choices[0]?.delta?.content || '';
             if (text) {
               res.write(`data: ${JSON.stringify({ text })}\n\n`);
             }
           }
-          
           res.write('data: [DONE]\n\n');
           res.end();
           return;
         }
       } catch (err) {
         lastError = err;
+        
+        // Check for 429 rate limit error
+        if (err.status === 429 || err.message?.includes('429') || err.message?.includes('rate limit')) {
+          isRateLimited = true;
+          if (isCreator) {
+            console.warn(`🔴 Model ${model} rate limited (429):`, err.message);
+          }
+          continue; // Try next model only on 429
+        }
+        
+        // For other errors, continue trying models
         const errorInfo = {
           model,
           error: err.message,
@@ -205,6 +285,10 @@ export default async function handler(req, res) {
           console.warn(`🔴 Model ${model} failed:`, errorInfo);
           console.warn('🔍 Full error details:', {
             geminiKey: geminiKey ? 'SET' : 'NOT SET',
+            groqKey: groqKey ? 'SET' : 'NOT SET',
+            cerebrasKey: cerebrasKey ? 'SET' : 'NOT SET',
+            openrouterKey: openrouterKey ? 'SET' : 'NOT SET',
+            openaiKey: openaiKey ? 'SET' : 'NOT SET',
             model,
             errorMessage: err.message,
             errorStack: err.stack,
