@@ -54,26 +54,26 @@ const generateFactHash = (fact) => {
  * @returns {number} Importance score between 0 and 1
  */
 export const calculateFactImportance = (fact) => {
-  let score = 0.5; // Base score
+  let score = 0.3; // Lower base score
 
   // Structured high-density facts
-  if (fact.startsWith('[METADATA]')) score += 0.4;
-  if (fact.startsWith('[BEHAVIOR]')) score += 0.45;
-  if (fact.startsWith('[SUMMARY]')) score += 0.4;
+  if (fact.startsWith('[METADATA]')) score += 0.3;
+  if (fact.startsWith('[BEHAVIOR]')) score += 0.2;
+  if (fact.startsWith('[SUMMARY]')) score += 0.3;
   if (fact.startsWith('[QUESTION]')) {
-    score += 0.4; // Increased base importance
-    if (fact.includes('Correct: false')) score += 0.25; // Errors are much more important
-    if (fact.includes('Changes:')) score += 0.15;
+    score += 0.5; // High base importance for questions
+    if (fact.includes('[STATUS: WRONG]')) score += 0.5; // Errors are CRITICAL (max score 1.3 -> capped at 1)
+    if (fact.includes('Changes:')) score += 0.1;
     if (fact.includes('Explanation:')) score += 0.1;
   }
 
   // Legacy/fallback checks
   if (fact.includes('ошибся') || fact.includes('Ошибка') || fact.includes('Ошибка: выбрал')) {
-    score += 0.3;
+    score += 0.4;
   }
   
-  if (fact.includes('Подозрительная') || fact.includes('списыв') || fact.includes('⚠️')) {
-    score += 0.4;
+  if (fact.includes('Подозрительная') || fact.includes('списыв')) {
+    score += 0.2;
   }
 
   return Math.min(1, score);
@@ -191,10 +191,11 @@ export const extractFactsFromAttempt = (attempt, quiz, subject, sectionName = nu
     const hasImage = (question.images && question.images.length > 0) || question.image_url;
     const imgInfo = hasImage ? `Has Image: true (URL: ${question.images?.[0] || question.image_url}). ` : 'Has Image: false. ';
     const optionsStr = (question.options || []).map((o, i) => `${i}: "${o}"`).join(', ');
+    const quizTitle = quiz?.title || 'Неизвестный тест';
     const statusTag = isCorrect ? '[STATUS: CORRECT]' : '[STATUS: WRONG]';
     const isoDate = attempt.created_at || new Date().toISOString();
     
-    let questionFact = `[QUESTION ${idx + 1}] ${statusTag} Type: ${qType}, Time: ${timeSpent}s, Date: ${isoDate}, ${imgInfo}`;
+    let questionFact = `[QUESTION ${idx + 1} in "${quizTitle}"] ${statusTag} Type: ${qType}, Time: ${timeSpent}s, Date: ${isoDate}, ${imgInfo}`;
     questionFact += `Text: "${question.question}". Options: [${optionsStr}]. `;
     questionFact += isCorrect 
       ? `User Answer: "${correctAnswer}" (Index ${answer.chosenIndex}). `

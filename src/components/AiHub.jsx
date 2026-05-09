@@ -454,8 +454,13 @@ const AiHub = ({ session, profile }) => {
         
         // Intent detection for better RAG search
         let searchQuery = recentMessage;
-        if (recentMessage.toLowerCase().includes('ошибк') || recentMessage.toLowerCase().includes('неверн')) {
-          searchQuery = `[STATUS: WRONG] ${recentMessage}`;
+        const isErrorSearch = recentMessage.toLowerCase().includes('ошибк') || 
+                             recentMessage.toLowerCase().includes('неверн') || 
+                             recentMessage.toLowerCase().includes('разбор');
+        
+        if (isErrorSearch) {
+          // Boost search with quiz title and status tags
+          searchQuery = `[STATUS: WRONG] [QUESTION] "${aiChatTitle}" ${recentMessage}`;
         }
 
         // Search RAG for every message to provide maximum context
@@ -470,9 +475,18 @@ const AiHub = ({ session, profile }) => {
         apiMessages[0].content = `${instruction}${contextJson}${ragStr}\n\nПользователь запросил анализ этого контекста.`;
       } else if (profile) {
         // Case: General chat mode
+        const lastUserMsg = chatMessages[chatMessages.length - 1].content;
+        const isErrorSearch = lastUserMsg.toLowerCase().includes('ошибк') || 
+                             lastUserMsg.toLowerCase().includes('неверн') || 
+                             lastUserMsg.toLowerCase().includes('разбор');
+        
+        const generalSearchQuery = isErrorSearch 
+          ? `[STATUS: WRONG] [QUESTION] ${lastUserMsg}`
+          : lastUserMsg;
+
         const [userInfo, relevantFacts] = await Promise.all([
           getUserInfo(), // Refresh summary info
-          session?.user?.id ? searchUserFacts(session.user.id, chatMessages[chatMessages.length - 1].content) : Promise.resolve([])
+          session?.user?.id ? searchUserFacts(session.user.id, generalSearchQuery) : Promise.resolve([])
         ]);
 
         const userInfoStr = userInfo ? `\nОбщая сводка: ${JSON.stringify(userInfo)}` : '';
