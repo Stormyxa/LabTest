@@ -48,10 +48,10 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'Attempt not found' });
     }
 
-    // 2. Fetch the quiz with questions and section info (including class_id)
+    // 2. Fetch the quiz with questions and section info (including class_id and book_url)
     const { data: quiz, error: quizError } = await supabase
       .from('quizzes')
-      .select('*, quiz_sections(name, class_id)')
+      .select('*, quiz_sections(name, class_id, book_url)')
       .eq('id', quizId)
       .single();
 
@@ -96,14 +96,28 @@ export default async function handler(req, res) {
       const totalScorePercent = allAttempts.reduce((sum, a) => sum + (a.score / (a.max_score || 1)) * 100, 0);
       const totalTime = allAttempts.reduce((sum, a) => sum + (a.time_spent_total || 0), 0);
       const bestScorePercent = Math.max(...allAttempts.map(a => (a.score / (a.max_score || 1)) * 100));
+      const firstScorePercent = (allAttempts[0].score / (allAttempts[0].max_score || 1)) * 100;
       const currentScorePercent = (attempt.score / (attempt.max_score || 1)) * 100;
+
+      // Fetch user flags from results
+      const { data: result } = await supabase
+        .from('quiz_results')
+        .select('is_suspicious_user, is_incomplete_user')
+        .eq('quiz_id', quizId)
+        .eq('user_id', userId)
+        .maybeSingle();
 
       summary = {
         avg_score: totalScorePercent / allAttempts.length,
         avg_time: totalTime / allAttempts.length,
         attempts_count: allAttempts.length,
-        is_first: allAttempts.length === 1 || (allAttempts[0]?.created_at === attempt.created_at),
-        is_best: currentScorePercent >= bestScorePercent
+        best_score: bestScorePercent,
+        is_first: allAttempts.length === 1 || (allAttempts[0]?.id === attempt.id),
+        is_best: currentScorePercent >= bestScorePercent,
+        progress: currentScorePercent - firstScorePercent,
+        benchmark: quiz.avg_success_rate || null,
+        is_suspicious_user: result?.is_suspicious_user || false,
+        is_incomplete_user: result?.is_incomplete_user || false
       };
     }
 
@@ -159,6 +173,8 @@ export default async function handler(req, res) {
                 isPassed: attempt.is_passed,
                 isSuspicious: attempt.is_suspicious,
                 isIncomplete: attempt.is_incomplete,
+                isSuspiciousUser: summary?.is_suspicious_user || false,
+                isIncompleteUser: summary?.is_incomplete_user || false,
                 language
               }
             }

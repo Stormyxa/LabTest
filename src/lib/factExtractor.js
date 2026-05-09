@@ -56,64 +56,23 @@ const generateFactHash = (fact) => {
 export const calculateFactImportance = (fact) => {
   let score = 0.5; // Base score
 
-  // Error facts are more important
+  // Structured high-density facts
+  if (fact.startsWith('[METADATA]')) score += 0.4;
+  if (fact.startsWith('[BEHAVIOR]')) score += 0.45;
+  if (fact.startsWith('[SUMMARY]')) score += 0.4;
+  if (fact.startsWith('[QUESTION]')) {
+    score += 0.3;
+    if (fact.includes('Correct: false')) score += 0.2; // Errors are more important
+    if (fact.includes('Changes:')) score += 0.15; // Hesitation is important
+  }
+
+  // Legacy/fallback checks
   if (fact.includes('ошибся') || fact.includes('Ошибка') || fact.includes('Ошибка: выбрал')) {
     score += 0.3;
   }
-
-  // Suspicious behavior is very important
+  
   if (fact.includes('Подозрительная') || fact.includes('списыв') || fact.includes('⚠️')) {
     score += 0.4;
-  }
-
-  // Answer changes indicate hesitation - important for analysis
-  if (fact.includes('Смена ответа') || fact.includes('изменил с')) {
-    score += 0.25;
-  }
-
-  // Focus loss / tab switching is important behavior signal
-  if (fact.includes('сворачивал страницу') || fact.includes('вне вкладки')) {
-    score += 0.35;
-  }
-
-  // Incomplete attempts are important
-  if (fact.includes('незавершен') || fact.includes('ранний выход')) {
-    score += 0.3;
-  }
-
-  // Performance facts are moderately important
-  if (fact.includes('Результат:') || fact.includes('%')) {
-    score += 0.2;
-  }
-
-  // Quiz metadata (official/public) is important context
-  if (fact.includes('официальный') || fact.includes('публичный')) {
-    score += 0.15;
-  }
-
-  // Subject/class context is moderately important
-  if (fact.includes('Предмет:') || fact.includes('Класс:')) {
-    score += 0.1;
-  }
-
-  // Timing facts are less important but still relevant
-  if (fact.includes('Время:') || fact.includes('сек') || fact.includes('медленный') || fact.includes('быстрый')) {
-    score += 0.1;
-  }
-
-  // Historical summary facts
-  if (fact.includes('Средний балл') || fact.includes('Лучший результат') || fact.includes('Прогресс')) {
-    score += 0.2;
-  }
-
-  // Answer log is high signal for pedagogical analysis
-  if (fact.includes('История смены ответов')) {
-    score += 0.2;
-  }
-
-  // Explanations are valuable for learning
-  if (fact.includes('Пояснение:')) {
-    score += 0.15;
   }
 
   return Math.min(1, score);
@@ -190,14 +149,20 @@ export const extractFactsFromAttempt = (attempt, quiz, subject, sectionName = nu
 
   // Quiz metadata facts
   const quizType = [];
-  if (quiz?.is_verified) quizType.push('официальный');
-  if (quiz?.is_public) quizType.push('публичный');
+  if (quiz?.is_verified) quizType.push('verified');
+  if (quiz?.is_public) quizType.push('public');
   const quizTypeStr = quizType.length > 0 ? ` (${quizType.join(', ')})` : '';
   
   const subjectStr = sectionName || subject || 'неизвестный предмет';
-  const classStr = quizClass ? `, Класс: ${quizClass}` : '';
+  const classStr = quizClass ? `, Grade: ${quizClass}` : '';
+  const bookUrl = quiz?.quiz_sections?.book_url ? `, Book: ${quiz.quiz_sections.book_url}` : '';
   
-  facts.push(`Тест: "${quiz?.title || 'Неизвестный'}"${quizTypeStr}. Предмет: ${subjectStr}${classStr}. Пройден: ${new Date(attempt.created_at).toLocaleString('ru-RU', { timeZone: 'Asia/Almaty' })} (Алматы)`);
+  // Metadata fact
+  const resources = quiz?.resources || [];
+  const hasResources = resources.length > 0 || quiz?.quiz_sections?.book_url;
+  const resourceStr = hasResources ? `, Has Resources: true (${resources.length + (quiz?.quiz_sections?.book_url ? 1 : 0)})` : '';
+  
+  facts.push(`[METADATA] Quiz: "${quiz?.title || 'Неизвестный'}"${quizTypeStr}, Subject: ${subjectStr}, Section ID: ${quiz?.section_id || '—'}${classStr}${bookUrl}${resourceStr}. Timestamp: ${new Date(attempt.created_at).toISOString()}`);
 
   if (!answersData.length || !questions.length) {
     return facts;
@@ -212,22 +177,29 @@ export const extractFactsFromAttempt = (attempt, quiz, subject, sectionName = nu
     const correctAnswer = question.options?.[answer.correctIndex ?? question.correctIndex] || '—';
     const timeSpent = answer.timeSpent || 0;
     const isCorrect = answer.isCorrect;
+    const qType = question.type || (question.options ? 'test' : 'open');
 
-    // Base fact about this question
-    let questionFact = `Вопрос ${idx + 1}: "${question.question}". `;
+    // Base fact about this question with structured prefix
+    let questionFact = `[QUESTION ${idx + 1}] Type: ${qType}, Time: ${timeSpent}s, Correct: ${isCorrect}. `;
+    questionFact += `Text: "${question.question}". `;
     questionFact += isCorrect 
-      ? `Ответ верный: "${correctAnswer}". `
-      : `Ошибка: выбрал "${userAnswer}", правильный "${correctAnswer}". `;
-    questionFact += `Время: ${timeSpent} сек.`;
-    
-    // Add image info if present
-    if (question.image) {
-      questionFact += ` К вопросу прикреплена картинка.`;
-    }
+      ? `User Answer: "${correctAnswer}". `
+      : `Error: User chose "${userAnswer}", Correct: "${correctAnswer}". `;
     
     // Add explanation if available
     if (question.explanation) {
-      questionFact += ` Пояснение: ${question.explanation}`;
+      questionFact += ` Explanation: "${question.explanation}"`;
+    }
+    
+    // Add answer change history for THIS specific question
+    const qLog = answerLog.filter(log => 
+      (log.qIdx !== undefined ? log.qIdx === answer.originalIndex : log.qIndex === answer.originalIndex) ||
+      (log.qText === question.question)
+    );
+    
+    if (qLog.length > 0) {
+      const changes = qLog.map(l => `${l.from || '—'} -> ${l.to || '—'} (${Math.round((l.ts || 0) / 1000)}s)`).join(', ');
+      questionFact += ` Changes: [${changes}]`;
     }
     
     facts.push(questionFact);
@@ -297,27 +269,13 @@ export const extractFactsFromAttempt = (attempt, quiz, subject, sectionName = nu
   perfFact += `Статус: ${attempt.is_passed ? 'пройден' : 'не пройден'}.`;
   facts.push(perfFact);
 
-  // Suspicious behavior facts
-  if (attempt.is_suspicious) {
-    facts.push(`⚠️ Подозрительная попытка: ${attempt.suspicion_reason || 'причина не указана'}`);
-  }
-  
-  if (attempt.is_incomplete) {
-    facts.push(`⚠️ Незавершенная попытка: ученик вышел до завершения теста`);
-  }
-
-  // Focus and off-site time tracking
+  // Structured behavior telemetry
   const focusLost = attempt.focus_lost_cnt || 0;
   const offSiteMs = attempt.off_site_ms || 0;
   const offSiteSec = Math.round(offSiteMs / 1000);
-  
-  if (focusLost > 0) {
-    facts.push(`Ученик сворачивал страницу ${focusLost} раз(а) во время теста`);
-  }
-  
-  if (offSiteSec > 0) {
-    facts.push(`Ученик провел ${offSiteSec} секунд вне вкладки теста`);
-  }
+  const suspicionFlags = attempt.is_suspicious ? (attempt.suspicion_reason || 'suspicious') : 'none';
+
+  facts.push(`[BEHAVIOR] Focus lost: ${focusLost}, Off-page time: ${offSiteSec}s, Suspicious flags: "${suspicionFlags}", Incomplete: ${!!attempt.is_incomplete}`);
 
   // Finish reason if available
   if (attempt.finish_reason) {
@@ -326,21 +284,18 @@ export const extractFactsFromAttempt = (attempt, quiz, subject, sectionName = nu
 
   // Add summary metrics if provided
   if (summary) {
-    if (summary.avg_score !== undefined) {
-      facts.push(`Средний балл по всем попыткам этого теста: ${summary.avg_score.toFixed(1)}%`);
+    let summaryFact = `[SUMMARY] Total Attempts: ${summary.attempts_count || 0}, Avg Score: ${Math.round(summary.avg_score || 0)}%, Best Score: ${Math.round(summary.best_score || 0)}%, Avg Time: ${Math.round(summary.avg_time || 0)}s. `;
+    summaryFact += `Role in History: ${summary.is_first ? 'First attempt' : (summary.is_best ? 'New best score' : 'Regular attempt')}.`;
+    
+    // Progress benchmark (compared to 1st attempt or overall avg)
+    if (summary.progress !== undefined) {
+      summaryFact += ` Progress: ${summary.progress >= 0 ? '+' : ''}${summary.progress}% since start.`;
     }
-    if (summary.avg_time !== undefined) {
-      facts.push(`Среднее время прохождения теста: ${Math.round(summary.avg_time)} сек.`);
-    }
-    if (summary.attempts_count) {
-      facts.push(`Всего попыток по этому тесту: ${summary.attempts_count}`);
-    }
-    if (summary.is_first) {
-      facts.push(`Это первая попытка пользователя по данному тесту.`);
-    }
-    if (summary.is_best) {
-      facts.push(`Это лучший результат пользователя по данному тесту.`);
-    }
+
+    if (summary.is_suspicious_user) summaryFact += ` User is marked as suspicious in this quiz overall.`;
+    if (summary.is_incomplete_user) summaryFact += ` User frequently leaves this quiz incomplete.`;
+    
+    facts.push(summaryFact);
   }
 
   return facts;
@@ -414,14 +369,13 @@ export const extractAllFacts = async ({ attempt, quiz, profile, subject, section
  */
 export const groupFacts = (facts) => {
   return {
-    errors: facts.filter(f => f.includes('ошибся') || f.includes('Ошибка: выбрал') || f.includes('неверный')),
-    timing: facts.filter(f => f.includes('Время:') || f.includes('сек') || f.includes('медленный') || f.includes('быстрый') || f.includes('Среднее время')),
-    performance: facts.filter(f => f.includes('Результат:') || f.includes('балл') || f.includes('%') || f.includes('верных')),
-    behavior: facts.filter(f => f.includes('Подозрительная') || f.includes('незавершен') || f.includes('⚠️') || f.includes('сворачивал') || f.includes('вне вкладки')),
-    changes: facts.filter(f => f.includes('Смена ответа') || f.includes('изменил с')),
-    metadata: facts.filter(f => f.includes('Тест:') || f.includes('Предмет:') || f.includes('официальный') || f.includes('публичный') || f.includes('Пользователь:')),
-    summary: facts.filter(f => f.includes('Средний балл') || f.includes('Среднее время') || f.includes('Всего попыток') || f.includes('попытка пользователя')),
-    explanations: facts.filter(f => f.includes('Пояснение:'))
+    questions: facts.filter(f => f.startsWith('[QUESTION]')),
+    metadata: facts.filter(f => f.startsWith('[METADATA]')),
+    behavior: facts.filter(f => f.startsWith('[BEHAVIOR]')),
+    summary: facts.filter(f => f.startsWith('[SUMMARY]')),
+    legacy_errors: facts.filter(f => !f.startsWith('[') && (f.includes('ошибся') || f.includes('Ошибка'))),
+    legacy_timing: facts.filter(f => !f.startsWith('[') && (f.includes('Время:') || f.includes('сек'))),
+    legacy_performance: facts.filter(f => !f.startsWith('[') && (f.includes('Результат:') || f.includes('%')))
   };
 };
 

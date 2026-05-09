@@ -698,10 +698,12 @@ const QuizView = ({ session, profile }) => {
 
     // Record answer change in first attempt mode
     if (isFirstAttempt && isAlreadyAnswered && answers[currentIdx] !== optionIdx) {
+      const q = questions[currentIdx];
       answerLogRef.current.push({
-        qIdx: questions[currentIdx].originalIndex ?? currentIdx,
-        from: answers[currentIdx],
-        to: optionIdx,
+        qIdx: q.originalIndex ?? currentIdx,
+        qText: q.question,
+        from: q.options[answers[currentIdx]] || '—',
+        to: q.options[optionIdx] || '—',
         ts: Date.now() - startTimeRef.current
       });
     }
