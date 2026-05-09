@@ -1,8 +1,8 @@
 import { GoogleGenAI } from '@google/genai';
 import OpenAI from 'openai';
 
-// Model priorities - highest to lowest
-const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash'];
+// Model priorities - highest to lowest (user specifications)
+const GEMINI_MODELS = ['gemini-3.0-flash', 'gemini-2.5-flash', 'gemini-3.1-flash-lite', 'gemma-27b', 'gemma-21b'];
 const GPT_MODELS = ['gpt-5.4-mini', 'gpt-5.4-nano', 'gpt-5-mini', 'gpt-5-nano'];
 const ALL_MODELS = [...GEMINI_MODELS, ...GPT_MODELS];
 
@@ -66,10 +66,25 @@ export default async function handler(req, res) {
 
     const systemPrompt = "Ты — элитный педагогический ИИ-аналитик LabTest. Твои ответы должны быть глубокими, профессиональными, но структурированными. Избегай лишней 'воды', чтобы ответ не обрывался. Если информации очень много, используй таблицы и списки. Всегда отвечай на языке пользователя (русский).";
     
-    // Smart fallback: try Gemini first, then GPT
+    // Smart switching: Gemini for analysis, GPT for continued chat
+    const isInitialAnalysis = messages.length === 1 && messages[0].content.includes('Анализ:');
+    const isContinuedChat = messages.length > 1;
+    
+    let modelsToTry;
+    if (isInitialAnalysis) {
+      // Use Gemini for initial analysis
+      modelsToTry = GEMINI_MODELS;
+    } else if (isContinuedChat) {
+      // Switch to GPT for continued chat
+      modelsToTry = GPT_MODELS;
+    } else {
+      // Default fallback: try all models
+      modelsToTry = ALL_MODELS;
+    }
+    
     let lastError = null;
     
-    for (const model of ALL_MODELS) {
+    for (const model of modelsToTry) {
       try {
         if (GEMINI_MODELS.includes(model)) {
           if (!geminiKey) continue;

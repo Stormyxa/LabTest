@@ -1352,51 +1352,13 @@ const QuizView = ({ session, profile }) => {
             document.body
           )}
 
-          {/* BLUR OVERLAY when tab is hidden - Enhanced blur implementation */}
+          {/* BLUR OVERLAY when tab is hidden - Using CSS class for build compatibility */}
           {isBlurred && createPortal(
-            <>
-              <style>{`
-                .blur-overlay-enhanced {
-                  position: fixed !important;
-                  top: 0 !important;
-                  left: 0 !important;
-                  right: 0 !important;
-                  bottom: 0 !important;
-                  z-index: 99999 !important;
-                  background: rgba(0, 0, 0, 0.6) !important;
-                  -webkit-backdrop-filter: blur(20px) !important;
-                  backdrop-filter: blur(20px) !important;
-                  display: flex !important;
-                  flex-direction: column !important;
-                  align-items: center !important;
-                  justify-content: center !important;
-                  gap: 20px !important;
-                  color: white !important;
-                  text-align: center !important;
-                  padding: 20px !important;
-                  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
-                }
-                /* Fallback for browsers that don't support backdrop-filter */
-                @supports not (backdrop-filter: blur(20px)) {
-                  .blur-overlay-enhanced {
-                    background: rgba(0, 0, 0, 0.8) !important;
-                    -webkit-filter: blur(10px) !important;
-                    filter: blur(10px) !important;
-                  }
-                }
-                /* Safari specific */
-                @supports (-webkit-backdrop-filter: blur(20px)) and not (backdrop-filter: blur(20px)) {
-                  .blur-overlay-enhanced {
-                    -webkit-backdrop-filter: blur(20px) !important;
-                  }
-                }
-              `}</style>
-              <div className="blur-overlay-enhanced">
-                <AlertTriangle size={48} color="#facc15" />
-                <h2 style={{ margin: '0 0 10px 0', fontSize: '24px', fontWeight: 'bold' }}>Вкладка свёрнута</h2>
-                <p style={{ margin: 0, opacity: 0.8, maxWidth: '350px', fontSize: '16px', lineHeight: '1.5' }}>Тест продолжается. Вернитесь обратно, чтобы продолжить прохождение.</p>
-              </div>
-            </>,
+            <div className="blur-overlay-enhanced">
+              <AlertTriangle size={48} color="#facc15" />
+              <h2 style={{ margin: '0 0 10px 0', fontSize: '24px', fontWeight: 'bold' }}>Вкладка свёрнута</h2>
+              <p style={{ margin: 0, opacity: 0.8, maxWidth: '350px', fontSize: '16px', lineHeight: '1.5' }}>Тест продолжается. Вернитесь обратно, чтобы продолжить прохождение.</p>
+            </div>,
             document.body
           )}
 
