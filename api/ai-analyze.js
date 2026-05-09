@@ -31,8 +31,31 @@ export default async function handler(req, res) {
   const openrouterKey = process.env.OPENROUTER_API_KEY;
   const openaiKey = process.env.OPENAI_API_KEY;
   
-  // Enhanced debugging for creators
-  const isCreator = req.body?.viewerRole === 'creator' || req.body?.viewerRole === 'admin';
+  // Enhanced debugging and user role checking
+  const userRole = req.body?.viewerRole;
+  const isCreator = userRole === 'creator' || userRole === 'admin';
+  const isTeacher = userRole === 'teacher';
+  const isPlayer = userRole === 'player' || userRole === 'editor';
+  const hasClass = req.body?.hasClass; // Player with class vs spectator
+  const isAuthenticated = !!userRole;
+  
+  // User-based rate limits
+  const getRateLimits = (role, hasClass) => {
+    switch (role) {
+      case 'player':
+        if (!hasClass) return { daily: 0, perMinute: 0 }; // Spectator - no access
+        return { daily: 50, perMinute: 10 }; // Player with class
+      case 'teacher':
+        return { daily: 300, perMinute: 30 };
+      case 'admin':
+        return { daily: 250, perMinute: 25 };
+      case 'creator':
+        return { daily: Infinity, perMinute: Infinity }; // No limits
+      default:
+        return { daily: 0, perMinute: 0 }; // No access
+    }
+  };
+  
   const debugInfo = {
     timestamp: new Date().toISOString(),
     geminiKey: geminiKey ? 'SET' : 'NOT SET',
@@ -43,11 +66,35 @@ export default async function handler(req, res) {
     availableModels: ALL_MODELS,
     bodySize: JSON.stringify(req.body || {}).length,
     userAgent: req.headers['user-agent']?.substring(0, 100),
-    isCreator
+    userRole,
+    isCreator,
+    hasClass,
+    rateLimits: getRateLimits(userRole, hasClass)
   };
   
   if (isCreator) {
     console.log('🔍 AI API Debug (Creator):', debugInfo);
+  }
+  
+  // Access control checks
+  if (!isAuthenticated) {
+    return res.status(403).json({ 
+      error: 'NO_ACCESS',
+      reason: 'NOT_AUTHENTICATED',
+      message: 'Доступ к ИИ доступен только авторизованным пользователям'
+    });
+  }
+  
+  const rateLimits = getRateLimits(userRole, hasClass);
+  if (rateLimits.daily === 0 && rateLimits.perMinute === 0) {
+    const reason = isPlayer && !hasClass ? 'SPECTATOR' : 'NO_ACCESS';
+    return res.status(403).json({ 
+      error: 'NO_ACCESS',
+      reason: reason,
+      message: isPlayer && !hasClass 
+        ? 'Наблюдатели (без класса) не имеют доступа к ИИ-анализу'
+        : 'У вас нет доступа к ИИ-анализу'
+    });
   }
   
   if (!geminiKey && !groqKey && !cerebrasKey && !openrouterKey && !openaiKey) {

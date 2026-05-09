@@ -156,6 +156,7 @@ export const streamAiAnalysis = async ({
   contextId,
   viewerRole,
   title,
+  profile,
   onChunk,
   onDone,
   onError,
@@ -172,7 +173,8 @@ export const streamAiAnalysis = async ({
         messages, 
         contextType, 
         contextId, 
-        viewerRole 
+        viewerRole,
+        hasClass: profile?.class_id ? true : false
       }),
       signal
     });

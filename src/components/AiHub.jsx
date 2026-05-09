@@ -19,6 +19,7 @@ const AiHub = ({ session, profile }) => {
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [status, setStatus] = useState('idle'); // idle, loading, streaming, error, limit
+  const [accessError, setAccessError] = useState(null); // Access denial error
   
   const [position, setPosition] = useState({ x: window.innerWidth - 450, y: window.innerHeight - 650 });
   const [size, setSize] = useState({ width: 400, height: 600 });
@@ -198,18 +199,9 @@ const AiHub = ({ session, profile }) => {
   };
 
   const runStreaming = async (chatMessages, instruction = null, contextData = null, type = null, id = null, title = null) => {
-    // Check limits (client side check)
-    const todayCount = history.filter(h => new Date(h.created_at).toDateString() === new Date().toDateString()).length;
-    const limit = profile?.role === 'player' ? 10 : (profile?.role === 'admin' ? 999 : 50);
-    
-    if (todayCount >= limit) {
-      setStatus('limit');
-      setMessages(prev => [...prev, { role: 'assistant', content: `🛑 **Лимит достигнут.**\nВы использовали все ${limit} запросов на сегодня. Возвращайтесь завтра!` }]);
-      return;
-    }
-
     setIsStreaming(true);
     setStatus('streaming');
+    setAccessError(null); // Clear previous access errors
     
     let fullText = '';
     const assistantMsg = { role: 'assistant', content: '' };
@@ -297,6 +289,7 @@ const AiHub = ({ session, profile }) => {
         contextId: id,
         viewerRole: profile?.role || 'student',
         title: title || 'AI Chat',
+        profile: profile,
         onChunk: (chunk) => {
           fullText += chunk;
           setMessages(prev => {
@@ -324,7 +317,17 @@ const AiHub = ({ session, profile }) => {
       setStatus('idle');
     } catch (e) {
       console.error('Streaming error:', e);
-      setStatus('error');
+      
+      // Handle access denial errors specifically
+      if (e.message?.includes('NO_ACCESS') || e.message?.includes('SPECTATOR') || e.message?.includes('NOT_AUTHENTICATED')) {
+        setAccessError({
+          type: e.message?.includes('SPECTATOR') ? 'SPECTATOR' : (e.message?.includes('NOT_AUTHENTICATED') ? 'NOT_AUTHENTICATED' : 'NO_ACCESS'),
+          message: e.message || 'Доступ к ИИ ограничен'
+        });
+        setMessages(prev => prev.filter(msg => msg.role !== 'assistant' || msg.content !== '')); // Remove empty assistant message
+      } else {
+        setStatus('error');
+      }
     } finally {
       setIsStreaming(false);
     }
@@ -537,6 +540,55 @@ const AiHub = ({ session, profile }) => {
         </div>
 
         <div className="ai-hub-footer">
+          {/* Access Error Display */}
+          {accessError && (
+            <div className="ai-access-error no-drag" style={{
+              background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+              color: 'white',
+              padding: '12px 16px',
+              margin: '0 16px 12px 16px',
+              borderRadius: '12px',
+              fontSize: '0.85rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)',
+              animation: 'slideDown 0.3s ease-out'
+            }}>
+              <span style={{ fontSize: '20px' }}>🚫</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>
+                  {accessError.type === 'SPECTATOR' ? 'Доступ ограничен' : 
+                   accessError.type === 'NOT_AUTHENTICATED' ? 'Требуется авторизация' : 
+                   'Нет доступа'}
+                </div>
+                <div style={{ opacity: 0.9, fontSize: '0.8rem' }}>
+                  {accessError.type === 'SPECTATOR' ? 'Наблюдатели (без класса) не имеют доступа к ИИ-анализу. Присоединитесь к классу для получения доступа.' :
+                   accessError.type === 'NOT_AUTHENTICATED' ? 'Войдите в систему, чтобы использовать ИИ-анализ.' :
+                   accessError.message}
+                </div>
+              </div>
+              <button 
+                onClick={() => setAccessError(null)}
+                style={{
+                  background: 'rgba(255,255,255,0.2)',
+                  border: 'none',
+                  color: 'white',
+                  width: '24px',
+                  height: '24px',
+                  borderRadius: '50%',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '14px'
+                }}
+              >
+                ×
+              </button>
+            </div>
+          )}
+          
           <div className="ai-input-wrapper no-drag">
             <input 
               ref={inputRef}
