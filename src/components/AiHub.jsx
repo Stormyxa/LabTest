@@ -329,22 +329,12 @@ const AiHub = ({ session, profile }) => {
             newMsgs[newMsgs.length - 1].content = fullText;
             return newMsgs;
           });
+        },
+        onDone: () => {
+          // Reload history after streaming completes
+          loadHistory();
         }
       });
-
-      // Save to history only if not already saved by streaming completion
-      if (!instruction) {
-        const cacheKey = `chat_${Date.now()}_${session.user.id}`;
-        await saveAiAnalysis({
-          cache_key: cacheKey,
-          user_id: session.user.id,
-          context_type: 'chat',
-          context_id: null,
-          title: 'AI Chat',
-          messages: [...chatMessages, { role: 'assistant', content: fullText }]
-        });
-        loadHistory();
-      }
       
       setStatus('idle');
     } catch (e) {
@@ -371,6 +361,15 @@ const AiHub = ({ session, profile }) => {
     } finally {
       setIsStreaming(false);
     }
+  };
+
+  const startNewChat = () => {
+    setMessages([]);
+    setInput('');
+    setCurrentChatId(null);
+    setAiChatTitle('ИИ-Хаб LabTest');
+    setAccessError(null);
+    setInputDisabled(false);
   };
 
   const handleSend = async () => {
@@ -495,6 +494,9 @@ const AiHub = ({ session, profile }) => {
           <span style={{ fontWeight: 'bold', fontSize: '0.9rem' }}>ИИ-Хаб LabTest</span>
         </div>
         <div className="flex-center no-drag" style={{ gap: '8px' }}>
+          <button className="ai-action-btn" onClick={startNewChat} title="Новый чат">
+            <MessageSquare size={16} />
+          </button>
           <button className="ai-action-btn" onClick={() => setIsHistoryOpen(!isHistoryOpen)} title="История">
             <History size={16} />
           </button>
