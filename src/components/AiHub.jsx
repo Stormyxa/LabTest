@@ -318,17 +318,20 @@ const AiHub = ({ session, profile }) => {
   useEffect(() => {
     if (session?.user?.id) {
       loadHistory();
+    } else {
+      setHistory([]);
     }
-  }, [session]);
+  }, [session?.user?.id]);
 
   const loadHistory = useCallback(async () => {
+    if (!session?.user?.id) return;
     try {
       const data = await getAiHistory(session.user.id);
       setHistory(data || []);
     } catch (e) {
       console.error('History load failed:', e);
     }
-  }, [session.user.id]);
+  }, [session?.user?.id]);
 
   const startNewAnalysis = async (type, id, instruction, data, title) => {
     const userMsg = { role: 'user', content: `Анализ: ${title || type}` };
@@ -457,9 +460,11 @@ const AiHub = ({ session, profile }) => {
 
         // Search RAG for every message to provide maximum context
         let ragStr = '';
-        const relevantFacts = await searchUserFacts(session.user.id, searchQuery);
-        if (relevantFacts.length > 0) {
-          ragStr = `\n\nРелевантные факты из памяти (RAG):\n${relevantFacts.map(f => `- ${f.fact}`).join('\n')}`;
+        if (session?.user?.id) {
+          const relevantFacts = await searchUserFacts(session.user.id, searchQuery);
+          if (relevantFacts.length > 0) {
+            ragStr = `\n\nРелевантные факты из памяти (RAG):\n${relevantFacts.map(f => `- ${f.fact}`).join('\n')}`;
+          }
         }
         
         apiMessages[0].content = `${instruction}${contextJson}${ragStr}\n\nПользователь запросил анализ этого контекста.`;
@@ -467,7 +472,7 @@ const AiHub = ({ session, profile }) => {
         // Case: General chat mode
         const [userInfo, relevantFacts] = await Promise.all([
           getUserInfo(), // Refresh summary info
-          searchUserFacts(session.user.id, chatMessages[chatMessages.length - 1].content)
+          session?.user?.id ? searchUserFacts(session.user.id, chatMessages[chatMessages.length - 1].content) : Promise.resolve([])
         ]);
 
         const userInfoStr = userInfo ? `\nОбщая сводка: ${JSON.stringify(userInfo)}` : '';
@@ -505,7 +510,7 @@ const AiHub = ({ session, profile }) => {
                   messages: [{ role: 'user', content: summaryPrompt }],
                   contextType: 'internal_summary'
                 });
-                if (summary && !summary.includes('error')) {
+                if (summary && session?.user?.id) {
                   const { storeUserFact } = await import('../lib/ragService');
                   await storeUserFact(session.user.id, `[CHAT_SUMMARY] ${new Date().toISOString()}: ${summary}`, 0.6);
                 }
