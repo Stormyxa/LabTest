@@ -617,6 +617,7 @@ const AiDetailedAnalysisButton = ({ userId, quizId, viewerProfile }) => {
           detail: { 
             contextType: 'detailed_quiz', 
             contextId: userId, 
+            quizId: quizId,
             instruction: result.instruction, 
             data: result.data, 
             title: 'Детальный разбор' 

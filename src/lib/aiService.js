@@ -278,13 +278,17 @@ export const streamAiAnalysis = async ({
 
 /**
  * Searches for relevant user facts in Qdrant (RAG)
+ * @param {string} userId - User ID
+ * @param {string} query - Search query
+ * @param {object} options - Search options { limit, quizId, classId }
  */
-export const searchUserFacts = async (userId, query, limit = 20) => {
+export const searchUserFacts = async (userId, query, options = {}) => {
+  const { limit = 20, quizId = null, classId = null } = options;
   try {
     const response = await fetch('/api/search-facts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, query, limit })
+      body: JSON.stringify({ userId, query, limit, quizId, classId })
     });
 
     if (!response.ok) {

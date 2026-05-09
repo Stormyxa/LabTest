@@ -191,11 +191,10 @@ export const extractFactsFromAttempt = (attempt, quiz, subject, sectionName = nu
     const hasImage = (question.images && question.images.length > 0) || question.image_url;
     const imgInfo = hasImage ? `Has Image: true (URL: ${question.images?.[0] || question.image_url}). ` : 'Has Image: false. ';
     const optionsStr = (question.options || []).map((o, i) => `${i}: "${o}"`).join(', ');
-    const quizTitle = quiz?.title || 'Неизвестный тест';
     const statusTag = isCorrect ? '[STATUS: CORRECT]' : '[STATUS: WRONG]';
     const isoDate = attempt.created_at || new Date().toISOString();
     
-    let questionFact = `[QUESTION ${idx + 1} in "${quizTitle}"] ${statusTag} Type: ${qType}, Time: ${timeSpent}s, Date: ${isoDate}, ${imgInfo}`;
+    let questionFact = `[QUESTION ${idx + 1}] ${statusTag} Type: ${qType}, Time: ${timeSpent}s, Date: ${isoDate}, ${imgInfo}`;
     questionFact += `Text: "${question.question}". Options: [${optionsStr}]. `;
     questionFact += isCorrect 
       ? `User Answer: "${correctAnswer}" (Index ${answer.chosenIndex}). `

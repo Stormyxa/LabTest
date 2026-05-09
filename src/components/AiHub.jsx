@@ -16,6 +16,7 @@ const AiHub = ({ session, profile }) => {
   const [history, setHistory] = useState([]);
   const [currentChatId, setCurrentChatId] = useState(null);
   const [aiChatTitle, setAiChatTitle] = useState('ИИ-Хаб LabTest');
+  const [currentQuizId, setCurrentQuizId] = useState(null);
   
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -207,8 +208,10 @@ const AiHub = ({ session, profile }) => {
           
           const initialMessages = [{ role: 'user', content: userMessage }];
           setMessages(initialMessages);
+          setCurrentQuizId(e.detail.quizId || null);
+          
           setTimeout(() => {
-            runStreaming(initialMessages, e.detail.instruction, e.detail.data, e.detail.contextType, e.detail.contextId, e.detail.title, initialMessages);
+            runStreaming(initialMessages, e.detail.instruction, e.detail.data, e.detail.contextType, e.detail.contextId, e.detail.title, initialMessages, e.detail.quizId);
           }, 100);
         }
       }
@@ -342,7 +345,7 @@ const AiHub = ({ session, profile }) => {
     await runStreaming(initialMessages, instruction, data, type, id, title, initialMessages);
   };
 
-  const runStreaming = async (chatMessages, instruction = null, contextData = null, type = null, id = null, title = null, displayMessages = null) => {
+  const runStreaming = async (chatMessages, instruction = null, contextData = null, type = null, id = null, title = null, displayMessages = null, quizId = null) => {
     setIsStreaming(true);
     setStatus('streaming');
     setAccessError(null); // Clear previous access errors
@@ -466,7 +469,10 @@ const AiHub = ({ session, profile }) => {
         // Search RAG for every message to provide maximum context
         let ragStr = '';
         if (session?.user?.id) {
-          const relevantFacts = await searchUserFacts(session.user.id, searchQuery);
+          const relevantFacts = await searchUserFacts(session.user.id, searchQuery, { 
+            quizId: quizId || currentQuizId,
+            limit: 15 
+          });
           if (relevantFacts.length > 0) {
             ragStr = `\n\nРелевантные факты из памяти (RAG):\n${relevantFacts.map(f => `- ${f.fact}`).join('\n')}`;
           }
@@ -486,7 +492,10 @@ const AiHub = ({ session, profile }) => {
 
         const [userInfo, relevantFacts] = await Promise.all([
           getUserInfo(), // Refresh summary info
-          session?.user?.id ? searchUserFacts(session.user.id, generalSearchQuery) : Promise.resolve([])
+          session?.user?.id ? searchUserFacts(session.user.id, generalSearchQuery, { 
+            quizId: currentQuizId, // Use current test context if available
+            limit: 15 
+          }) : Promise.resolve([])
         ]);
 
         const userInfoStr = userInfo ? `\nОбщая сводка: ${JSON.stringify(userInfo)}` : '';
@@ -617,8 +626,8 @@ const AiHub = ({ session, profile }) => {
     setMessages(newMessages);
     setInput('');
     
-    await runStreaming(newMessages, null, null, null, null, null, newMessages);
-  }, [input, isStreaming, messages]);
+    await runStreaming(newMessages, null, null, null, null, null, newMessages, currentQuizId);
+  }, [input, isStreaming, messages, currentQuizId]);
 
   // Dragging logic
   const handleMouseDown = useCallback((e) => {
