@@ -5,25 +5,37 @@ import { QdrantClient } from '@qdrant/js-client-rest';
  * Manages connection to user_memory collection
  */
 
-const QDRANT_URL = process.env.QDRANT_URL || process.env.VITE_QDRANT_URL;
-const QDRANT_API_KEY = process.env.QDRANT_API_KEY || process.env.VITE_QDRANT_API_KEY;
+const QDRANT_URL = import.meta.env.VITE_QDRANT_URL;
+const QDRANT_API_KEY = import.meta.env.VITE_QDRANT_API_KEY;
 const COLLECTION_NAME = 'user_memory';
 
-if (!QDRANT_URL || !QDRANT_API_KEY) {
-  console.warn('Qdrant credentials not configured. RAG features will be disabled.');
-}
+let client = null;
 
-// Initialize Qdrant client
-const client = new QdrantClient({
-  url: QDRANT_URL,
-  apiKey: QDRANT_API_KEY,
-});
+// Initialize Qdrant client only if credentials are available
+if (QDRANT_URL && QDRANT_API_KEY) {
+  client = new QdrantClient({
+    url: QDRANT_URL,
+    apiKey: QDRANT_API_KEY,
+  });
+} else {
+  console.warn('⚠️ Qdrant credentials not configured (VITE_QDRANT_URL, VITE_QDRANT_API_KEY). RAG features will be disabled.');
+}
 
 /**
  * Check if Qdrant is properly configured
  */
 export const isQdrantConfigured = () => {
-  return !!(QDRANT_URL && QDRANT_API_KEY);
+  return !!(QDRANT_URL && QDRANT_API_KEY && client);
+};
+
+/**
+ * Get the Qdrant client (lazy initialization)
+ */
+const getClient = () => {
+  if (!isQdrantConfigured()) {
+    throw new Error('Qdrant is not configured. Please set VITE_QDRANT_URL and VITE_QDRANT_API_KEY environment variables.');
+  }
+  return client;
 };
 
 /**
@@ -52,9 +64,10 @@ export const upsertFact = async ({
   }
 
   try {
-    const pointId = `${userId}_${quizId}_${Date.now()}`;
+    const qdrant = getClient();
+    const pointId = `${userId}_${quizId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
-    const response = await client.upsert(COLLECTION_NAME, {
+    const response = await qdrant.upsert(COLLECTION_NAME, {
       points: [
         {
           id: pointId,
@@ -65,8 +78,8 @@ export const upsertFact = async ({
             classId,
             subject,
             fact,
-            ...metadata,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            ...metadata
           }
         }
       ]
@@ -123,6 +136,7 @@ export const searchFacts = async ({
   }
 
   try {
+    const qdrant = getClient();
     const filter = {
       must: [
         { key: 'userId', match: { value: userId } }
@@ -137,7 +151,7 @@ export const searchFacts = async ({
       filter.must.push({ key: 'classId', match: { value: classId } });
     }
 
-    const response = await client.search(COLLECTION_NAME, {
+    const response = await qdrant.search(COLLECTION_NAME, {
       vector: queryVector,
       limit: limit * 2, // Fetch more to account for decay filtering
       filter,
@@ -178,14 +192,15 @@ export const searchFacts = async ({
  * Delete all facts for a specific user
  * @param {string} userId - User UUID
  */
-export const deleteUserFacts = async (userId) => {
+export const deleteFactsForUser = async (userId) => {
   if (!isQdrantConfigured()) {
     console.warn('Qdrant not configured, skipping delete');
-    return null;
+    return;
   }
 
   try {
-    const response = await client.delete(COLLECTION_NAME, {
+    const qdrant = getClient();
+    const response = await qdrant.delete(COLLECTION_NAME, {
       filter: {
         must: [
           { key: 'userId', match: { value: userId } }
@@ -193,10 +208,10 @@ export const deleteUserFacts = async (userId) => {
       }
     });
 
-    console.log(`✅ Deleted all facts for user: ${userId}`);
+    console.log(`✅ Deleted all facts for user ${userId}`);
     return response;
   } catch (error) {
-    console.error('❌ Failed to delete user facts:', error);
+    console.error('❌ Failed to delete facts for user:', error);
     throw error;
   }
 };
@@ -210,12 +225,11 @@ export const getCollectionInfo = async () => {
   }
 
   try {
-    const response = await client.getCollection(COLLECTION_NAME);
+    const qdrant = getClient();
+    const response = await qdrant.getCollection(COLLECTION_NAME);
     return response;
   } catch (error) {
     console.error('❌ Failed to get collection info:', error);
     return null;
   }
 };
-
-export default client;

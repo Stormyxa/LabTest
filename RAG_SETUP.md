@@ -19,23 +19,21 @@ The RAG system replaces the previous JSON-heavy approach (10-150KB per request) 
 
 ## Environment Variables
 
-Add these variables to your Vercel Environment Variables:
+Add these variables to your `.env.local` file for local development and to Vercel Environment Variables for production:
 
-### Qdrant Configuration
+### Qdrant Configuration (Required for RAG)
 ```
-QDRANT_URL=https://782f351a-291d-422c-bd09-88c135a771c2.europe-west3-0.gcp.cloud.qdrant.io
-QDRANT_API_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3MiOiJtIiwic3ViamVjdCI6ImFwaS1rZXk6YjUyYzFhOTMtMWM4My00YTQzLTkxMDEtNTdmNTQwMGE0OWI2In0.U4_u87w43QHAXUNGcJxbqzDNjS6jCB-3NsKilzawglg
+VITE_QDRANT_URL=https://782f351a-291d-422c-bd09-88c135a771c2.europe-west3-0.gcp.cloud.qdrant.io
+VITE_QDRANT_API_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3MiOiJtIiwic3ViamVjdCI6ImFwaS1rZXk6YjUyYzFhOTMtMWM4My00YTQzLTkxMDEtNTdmNTQwMGE0OWI2In0.U4_u87w43QHAXUNGcJxbqzDNjS6jCB-3NsKilzawglg
 ```
+
+**Important**: Client-side environment variables in Vite must be prefixed with `VITE_`. The Qdrant client will only work if these variables are set.
 
 ### Existing Variables (Already configured)
 ```
 VITE_SUPABASE_URL=your_supabase_url
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
-GEMINI_API_KEY=your_gemini_key (optional)
-GROQ_API_KEY=your_groq_key (optional)
-CEREBRAS_API_KEY=your_cerebras_key (optional)
-OPENROUTER_API_KEY=your_openrouter_key (optional)
-OPENAI_API_KEY=your_openai_key (optional)
+VITE_GEMINI_API_KEY=your_gemini_key (optional)
 ```
 
 ## Installation
