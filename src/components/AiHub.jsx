@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import MathRenderer from './MathRenderer';
-import { X, Maximize2, Minimize2, Sparkles, Send, Download, Copy, RefreshCw, History, Trash2, ChevronLeft, ChevronRight, MessageSquare, Check, User } from 'lucide-react';
+import { X, Maximize2, Minimize2, Sparkles, Send, Download, Copy, RefreshCw, History, Trash2, ChevronLeft, ChevronRight, MessageSquare, Check, User, Shield, AlertTriangle } from 'lucide-react';
 import { streamAiAnalysis, getAiHistory, saveAiAnalysis, deleteAiAnalysis } from '../lib/aiService';
 import { createModalOverlay } from '../utils/blurUtils';
 import './AiAnalysisModal.css';
@@ -20,6 +21,8 @@ const AiHub = ({ session, profile }) => {
   const [isStreaming, setIsStreaming] = useState(false);
   const [status, setStatus] = useState('idle'); // idle, loading, streaming, error, limit
   const [accessError, setAccessError] = useState(null); // Access denial error
+  const [showAccessModal, setShowAccessModal] = useState(false);
+  const [inputDisabled, setInputDisabled] = useState(false);
   
   const [position, setPosition] = useState({ x: window.innerWidth - 450, y: window.innerHeight - 650 });
   const [size, setSize] = useState({ width: 400, height: 600 });
@@ -31,7 +34,36 @@ const AiHub = ({ session, profile }) => {
 
   // Global event listener to open AI Hub
   useEffect(() => {
-    const handleOpen = (e) => {
+    const handleOpenAiHub = (e) => {
+      // Check access control before opening
+      const userRole = profile?.role;
+      const hasClass = profile?.class_id ? true : false;
+      const isAuthenticated = !!userRole;
+      
+      if (!isAuthenticated) {
+        setAccessError({
+          type: 'NOT_AUTHENTICATED',
+          message: 'Войдите в систему, чтобы использовать ИИ-анализ.'
+        });
+        setInputDisabled(true);
+        setShowAccessModal(true);
+        setIsOpen(true);
+        setIsMinimized(false);
+        return;
+      }
+      
+      if (userRole === 'player' && !hasClass) {
+        setAccessError({
+          type: 'SPECTATOR',
+          message: 'Наблюдатели (без класса) не имеют доступа к ИИ-анализу.'
+        });
+        setInputDisabled(true);
+        setShowAccessModal(true);
+        setIsOpen(true);
+        setIsMinimized(false);
+        return;
+      }
+      
       // Check if user is in first attempt mode
       const isFirstAttemptMode = localStorage.getItem('quiz_first_attempt_mode') === 'true';
       if (isFirstAttemptMode) {
@@ -73,9 +105,9 @@ const AiHub = ({ session, profile }) => {
       }
     };
 
-    window.addEventListener('open-ai-hub', handleOpen);
-    return () => window.removeEventListener('open-ai-hub', handleOpen);
-  }, [isOpen, isMinimized]);
+    window.addEventListener('open-ai-hub', handleOpenAiHub);
+    return () => window.removeEventListener('open-ai-hub', handleOpenAiHub);
+  }, [profile, isOpen, isMinimized]);
 
   // Auto-close AI chat when user starts first attempt
   useEffect(() => {
@@ -317,14 +349,22 @@ const AiHub = ({ session, profile }) => {
       setStatus('idle');
     } catch (e) {
       console.error('Streaming error:', e);
+      console.error('Error message:', e.message);
+      console.error('Error reason:', e.reason);
+      console.error('Error detail:', e.messageDetail);
       
       // Handle access denial errors specifically
-      if (e.message?.includes('NO_ACCESS') || e.message?.includes('SPECTATOR') || e.message?.includes('NOT_AUTHENTICATED')) {
+      if (e.message?.includes('NO_ACCESS') || e.reason === 'NO_ACCESS' || e.message?.includes('SPECTATOR') || e.message?.includes('NOT_AUTHENTICATED')) {
+        const errorType = e.reason === 'SPECTATOR' || e.message?.includes('SPECTATOR') ? 'SPECTATOR' : 
+                         e.reason === 'NOT_AUTHENTICATED' || e.message?.includes('NOT_AUTHENTICATED') ? 'NOT_AUTHENTICATED' : 
+                         'NO_ACCESS';
         setAccessError({
-          type: e.message?.includes('SPECTATOR') ? 'SPECTATOR' : (e.message?.includes('NOT_AUTHENTICATED') ? 'NOT_AUTHENTICATED' : 'NO_ACCESS'),
-          message: e.message || 'Доступ к ИИ ограничен'
+          type: errorType,
+          message: e.messageDetail || e.message || 'Доступ к ИИ ограничен'
         });
+        setInputDisabled(true);
         setMessages(prev => prev.filter(msg => msg.role !== 'assistant' || msg.content !== '')); // Remove empty assistant message
+        setShowAccessModal(true); // Show modal
       } else {
         setStatus('error');
       }
@@ -540,22 +580,20 @@ const AiHub = ({ session, profile }) => {
         </div>
 
         <div className="ai-hub-footer">
-          {/* Access Error Display */}
+          {/* Inline access denial message - always show when accessError is set */}
           {accessError && (
-            <div className="ai-access-error no-drag" style={{
-              background: 'linear-gradient(135deg, #ef4444, #dc2626)',
-              color: 'white',
+            <div style={{
               padding: '12px 16px',
               margin: '0 16px 12px 16px',
+              background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+              color: 'white',
               borderRadius: '12px',
               fontSize: '0.85rem',
               display: 'flex',
               alignItems: 'center',
-              gap: '10px',
-              boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)',
-              animation: 'slideDown 0.3s ease-out'
+              gap: '10px'
             }}>
-              <span style={{ fontSize: '20px' }}>🚫</span>
+              <Shield size={18} />
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>
                   {accessError.type === 'SPECTATOR' ? 'Доступ ограничен' : 
@@ -563,29 +601,11 @@ const AiHub = ({ session, profile }) => {
                    'Нет доступа'}
                 </div>
                 <div style={{ opacity: 0.9, fontSize: '0.8rem' }}>
-                  {accessError.type === 'SPECTATOR' ? 'Наблюдатели (без класса) не имеют доступа к ИИ-анализу. Присоединитесь к классу для получения доступа.' :
+                  {accessError.type === 'SPECTATOR' ? 'Наблюдатели (без класса) не имеют доступа к ИИ-анализу.' :
                    accessError.type === 'NOT_AUTHENTICATED' ? 'Войдите в систему, чтобы использовать ИИ-анализ.' :
                    accessError.message}
                 </div>
               </div>
-              <button 
-                onClick={() => setAccessError(null)}
-                style={{
-                  background: 'rgba(255,255,255,0.2)',
-                  border: 'none',
-                  color: 'white',
-                  width: '24px',
-                  height: '24px',
-                  borderRadius: '50%',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '14px'
-                }}
-              >
-                ×
-              </button>
             </div>
           )}
           
@@ -593,11 +613,15 @@ const AiHub = ({ session, profile }) => {
             <input 
               ref={inputRef}
               type="text" 
-              placeholder="Спроси меня о чем угодно..." 
+              placeholder={inputDisabled ? "Доступ ограничен" : "Спроси меня о чем угодно..."}
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleSend()}
-              disabled={isStreaming}
+              disabled={isStreaming || inputDisabled}
+              style={{
+                opacity: inputDisabled ? 0.5 : 1,
+                cursor: inputDisabled ? 'not-allowed' : 'text'
+              }}
             />
             <div style={{ display: 'flex', gap: '5px', paddingRight: '5px' }}>
               <button className="ai-action-btn" onClick={downloadChat} title="Скачать .md">
@@ -643,6 +667,36 @@ const AiHub = ({ session, profile }) => {
           }}
         />
       </div>
+
+      {/* Access Denial Modal */}
+      {showAccessModal && createPortal(
+        <div className="modal-overlay" style={{ zIndex: 9999 }}>
+          <div className="modal-content animate" style={{ width: '450px', textAlign: 'center' }}>
+            <div className="flex-center" style={{ justifyContent: 'center', width: '60px', height: '60px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', borderRadius: '20px', margin: '0 auto 20px' }}>
+              <Shield size={32} />
+            </div>
+            <h2 style={{ marginBottom: '15px' }}>
+              {accessError?.type === 'SPECTATOR' ? 'Доступ ограничен' : 
+               accessError?.type === 'NOT_AUTHENTICATED' ? 'Требуется авторизация' : 
+               'Нет доступа'}
+            </h2>
+            <p style={{ opacity: 0.7, lineHeight: '1.6', marginBottom: '25px' }}>
+              {accessError?.type === 'SPECTATOR' ? 
+                'Наблюдатели (без класса) не имеют доступа к ИИ-анализу. Присоединитесь к классу для получения доступа.' :
+               accessError?.type === 'NOT_AUTHENTICATED' ? 
+                'Войдите в систему, чтобы использовать ИИ-анализ.' :
+               accessError?.message || 'Доступ к ИИ ограничен'}
+            </p>
+            <button
+              onClick={() => setShowAccessModal(false)}
+              style={{ width: '100%', background: 'var(--primary-color)', color: 'white' }}
+            >
+              Понятно
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 };

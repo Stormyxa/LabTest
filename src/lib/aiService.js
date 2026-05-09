@@ -181,7 +181,10 @@ export const streamAiAnalysis = async ({
 
     if (!response.ok) {
       const errorData = await response.json();
-      throw new Error(errorData.error || 'AI request failed');
+      const error = new Error(errorData.error || 'AI request failed');
+      error.reason = errorData.reason;
+      error.messageDetail = errorData.message;
+      throw error;
     }
 
     const reader = response.body.getReader();
