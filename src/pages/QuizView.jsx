@@ -7,7 +7,7 @@ import {
   CheckCircle, XCircle, ChevronRight, ChevronLeft, RotateCcw, X,
   AlertTriangle, Book, FileText, ChevronDown, ChevronUp, Clock, Zap,
   Shield, Maximize2, Minimize2, Youtube, ExternalLink,
-  Play, Pause, Volume2, VolumeX, Settings, FastForward, Rewind
+  Play, Pause, Volume2, VolumeX, Settings, FastForward, Rewind, BarChart3, Loader2
 } from 'lucide-react';
 import { resolveImgUrl } from '../lib/imageUtils';
 import { useScrollRestoration } from '../lib/useScrollRestoration';
@@ -74,7 +74,9 @@ const QuizView = ({ session, profile }) => {
   const [questions, setQuestions] = useState([]);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [answers, setAnswers] = useState({});
-  const [showResult, setShowResult] = useState(false);
+  const [showResult, setShowResult] = useState(localStorage.getItem(`quiz_show_result_${id}`) === 'true');
+  const [lastAttemptId, setLastAttemptId] = useState(() => localStorage.getItem(`quiz_last_attempt_${id}`));
+  const [analysisReady, setAnalysisReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showExitModal, setShowExitModal] = useState(false);
   const [isBlurred, setIsBlurred] = useState(false);
@@ -186,6 +188,14 @@ const QuizView = ({ session, profile }) => {
     setCurrentImageIdx(0);
     // Note: We don't scroll to top here because the user explicitly asked to preserve scroll position between questions.
   }, [currentIdx]);
+
+  // If we already have a result, make analysis ready after a short delay
+  useEffect(() => {
+    if (showResult && lastAttemptId) {
+      const timer = setTimeout(() => setAnalysisReady(true), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [showResult, lastAttemptId]);
 
   useScrollRestoration(loading);
 
@@ -873,6 +883,13 @@ const QuizView = ({ session, profile }) => {
         answer_log: answerLogRef.current
       };
       const { data: savedAttempt } = await supabase.from('quiz_attempts').insert(attemptData).select('id').single();
+      
+      if (savedAttempt?.id) {
+        setLastAttemptId(savedAttempt.id);
+        localStorage.setItem(`quiz_last_attempt_${id}`, savedAttempt.id);
+        // Start timer for analysis button
+        setTimeout(() => setAnalysisReady(true), 3000);
+      }
 
       // 1b. Trigger RAG fact extraction asynchronously
       if (savedAttempt?.id) {
@@ -1053,9 +1070,25 @@ const QuizView = ({ session, profile }) => {
               Время: {Math.floor(timeSpent / 60)}м {timeSpent % 60}с.
             </p>
 
-            <div className="flex-center" style={{ gap: '15px', flexWrap: 'wrap' }}>
+            <div className="flex-center" style={{ gap: '15px', flexWrap: 'wrap', justifyContent: 'center' }}>
               <button onClick={() => navigate('/catalog')} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>В каталог</button>
-              <button onClick={handleRetry}><RotateCcw size={18} style={{ marginRight: '8px' }} /> Перепройти</button>
+              <button onClick={handleRetry} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}><RotateCcw size={18} style={{ marginRight: '8px' }} /> Перепройти</button>
+              
+              {session && lastAttemptId && (
+                <button 
+                  onClick={() => navigate(`/analytics-details?quizId=${id}&userId=${session.user.id}`)}
+                  disabled={!analysisReady}
+                  style={{ 
+                    background: analysisReady ? 'var(--primary-color)' : 'rgba(124, 58, 237, 0.1)', 
+                    color: analysisReady ? 'white' : 'var(--primary-color)',
+                    transition: 'all 0.5s ease'
+                  }}
+                >
+                  {analysisReady ? <BarChart3 size={18} style={{ marginRight: '8px' }} /> : <Loader2 size={18} className="animate-spin" style={{ marginRight: '8px' }} />}
+                  {analysisReady ? 'Детальный анализ' : 'Готовим аналитику...'}
+                </button>
+              )}
+
               <button
                 onClick={() => setShowAnswersList(!showAnswersList)}
                 style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none' }}

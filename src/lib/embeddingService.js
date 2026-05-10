@@ -51,8 +51,9 @@ const initWorker = () => {
     
     else if (type === 'progress') {
       // Dispatch event for UI progress bars
-      // transformers.js sends progress as 0-1, so multiply by 100
-      const percent = payload.progress ? Math.round(payload.progress * 100) : 0;
+      // transformers.js sends progress as 0-1 or 0-100 depending on status
+      const rawProgress = payload.progress || 0;
+      const percent = rawProgress > 1 ? Math.round(rawProgress) : Math.round(rawProgress * 100);
       
       window.dispatchEvent(new CustomEvent('rag-status', { 
         detail: { 

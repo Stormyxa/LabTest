@@ -677,10 +677,14 @@ const AiHub = ({ session, profile }) => {
       }
 
       animationFrameId = requestAnimationFrame(() => {
-        setPosition({
-          x: e.clientX - dragOffset.x,
-          y: e.clientY - dragOffset.y
-        });
+        const newX = e.clientX - dragOffset.x;
+        const newY = e.clientY - dragOffset.y;
+        
+        // Clamp position within viewport boundaries
+        const clampedX = Math.max(0, Math.min(newX, window.innerWidth - size.width));
+        const clampedY = Math.max(0, Math.min(newY, window.innerHeight - size.height));
+        
+        setPosition({ x: clampedX, y: clampedY });
       });
     };
 
