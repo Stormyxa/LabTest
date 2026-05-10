@@ -5,173 +5,117 @@ env.allowLocalModels = false;
 env.useBrowserCache = true;
 env.disableRemoteModels = false;
 
-let embeddingPipeline = null;
-let isInitializing = false;
+let worker = null;
+let workerReady = false;
+let pendingRequest = null;
 
 /**
- * Initialize the embedding pipeline with Xenova/multilingual-e5-small
- * This model produces 384-dimensional vectors
+ * Initialize the worker
  */
-const initializePipeline = async () => {
-  if (embeddingPipeline) {
-    return embeddingPipeline;
-  }
+const initWorker = () => {
+  if (worker) return worker;
 
-  if (isInitializing) {
-    // Wait for initialization to complete
-    while (isInitializing) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-    return embeddingPipeline;
-  }
+  // Create worker from the separate file
+  worker = new Worker(new URL('./embeddingWorker.js', import.meta.url), {
+    type: 'module'
+  });
 
-  isInitializing = true;
-
-  try {
-    console.log('🔄 Initializing embedding pipeline with Xenova/multilingual-e5-small...');
+  worker.onmessage = (e) => {
+    const { type, payload } = e.data;
     
-    embeddingPipeline = await pipeline(
-      'feature-extraction',
-      'Xenova/multilingual-e5-small',
-      {
-        quantized: true,
-        progress_callback: (progress) => {
-          if (progress.status === 'progress') {
-            const percent = Math.round(progress.progress || 0);
-            if (percent % 10 === 0) {
-              console.log(`📥 Loading model: ${percent}%`);
-            }
-          }
-        }
-      }
-    );
+    if (type === 'init_done') {
+      workerReady = true;
+      console.log('✅ Embedding worker ready');
+      
+      // Clear the loading toast
+      window.dispatchEvent(new CustomEvent('rag-status', { 
+        detail: { 
+          status: 'done', 
+          message: 'ИИ-модель готова',
+          progress: 100
+        } 
+      }));
 
-    console.log('✅ Embedding pipeline initialized successfully');
-    isInitializing = false;
-    return embeddingPipeline;
-  } catch (error) {
-    console.error('❌ Failed to initialize embedding pipeline:', error);
-    isInitializing = false;
-    throw error;
+      if (pendingRequest?.type === 'init') {
+        pendingRequest.resolve();
+        pendingRequest = null;
+      }
+    } 
+    
+    else if (type === 'embed_done') {
+      if (pendingRequest?.type === 'embed') {
+        pendingRequest.resolve(payload.vectors);
+        pendingRequest = null;
+      }
+    }
+    
+    else if (type === 'progress') {
+      // Dispatch event for UI progress bars
+      // transformers.js sends progress as 0-1, so multiply by 100
+      const percent = payload.progress ? Math.round(payload.progress * 100) : 0;
+      
+      window.dispatchEvent(new CustomEvent('rag-status', { 
+        detail: { 
+          status: 'loading_model', 
+          progress: percent,
+          message: 'Загрузка ИИ-модели...'
+        } 
+      }));
+    }
+    
+    else if (type === 'error') {
+      console.error('❌ Embedding worker error:', payload.message);
+      if (pendingRequest) {
+        pendingRequest.reject(new Error(payload.message));
+        pendingRequest = null;
+      }
+    }
+  };
+
+  return worker;
+};
+
+/**
+ * Generate embeddings for multiple texts in batch via Worker
+ */
+export const generateEmbeddingsBatch = async (texts) => {
+  if (!Array.isArray(texts) || texts.length === 0) return [];
+
+  const w = initWorker();
+  
+  // Wait for worker initialization if needed
+  if (!workerReady) {
+    await new Promise((resolve, reject) => {
+      pendingRequest = { type: 'init', resolve, reject };
+      w.postMessage({ type: 'init' });
+    });
   }
+
+  return new Promise((resolve, reject) => {
+    pendingRequest = { type: 'embed', resolve, reject };
+    w.postMessage({ type: 'embed', payload: { texts } });
+  });
 };
 
 /**
  * Generate embedding for a single text
- * @param {string} text - Text to embed
- * @returns {Promise<number[]>} 384-dimensional vector
  */
 export const generateEmbedding = async (text) => {
-  if (!text || typeof text !== 'string') {
-    throw new Error('Invalid text input for embedding');
-  }
-
-  try {
-    const pipeline = await initializePipeline();
-    
-    // Add query prefix for better results (e5-small model expects this)
-    const prefixedText = `query: ${text}`;
-    
-    const output = await pipeline(prefixedText, {
-      pooling: 'mean',
-      normalize: true
-    });
-
-    // Convert to array
-    const vector = Array.from(output.data);
-    
-    if (vector.length !== 384) {
-      console.warn(`⚠️ Unexpected vector dimension: ${vector.length} (expected 384)`);
-    }
-
-    return vector;
-  } catch (error) {
-    console.error('❌ Failed to generate embedding:', error);
-    throw error;
-  }
+  const vectors = await generateEmbeddingsBatch([text]);
+  return vectors[0];
 };
 
 /**
- * Generate embeddings for multiple texts in batch
- * @param {string[]} texts - Array of texts to embed
- * @returns {Promise<number[][]>} Array of 384-dimensional vectors
- */
-export const generateEmbeddingsBatch = async (texts) => {
-  if (!Array.isArray(texts) || texts.length === 0) {
-    return [];
-  }
-
-  try {
-    const pipeline = await initializePipeline();
-    
-    // Add query prefix to all texts
-    const prefixedTexts = texts.map(t => `query: ${t}`);
-    
-    const outputs = await pipeline(prefixedTexts, {
-      pooling: 'mean',
-      normalize: true
-    });
-
-    // transformers.js returns a flat Float32Array in .data
-    // We need to split it into chunks of 384 dimensions
-    const flatData = outputs.data;
-    const batchSize = texts.length;
-    const dimension = 384;
-    
-    const vectors = [];
-    for (let i = 0; i < batchSize; i++) {
-      const start = i * dimension;
-      const end = start + dimension;
-      vectors.push(Array.from(flatData.slice(start, end)));
-    }
-    
-    return vectors;
-  } catch (error) {
-    console.error('❌ Failed to generate batch embeddings:', error);
-    throw error;
-  }
-};
-
-/**
- * Calculate cosine similarity between two vectors
- * @param {number[]} vecA - First vector
- * @param {number[]} vecB - Second vector
- * @returns {number} Similarity score between 0 and 1
- */
-export const cosineSimilarity = (vecA, vecB) => {
-  if (vecA.length !== vecB.length) {
-    throw new Error('Vectors must have the same dimension');
-  }
-
-  let dotProduct = 0;
-  let normA = 0;
-  let normB = 0;
-
-  for (let i = 0; i < vecA.length; i++) {
-    dotProduct += vecA[i] * vecB[i];
-    normA += vecA[i] * vecA[i];
-    normB += vecB[i] * vecB[i];
-  }
-
-  return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
-};
-
-/**
- * Check if the embedding service is ready
- */
-export const isEmbeddingReady = () => {
-  return embeddingPipeline !== null;
-};
-
-/**
- * Preload the embedding model (useful for initialization)
+ * Preload the embedding model
  */
 export const preloadEmbeddingModel = async () => {
-  try {
-    await initializePipeline();
-    return true;
-  } catch (error) {
-    console.error('Failed to preload embedding model:', error);
-    return false;
-  }
+  const w = initWorker();
+  if (workerReady) return true;
+
+  return new Promise((resolve, reject) => {
+    pendingRequest = { type: 'init', resolve, reject };
+    w.postMessage({ type: 'init' });
+  });
 };
+
+export const isEmbeddingReady = () => workerReady;

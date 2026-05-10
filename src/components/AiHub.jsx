@@ -23,6 +23,20 @@ const AiHub = ({ session, profile }) => {
   const [isStreaming, setIsStreaming] = useState(false);
   const [status, setStatus] = useState('idle'); // idle, loading, streaming, error, limit
   const [accessError, setAccessError] = useState(null); // Access denial error
+  const [plotlyLoaded, setPlotlyLoaded] = useState(false);
+
+  // Load Plotly for visualizations
+  useEffect(() => {
+    if (window.Plotly) {
+      setPlotlyLoaded(true);
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://cdn.plot.ly/plotly-2.27.0.min.js';
+    script.async = true;
+    script.onload = () => setPlotlyLoaded(true);
+    document.head.appendChild(script);
+  }, []);
   const [showAccessModal, setShowAccessModal] = useState(false);
   const [inputDisabled, setInputDisabled] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -885,6 +899,18 @@ const AiHub = ({ session, profile }) => {
                   components={{
                     math: ({ node, inline, ...props }) => {
                       return <MathRenderer text={node.value} noSelect={false} />;
+                    },
+                    code: ({ node, inline, className, children, ...props }) => {
+                      const match = /language-chart/.exec(className || '');
+                      if (!inline && match) {
+                        try {
+                          const chartData = JSON.parse(String(children).replace(/\n/g, ' '));
+                          return <AiChart data={chartData} />;
+                        } catch (e) {
+                          return <pre className={className} {...props}>{children}</pre>;
+                        }
+                      }
+                      return <code className={className} {...props}>{children}</code>;
                     }
                   }}
                 >{msg.content}</ReactMarkdown>
@@ -1122,3 +1148,43 @@ const AiHub = ({ session, profile }) => {
 };
 
 export default AiHub;
+
+// Helper component for rendering charts in the chat
+const AiChart = ({ data }) => {
+  const chartRef = useRef(null);
+  
+  useEffect(() => {
+    if (window.Plotly && chartRef.current) {
+      const layout = {
+        paper_bgcolor: 'rgba(0,0,0,0)',
+        plot_bgcolor: 'rgba(0,0,0,0)',
+        margin: { t: 30, r: 20, l: 40, b: 40 },
+        font: { color: '#888', size: 10 },
+        showlegend: data.showlegend || false,
+        autosize: true,
+        height: 250,
+        ...data.layout
+      };
+      
+      const config = { 
+        displayModeBar: false, 
+        responsive: true 
+      };
+      
+      window.Plotly.newPlot(chartRef.current, data.data, layout, config);
+    }
+  }, [data]);
+
+  return (
+    <div className="ai-chart-wrapper" style={{ 
+      width: '100%', 
+      margin: '10px 0',
+      background: 'rgba(255,255,255,0.03)',
+      borderRadius: '12px',
+      padding: '10px',
+      border: '1px solid rgba(124, 58, 237, 0.1)'
+    }}>
+      <div ref={chartRef} style={{ width: '100%', height: '250px' }} />
+    </div>
+  );
+};
