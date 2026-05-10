@@ -107,230 +107,30 @@ const getTimingExtremes = (answersData) => {
 
 // ─── Main Builder: Per-Student Prompt ────────────────────────────
 
+import { buildStudentRagPrompt } from './ragService';
+
+// ─── Main Builder: Per-Student Prompt ────────────────────────────
+
 /**
- * Build AI prompt for a single student's analytics.
+ * Build AI prompt for a single student's analytics using RAG.
  * @param {string} userId - Student's user ID
  * @param {'student'|'teacher'} viewerRole - Who is viewing
  * @param {object} [viewerProfile] - Teacher's profile (if viewerRole === 'teacher')
  * @returns {Promise<{instruction: string, data: object, filename: string}>}
  */
 export const buildStudentPrompt = async (userId, viewerRole = 'student', viewerProfile = null) => {
-  const cacheKey = `ai_prompt_student_${userId}_${viewerRole}`;
+  const cacheKey = `ai_prompt_student_rag_${userId}_${viewerRole}`;
 
   return await fetchWithCache(cacheKey, async () => {
-    // ── 1. Fetch student profile with geo names ──
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('id, first_name, last_name, patronymic, city_id, school_id, class_id')
-      .eq('id', userId)
-      .single();
+    // We now use the RAG-enabled prompt builder
+    const ragPrompt = await buildStudentRagPrompt(userId, viewerRole, viewerProfile);
+    
+    if (!ragPrompt) return null;
 
-    if (!profile) return null;
-
-    const [cityRes, schoolRes, classRes] = await Promise.all([
-      profile.city_id ? supabase.from('cities').select('name').eq('id', profile.city_id).single() : { data: null },
-      profile.school_id ? supabase.from('schools').select('name').eq('id', profile.school_id).single() : { data: null },
-      profile.class_id ? supabase.from('classes').select('name').eq('id', profile.class_id).single() : { data: null }
-    ]);
-
-    const cityName = cityRes.data?.name || '—';
-    const schoolName = schoolRes.data?.name || '—';
-    const className = classRes.data?.name || '—';
-
-    // Build names
-    const initials = [profile.first_name, profile.patronymic].filter(Boolean).map(n => n.charAt(0).toUpperCase() + '.').join(' ');
-    const displayName = `${profile.last_name || ''} ${initials}`.trim() || 'Ученик';
-    const fullName = `${profile.last_name || ''} ${profile.first_name || ''} ${profile.patronymic || ''}`.trim() || 'Ученик';
-
-    // ── 2. Fetch last 200 attempts ──
-    const { data: fetchedAttempts } = await supabase
-      .from('quiz_attempts')
-      .select('*, quizzes(id, title, section_id, content, avg_success_rate)')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(DATA_LIMIT_COUNT);
-
-    const attempts = fetchedAttempts ? fetchedAttempts.reverse() : [];
-
-    if (!attempts || attempts.length === 0) {
-      const empty = buildEmptyPrompt(displayName, `${cityName}, ${schoolName}, ${className}`, viewerRole);
-      return { instruction: empty, data: { status: 'no_data' }, filename: `analytics_${displayName.replace(/\s+/g, '_')}.json` };
-    }
-
-    if (attempts.length < 10) {
-      const notEnough = viewerRole === 'teacher'
-        ? `У ученика ${displayName} слишком мало данных для глубокого педагогического анализа (всего ${attempts.length} попыток). Необходимо минимум 10 прохождений для выявления паттернов обучения.`
-        : `У вас пока недостаточно данных для ИИ-анализа (всего ${attempts.length} попыток). Пройдите еще несколько тестов (минимум 10), чтобы ИИ смог выявить ваши сильные и слабые стороны!`;
-      return { instruction: notEnough, data: { status: 'not_enough_data', count: attempts.length }, filename: `analytics_${displayName.replace(/\s+/g, '_')}.json` };
-    }
-
-    // ── 3. Fetch section names for subjects ──
-    const sectionIds = [...new Set(attempts.map(a => a.quizzes?.section_id).filter(Boolean))];
-    let sectionsMap = {};
-    if (sectionIds.length > 0) {
-      const { data: sections } = await supabase
-        .from('quiz_sections')
-        .select('id, name, class_id')
-        .in('id', sectionIds);
-      if (sections) sections.forEach(s => { sectionsMap[s.id] = s.name; });
-    }
-
-    // ── 4. Compute global stats ──
-    const uniqueQuizIds = new Set(attempts.map(a => a.quiz_id));
-    const gs = {
-      ut: uniqueQuizIds.size,
-      att: attempts.length,
-      ok: attempts.filter(a => a.is_passed && !a.is_incomplete).length,
-      f: attempts.filter(a => !a.is_passed && !a.is_incomplete && !a.is_suspicious).length,
-      s: attempts.filter(a => a.is_suspicious).length,
-      ic: attempts.filter(a => a.is_incomplete).length,
-      str: calcStreak(attempts)
-    };
-
-    // ── 5. Find the very first attempt per quiz (across ALL time, not just 30 days) ──
-    // We use the loaded attempts since they're already sorted asc
-    const firstAttemptPerQuiz = {};
-    attempts.forEach(a => {
-      if (!firstAttemptPerQuiz[a.quiz_id]) {
-        firstAttemptPerQuiz[a.quiz_id] = a;
-      }
-    });
-
-    // ── 6. Group attempts by day ──
-    const dayGroups = {};
-    attempts.forEach(a => {
-      const dayKey = toKZDate(a.created_at);
-      if (!dayGroups[dayKey]) dayGroups[dayKey] = [];
-      dayGroups[dayKey].push(a);
-    });
-
-    // ── 7. Build days object ──
-    const days = {};
-    for (const [dayKey, dayAttempts] of Object.entries(dayGroups)) {
-      const displayDay = formatDateShort(dayKey);
-
-      // Group by quiz within this day
-      const quizGroups = {};
-      dayAttempts.forEach(a => {
-        if (!quizGroups[a.quiz_id]) quizGroups[a.quiz_id] = [];
-        quizGroups[a.quiz_id].push(a);
-      });
-
-      const dayEntries = [];
-      for (const [quizId, quizAttempts] of Object.entries(quizGroups)) {
-        const quiz = quizAttempts[0]?.quizzes;
-        if (!quiz) continue;
-
-        const questions = quiz.content?.questions || [];
-        const subjectName = sectionsMap[quiz.section_id] || '—';
-
-        // Stats for this quiz on this day
-        const stats = {
-          att: quizAttempts.length,
-          ok: quizAttempts.filter(a => a.is_passed && !a.is_incomplete).length,
-          f: quizAttempts.filter(a => !a.is_passed && !a.is_incomplete && !a.is_suspicious).length,
-          s: quizAttempts.filter(a => a.is_suspicious).length,
-          ic: quizAttempts.filter(a => a.is_incomplete).length
-        };
-
-        // Find key attempts
-        const completed = quizAttempts.filter(a => !a.is_incomplete);
-        const firstEver = firstAttemptPerQuiz[quizId];
-
-        // Best (highest score, then lowest time)
-        const best = completed.length > 0
-          ? completed.reduce((b, a) => (a.score > b.score || (a.score === b.score && a.time_spent_total < b.time_spent_total)) ? a : b)
-          : null;
-
-        // Worst (lowest score)
-        const worst = completed.length > 0
-          ? completed.reduce((w, a) => a.score < w.score ? a : w)
-          : null;
-
-        // Suspicious
-        const susp = quizAttempts.find(a => a.is_suspicious);
-
-        // Build det (details)
-        const det = {};
-
-        if (firstEver) {
-          const answersData = Array.isArray(firstEver.answers_data) ? firstEver.answers_data : [];
-          det['1st'] = {
-            t: toKZTime(firstEver.created_at),
-            sc: `${firstEver.score}/${firstEver.max_score}`,
-            dur: firstEver.time_spent_total,
-            ...getTimingExtremes(answersData),
-            err: extractErrors(answersData, questions)
-          };
-          // Remove empty arrays
-          if (det['1st'].err.length === 0) delete det['1st'].err;
-        }
-
-        if (best && best.id !== firstEver?.id) {
-          det.best = {
-            t: toKZTime(best.created_at),
-            sc: `${best.score}/${best.max_score}`,
-            dur: best.time_spent_total,
-            dp: firstEver ? `${best.score - firstEver.score >= 0 ? '+' : ''}${best.score - firstEver.score}` : undefined,
-            dt: firstEver ? `${best.time_spent_total - firstEver.time_spent_total >= 0 ? '+' : ''}${best.time_spent_total - firstEver.time_spent_total}s` : undefined
-          };
-        }
-
-        if (worst && worst.id !== firstEver?.id && worst.id !== best?.id) {
-          det.worst = {
-            t: toKZTime(worst.created_at),
-            sc: `${worst.score}/${worst.max_score}`,
-            dur: worst.time_spent_total
-          };
-        }
-
-        if (susp) {
-          det.susp = {
-            t: toKZTime(susp.created_at),
-            sc: `${susp.score}/${susp.max_score}`,
-            rs: [susp.suspicion_reason].filter(Boolean)
-          };
-        }
-
-        dayEntries.push({
-          sub: subjectName,
-          tn: quiz.title,
-          c_avg: quiz.avg_success_rate || 0,
-          stats,
-          ...(Object.keys(det).length > 0 ? { det } : {})
-        });
-      }
-
-      if (dayEntries.length > 0) {
-        days[displayDay] = dayEntries;
-      }
-    }
-
-    // ── 8. Build final JSON ──
-    const json = {
-      meta: {
-        v: 1,
-        generated: new Date().toLocaleString('ru-RU', { timeZone: 'Asia/Almaty' }) + ' (Алматы)',
-        limit_count: DATA_LIMIT_COUNT
-      },
-      u: {
-        n: fullName,
-        geo: `${cityName}, ${schoolName}, ${className}`
-      },
-      gs,
-      modes: '1st: контрольная (без подсказок, таймер +25с/вопрос); остальные: обучающие (мгновенная обратная связь + пояснения)',
-      days
-    };
-
-    // ── 9. Wrap in instruction text ──
-    const instruction = viewerRole === 'teacher'
-      ? buildTeacherInstruction(viewerProfile)
-      : buildStudentInstruction();
-
+    // Add filename for download support
     return {
-      instruction,
-      data: json,
-      filename: `analytics_${displayName.replace(/\s+/g, '_')}.json`
+      ...ragPrompt,
+      filename: `analytics_rag_${userId.slice(0, 8)}.json`
     };
   }, PROMPT_TTL_HOURS);
 };

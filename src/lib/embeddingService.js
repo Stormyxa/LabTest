@@ -112,8 +112,18 @@ export const generateEmbeddingsBatch = async (texts) => {
       normalize: true
     });
 
-    // Convert to array of arrays
-    const vectors = outputs.map(output => Array.from(output.data));
+    // transformers.js returns a flat Float32Array in .data
+    // We need to split it into chunks of 384 dimensions
+    const flatData = outputs.data;
+    const batchSize = texts.length;
+    const dimension = 384;
+    
+    const vectors = [];
+    for (let i = 0; i < batchSize; i++) {
+      const start = i * dimension;
+      const end = start + dimension;
+      vectors.push(Array.from(flatData.slice(start, end)));
+    }
     
     return vectors;
   } catch (error) {

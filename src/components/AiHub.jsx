@@ -17,7 +17,7 @@ const AiHub = ({ session, profile }) => {
   const [currentChatId, setCurrentChatId] = useState(null);
   const [aiChatTitle, setAiChatTitle] = useState('ИИ-Хаб LabTest');
   const [currentQuizId, setCurrentQuizId] = useState(null);
-  
+
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -39,7 +39,7 @@ const AiHub = ({ session, profile }) => {
     }, 300);
     return () => clearTimeout(timeout);
   }, [historyPanelWidth]);
-  
+
   const [position, setPosition] = useState(() => {
     const savedPos = sessionStorage.getItem('ai_hub_position');
     const savedSize = sessionStorage.getItem('ai_hub_size');
@@ -83,48 +83,48 @@ const AiHub = ({ session, profile }) => {
       timeout = setTimeout(() => {
         const windowWidth = window.innerWidth;
         const windowHeight = window.innerHeight;
-        
+
         // Check if AI hub is out of bounds
         let needsUpdate = false;
         const newPosition = { ...position };
         const newSize = { ...size };
-        
+
         // Check if AI hub is too far right
         if (position.x + size.width > windowWidth - 20) {
           newPosition.x = Math.max(0, windowWidth - size.width - 20);
           needsUpdate = true;
         }
-        
+
         // Check if AI hub is too far down
         if (position.y + size.height > windowHeight - 20) {
           newPosition.y = Math.max(0, windowHeight - size.height - 20);
           needsUpdate = true;
         }
-        
+
         // Check if AI hub is too far left
         if (position.x < 0) {
           newPosition.x = 0;
           needsUpdate = true;
         }
-        
+
         // Check if AI hub is too far up
         if (position.y < 0) {
           newPosition.y = 0;
           needsUpdate = true;
         }
-        
+
         // Check if AI hub is too wide for window
         if (size.width > windowWidth - 20) {
           newSize.width = windowWidth - 20;
           needsUpdate = true;
         }
-        
+
         // Check if AI hub is too tall for window
         if (size.height > windowHeight - 20) {
           newSize.height = windowHeight - 20;
           needsUpdate = true;
         }
-        
+
         if (needsUpdate) {
           setPosition(newPosition);
           setSize(newSize);
@@ -138,7 +138,7 @@ const AiHub = ({ session, profile }) => {
       window.removeEventListener('resize', handleResize);
     };
   }, [position, size]);
-  
+
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -149,7 +149,7 @@ const AiHub = ({ session, profile }) => {
       const userRole = profile?.role;
       const hasClass = profile?.class_id ? true : false;
       const isAuthenticated = !!userRole;
-      
+
       if (!isAuthenticated) {
         setAccessError({
           type: 'NOT_AUTHENTICATED',
@@ -161,7 +161,7 @@ const AiHub = ({ session, profile }) => {
         setIsMinimized(false);
         return;
       }
-      
+
       if (userRole === 'player' && !hasClass) {
         setAccessError({
           type: 'SPECTATOR',
@@ -173,7 +173,7 @@ const AiHub = ({ session, profile }) => {
         setIsMinimized(false);
         return;
       }
-      
+
       // Check if user is in first attempt mode
       const isFirstAttemptMode = localStorage.getItem('quiz_first_attempt_mode') === 'true';
       if (isFirstAttemptMode) {
@@ -188,10 +188,14 @@ const AiHub = ({ session, profile }) => {
       } else {
         setIsOpen(true);
         setIsMinimized(false);
+
+        // Pre-warm embedding model when opening
+        import('../lib/embeddingService').then(m => m.preloadEmbeddingModel());
+
         if (e.detail?.title) {
           setAiChatTitle(e.detail.title);
         }
-        
+
         // Auto-run analysis if instruction and data provided
         if (e.detail?.instruction && e.detail?.data) {
           // Create user-friendly message instead of showing system instructions
@@ -205,11 +209,11 @@ const AiHub = ({ session, profile }) => {
           } else {
             userMessage = 'Проведи анализ предоставленных данных';
           }
-          
+
           const initialMessages = [{ role: 'user', content: userMessage }];
           setMessages(initialMessages);
           setCurrentQuizId(e.detail.quizId || null);
-          
+
           setTimeout(() => {
             runStreaming(initialMessages, e.detail.instruction, e.detail.data, e.detail.contextType, e.detail.contextId, e.detail.title, initialMessages, e.detail.quizId);
           }, 100);
@@ -240,7 +244,7 @@ const AiHub = ({ session, profile }) => {
     const modal = document.createElement('div');
     Object.assign(modal.style, createModalOverlay(10001));
     modal.style.animation = 'fadeIn 0.3s ease-out';
-    
+
     modal.innerHTML = `
       <div style="
         background: linear-gradient(135deg, #7c3aed, #6366f1);
@@ -280,7 +284,7 @@ const AiHub = ({ session, profile }) => {
         </button>
       </div>
     `;
-    
+
     // Add styles
     const style = document.createElement('style');
     style.textContent = `
@@ -301,13 +305,13 @@ const AiHub = ({ session, profile }) => {
     `;
     document.head.appendChild(style);
     document.body.appendChild(modal);
-    
+
     // Auto-close after 5 seconds or on click outside
     const timeout = setTimeout(() => {
       modal.remove();
       style.remove();
     }, 5000);
-    
+
     modal.addEventListener('click', (e) => {
       if (e.target === modal) {
         clearTimeout(timeout);
@@ -341,7 +345,7 @@ const AiHub = ({ session, profile }) => {
     const initialMessages = [userMsg];
     setMessages(initialMessages);
     setCurrentChatId(null);
-    
+
     await runStreaming(initialMessages, instruction, data, type, id, title, initialMessages);
   };
 
@@ -349,7 +353,7 @@ const AiHub = ({ session, profile }) => {
     setIsStreaming(true);
     setStatus('streaming');
     setAccessError(null); // Clear previous access errors
-    
+
     let fullText = '';
     const assistantMsg = { role: 'assistant', content: '' };
     setMessages(prev => [...prev, assistantMsg]);
@@ -357,19 +361,19 @@ const AiHub = ({ session, profile }) => {
     try {
       // Prepare full messages for API
       const apiMessages = chatMessages.map(m => ({ role: m.role, content: m.content }));
-      
+
       // Check if user is talking about themselves
-      const isAboutUser = input.toLowerCase().includes('я ') || 
-                         input.toLowerCase().includes('меня') || 
-                         input.toLowerCase().includes('мой') || 
-                         input.toLowerCase().includes('моя') || 
-                         input.toLowerCase().includes('мои') ||
-                         input.toLowerCase().includes('мне');
-      
+      const isAboutUser = input.toLowerCase().includes('я ') ||
+        input.toLowerCase().includes('меня') ||
+        input.toLowerCase().includes('мой') ||
+        input.toLowerCase().includes('моя') ||
+        input.toLowerCase().includes('мои') ||
+        input.toLowerCase().includes('мне');
+
       // Gather comprehensive user info for personal conversations
       const getUserInfo = async () => {
         if (!profile || !session?.user?.id) return null;
-        
+
         try {
           // Fetch user's recent detailed attempts for deep analysis
           const { data: recentAttempts, error: attemptsError } = await supabase
@@ -378,11 +382,11 @@ const AiHub = ({ session, profile }) => {
             .eq('user_id', session.user.id)
             .order('created_at', { ascending: false })
             .limit(5);
-          
+
           if (attemptsError) {
             console.error('Error fetching quiz_attempts:', attemptsError);
           }
-          
+
           // Fetch sections for the attempts
           let sections = {};
           if (recentAttempts && recentAttempts.length > 0) {
@@ -395,14 +399,18 @@ const AiHub = ({ session, profile }) => {
               sections = Object.fromEntries((sectionsData || []).map(s => [s.id, s]));
             }
           }
-          
-          // Fetch user's class info
-          const { data: userClass } = await supabase
-            .from('classes')
-            .select('name, school_id')
-            .eq('id', profile.class_id)
-            .maybeSingle();
-          
+
+          // Fetch user's class info (ONLY if they have a class)
+          let userClass = null;
+          if (profile.class_id) {
+            const { data } = await supabase
+              .from('classes')
+              .select('name, school_id')
+              .eq('id', profile.class_id)
+              .maybeSingle();
+            userClass = data;
+          }
+
           return {
             profile: {
               name: `${profile.first_name} ${profile.last_name}`,
@@ -446,21 +454,21 @@ const AiHub = ({ session, profile }) => {
           return null;
         }
       };
-      
+
       // Construction of the prompt with context
       let currentContextStr = '';
-      
+
       if (instruction) {
         // Case: Detailed analysis mode (e.g. from AnalyticsDetails)
         const contextJson = contextData ? `\n\nКонтекст данных: ${JSON.stringify(contextData)}` : '';
         const recentMessage = chatMessages[chatMessages.length - 1].content;
-        
+
         // Intent detection for better RAG search
         let searchQuery = recentMessage;
-        const isErrorSearch = recentMessage.toLowerCase().includes('ошибк') || 
-                             recentMessage.toLowerCase().includes('неверн') || 
-                             recentMessage.toLowerCase().includes('разбор');
-        
+        const isErrorSearch = recentMessage.toLowerCase().includes('ошибк') ||
+          recentMessage.toLowerCase().includes('неверн') ||
+          recentMessage.toLowerCase().includes('разбор');
+
         if (isErrorSearch) {
           // Boost search with quiz title and status tags
           searchQuery = `[STATUS: WRONG] [QUESTION] "${aiChatTitle}" ${recentMessage}`;
@@ -469,37 +477,37 @@ const AiHub = ({ session, profile }) => {
         // Search RAG for every message to provide maximum context
         let ragStr = '';
         if (session?.user?.id) {
-          const relevantFacts = await searchUserFacts(session.user.id, searchQuery, { 
+          const relevantFacts = await searchUserFacts(session.user.id, searchQuery, {
             quizId: quizId || currentQuizId,
-            limit: 15 
+            limit: 15
           });
           if (relevantFacts.length > 0) {
             ragStr = `\n\nРелевантные факты из памяти (RAG):\n${relevantFacts.map(f => `- ${f.fact}`).join('\n')}`;
           }
         }
-        
+
         apiMessages[0].content = `${instruction}${contextJson}${ragStr}\n\nПользователь запросил анализ этого контекста.`;
       } else if (profile) {
         // Case: General chat mode
         const lastUserMsg = chatMessages[chatMessages.length - 1].content;
-        const isErrorSearch = lastUserMsg.toLowerCase().includes('ошибк') || 
-                             lastUserMsg.toLowerCase().includes('неверн') || 
-                             lastUserMsg.toLowerCase().includes('разбор');
-        
-        const generalSearchQuery = isErrorSearch 
+        const isErrorSearch = lastUserMsg.toLowerCase().includes('ошибк') ||
+          lastUserMsg.toLowerCase().includes('неверн') ||
+          lastUserMsg.toLowerCase().includes('разбор');
+
+        const generalSearchQuery = isErrorSearch
           ? `[STATUS: WRONG] [QUESTION] ${lastUserMsg}`
           : lastUserMsg;
 
         const [userInfo, relevantFacts] = await Promise.all([
           getUserInfo(), // Refresh summary info
-          session?.user?.id ? searchUserFacts(session.user.id, generalSearchQuery, { 
+          session?.user?.id ? searchUserFacts(session.user.id, generalSearchQuery, {
             quizId: currentQuizId, // Use current test context if available
-            limit: 15 
+            limit: 15
           }) : Promise.resolve([])
         ]);
 
         const userInfoStr = userInfo ? `\nОбщая сводка: ${JSON.stringify(userInfo)}` : '';
-        const factStr = relevantFacts.length > 0 
+        const factStr = relevantFacts.length > 0
           ? `\n\nРелевантные факты из памяти (RAG):\n${relevantFacts.map(f => `- ${f.fact}`).join('\n')}`
           : '';
 
@@ -557,19 +565,19 @@ const AiHub = ({ session, profile }) => {
           }
         }
       });
-      
+
       setStatus('idle');
     } catch (e) {
       console.error('Streaming error:', e);
       console.error('Error message:', e.message);
       console.error('Error reason:', e.reason);
       console.error('Error detail:', e.messageDetail);
-      
+
       // Handle access denial errors specifically
       if (e.message?.includes('NO_ACCESS') || e.reason === 'NO_ACCESS' || e.message?.includes('SPECTATOR') || e.message?.includes('NOT_AUTHENTICATED')) {
-        const errorType = e.reason === 'SPECTATOR' || e.message?.includes('SPECTATOR') ? 'SPECTATOR' : 
-                         e.reason === 'NOT_AUTHENTICATED' || e.message?.includes('NOT_AUTHENTICATED') ? 'NOT_AUTHENTICATED' : 
-                         'NO_ACCESS';
+        const errorType = e.reason === 'SPECTATOR' || e.message?.includes('SPECTATOR') ? 'SPECTATOR' :
+          e.reason === 'NOT_AUTHENTICATED' || e.message?.includes('NOT_AUTHENTICATED') ? 'NOT_AUTHENTICATED' :
+            'NO_ACCESS';
         setAccessError({
           type: errorType,
           message: e.messageDetail || e.message || 'Доступ к ИИ ограничен'
@@ -601,16 +609,16 @@ const AiHub = ({ session, profile }) => {
 
   const confirmDeleteChat = useCallback(async () => {
     if (!chatToDelete) return;
-    
+
     try {
       await deleteAiAnalysis(chatToDelete);
       loadHistory();
-      
+
       // If the deleted chat was the current one, start a new chat
       if (currentChatId === chatToDelete) {
         startNewChat();
       }
-      
+
       setShowDeleteModal(false);
       setChatToDelete(null);
     } catch (e) {
@@ -620,12 +628,12 @@ const AiHub = ({ session, profile }) => {
 
   const handleSend = useCallback(async () => {
     if (!input.trim() || isStreaming) return;
-    
+
     const userMsg = { role: 'user', content: input };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
     setInput('');
-    
+
     await runStreaming(newMessages, null, null, null, null, null, newMessages, currentQuizId);
   }, [input, isStreaming, messages, currentQuizId]);
 
@@ -637,7 +645,7 @@ const AiHub = ({ session, profile }) => {
       x: e.clientX - position.x,
       y: e.clientY - position.y
     });
-    
+
     // Prevent text selection during resize
     document.body.style.userSelect = 'none';
     document.body.style.webkitUserSelect = 'none';
@@ -645,15 +653,15 @@ const AiHub = ({ session, profile }) => {
 
   useEffect(() => {
     let animationFrameId = null;
-    
+
     const handleMouseMove = (e) => {
       if (!isDragging) return;
-      
+
       // Throttle with requestAnimationFrame for smooth performance
       if (animationFrameId) {
         cancelAnimationFrame(animationFrameId);
       }
-      
+
       animationFrameId = requestAnimationFrame(() => {
         setPosition({
           x: e.clientX - dragOffset.x,
@@ -715,12 +723,12 @@ const AiHub = ({ session, profile }) => {
   }
 
   return (
-    <div 
+    <div
       className="ai-hub-container animate"
-      style={{ 
-        left: position.x, 
-        top: position.y, 
-        width: size.width, 
+      style={{
+        left: position.x,
+        top: position.y,
+        width: size.width,
         height: size.height,
         opacity: isDragging ? 0.8 : 1
       }}
@@ -748,7 +756,7 @@ const AiHub = ({ session, profile }) => {
 
       <div className="ai-hub-content">
         {/* History Panel */}
-        <div className={`ai-history-panel ${isHistoryOpen ? 'open' : ''}`} style={{ 
+        <div className={`ai-history-panel ${isHistoryOpen ? 'open' : ''}`} style={{
           width: isHistoryOpen ? `${historyPanelWidth}px` : '0px',
           overflow: isHistoryOpen ? 'visible' : 'hidden'
         }}>
@@ -760,8 +768,8 @@ const AiHub = ({ session, profile }) => {
               </div>
               <div className="custom-scrollbar" style={{ overflowY: 'auto', flex: 1 }}>
                 {history.map(item => (
-                  <div 
-                    key={item.id} 
+                  <div
+                    key={item.id}
                     className={`history-item ${currentChatId === item.id ? 'active' : ''}`}
                     style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
                   >
@@ -787,7 +795,7 @@ const AiHub = ({ session, profile }) => {
                     >
                       <Trash2 size={14} />
                     </button>
-                    <div 
+                    <div
                       style={{ flex: 1, cursor: 'pointer' }}
                       onClick={() => {
                         setMessages(item.data?.messages || [{ role: 'assistant', content: item.content }]);
@@ -802,7 +810,7 @@ const AiHub = ({ session, profile }) => {
                 {history.length === 0 && <div style={{ opacity: 0.4, fontSize: '0.8rem', textAlign: 'center' }}>История пуста</div>}
               </div>
               {/* History Panel Resizer */}
-              <div 
+              <div
                 className="no-drag"
                 style={{
                   position: 'absolute',
@@ -820,7 +828,7 @@ const AiHub = ({ session, profile }) => {
                   const startX = e.clientX;
                   const startWidth = historyPanelWidth;
                   let animationFrameId = null;
-                  
+
                   const onMouseMove = (e) => {
                     if (animationFrameId) {
                       cancelAnimationFrame(animationFrameId);
@@ -830,7 +838,7 @@ const AiHub = ({ session, profile }) => {
                       setHistoryPanelWidth(Math.max(200, Math.min(newWidth, size.width - 200)));
                     });
                   };
-                  
+
                   const onMouseUp = () => {
                     if (animationFrameId) {
                       cancelAnimationFrame(animationFrameId);
@@ -838,7 +846,7 @@ const AiHub = ({ session, profile }) => {
                     window.removeEventListener('mousemove', onMouseMove);
                     window.removeEventListener('mouseup', onMouseUp);
                   };
-                  
+
                   window.addEventListener('mousemove', onMouseMove);
                   window.addEventListener('mouseup', onMouseUp);
                 }}
@@ -856,9 +864,9 @@ const AiHub = ({ session, profile }) => {
               <p>Чем я могу помочь? Задай вопрос по тестам или нажми на кнопку анализа в любом разделе.</p>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '20px' }}>
                 {['Как улучшить оценки?', 'Топ моих ошибок', 'План подготовки'].map(t => (
-                  <button 
-                    key={t} 
-                    className="no-drag" 
+                  <button
+                    key={t}
+                    className="no-drag"
                     style={{ padding: '6px 12px', fontSize: '0.75rem', background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)' }}
                     onClick={() => { setInput(t); }}
                   >
@@ -868,13 +876,13 @@ const AiHub = ({ session, profile }) => {
               </div>
             </div>
           )}
-          
+
           {messages.map((msg, i) => (
             <div key={i} className={`ai-message ${msg.role}`}>
               <div className="ai-markdown-content">
-                <ReactMarkdown 
+                <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
-                  components={{ 
+                  components={{
                     math: ({ node, inline, ...props }) => {
                       return <MathRenderer text={node.value} noSelect={false} />;
                     }
@@ -888,7 +896,7 @@ const AiHub = ({ session, profile }) => {
               </div>
             </div>
           ))}
-          
+
           {status === 'streaming' && (
             <div className="ai-status-tag streaming" style={{ alignSelf: 'flex-start', marginLeft: '20px' }}>
               <RefreshCw size={12} className="spinner" /> Печатает...
@@ -913,23 +921,23 @@ const AiHub = ({ session, profile }) => {
               <Shield size={18} />
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>
-                  {accessError.type === 'SPECTATOR' ? 'Доступ ограничен' : 
-                   accessError.type === 'NOT_AUTHENTICATED' ? 'Требуется авторизация' : 
-                   'Нет доступа'}
+                  {accessError.type === 'SPECTATOR' ? 'Доступ ограничен' :
+                    accessError.type === 'NOT_AUTHENTICATED' ? 'Требуется авторизация' :
+                      'Нет доступа'}
                 </div>
                 <div style={{ opacity: 0.9, fontSize: '0.8rem' }}>
                   {accessError.type === 'SPECTATOR' ? 'Наблюдатели (без класса) не имеют доступа к ИИ-анализу.' :
-                   accessError.type === 'NOT_AUTHENTICATED' ? 'Войдите в систему, чтобы использовать ИИ-анализ.' :
-                   accessError.message}
+                    accessError.type === 'NOT_AUTHENTICATED' ? 'Войдите в систему, чтобы использовать ИИ-анализ.' :
+                      accessError.message}
                 </div>
               </div>
             </div>
           )}
-          
+
           <div className="ai-input-wrapper no-drag">
-            <input 
+            <input
               ref={inputRef}
-              type="text" 
+              type="text"
               placeholder={inputDisabled ? "Доступ ограничен" : "Спроси меня о чем угодно..."}
               value={input}
               onChange={e => setInput(e.target.value)}
@@ -944,12 +952,12 @@ const AiHub = ({ session, profile }) => {
               <button className="ai-action-btn" onClick={downloadChat} title="Скачать .md">
                 <Download size={14} />
               </button>
-              <button 
+              <button
                 onClick={handleSend}
                 disabled={isStreaming || !input.trim()}
-                style={{ 
-                  background: 'var(--primary-color)', 
-                  width: '32px', height: '32px', 
+                style={{
+                  background: 'var(--primary-color)',
+                  width: '32px', height: '32px',
                   borderRadius: '50%', padding: 0,
                   display: 'flex', alignItems: 'center', justifyContent: 'center'
                 }}
@@ -959,17 +967,17 @@ const AiHub = ({ session, profile }) => {
             </div>
           </div>
         </div>
-        
+
         {/* Resizer */}
-        <div 
-          className="ai-resizer no-drag" 
+        <div
+          className="ai-resizer no-drag"
           onMouseDown={(e) => {
             const startX = e.clientX;
             const startY = e.clientY;
             const startW = size.width;
             const startH = size.height;
             let animationFrameId = null;
-            
+
             const onMouseMove = (e) => {
               if (animationFrameId) {
                 cancelAnimationFrame(animationFrameId);
@@ -978,7 +986,7 @@ const AiHub = ({ session, profile }) => {
                 const maxWidth = window.innerWidth - position.x - 20;
                 const maxHeight = window.innerHeight - position.y - 20;
                 const minWidth = isHistoryOpen ? historyPanelWidth + 250 : 300; // Ensure space for chat when history is open
-                
+
                 setSize({
                   width: Math.max(minWidth, Math.min(startW + (e.clientX - startX), maxWidth)),
                   height: Math.max(400, Math.min(startH + (e.clientY - startY), maxHeight))
@@ -1006,16 +1014,16 @@ const AiHub = ({ session, profile }) => {
               <Shield size={32} />
             </div>
             <h2 style={{ marginBottom: '15px' }}>
-              {accessError?.type === 'SPECTATOR' ? 'Доступ ограничен' : 
-               accessError?.type === 'NOT_AUTHENTICATED' ? 'Требуется авторизация' : 
-               'Нет доступа'}
+              {accessError?.type === 'SPECTATOR' ? 'Доступ ограничен' :
+                accessError?.type === 'NOT_AUTHENTICATED' ? 'Требуется авторизация' :
+                  'Нет доступа'}
             </h2>
             <p style={{ opacity: 0.7, lineHeight: '1.6', marginBottom: '25px' }}>
-              {accessError?.type === 'SPECTATOR' ? 
+              {accessError?.type === 'SPECTATOR' ?
                 'Наблюдатели (без класса) не имеют доступа к ИИ-анализу. Присоединитесь к классу для получения доступа.' :
-               accessError?.type === 'NOT_AUTHENTICATED' ? 
-                'Войдите в систему, чтобы использовать ИИ-анализ.' :
-               accessError?.message || 'Доступ к ИИ ограничен'}
+                accessError?.type === 'NOT_AUTHENTICATED' ?
+                  'Войдите в систему, чтобы использовать ИИ-анализ.' :
+                  accessError?.message || 'Доступ к ИИ ограничен'}
             </p>
             <button
               onClick={() => setShowAccessModal(false)}

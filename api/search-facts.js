@@ -31,10 +31,10 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { userId, query, limit = 10, quizId, classId, enableTimeDecay = true, halfLifeDays = 30 } = req.body;
+  const { userId, query, queryVector, limit = 10, quizId, classId, enableTimeDecay = true, halfLifeDays = 30 } = req.body;
 
-  if (!userId || !query) {
-    return res.status(400).json({ error: 'Missing required parameters: userId, query' });
+  if (!userId || (!query && !queryVector)) {
+    return res.status(400).json({ error: 'Missing required parameters: userId, query or queryVector' });
   }
 
   if (!qdrantClient) {
@@ -43,8 +43,16 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Generate embedding for the query
-    const queryVector = await generateEmbedding(query);
+    // Use provided vector or generate one (fallback, though client should provide it now)
+    let vector = queryVector;
+    if (!vector && query) {
+      console.log('⚠️ Generating embedding on server-side (fallback)');
+      vector = await generateEmbedding(query);
+    }
+
+    if (!vector) {
+      return res.status(400).json({ error: 'Could not obtain query vector' });
+    }
 
     // Build filter
     const filter = {
@@ -63,7 +71,7 @@ export default async function handler(req, res) {
 
     // Search in Qdrant
     const response = await qdrantClient.search(COLLECTION_NAME, {
-      vector: queryVector,
+      vector,
       limit: limit * 2,
       filter,
       with_payload: true

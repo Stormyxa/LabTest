@@ -1,6 +1,7 @@
 import { searchFacts, isQdrantConfigured } from './qdrantClient.js';
-import { generateEmbedding } from './embeddingService.js';
+import { generateEmbedding, generateEmbeddingsBatch } from './embeddingService.js';
 import { supabase } from './supabase';
+import { extractAllFacts, limitFacts } from './factExtractor.js';
 
 /**
  * RAG-enabled AI analysis service
@@ -257,9 +258,127 @@ export const buildStudentRagPrompt = async (userId, viewerRole = 'student', view
       displayName,
       fullName,
       geo: `${cityName}, ${schoolName}, ${className}`,
-      hasRagContext: !!ragContext
+      hasRagContext: !!ragContext,
+      // Minimal meta for AI to know what it's looking at
+      meta: {
+        v: 2,
+        mode: 'STRICT_RAG',
+        generated: new Date().toLocaleString('ru-RU', { timeZone: 'Asia/Almaty' })
+      }
     }
   };
+};
+
+/**
+ * Process and store facts for an attempt on the client side.
+ * This offloads embedding generation from the server.
+ */
+export const processAndStoreAttemptFacts = async (attemptId, quizId, userId, sectionName = null, quizClass = null) => {
+  try {
+    console.log(`🔄 RAG: Starting client-side processing for attempt ${attemptId}`);
+
+    // 1. Fetch data from Supabase (client-side has session)
+    const [attemptRes, quizRes, profileRes] = await Promise.all([
+      supabase.from('quiz_attempts').select('*').eq('id', attemptId).single(),
+      supabase.from('quizzes').select('*, quiz_sections(name, class_id, book_url)').eq('id', quizId).single(),
+      supabase.from('profiles').select('*').eq('id', userId).single()
+    ]);
+
+    if (attemptRes.error || !attemptRes.data) throw new Error('Attempt not found');
+    if (quizRes.error || !quizRes.data) throw new Error('Quiz not found');
+    if (profileRes.error || !profileRes.data) throw new Error('Profile not found');
+
+    const attempt = attemptRes.data;
+    const quiz = quizRes.data;
+    const profile = profileRes.data;
+
+    // 2. Fetch all attempts for stats
+    const { data: allAttempts } = await supabase
+      .from('quiz_attempts')
+      .select('score, max_score, time_spent_total, created_at')
+      .eq('quiz_id', quizId)
+      .eq('user_id', userId)
+      .order('created_at', { ascending: true });
+
+    let summary = null;
+    if (allAttempts && allAttempts.length > 0) {
+      const totalScorePercent = allAttempts.reduce((sum, a) => sum + (a.score / (a.max_score || 1)) * 100, 0);
+      const totalTime = allAttempts.reduce((sum, a) => sum + (a.time_spent_total || 0), 0);
+      const bestScorePercent = Math.max(...allAttempts.map(a => (a.score / (a.max_score || 1)) * 100));
+      const firstScorePercent = (allAttempts[0].score / (allAttempts[0].max_score || 1)) * 100;
+      const currentScorePercent = (attempt.score / (attempt.max_score || 1)) * 100;
+
+      summary = {
+        avg_score: totalScorePercent / allAttempts.length,
+        avg_time: totalTime / allAttempts.length,
+        attempts_count: allAttempts.length,
+        best_score: bestScorePercent,
+        is_first: allAttempts.length === 1 || (allAttempts[0]?.id === attempt.id),
+        is_best: currentScorePercent >= bestScorePercent,
+        progress: currentScorePercent - firstScorePercent,
+        benchmark: quiz.avg_success_rate || null
+      };
+    }
+
+    // 3. Extract facts
+    const sName = sectionName || quiz.quiz_sections?.name || null;
+    const subject = sName || 'Неизвестный предмет';
+    const { facts, language } = await extractAllFacts({
+      attempt,
+      quiz,
+      profile,
+      subject,
+      sectionName: sName,
+      quizClass,
+      summary
+    });
+
+    const limitedFacts = limitFacts(facts, 20, true);
+    console.log(`📝 RAG: Extracted ${limitedFacts.length} facts`);
+
+    // 4. Generate embeddings (client-side)
+    const vectors = await generateEmbeddingsBatch(limitedFacts);
+    const readyFacts = limitedFacts.map((fact, i) => ({
+      fact,
+      vector: vectors[i],
+      metadata: {
+        attemptId,
+        score: attempt.score,
+        maxScore: attempt.max_score,
+        isPassed: attempt.is_passed,
+        isSuspicious: attempt.is_suspicious,
+        isIncomplete: attempt.is_incomplete
+      }
+    }));
+
+    // 5. Send to "dumb" save-vectors API
+    const response = await fetch('/api/save-vectors', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId,
+        quizId,
+        attemptId,
+        subject,
+        language,
+        profile: { class_id: profile.class_id },
+        facts: readyFacts
+      })
+    });
+
+    if (response.ok) {
+      const result = await response.json();
+      console.log(`✅ RAG: Stored ${result.factsStored} facts via client-side flow`);
+      return result;
+    } else {
+      const err = await response.json();
+      throw new Error(err.error || 'Failed to save vectors');
+    }
+
+  } catch (error) {
+    console.error('❌ RAG: Client-side storage failed:', error);
+    throw error;
+  }
 };
 
 const buildStudentRagInstruction = (name, geo, ragContext) => {
@@ -486,17 +605,26 @@ ${ragSection}
  */
 export const triggerFactStorage = async (attemptId, quizId, userId, sectionName = null, quizClass = null) => {
   try {
-    const response = await fetch('/api/store-facts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ attemptId, quizId, userId, sectionName, quizClass })
-    });
-
-    if (response.ok) {
-      const result = await response.json();
-      console.log(`✅ RAG: Stored ${result.factsStored} facts for user ${userId}`);
-    }
+    // New Flow: Process and embed on client, then save to server
+    await processAndStoreAttemptFacts(attemptId, quizId, userId, sectionName, quizClass);
   } catch (error) {
     console.warn('RAG fact storage failed (non-critical):', error);
+    
+    // Fallback to legacy server-side flow if client-side fails
+    try {
+      console.log('🔄 RAG: Falling back to server-side processing...');
+      const response = await fetch('/api/store-facts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ attemptId, quizId, userId, sectionName, quizClass })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log(`✅ RAG: Stored ${result.factsStored} facts (server-side fallback)`);
+      }
+    } catch (fallbackError) {
+      console.warn('RAG server-side fallback also failed:', fallbackError);
+    }
   }
 };

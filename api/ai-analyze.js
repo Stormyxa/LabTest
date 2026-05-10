@@ -76,7 +76,32 @@ export default async function handler(req, res) {
     console.log('🔍 AI API Debug (Creator):', debugInfo);
   }
   
-  // Access control checks
+  // --- Access Control & Rate Limiting ---
+  const userId = req.body?.userId;
+  
+  // 1. Fetch current profile from DB to ensure access (more secure than trusting client body)
+  let dbRole = userRole;
+  let dbHasClass = hasClass;
+  
+  if (userId) {
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role, class_id')
+        .eq('id', userId)
+        .single();
+        
+      if (profile) {
+        dbRole = profile.role;
+        dbHasClass = profile.class_id ? true : false;
+      }
+    } catch (e) {
+      console.error('❌ AI-Analyze: DB Profile check failed:', e);
+    }
+  }
+
+  console.log(`🤖 AI Request: User=${userId}, Role=${dbRole}, HasClass=${dbHasClass}`);
+
   if (!isAuthenticated) {
     return res.status(403).json({ 
       error: 'NO_ACCESS',
@@ -85,13 +110,13 @@ export default async function handler(req, res) {
     });
   }
   
-  const rateLimits = getRateLimits(userRole, hasClass);
+  const rateLimits = getRateLimits(dbRole, dbHasClass);
   if (rateLimits.daily === 0 && rateLimits.perMinute === 0) {
-    const reason = isPlayer && !hasClass ? 'SPECTATOR' : 'NO_ACCESS';
+    const reason = (dbRole === 'player' && !dbHasClass) ? 'SPECTATOR' : 'NO_ACCESS';
     return res.status(403).json({ 
       error: 'NO_ACCESS',
       reason: reason,
-      message: isPlayer && !hasClass 
+      message: (dbRole === 'player' && !dbHasClass) 
         ? 'Наблюдатели (без класса) не имеют доступа к ИИ-анализу'
         : 'У вас нет доступа к ИИ-анализу'
     });
@@ -131,22 +156,20 @@ export default async function handler(req, res) {
 
     const systemPrompt = `Ты — элитный педагогический ИИ-аналитик LabTest. Твои ответы должны быть глубокими, профессиональными, но структурированными. Избегай лишней 'воды', чтобы ответ не обрывался. Если информации очень много, используй таблицы и списки. Всегда отвечай на языке пользователя (русский). ВАЖНО: Никогда не повторяй один и тот же символ или слово много раз подряд. Не создавай бесконечные повторения. Отвечай кратко и по существу.
 
-ИНФОРМАЦИЯ О ДАННЫХ:
-- Тебе предоставляются данные в двух форматах: JSON-сводка (userInfo) и список фактов из векторной памяти (RAG).
+ИНФОРМАЦИЯ О ДАННЫХ (STRICT RAG):
+- Мы перешли на модель STRICT RAG. Основной источник знаний об ученике — это список релевантных фактов из векторной памяти (RAG).
+- JSON-сводка (userInfo) теперь содержит только базовые метаданные (ФИО, город, школа). Вся история попыток находится в RAG.
 - Факты RAG имеют префиксы: [METADATA], [BEHAVIOR], [SUMMARY], [QUESTION].
-- В фактах [QUESTION] теперь есть теги [STATUS: WRONG] или [STATUS: CORRECT]. Приоритетно анализируй WRONG для работы над ошибками.
-- В JSON-сводке (contextData) есть объект 'questions' (словарь текстов, опций и пояснений) и 'attempts' (история с ISO-таймштампами).
-- В [METADATA] и JSON-объекте 'quiz' содержатся 'resources' (видеоуроки, ссылки на YouTube, документы). Если ученик часто ошибается в одной теме, обязательно рекомендуй ему посмотреть соответствующий видеоурок из списка ресурсов.
-- Время в системе указано в формате UTC или ISO, но для пользователя оно должно отображаться по времени Казахстана (GMT+5).
+- В фактах [QUESTION] есть теги [STATUS: WRONG] или [STATUS: CORRECT]. Это твои главные сигналы для анализа ошибок.
+- В [METADATA] содержатся 'resources' (видеоуроки, ссылки). Если ученик часто ошибается, рекомендуй соответствующие ресурсы.
+- Время в системе GMT+5 (Казахстан).
 
 ТВОЯ РОЛЬ И СТИЛЬ:
 - Ты — Персональный Цифровой Тьютор. Твоя задача не просто выдать отчет, а помочь ученику вырасти.
-- Проявляй "педагогическую эмпатию": если ученик повторяет одну и ту же ошибку в разных попытках (смотри историю в JSON или RAG), мягко укажи на это: "Кажется, эта тема всё еще вызывает сложности, давай разберем её иначе".
-- ИНТЕРПРЕТАЦИЯ ИЗОБРАЖЕНИЙ: Если в данных вопроса указано "Has Image: true" или есть URL, воспринимай это как критический визуальный контекст. Если ученик ошибся, возможно, он неверно считал информацию с картинки/графика.
+- Проявляй "педагогическую эмпатию": если ученик повторяет одну и ту же ошибку (смотри факты RAG), мягко укажи на это.
+- ИНТЕРПРЕТАЦИЯ ИЗОБРАЖЕНИЙ: Если в [QUESTION] указано "Has Image: true", воспринимай это как важный контекст.
 
 КРИТИЧЕСКИ ВАЖНО - ПРАВИЛО ПРОТИВ ГАЛЛЮЦИНАЦИЙ:
-- Если пользователь спрашивает о деталях, которые ЕСТЬ в RAG-фактах (например, "какой был 5-й вопрос?"), обязательно используй текст вопроса из [QUESTION 5].
-- Если данных действительно нет, ЧЕСТНО скажи об этом. Но перед этим внимательно проверь весь предоставленный контекст RAG и JSON-словарь 'questions'.
 - НЕ ВЫДУМЫВАЙ: баллы, даты и тексты вопросов, если их нет в предоставленных данных.
 - Работай ТОЛЬКО с теми фактами, которые явно присутствуют в предоставленных данных. Если видишь [STATUS: WRONG], это твой главный сигнал для анализа.`;
     

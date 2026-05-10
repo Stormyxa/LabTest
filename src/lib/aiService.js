@@ -285,14 +285,33 @@ export const streamAiAnalysis = async ({
 export const searchUserFacts = async (userId, query, options = {}) => {
   const { limit = 20, quizId = null, classId = null } = options;
   try {
+    // Generate query vector locally in the browser
+    let queryVector = null;
+    if (query && typeof query === 'string' && query.trim()) {
+      try {
+        const { generateEmbedding } = await import('./embeddingService');
+        queryVector = await generateEmbedding(query);
+      } catch (embErr) {
+        console.error('❌ RAG: Failed to generate search embedding locally:', embErr);
+      }
+    }
+
     const response = await fetch('/api/search-facts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, query, limit, quizId, classId })
+      body: JSON.stringify({ 
+        userId, 
+        query, 
+        queryVector, // Send pre-computed vector
+        limit, 
+        quizId, 
+        classId 
+      }),
     });
 
     if (!response.ok) {
-      throw new Error('Fact search failed');
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.error || 'Fact search failed');
     }
 
     const data = await response.json();

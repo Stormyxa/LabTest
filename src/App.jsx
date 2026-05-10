@@ -63,6 +63,18 @@ function App() {
     return () => subscription.unsubscribe();
   }, []);
 
+  useEffect(() => {
+    // Pre-warm embedding model early if user is logged in and has access
+    // Use global flag to ensure it only runs ONCE per session
+    if (session && profile && (profile.role !== 'player' || profile.class_id)) {
+      if (!window.__embedding_preloaded) {
+        window.__embedding_preloaded = true;
+        // console.log('🚀 Proactively preloading embedding model...');
+        import('./lib/embeddingService').then(m => m.preloadEmbeddingModel());
+      }
+    }
+  }, [session, profile]);
+
   const fetchProfile = async (id, currentSession = null) => {
     // console.log("DEBUG: Fetching profile for ID:", id);
     const { data, error } = await supabase
