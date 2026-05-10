@@ -1084,7 +1084,7 @@ const QuizView = ({ session, profile }) => {
                     transition: 'all 0.5s ease'
                   }}
                 >
-                  {analysisReady ? <BarChart3 size={18} style={{ marginRight: '8px' }} /> : <Loader2 size={18} className="animate-spin" style={{ marginRight: '8px' }} />}
+                  {analysisReady ? <BarChart3 size={18} style={{ marginRight: '8px' }} /> : <Loader2 size={18} className="spinner" style={{ marginRight: '8px' }} />}
                   {analysisReady ? 'Детальный анализ' : 'Готовим аналитику...'}
                 </button>
               )}
