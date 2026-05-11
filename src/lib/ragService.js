@@ -254,6 +254,24 @@ export const buildStudentRagPrompt = async (userId, viewerRole = 'student', view
   const displayName = `${profile.last_name || ''} ${initials}`.trim() || 'Ученик';
   const fullName = `${profile.last_name || ''} ${profile.first_name || ''} ${profile.patronymic || ''}`.trim() || 'Ученик';
 
+  // Fetch full history for heavy JSON download
+  const { data: results } = await supabase
+    .from('quiz_results')
+    .select('*, quizzes(title, quiz_sections(name))')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+
+  const history = (results || []).map(r => ({
+    quiz: r.quizzes?.title,
+    section: r.quizzes?.quiz_sections?.name,
+    score: r.score,
+    total: r.total_questions,
+    percent: Math.round((r.score / (r.total_questions || 1)) * 100),
+    date: new Date(r.created_at).toLocaleDateString('ru-RU'),
+    passed: r.is_passed,
+    attempts: r.attempt_count || 1
+  }));
+
   // Build RAG context
   const ragContext = await buildStudentRagContext(userId);
 
@@ -270,10 +288,10 @@ export const buildStudentRagPrompt = async (userId, viewerRole = 'student', view
       fullName,
       geo: `${cityName}, ${schoolName}, ${className}`,
       hasRagContext: !!ragContext,
-      // Minimal meta for AI to know what it's looking at
+      history, // Full history for manual download
       meta: {
         v: 2,
-        mode: 'STRICT_RAG',
+        mode: 'HYBRID_RAG_FULL_JSON',
         generated: new Date().toLocaleString('ru-RU', { timeZone: 'Asia/Almaty' })
       }
     }
@@ -487,14 +505,14 @@ export const buildQuizRagPrompt = async (quiz, filteredResults, scopeLabel) => {
       // Get all user IDs from results
       const userIds = [...new Set(filteredResults.map(r => r.user_id))];
 
-      // Search facts for each user and aggregate
+      // Search facts for more users and aggregate
       const allFacts = [];
-      for (const userId of userIds.slice(0, 20)) { // Limit to 20 users for performance
+      for (const userId of userIds.slice(0, 50)) { // Increased to 50 users
         try {
           const facts = await searchFacts({
             userId,
             queryVector,
-            limit: 3,
+            limit: 5, // Increased facts per user
             quizId
           });
           allFacts.push(...facts);
@@ -517,6 +535,11 @@ export const buildQuizRagPrompt = async (quiz, filteredResults, scopeLabel) => {
       console.warn('Failed to build quiz RAG context:', error);
     }
   }
+
+  // Import buildQuizPromptFromData dynamically to avoid circular dependency if needed, 
+  // but here we just need a detailed data object for download
+  const { buildQuizPromptFromData } = await import('./aiPromptBuilder');
+  const legacyData = buildQuizPromptFromData({ quiz, filteredResults, scopeLabel });
 
   const ragSection = ragContext 
     ? `\n${ragContext}\n\n**Примечание**: Используй эти факты для анализа. Они извлечены из векторной памяти и содержат наиболее релевантную информацию об учениках.`
@@ -546,7 +569,15 @@ ${ragSection}
 
   return {
     instruction,
-    data: { quizId, subject, scopeLabel, hasRagContext: !!ragContext }
+    data: {
+      quizId,
+      title: quiz.title,
+      subject,
+      scope: scopeLabel,
+      hasRagContext: !!ragContext
+    },
+    downloadData: legacyData.data,
+    filename: legacyData.filename
   };
 };
 

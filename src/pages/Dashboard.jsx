@@ -1582,8 +1582,8 @@ const DashboardAiButton = ({ classId, className }) => {
         if (type === 'copy' && result.instruction) {
           await navigator.clipboard.writeText(result.instruction);
           setStatus('copied');
-        } else if (type === 'file' && result.data) {
-          downloadJSON(result.data, `class_${classId.slice(0, 8)}.json`);
+        } else if (type === 'file' && (result.downloadData || result.data)) {
+          downloadJSON(result.downloadData || result.data, `class_${classId.slice(0, 8)}.json`);
           setStatus('downloaded');
         } else setStatus('error');
         setTimeout(() => setStatus('idle'), 2500);
@@ -1600,20 +1600,20 @@ const DashboardAiButton = ({ classId, className }) => {
 
   return (
     <>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
-        <div style={{ display: 'flex', gap: '8px' }}>
+      <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', height: '40px' }}>
+        <div style={{ display: 'flex', gap: '8px', height: '100%' }}>
           <button
             onClick={handleAiAnalysis}
             disabled={status === 'loading_ai'}
             className="flex-center"
             title="Запустить ИИ-анализ успеваемости класса"
             style={{
-              padding: '8px 14px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 'bold',
+              padding: '0 14px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 'bold',
               background: 'linear-gradient(135deg, #7c3aed, #6366f1)',
               color: 'white', border: 'none',
               boxShadow: '0 2px 8px rgba(99, 102, 241, 0.3)', gap: '7px',
               cursor: status === 'loading_ai' ? 'wait' : 'pointer',
-              transition: 'all 0.3s', flexShrink: 0, whiteSpace: 'nowrap'
+              transition: 'all 0.3s', flexShrink: 0, whiteSpace: 'nowrap', height: '100%'
             }}
           >
             {status === 'loading_ai' ? <RefreshCw size={14} className="spinner" /> : <Sparkles size={14} />}
@@ -1622,24 +1622,29 @@ const DashboardAiButton = ({ classId, className }) => {
         </div>
 
         {/* Legacy toggle */}
-        <button className="ai-legacy-toggle" onClick={() => setShowLegacy(p => !p)}>
+        <button className="ai-legacy-toggle" onClick={() => setShowLegacy(p => !p)} style={{ marginTop: '2px' }}>
           <ChevronDown size={10} style={{ transform: showLegacy ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
           Ручной режим
         </button>
 
-        <div className={`ai-legacy-panel ${showLegacy ? 'open' : ''}`}>
+        <div className={`ai-legacy-panel ${showLegacy ? 'open' : ''}`} style={{
+          position: 'absolute', top: '55px', right: 0, zIndex: 100,
+          background: 'white', padding: '8px', borderRadius: '12px',
+          boxShadow: '0 8px 20px rgba(0,0,0,0.1)', border: '1px solid rgba(0,0,0,0.05)',
+          width: 'max-content'
+        }}>
           <div className="ai-legacy-hint">Для ручной вставки промпта в AI Studio</div>
-          <div style={{ display: 'flex', gap: '6px' }}>
+          <div style={{ display: 'flex', gap: '6px', height: '30px' }}>
             <button
               onClick={() => handleAction('copy')}
               disabled={status.startsWith('loading')}
               className="flex-center"
               style={{
-                padding: '6px 12px', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 'bold',
+                padding: '0 12px', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 'bold',
                 background: status === 'copied' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(168, 85, 247, 0.05)',
                 color: status === 'copied' ? '#16a34a' : '#a855f7',
                 border: '1px solid ' + (status === 'copied' ? '#16a34a33' : '#a855f733'),
-                boxShadow: 'none', gap: '5px'
+                boxShadow: 'none', gap: '5px', height: '100%', marginBottom: 0
               }}
             >
               {status === 'loading_copy' ? <RefreshCw size={12} className="spinner" /> : status === 'copied' ? <Check size={12} /> : <Copy size={12} />}
@@ -1651,11 +1656,11 @@ const DashboardAiButton = ({ classId, className }) => {
               disabled={status.startsWith('loading')}
               className="flex-center"
               style={{
-                padding: '6px 12px', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 'bold',
+                padding: '0 12px', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 'bold',
                 background: status === 'downloaded' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(99, 102, 241, 0.05)',
                 color: status === 'downloaded' ? '#16a34a' : 'var(--primary-color)',
                 border: '1px solid ' + (status === 'downloaded' ? '#16a34a33' : 'rgba(99, 102, 241, 0.1)'),
-                boxShadow: 'none', gap: '5px'
+                boxShadow: 'none', gap: '5px', height: '100%', marginBottom: 0
               }}
             >
               {status === 'loading_file' ? <RefreshCw size={12} className="spinner" /> : status === 'downloaded' ? <Check size={12} /> : <FileText size={12} />}

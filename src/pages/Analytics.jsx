@@ -1073,8 +1073,8 @@ const AnalyticsAiButton = ({ quiz, filteredResults, cities, schools, classes, fi
         if (type === 'copy' && result.instruction) {
           await navigator.clipboard.writeText(result.instruction);
           setStatus('copied');
-        } else if (type === 'file' && result.data) {
-          downloadJSON(result.data, result.filename);
+        } else if (type === 'file' && (result.downloadData || result.data)) {
+          downloadJSON(result.downloadData || result.data, result.filename);
           setStatus('downloaded');
         } else setStatus('error');
         setTimeout(() => setStatus('idle'), 2500);
@@ -1101,19 +1101,20 @@ const AnalyticsAiButton = ({ quiz, filteredResults, cities, schools, classes, fi
 
   return (
     <>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '5px' }}>
-        <div style={{ display: 'flex', gap: '10px' }}>
+      <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', height: '50px' }}>
+        <div style={{ display: 'flex', gap: '10px', height: '50px' }}>
           <button
             onClick={handleAiAnalysis}
             disabled={status === 'loading_ai'}
             className="flex-center"
             style={{
-              padding: '15px 25px', borderRadius: '15px', fontSize: '0.95rem', fontWeight: 'bold',
+              padding: '0 25px', borderRadius: '15px', fontSize: '0.95rem', fontWeight: 'bold',
               background: 'linear-gradient(135deg, #7c3aed, #6366f1)',
               color: 'white', border: 'none',
               boxShadow: '0 4px 15px rgba(99, 102, 241, 0.4)', gap: '10px',
               cursor: status === 'loading_ai' ? 'wait' : 'pointer',
-              transition: 'all 0.3s'
+              transition: 'all 0.3s',
+              height: '100%'
             }}
           >
             {status === 'loading_ai' ? <RefreshCw size={20} className="spinner" /> : <Sparkles size={20} />}
@@ -1122,23 +1123,29 @@ const AnalyticsAiButton = ({ quiz, filteredResults, cities, schools, classes, fi
         </div>
 
         {/* Legacy panel for manual prompting */}
-        <button className="ai-legacy-toggle" onClick={() => setShowLegacy(p => !p)}>
+        <button className="ai-legacy-toggle" onClick={() => setShowLegacy(p => !p)} style={{ marginTop: '2px' }}>
           <ChevronDown size={12} style={{ transform: showLegacy ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
           Ручной режим
         </button>
-        <div className={`ai-legacy-panel ${showLegacy ? 'open' : ''}`}>
+        
+        <div className={`ai-legacy-panel ${showLegacy ? 'open' : ''}`} style={{ 
+          position: 'absolute', top: '75px', right: 0, zIndex: 100,
+          background: 'white', padding: '10px', borderRadius: '15px',
+          boxShadow: '0 10px 25px rgba(0,0,0,0.1)', border: '1px solid rgba(0,0,0,0.05)',
+          width: 'max-content'
+        }}>
           <div className="ai-legacy-hint">Для ручной вставки промпта в AI Studio</div>
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div style={{ display: 'flex', gap: '8px', height: '36px' }}>
             <button
               onClick={() => handleLegacyAction('copy')}
               disabled={status.startsWith('loading')}
               className="flex-center"
               style={{
-                padding: '8px 15px', borderRadius: '10px', fontSize: '0.8rem', fontWeight: 'bold',
+                padding: '0 15px', borderRadius: '10px', fontWeight: 'bold',
                 background: status === 'copied' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(99, 102, 241, 0.05)',
                 color: status === 'copied' ? '#16a34a' : '#a855f7',
                 cursor: 'pointer', border: '1px solid ' + (status === 'copied' ? '#16a34a33' : '#a855f733'),
-                fontWeight: 'bold', gap: '8px', fontSize: '0.85rem'
+                gap: '8px', fontSize: '0.85rem', height: '100%', marginBottom: 0
               }}
             >
               {status === 'loading_copy' ? <RefreshCw size={16} className="spinner" /> : status === 'copied' ? <Check size={16} /> : <Copy size={16} />}
@@ -1146,15 +1153,15 @@ const AnalyticsAiButton = ({ quiz, filteredResults, cities, schools, classes, fi
             </button>
 
             <button
-              onClick={() => handleAction('file')}
+              onClick={() => handleLegacyAction('file')}
               disabled={status.startsWith('loading')}
-              className="flex-center card"
+              className="flex-center"
               style={{
+                padding: '0 16px', borderRadius: '10px', fontWeight: 'bold',
                 background: status === 'downloaded' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(99, 102, 241, 0.05)',
                 color: status === 'downloaded' ? '#16a34a' : 'var(--primary-color)',
-                boxShadow: 'none', padding: '8px 16px', marginBottom: 0,
                 cursor: 'pointer', border: '1px solid ' + (status === 'downloaded' ? '#16a34a33' : 'rgba(99, 102, 241, 0.1)'),
-                fontWeight: 'bold', gap: '8px', fontSize: '0.85rem'
+                gap: '8px', fontSize: '0.85rem', height: '100%', marginBottom: 0, boxShadow: 'none'
               }}
             >
               {status === 'loading_file' ? <RefreshCw size={16} className="spinner" /> : status === 'downloaded' ? <Check size={16} /> : <FileText size={16} />}

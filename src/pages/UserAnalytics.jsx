@@ -1150,8 +1150,8 @@ const AiAnalysisButton = ({ userId, viewerUserId, viewerProfile }) => {
         if (type === 'copy' && result.instruction) {
           await navigator.clipboard.writeText(result.instruction);
           setStatus('copied');
-        } else if (type === 'file' && result.data) {
-          downloadJSON(result.data, result.filename);
+        } else if (type === 'file' && (result.downloadData || result.data)) {
+          downloadJSON(result.downloadData || result.data, result.filename);
           setStatus('downloaded');
         } else setStatus('error');
         setTimeout(() => setStatus('idle'), 2500);
@@ -1178,20 +1178,20 @@ const AiAnalysisButton = ({ userId, viewerUserId, viewerProfile }) => {
 
   return (
     <>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
-        <div style={{ display: 'flex', gap: '8px' }}>
+      <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', height: '36px' }}>
+        <div style={{ display: 'flex', gap: '8px', height: '100%' }}>
           <button
             onClick={handleAiAnalysis}
             disabled={status === 'loading_ai' || count === null}
             className="flex-center"
             title={isSelf ? 'Запустить ИИ-наставника' : 'Запустить педагогический ИИ-анализ'}
             style={{
-              padding: '8px 16px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 'bold',
+              padding: '0 16px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 'bold',
               background: 'linear-gradient(135deg, #7c3aed, #6366f1)',
               color: 'white', border: 'none',
               boxShadow: '0 2px 8px rgba(99, 102, 241, 0.3)', gap: '7px',
               cursor: (status === 'loading_ai' || count === null) ? 'wait' : 'pointer',
-              transition: 'all 0.3s', flexShrink: 0, whiteSpace: 'nowrap'
+              transition: 'all 0.3s', flexShrink: 0, whiteSpace: 'nowrap', height: '100%'
             }}
           >
             {status === 'loading_ai' ? <RefreshCw size={14} className="spinner" /> : <Sparkles size={14} />}
@@ -1200,11 +1200,16 @@ const AiAnalysisButton = ({ userId, viewerUserId, viewerProfile }) => {
         </div>
 
         {/* Legacy buttons toggle */}
-        <button className="ai-legacy-toggle" onClick={() => setShowLegacy(p => !p)}>
+        <button className="ai-legacy-toggle" onClick={() => setShowLegacy(p => !p)} style={{ marginTop: '2px' }}>
           <ChevronDown size={10} style={{ transform: showLegacy ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
           Ручной режим
         </button>
-        <div className={`ai-legacy-panel ${showLegacy ? 'open' : ''}`}>
+        <div className={`ai-legacy-panel ${showLegacy ? 'open' : ''}`} style={{ 
+            position: 'absolute', top: '50px', right: 0, zIndex: 100,
+            background: 'white', padding: '10px', borderRadius: '15px',
+            boxShadow: '0 10px 25px rgba(0,0,0,0.1)', border: '1px solid rgba(0,0,0,0.05)',
+            width: '240px'
+        }}>
           <div className="ai-legacy-hint">Для ручной вставки промпта в AI Studio</div>
           <div style={{ display: 'flex', gap: '6px' }}>
             <button
@@ -1212,7 +1217,7 @@ const AiAnalysisButton = ({ userId, viewerUserId, viewerProfile }) => {
               disabled={status.startsWith('loading') || count === null}
               className="flex-center"
               style={{
-                padding: '6px 12px', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 'bold',
+                flex: 1, padding: '6px 12px', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 'bold',
                 background: status === 'copied' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(99, 102, 241, 0.05)',
                 color: status === 'copied' ? '#16a34a' : '#a855f7',
                 border: '1px solid ' + (status === 'copied' ? '#16a34a33' : '#a855f733'),

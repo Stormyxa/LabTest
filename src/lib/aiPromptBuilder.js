@@ -270,8 +270,8 @@ export const buildQuizPromptFromData = ({ quiz, filteredResults, scopeLabel, cit
     };
   });
 
-  // Per-student summaries (limit to first 50 students to keep JSON manageable)
-  const studentList = filteredResults.slice(0, 50).map(r => {
+  // Per-student summaries (increased limit for better analysis)
+  const studentList = filteredResults.slice(0, 200).map(r => {
     const p = r.profiles;
     const hasName = p?.first_name || p?.last_name;
     const fullName = p?.is_anonymous ? 'Анонимный' : (hasName ? `${p.last_name || ''} ${p.first_name || ''} ${p.patronymic || ''}`.trim() : 'Неизвестный');
@@ -295,6 +295,7 @@ export const buildQuizPromptFromData = ({ quiz, filteredResults, scopeLabel, cit
 
     const entry = {
       n: fullName,
+      id: r.user_id, // Include ID for reference
       cls,
       '1st': { sc: `${firstScore}/${r.total_questions}` },
       best: { sc: `${currentScore}/${r.total_questions}`, dp: `${currentScore - firstScore >= 0 ? '+' : ''}${currentScore - firstScore}` },

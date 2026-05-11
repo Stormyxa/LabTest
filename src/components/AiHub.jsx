@@ -566,27 +566,56 @@ const AiHub = ({ session, profile }) => {
               .eq('class_id', profile.class_id)
               .eq('is_observer', false)
               .neq('id', session.user.id)
-              .limit(30);
+              .limit(100); // Increased limit to cover full class
 
             if (classStudents && classStudents.length > 0) {
               const { generateEmbedding } = await import('../lib/embeddingService');
               const queryVector = await generateEmbedding(generalSearchQuery);
               
-              const studentFactPromises = classStudents.slice(0, 15).map(async (student) => {
+              const studentFactPromises = classStudents.map(async (student) => {
                 try {
                   const resp = await fetch('/api/search-facts', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userId: student.id, queryVector, limit: 3, enableTimeDecay: true })
+                    body: JSON.stringify({ userId: student.id, queryVector, limit: 5, enableTimeDecay: true })
                   });
                   if (!resp.ok) return [];
                   const { facts } = await resp.json();
-                  return (facts || []).map(f => ({ ...f, studentName: `${student.last_name} ${student.first_name}` }));
+                  return (facts || []).map(f => ({ 
+                    ...f, 
+                    studentName: `${student.last_name} ${student.first_name}`,
+                    studentId: student.id 
+                  }));
                 } catch { return []; }
               });
 
               const studentResults = await Promise.all(studentFactPromises);
-              classStudentFacts = studentResults.flat().sort((a, b) => b.score - a.score).slice(0, 20);
+              classStudentFacts = studentResults.flat().sort((a, b) => b.score - a.score).slice(0, 40);
+
+              // Add a "Dry Facts" summary for the teacher (Hybrid mode)
+              const { data: studentStats } = await supabase
+                .from('quiz_results')
+                .select('user_id, score, total_questions, is_passed, attempt_count')
+                .in('user_id', classStudents.map(s => s.id));
+              
+              const statsMap = {};
+              (studentStats || []).forEach(s => {
+                if (!statsMap[s.user_id]) statsMap[s.user_id] = { tests: 0, avg: 0, sum: 0 };
+                statsMap[s.user_id].tests++;
+                statsMap[s.user_id].sum += (s.score / (s.total_questions || 1)) * 100;
+              });
+
+              const registry = classStudents.map(s => {
+                const stat = statsMap[s.id] || { tests: 0, sum: 0 };
+                return {
+                  id: s.id.slice(0, 8),
+                  n: `${s.last_name} ${s.first_name}`,
+                  ts: stat.tests,
+                  avg: stat.tests > 0 ? Math.round(stat.sum / stat.tests) : 0
+                };
+              });
+
+              classFactStr += `\n\nСВОДНЫЙ РЕЕСТР КЛАССА (Dry Facts):\n${JSON.stringify(registry)}`;
             }
           } catch (e) {
             console.warn('Failed to fetch class student RAG:', e);
@@ -601,11 +630,12 @@ const AiHub = ({ session, profile }) => {
           ? `\n\nЛичные факты из памяти (RAG):\n${relevantFacts.map(f => `- ${f.fact}`).join('\n')}`
           : '';
         const classFactStr = classStudentFacts.length > 0
-          ? `\n\nФакты учеников класса (RAG):\n${classStudentFacts.map(f => `- [${f.studentName}] ${f.fact}`).join('\n')}`
+          ? `\n\nФакты учеников класса (RAG):\n${classStudentFacts.map(f => `- [${f.studentName} | ID: ${f.studentId?.slice(0,8)}] ${f.fact}`).join('\n')}`
           : '';
 
         const roleContext = isTeacherRole
-          ? `\nРоль пользователя: УЧИТЕЛЬ. Обращайся к нему на «вы». Он не ученик — он преподаёт и хочет знать об успехах/проблемах СВОИХ учеников. Не анализируй его личные попытки прохождения тестов как ученические.`
+          ? `\nРоль пользователя: УЧИТЕЛЬ. Обращайся к нему на «вы». Он не ученик — он преподаёт и хочет знать об успехах/проблемах СВОИХ учеников. Не анализируй его личные попытки прохождения тестов как ученические.
+Тебе доступен "Сводный Реестр Класса" (ID, ФИО, кол-во тестов, ср. балл) и RAG-факты по конкретным ситуациям. Сочетай "сухие цифры" из реестра с "живыми фактами" из RAG.`
           : '';
 
         apiMessages[0].content = `Контекст пользователя:${userInfoStr}${roleContext}${ownFactStr}${classFactStr}\n\nЗапрос: ${chatMessages[0].content}`;

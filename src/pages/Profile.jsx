@@ -465,7 +465,7 @@ const Profile = ({ session, profile, refreshProfile }) => {
           </button>
 
           {/* AI Analyst Prompt Block */}
-          <div style={{ marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.05) 0%, rgba(99, 102, 241, 0.05) 100%)', borderRadius: '20px', border: '1px dashed rgba(168, 85, 247, 0.25)' }}>
+          <div style={{ position: 'relative', marginTop: '20px', padding: '20px', background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.05) 0%, rgba(99, 102, 241, 0.05) 100%)', borderRadius: '20px', border: '1px dashed rgba(168, 85, 247, 0.25)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '15px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
                 <div style={{ padding: '10px', background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.15), rgba(99, 102, 241, 0.15))', borderRadius: '12px', color: '#a855f7', flexShrink: 0 }}>
@@ -539,9 +539,14 @@ const Profile = ({ session, profile, refreshProfile }) => {
                   Ручной режим (старые кнопки)
                 </button>
 
-                <div className={`ai-legacy-panel ${showLegacy ? 'open' : ''}`} style={{ width: '100%' }}>
+                <div className={`ai-legacy-panel ${showLegacy ? 'open' : ''}`} style={{ 
+                  position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100,
+                  background: 'white', padding: '15px', borderRadius: '20px',
+                  boxShadow: '0 10px 30px rgba(0,0,0,0.15)', border: '1px solid rgba(0,0,0,0.05)',
+                  marginTop: '5px'
+                }}>
                   <div className="ai-legacy-hint">Если вы хотите использовать внешний ИИ чат</div>
-                  <div style={{ display: 'flex', gap: '10px' }}>
+                  <div style={{ display: 'flex', gap: '10px', height: '40px' }}>
                     <button
                       onClick={async () => {
                         setAiPromptStatus('loading_copy');
@@ -565,13 +570,13 @@ const Profile = ({ session, profile, refreshProfile }) => {
                       disabled={aiPromptStatus.startsWith('loading') || attemptCount === null}
                       className="flex-center"
                       style={{
-                        flex: 1, padding: '10px', borderRadius: '12px', fontWeight: 'bold', fontSize: '0.8rem',
+                        flex: 1, padding: '0 10px', borderRadius: '12px', fontWeight: 'bold', fontSize: '0.85rem',
                         background: aiPromptStatus === 'copied' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(168, 85, 247, 0.05)',
                         color: aiPromptStatus === 'copied' ? '#16a34a' : '#a855f7',
-                        boxShadow: 'none', border: '1px solid ' + (aiPromptStatus === 'copied' ? '#16a34a33' : '#a855f733'), gap: '6px'
+                        boxShadow: 'none', border: '1px solid ' + (aiPromptStatus === 'copied' ? '#16a34a33' : '#a855f733'), gap: '8px', height: '100%', marginBottom: 0
                       }}
                     >
-                      {aiPromptStatus === 'loading_copy' ? <RefreshCw size={14} className="spinner" /> : aiPromptStatus === 'copied' ? <Check size={14} /> : <Copy size={14} />}
+                      {aiPromptStatus === 'loading_copy' ? <RefreshCw size={16} className="spinner" /> : aiPromptStatus === 'copied' ? <Check size={16} /> : <Copy size={16} />}
                       Промпт
                     </button>
 
@@ -588,8 +593,8 @@ const Profile = ({ session, profile, refreshProfile }) => {
                             result = await buildStudentPrompt(session.user.id, 'student');
                           }
                           
-                          if (result && result.data) {
-                            downloadJSON(result.data, result.filename);
+                          if (result && (result.downloadData || result.data)) {
+                            downloadJSON(result.downloadData || result.data, result.filename);
                             setAiPromptStatus('downloaded');
                             setTimeout(() => setAiPromptStatus('idle'), 2500);
                           } else setAiPromptStatus('error');
@@ -598,13 +603,13 @@ const Profile = ({ session, profile, refreshProfile }) => {
                       disabled={aiPromptStatus.startsWith('loading') || attemptCount === null}
                       className="flex-center"
                       style={{
-                        flex: 1, padding: '10px', borderRadius: '12px', fontWeight: 'bold', fontSize: '0.8rem',
+                        flex: 1, padding: '0 10px', borderRadius: '12px', fontWeight: 'bold', fontSize: '0.85rem',
                         background: aiPromptStatus === 'downloaded' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(99, 102, 241, 0.05)',
                         color: aiPromptStatus === 'downloaded' ? '#16a34a' : 'var(--primary-color)',
-                        boxShadow: 'none', border: '1px solid ' + (aiPromptStatus === 'downloaded' ? '#16a34a33' : 'rgba(99, 102, 241, 0.1)'), gap: '6px'
+                        boxShadow: 'none', border: '1px solid ' + (aiPromptStatus === 'downloaded' ? '#16a34a33' : 'rgba(99, 102, 241, 0.1)'), gap: '8px', height: '100%', marginBottom: 0
                       }}
                     >
-                      {aiPromptStatus === 'loading_file' ? <RefreshCw size={14} className="spinner" /> : aiPromptStatus === 'downloaded' ? <Check size={14} /> : <FileText size={14} />}
+                      {aiPromptStatus === 'loading_file' ? <RefreshCw size={16} className="spinner" /> : aiPromptStatus === 'downloaded' ? <Check size={16} /> : <FileText size={16} />}
                       JSON
                     </button>
                   </div>

@@ -107,7 +107,7 @@ export default async function handler(req, res) {
         // If teacher/editor is analyzing another user, verify access
         if ((dbRole === 'teacher' || dbRole === 'editor') && contextId && userId !== contextId) {
           // For class context, teachers always have access
-          if (contextType === 'class' || contextType === 'quiz') {
+          if (contextType === 'class' || contextType === 'quiz' || contextType === 'quiz_results') {
             canAccessSubject = true;
           } else {
             // Check 1: Is teacher assigned to the student's class?
