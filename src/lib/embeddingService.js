@@ -49,7 +49,8 @@ const initWorker = () => {
       }
     }
     
-    else if (type === 'progress') {
+    
+    else if (type === 'progress' && !workerReady) {
       // Dispatch event for UI progress bars
       // transformers.js sends progress as 0-1 or 0-100 depending on status
       const rawProgress = payload.progress || 0;

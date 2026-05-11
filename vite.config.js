@@ -26,6 +26,8 @@ const vercelApiMock = () => ({
           req.on('end', async () => {
              if (body) {
                try { req.body = JSON.parse(body); } catch(e) { req.body = body; }
+             } else {
+               req.body = {};
              }
              
              const mockRes = {
@@ -39,8 +41,15 @@ const vercelApiMock = () => ({
                setHeader: (k, v) => res.setHeader(k, v)
              };
              
-             // Прокидываем GITHUB_PAT из переменных окружения (Vite их грузит в process.env из .env файлов)
-             await module.default(req, mockRes);
+             try {
+               await module.default(req, mockRes);
+             } catch (err) {
+               console.error('[API Mock Unhandled Error]:', err);
+               if (!res.headersSent) {
+                 res.statusCode = 500;
+                 res.end(JSON.stringify({ error: 'Internal Server Error', details: err.message }));
+               }
+             }
           });
         } catch (e) {
           console.error('[API Mock Error]:', e.message);

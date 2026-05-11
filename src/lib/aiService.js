@@ -43,7 +43,7 @@ export const saveAiAnalysis = async ({
 }) => {
   try {
     const finalCacheKey = cache_key || buildAiCacheKey(context_type, context_id, 'history', Date.now());
-    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    const expiresAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString();
 
     const dataToSave = {
       messages: displayMessages || messages, // Save display messages if provided, otherwise API messages
@@ -198,6 +198,7 @@ export const streamAiAnalysis = async ({
         messages, 
         contextType, 
         contextId, 
+        userId: session.user.id,
         viewerRole,
         hasClass: profile?.class_id ? true : false
       }),

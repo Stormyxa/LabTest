@@ -1,5 +1,4 @@
 import { QdrantClient } from '@qdrant/js-client-rest';
-import { generateEmbedding } from '../src/lib/embeddingService.js';
 
 // Initialize Qdrant client for server-side
 const QDRANT_URL = process.env.QDRANT_URL || process.env.VITE_QDRANT_URL;
@@ -18,7 +17,7 @@ const COLLECTION_NAME = 'user_memory';
 /**
  * Calculate time decay score for a fact
  */
-const calculateTimeDecay = (timestamp, halfLifeDays = 30) => {
+const calculateTimeDecay = (timestamp, halfLifeDays = 90) => {
   const factDate = new Date(timestamp);
   const now = new Date();
   const daysSinceFact = (now - factDate) / (1000 * 60 * 60 * 24);
@@ -31,7 +30,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { userId, query, queryVector, limit = 10, quizId, classId, enableTimeDecay = true, halfLifeDays = 30 } = req.body;
+  const { userId, query, queryVector, limit = 10, quizId, classId, enableTimeDecay = true, halfLifeDays = 90 } = req.body;
 
   if (!userId || (!query && !queryVector)) {
     return res.status(400).json({ error: 'Missing required parameters: userId, query or queryVector' });
@@ -43,15 +42,12 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Use provided vector or generate one (fallback, though client should provide it now)
+    // Use provided vector or return empty (server-side embedding disabled for performance)
     let vector = queryVector;
-    if (!vector && query) {
-      console.log('⚠️ Generating embedding on server-side (fallback)');
-      vector = await generateEmbedding(query);
-    }
-
+    
     if (!vector) {
-      return res.status(400).json({ error: 'Could not obtain query vector' });
+      console.warn('⚠️ No query vector provided to search-facts');
+      return res.status(200).json({ facts: [], message: 'No vector provided' });
     }
 
     // Build filter

@@ -14,13 +14,17 @@ import { extractAllFacts, limitFacts } from './factExtractor.js';
  */
 export const buildStudentRagContext = async (userId) => {
   try {
+    // Generate vector on client side to avoid server-side dependency
+    const { generateEmbedding } = await import('./embeddingService');
+    const queryVector = await generateEmbedding('student performance quiz results errors strengths weaknesses learning progress');
+
     // Search for relevant facts via server proxy
     const response = await fetch('/api/search-facts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         userId,
-        query: 'student performance quiz results errors strengths weaknesses learning progress',
+        queryVector,
         limit: 15,
         enableTimeDecay: true
       })
@@ -85,6 +89,10 @@ export const buildQuizRagContext = async (quizId, classId = null) => {
     const query = 'Анализ результатов теста: общие ошибки, проблемные вопросы, успеваемость класса';
     
     const batchSize = 10;
+    
+    const { generateEmbedding } = await import('./embeddingService');
+    const queryVector = await generateEmbedding(query);
+    
     for (let i = 0; i < userIds.length; i += batchSize) {
       const batch = userIds.slice(i, i + batchSize);
       const batchPromises = batch.map(async (userId) => {
@@ -94,7 +102,7 @@ export const buildQuizRagContext = async (quizId, classId = null) => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               userId,
-              query,
+              queryVector,
               quizId,
               limit: 5,
               enableTimeDecay: true
@@ -160,6 +168,9 @@ export const buildClassRagContext = async (classId) => {
     const allFacts = [];
     const batchSize = 10;
     
+    const { generateEmbedding } = await import('./embeddingService');
+    const queryVector = await generateEmbedding(query);
+    
     for (let i = 0; i < userIds.length; i += batchSize) {
       const batch = userIds.slice(i, i + batchSize);
       const batchPromises = batch.map(async (userId) => {
@@ -169,7 +180,7 @@ export const buildClassRagContext = async (classId) => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               userId,
-              query,
+              queryVector,
               classId,
               limit: 5,
               enableTimeDecay: true
@@ -545,10 +556,6 @@ ${ragSection}
  * @returns {Promise<{instruction: string, data: object}>}
  */
 export const buildClassRagPrompt = async (classId) => {
-  if (!isQdrantConfigured()) {
-    return null;
-  }
-
   try {
     // Fetch class info
     const { data: cls } = await supabase
@@ -569,42 +576,61 @@ export const buildClassRagPrompt = async (classId) => {
       cityName = city?.name || '—';
     }
 
-    // Build RAG context for this class
-    const ragContext = await buildClassRagContext(classId);
+    // Fetch students in this class for basic info
+    const { data: students } = await supabase
+      .from('profiles')
+      .select('id, first_name, last_name, patronymic')
+      .eq('class_id', classId)
+      .eq('is_observer', false)
+      .order('last_name');
 
-    if (!ragContext) {
-      return null;
+    const studentList = (students || []).map(s => 
+      `${s.last_name || ''} ${s.first_name || ''} ${s.patronymic || ''}`.trim()
+    );
+
+    // Try to build RAG context (optional, won't fail the whole flow)
+    let ragContext = null;
+    if (isQdrantConfigured()) {
+      try {
+        ragContext = await buildClassRagContext(classId);
+      } catch (e) {
+        console.warn('RAG context failed, continuing without it:', e);
+      }
     }
 
     const ragSection = ragContext 
-      ? `\n${ragContext}\n\n**Примечание**: Используй эти факты для анализа. Они извлечены из векторной памяти учеников класса.`
+      ? `\n${ragContext}\n\n**Примечание**: Используй эти факты для детального анализа. Они извлечены из векторной памяти учеников класса.`
       : '';
 
-    const instruction = `# Инструкция для ИИ (Аналитик Класса LabTest с RAG)
+    const studentSection = studentList.length > 0
+      ? `\n**Ученики (${studentList.length})**: ${studentList.join(', ')}`
+      : '';
 
-**Цель**: Провести детальный анализ класса на основе релевантных фактов из векторной памяти учеников.
+    const instruction = `# Инструкция для ИИ (Аналитик Класса LabTest)
+
+**Цель**: Провести детальный анализ класса${ragContext ? ' на основе релевантных фактов из векторной памяти учеников' : ''}.
 
 **Класс**: ${cls.name}
 **Школа**: ${cls.schools?.name || '—'}
 **Город**: ${cityName}
-
+${studentSection}
 ${ragSection}
 
 ## Задание
 
-На основе предоставленных фактов выполни:
+На основе предоставленных данных выполни:
 
-1. **Общая успеваемость**: Оцени общую успеваемость класса на основе фактов.
-2. **Слабые ученики**: Определи учеников с наибольшими трудностями (из фактов).
-3. **Проблемные предметы**: Определи предметы/тесты с наименьшей успеваемостью (из фактов).
-4. **Паттерны поведения**: Есть ли общие паттерны ошибок или подозрительной активности (из фактов)?
+1. **Общая успеваемость**: Оцени общую успеваемость класса.
+2. **Слабые ученики**: Определи учеников с наибольшими трудностями.
+3. **Проблемные предметы**: Определи предметы/тесты с наименьшей успеваемостью.
+4. **Паттерны поведения**: Есть ли общие паттерны ошибок или подозрительной активности?
 5. **Рекомендации**: 3-5 конкретных действий для улучшения результатов класса.
 
 **Стиль**: Профессиональный, педагогический. Обращайся к учителю на «вы».`;
 
     return {
       instruction,
-      data: { classId, className: cls.name, hasRagContext: true }
+      data: { classId, className: cls.name, studentCount: studentList.length, hasRagContext: !!ragContext }
     };
   } catch (error) {
     console.error('Failed to build class RAG prompt:', error);
@@ -638,5 +664,73 @@ export const triggerFactStorage = async (attemptId, quizId, userId, sectionName 
     } catch (fallbackError) {
       console.warn('RAG server-side fallback also failed:', fallbackError);
     }
+  }
+};
+/**
+ * Vectorize a conversation session to provide "Memory" for future chats.
+ * @param {string} userId - User ID
+ * @param {string} title - Chat title
+ * @param {Array} messages - Chat messages
+ * @param {string} [contextId] - Optional context ID (quiz or class)
+ */
+export const vectorizeConversation = async (userId, title, messages, contextId = null) => {
+  if (!messages || messages.length < 2) return;
+
+  try {
+    const lastMsgs = messages.slice(-4).map(m => `${m.role === 'user' ? 'Ученик' : 'ИИ'}: ${m.content}`).join('\n');
+    const summaryFact = `В чате "${title}" обсуждали: ${lastMsgs.slice(0, 500)}...`;
+    
+    const { generateEmbedding } = await import('./embeddingService');
+    const vector = await generateEmbedding(summaryFact);
+
+    await fetch('/api/save-vectors', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId,
+        facts: [{
+          fact: summaryFact,
+          vector,
+          metadata: {
+            type: 'chat_memory',
+            title,
+            contextId,
+            timestamp: new Date().toISOString()
+          }
+        }]
+      })
+    });
+    console.log('🧠 RAG: Conversation vectorized into memory');
+  } catch (e) {
+    console.warn('Failed to vectorize conversation:', e);
+  }
+};
+/**
+ * Simple utility to store a single fact into Qdrant memory
+ */
+export const storeUserFact = async (userId, fact, score = 1, metadata = {}) => {
+  try {
+    const { generateEmbedding } = await import('./embeddingService');
+    const vector = await generateEmbedding(fact);
+    
+    await fetch('/api/save-vectors', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId,
+        facts: [{
+          fact,
+          vector,
+          metadata: {
+            ...metadata,
+            timestamp: new Date().toISOString()
+          }
+        }]
+      })
+    });
+    return true;
+  } catch (e) {
+    console.error('Failed to store user fact:', e);
+    return false;
   }
 };

@@ -539,7 +539,7 @@ export const buildDetailedQuizPrompt = async (userId, quizId, viewerRole = 'stud
     // 2. Fetch Attempts: First, Best, Last 10
     const [{ data: first }, { data: best }, { data: last10 }] = await Promise.all([
       supabase.from('quiz_attempts').select('*').eq('user_id', userId).eq('quiz_id', quizId).order('created_at', { ascending: true }).limit(1).single(),
-      supabase.from('quiz_attempts').select('*').eq('user_id', userId).eq('quiz_id', quizId).order('score', { ascending: false }).order('time_spent', { ascending: true }).limit(1).single(),
+      supabase.from('quiz_attempts').select('*').eq('user_id', userId).eq('quiz_id', quizId).order('score', { ascending: false }).order('time_spent_total', { ascending: true }).limit(1).single(),
       supabase.from('quiz_attempts').select('*').eq('user_id', userId).eq('quiz_id', quizId).order('created_at', { ascending: false }).limit(10)
     ]);
 

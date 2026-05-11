@@ -6,6 +6,7 @@ import MathRenderer from './MathRenderer';
 import { X, Maximize2, Minimize2, Sparkles, Send, Download, Copy, RefreshCw, History, Trash2, ChevronLeft, ChevronRight, MessageSquare, Check, User, Shield, AlertTriangle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { streamAiAnalysis, getAiHistory, saveAiAnalysis, deleteAiAnalysis, searchUserFacts } from '../lib/aiService';
+import { buildStudentRagPrompt, vectorizeConversation } from '../lib/ragService';
 import { createModalOverlay } from '../utils/blurUtils';
 import './AiAnalysisModal.css';
 
@@ -22,6 +23,16 @@ const AiHub = ({ session, profile }) => {
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [status, setStatus] = useState('idle'); // idle, loading, streaming, error, limit
+  
+  // Refs to capture latest state for cleanup vectorization
+  const messagesRef = useRef(messages);
+  const chatIdRef = useRef(currentChatId);
+  const contextIdRef = useRef(null);
+  const titleRef = useRef(aiChatTitle);
+  
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
+  useEffect(() => { chatIdRef.current = currentChatId; }, [currentChatId]);
+  useEffect(() => { titleRef.current = aiChatTitle; }, [aiChatTitle]);
   const [accessError, setAccessError] = useState(null); // Access denial error
   const [plotlyLoaded, setPlotlyLoaded] = useState(false);
 
@@ -344,6 +355,27 @@ const AiHub = ({ session, profile }) => {
     }
   }, [session?.user?.id]);
 
+  // Vectorize on close if there were new messages
+  useEffect(() => {
+    const handleUnload = () => {
+      if (messagesRef.current.length > 2 && session?.user?.id) {
+        vectorizeConversation(
+          session.user.id, 
+          titleRef.current || 'AI Анализ', 
+          messagesRef.current, 
+          contextIdRef.current
+        );
+      }
+    };
+    
+    window.addEventListener('beforeunload', handleUnload);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleUnload);
+      handleUnload();
+    };
+  }, [session?.user?.id]); // Only re-run if user changes
+
   const loadHistory = useCallback(async () => {
     if (!session?.user?.id) return;
     try {
@@ -367,6 +399,7 @@ const AiHub = ({ session, profile }) => {
     setIsStreaming(true);
     setStatus('streaming');
     setAccessError(null); // Clear previous access errors
+    contextIdRef.current = id; // Track context for vectorization on cleanup
 
     let fullText = '';
     const assistantMsg = { role: 'assistant', content: '' };
@@ -512,31 +545,99 @@ const AiHub = ({ session, profile }) => {
           ? `[STATUS: WRONG] [QUESTION] ${lastUserMsg}`
           : lastUserMsg;
 
-        const [userInfo, relevantFacts] = await Promise.all([
-          getUserInfo(), // Refresh summary info
-          session?.user?.id ? searchUserFacts(session.user.id, generalSearchQuery, {
-            quizId: currentQuizId, // Use current test context if available
-            limit: 15
-          }) : Promise.resolve([])
-        ]);
+        const isTeacherRole = profile.role === 'teacher' || profile.role === 'editor';
+
+        // For teachers: search RAG of their students (class context)
+        // For students: search their own RAG
+        let relevantFacts = [];
+        let classStudentFacts = [];
+        
+        const userInfoPromise = getUserInfo();
+        const ownFactsPromise = session?.user?.id 
+          ? searchUserFacts(session.user.id, generalSearchQuery, { quizId: currentQuizId, limit: 10 }) 
+          : Promise.resolve([]);
+
+        if (isTeacherRole && profile.class_id) {
+          // Teacher: also get facts from class students
+          try {
+            const { data: classStudents } = await supabase
+              .from('profiles')
+              .select('id, first_name, last_name')
+              .eq('class_id', profile.class_id)
+              .eq('is_observer', false)
+              .neq('id', session.user.id)
+              .limit(30);
+
+            if (classStudents && classStudents.length > 0) {
+              const { generateEmbedding } = await import('../lib/embeddingService');
+              const queryVector = await generateEmbedding(generalSearchQuery);
+              
+              const studentFactPromises = classStudents.slice(0, 15).map(async (student) => {
+                try {
+                  const resp = await fetch('/api/search-facts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: student.id, queryVector, limit: 3, enableTimeDecay: true })
+                  });
+                  if (!resp.ok) return [];
+                  const { facts } = await resp.json();
+                  return (facts || []).map(f => ({ ...f, studentName: `${student.last_name} ${student.first_name}` }));
+                } catch { return []; }
+              });
+
+              const studentResults = await Promise.all(studentFactPromises);
+              classStudentFacts = studentResults.flat().sort((a, b) => b.score - a.score).slice(0, 20);
+            }
+          } catch (e) {
+            console.warn('Failed to fetch class student RAG:', e);
+          }
+        }
+
+        const [userInfo, ownFacts] = await Promise.all([userInfoPromise, ownFactsPromise]);
+        relevantFacts = ownFacts;
 
         const userInfoStr = userInfo ? `\nОбщая сводка: ${JSON.stringify(userInfo)}` : '';
-        const factStr = relevantFacts.length > 0
-          ? `\n\nРелевантные факты из памяти (RAG):\n${relevantFacts.map(f => `- ${f.fact}`).join('\n')}`
+        const ownFactStr = relevantFacts.length > 0
+          ? `\n\nЛичные факты из памяти (RAG):\n${relevantFacts.map(f => `- ${f.fact}`).join('\n')}`
+          : '';
+        const classFactStr = classStudentFacts.length > 0
+          ? `\n\nФакты учеников класса (RAG):\n${classStudentFacts.map(f => `- [${f.studentName}] ${f.fact}`).join('\n')}`
           : '';
 
-        apiMessages[0].content = `Контекст пользователя:${userInfoStr}${factStr}\n\nЗапрос: ${chatMessages[0].content}`;
+        const roleContext = isTeacherRole
+          ? `\nРоль пользователя: УЧИТЕЛЬ. Обращайся к нему на «вы». Он не ученик — он преподаёт и хочет знать об успехах/проблемах СВОИХ учеников. Не анализируй его личные попытки прохождения тестов как ученические.`
+          : '';
+
+        apiMessages[0].content = `Контекст пользователя:${userInfoStr}${roleContext}${ownFactStr}${classFactStr}\n\nЗапрос: ${chatMessages[0].content}`;
       }
 
       await streamAiAnalysis({
         messages: apiMessages,
         contextType: type,
         contextId: id,
+        userId: session.user.id,
         viewerRole: profile?.role || 'student',
         title: title || 'AI Chat',
         profile: profile,
         chatId: currentChatId, // Pass current chat ID to update existing chat
         displayMessages: displayMessages || chatMessages, // Pass user-friendly messages for display
+        systemInstruction: `
+          Ты - продвинутый педагогический ИИ-ассистент LabTest. 
+          Твоя задача - помогать учителю и ученику анализировать результаты обучения.
+          
+          ВАЖНО: Для визуализации данных (диаграммы, графики, тренды) ОБЯЗАТЕЛЬНО используй формат JSON для библиотеки Plotly.js.
+          Пример формата в твоем ответе:
+          {
+            "type": "chart",
+            "data": {
+              "data": [{ "x": ["Тест 1", "Тест 2"], "y": [70, 85], "type": "scatter", "mode": "lines+markers", "name": "Успеваемость" }],
+              "layout": { "title": "Динамика результатов", "xaxis": {"title": "Попытки"}, "yaxis": {"title": "Баллы", "range": [0, 100]} }
+            }
+          }
+          
+          Используй Plotly для наглядной демонстрации прогресса.
+          Пиши на русском языке. Будь конструктивным.
+        `,
         onChunk: (chunk) => {
           fullText += chunk;
           setMessages(prev => {
@@ -546,25 +647,6 @@ const AiHub = ({ session, profile }) => {
           });
         },
         onDone: (fullText, savedChat) => {
-          // After successful analysis, save a summary to RAG for long-term memory
-          if (fullText && fullText.length > 50) {
-            try {
-              const summaryPrompt = `Кратко суммаризируй суть этого педагогического анализа для долгосрочной памяти (1 предложение): ${fullText.slice(0, 500)}`;
-              setTimeout(async () => {
-                const summary = await streamAiAnalysis({
-                  messages: [{ role: 'user', content: summaryPrompt }],
-                  contextType: 'internal_summary'
-                });
-                if (summary && session?.user?.id) {
-                  const { storeUserFact } = await import('../lib/ragService');
-                  await storeUserFact(session.user.id, `[CHAT_SUMMARY] ${new Date().toISOString()}: ${summary}`, 0.6);
-                }
-              }, 1000);
-            } catch (e) {
-              console.warn('Failed to save chat summary to RAG:', e);
-            }
-          }
-
           // Reload history after streaming completes
           loadHistory();
           // If this was a new chat, get the saved chat ID and set it as current

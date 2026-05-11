@@ -1555,12 +1555,47 @@ const DashboardAiButton = ({ classId, className }) => {
             title: `Класс: ${className}` 
           } 
         }));
-      } else setStatus('error');
+        setStatus('idle');
+      } else {
+        setStatus('error');
+        setTimeout(() => setStatus('idle'), 3000);
+      }
     } catch (e) { 
       console.error('AI analysis failed:', e);
-      setStatus('error'); 
+      setStatus('error');
+      setTimeout(() => setStatus('idle'), 3000);
     }
-    setStatus('idle');
+  };
+
+  const handleAction = async (type) => {
+    setStatus(type === 'copy' ? 'loading_copy' : 'loading_file');
+    try {
+      let result;
+      try {
+        result = await buildClassRagPrompt(classId);
+      } catch (ragError) {
+        console.warn('RAG failed, falling back to JSON:', ragError);
+        result = await buildClassPrompt(classId);
+      }
+      
+      if (result) {
+        if (type === 'copy' && result.instruction) {
+          await navigator.clipboard.writeText(result.instruction);
+          setStatus('copied');
+        } else if (type === 'file' && result.data) {
+          downloadJSON(result.data, `class_${classId.slice(0, 8)}.json`);
+          setStatus('downloaded');
+        } else setStatus('error');
+        setTimeout(() => setStatus('idle'), 2500);
+      } else {
+        setStatus('error');
+        setTimeout(() => setStatus('idle'), 3000);
+      }
+    } catch (e) {
+      console.error('Legacy AI action failed:', e);
+      setStatus('error');
+      setTimeout(() => setStatus('idle'), 3000);
+    }
   };
 
   return (

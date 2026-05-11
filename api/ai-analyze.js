@@ -1,5 +1,11 @@
 import { GoogleGenAI } from '@google/genai';
 import OpenAI from 'openai';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL,
+  process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY
+);
 
 // Model priority: Gemini -> Others -> OpenAI (last due to 0 free tries)
 const MODELS = {
@@ -37,6 +43,9 @@ export default async function handler(req, res) {
   const isTeacher = userRole === 'teacher';
   const isPlayer = userRole === 'player' || userRole === 'editor';
   const hasClass = req.body?.hasClass; // Player with class vs spectator
+  const userId = req.body?.userId;
+  const contextId = req.body?.contextId;
+  const contextType = req.body?.contextType;
   const isAuthenticated = !!userRole;
   
   // User-based rate limits
@@ -45,6 +54,8 @@ export default async function handler(req, res) {
       case 'player':
         if (!hasClass) return { daily: 0, perMinute: 0 }; // Spectator - no access
         return { daily: 50, perMinute: 10 }; // Player with class
+      case 'editor':
+        return { daily: 200, perMinute: 20 }; // Editor (quiz author)
       case 'teacher':
         return { daily: 300, perMinute: 30 };
       case 'admin':
@@ -76,40 +87,80 @@ export default async function handler(req, res) {
     console.log('🔍 AI API Debug (Creator):', debugInfo);
   }
   
-  // --- Access Control & Rate Limiting ---
-  const userId = req.body?.userId;
-  
-  // 1. Fetch current profile from DB to ensure access (more secure than trusting client body)
-  let dbRole = userRole;
-  let dbHasClass = hasClass;
-  
+  // --- Security & Role Verification ---
+  let dbRole = userRole || 'player';
+  let dbHasClass = hasClass || false;
+  let canAccessSubject = true;
+
   if (userId) {
     try {
       const { data: profile } = await supabase
         .from('profiles')
-        .select('role, class_id')
+        .select('role, class_id, email')
         .eq('id', userId)
         .single();
         
       if (profile) {
         dbRole = profile.role;
         dbHasClass = profile.class_id ? true : false;
+
+        // If teacher/editor is analyzing another user, verify access
+        if ((dbRole === 'teacher' || dbRole === 'editor') && contextId && userId !== contextId) {
+          // For class context, teachers always have access
+          if (contextType === 'class' || contextType === 'quiz') {
+            canAccessSubject = true;
+          } else {
+            // Check 1: Is teacher assigned to the student's class?
+            const { data: subjectProfile } = await supabase.from('profiles').select('class_id').eq('id', contextId).single();
+            let hasClassAccess = false;
+            if (subjectProfile?.class_id) {
+              const { data: assignment } = await supabase
+                .from('class_teachers')
+                .select('id')
+                .eq('class_id', subjectProfile.class_id)
+                .ilike('email', profile.email)
+                .maybeSingle();
+              hasClassAccess = !!assignment;
+            }
+
+            // Check 2: Is the user the author of a quiz the student took? (for detailed_quiz / quiz contexts)
+            let hasQuizAuthorAccess = false;
+            if (!hasClassAccess && contextId) {
+              const { data: authoredAttempts } = await supabase
+                .from('quiz_attempts')
+                .select('id, quiz_id, quizzes!inner(author_id)')
+                .eq('user_id', contextId)
+                .eq('quizzes.author_id', userId)
+                .limit(1);
+              hasQuizAuthorAccess = authoredAttempts && authoredAttempts.length > 0;
+            }
+
+            // Check 3: Are they classmates? (same class_id)
+            let isClassmate = false;
+            if (!hasClassAccess && !hasQuizAuthorAccess && profile.class_id && subjectProfile?.class_id) {
+              isClassmate = profile.class_id === subjectProfile.class_id;
+            }
+
+            if (!hasClassAccess && !hasQuizAuthorAccess && !isClassmate) {
+              console.warn(`🚫 User ${userId} (${dbRole}) tried to access ${contextId} without permission`);
+              canAccessSubject = false;
+            }
+          }
+        }
       }
-    } catch (e) {
-      console.error('❌ AI-Analyze: DB Profile check failed:', e);
+    } catch (err) {
+      console.error('Error verifying user role:', err);
     }
   }
 
-  console.log(`🤖 AI Request: User=${userId}, Role=${dbRole}, HasClass=${dbHasClass}`);
-
-  if (!isAuthenticated) {
+  if (!canAccessSubject && dbRole !== 'admin' && dbRole !== 'creator') {
     return res.status(403).json({ 
-      error: 'NO_ACCESS',
-      reason: 'NOT_AUTHENTICATED',
-      message: 'Доступ к ИИ доступен только авторизованным пользователям'
+      error: 'NO_ACCESS', 
+      reason: 'NOT_ASSIGNED_TEACHER',
+      message: 'У вас нет доступа к аналитике этого ученика (вы не являетесь его учителем).' 
     });
   }
-  
+
   const rateLimits = getRateLimits(dbRole, dbHasClass);
   if (rateLimits.daily === 0 && rateLimits.perMinute === 0) {
     const reason = (dbRole === 'player' && !dbHasClass) ? 'SPECTATOR' : 'NO_ACCESS';
