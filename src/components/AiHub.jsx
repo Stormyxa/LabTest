@@ -23,13 +23,13 @@ const AiHub = ({ session, profile }) => {
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [status, setStatus] = useState('idle'); // idle, loading, streaming, error, limit
-  
+
   // Refs to capture latest state for cleanup vectorization
   const messagesRef = useRef(messages);
   const chatIdRef = useRef(currentChatId);
   const contextIdRef = useRef(null);
   const titleRef = useRef(aiChatTitle);
-  
+
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => { chatIdRef.current = currentChatId; }, [currentChatId]);
   useEffect(() => { titleRef.current = aiChatTitle; }, [aiChatTitle]);
@@ -360,16 +360,16 @@ const AiHub = ({ session, profile }) => {
     const handleUnload = () => {
       if (messagesRef.current.length > 2 && session?.user?.id) {
         vectorizeConversation(
-          session.user.id, 
-          titleRef.current || 'AI Анализ', 
-          messagesRef.current, 
+          session.user.id,
+          titleRef.current || 'AI Анализ',
+          messagesRef.current,
           contextIdRef.current
         );
       }
     };
-    
+
     window.addEventListener('beforeunload', handleUnload);
-    
+
     return () => {
       window.removeEventListener('beforeunload', handleUnload);
       handleUnload();
@@ -525,8 +525,8 @@ const AiHub = ({ session, profile }) => {
         let ragStr = '';
         if (session?.user?.id) {
           // If we are analyzing a specific student, we should search their RAG memory
-          const targetUserId = (type === 'student' || type === 'detailed_quiz') 
-            ? id 
+          const targetUserId = (type === 'student' || type === 'detailed_quiz')
+            ? id
             : session.user.id;
 
           const relevantFacts = await searchUserFacts(targetUserId, searchQuery, {
@@ -552,20 +552,22 @@ const AiHub = ({ session, profile }) => {
           ? `[STATUS: WRONG] [QUESTION] ${lastUserMsg}`
           : lastUserMsg;
 
-        const isTeacherRole = profile.role === 'teacher' || profile.role === 'editor';
+        const isTeacherRole = ['teacher', 'editor', 'admin', 'creator'].includes(profile.role);
+        const isAnalyzingSpecificStudent = (type === 'student' || type === 'detailed_quiz') && id !== session.user.id;
 
         // For teachers: search RAG of their students (class context)
         // For students: search their own RAG
         let relevantFacts = [];
         let classStudentFacts = [];
         let classFactStr = '';
-        
+
         const userInfoPromise = getUserInfo();
-        const ownFactsPromise = session?.user?.id 
-          ? searchUserFacts(session.user.id, generalSearchQuery, { quizId: currentQuizId, limit: 10 }) 
+        const ownFactsPromise = session?.user?.id
+          ? searchUserFacts(session.user.id, generalSearchQuery, { quizId: currentQuizId, limit: 10 })
           : Promise.resolve([]);
 
-        if (isTeacherRole) {
+        // Fetch class context if teacher role and NOT analyzing a specific student's personal RAG already (or if user explicitly asks for class)
+        if (isTeacherRole && !isAnalyzingSpecificStudent) {
           // Teacher: also get facts from class students across all their classes
           try {
             // 1. Get teacher's classes
@@ -573,7 +575,7 @@ const AiHub = ({ session, profile }) => {
               .from('class_teachers')
               .select('class_id')
               .eq('email', session.user.email.toLowerCase());
-            
+
             const classIds = teacherClasses?.map(tc => tc.class_id) || [];
             if (profile.class_id) classIds.push(profile.class_id);
             const uniqueClassIds = [...new Set(classIds)].filter(Boolean);
@@ -591,15 +593,15 @@ const AiHub = ({ session, profile }) => {
               if (classStudents && classStudents.length > 0) {
                 const { generateEmbedding } = await import('../lib/embeddingService');
                 const queryVector = await generateEmbedding(generalSearchQuery);
-                
+
                 const studentFactPromises = classStudents.map(async (student) => {
-                  return searchUserFacts(student.id, generalSearchQuery, { 
-                    queryVector, 
-                    limit: 5 
-                  }).then(facts => (facts || []).map(f => ({ 
-                    ...f, 
+                  return searchUserFacts(student.id, generalSearchQuery, {
+                    queryVector,
+                    limit: 5
+                  }).then(facts => (facts || []).map(f => ({
+                    ...f,
                     studentName: `${student.last_name} ${student.first_name}`,
-                    studentId: student.id 
+                    studentId: student.id
                   })));
                 });
 
@@ -607,11 +609,12 @@ const AiHub = ({ session, profile }) => {
                 classStudentFacts = studentResults.flat().sort((a, b) => b.score - a.score).slice(0, 50);
 
                 // Add a "Dry Facts" summary for the teacher (Hybrid mode)
+                // Note: removed 'attempt_count' as it's not in the schema provided
                 const { data: studentStats } = await supabase
                   .from('quiz_results')
-                  .select('user_id, score, total_questions, is_passed, attempt_count')
-                  .in('user_id', classStudents.map(s => s.id));
-                
+                  .select('user_id, score, total_questions, is_passed')
+                  .in('user_id', classStudents.map(s => s.id).filter(Boolean));
+
                 const statsMap = {};
                 (studentStats || []).forEach(s => {
                   if (!statsMap[s.user_id]) statsMap[s.user_id] = { tests: 0, avg: 0, sum: 0 };
@@ -644,10 +647,10 @@ const AiHub = ({ session, profile }) => {
         const ownFactStr = relevantFacts.length > 0
           ? `\n\nЛичные факты из памяти (RAG):\n${relevantFacts.map(f => `- ${f.fact}`).join('\n')}`
           : '';
-        
+
         // Combine student facts with registry (if any)
         if (classStudentFacts.length > 0) {
-          const ragPrefix = `\n\nФакты учеников класса (RAG):\n${classStudentFacts.map(f => `- [${f.studentName} | ID: ${f.studentId?.slice(0,8)}] ${f.fact}`).join('\n')}`;
+          const ragPrefix = `\n\nФакты учеников класса (RAG):\n${classStudentFacts.map(f => `- [${f.studentName} | ID: ${f.studentId?.slice(0, 8)}] ${f.fact}`).join('\n')}`;
           classFactStr = ragPrefix + classFactStr;
         }
 
@@ -809,11 +812,11 @@ const AiHub = ({ session, profile }) => {
       animationFrameId = requestAnimationFrame(() => {
         const newX = e.clientX - dragOffset.x;
         const newY = e.clientY - dragOffset.y;
-        
+
         // Clamp position within viewport boundaries
         const clampedX = Math.max(0, Math.min(newX, window.innerWidth - size.width));
         const clampedY = Math.max(0, Math.min(newY, window.innerHeight - size.height));
-        
+
         setPosition({ x: clampedX, y: clampedY });
       });
     };
@@ -1286,7 +1289,7 @@ export default AiHub;
 // Helper component for rendering charts in the chat
 const AiChart = ({ data }) => {
   const chartRef = useRef(null);
-  
+
   useEffect(() => {
     if (window.Plotly && chartRef.current) {
       const layout = {
@@ -1299,19 +1302,19 @@ const AiChart = ({ data }) => {
         height: 250,
         ...data.layout
       };
-      
-      const config = { 
-        displayModeBar: false, 
-        responsive: true 
+
+      const config = {
+        displayModeBar: false,
+        responsive: true
       };
-      
+
       window.Plotly.newPlot(chartRef.current, data.data, layout, config);
     }
   }, [data]);
 
   return (
-    <div className="ai-chart-wrapper" style={{ 
-      width: '100%', 
+    <div className="ai-chart-wrapper" style={{
+      width: '100%',
       margin: '10px 0',
       background: 'rgba(255,255,255,0.03)',
       borderRadius: '12px',
