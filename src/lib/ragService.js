@@ -422,7 +422,7 @@ export const processAndStoreAttemptFacts = async (attemptId, quizId, userId, sec
   }
 };
 
-const buildStudentRagInstruction = (name, geo, ragContext) => {
+export const buildStudentRagInstruction = (name, geo, ragContext) => {
   const ragSection = ragContext 
     ? `\n${ragContext}\n\n**Примечание**: Используй эти факты для анализа. Они извлечены из векторной памяти ученика и содержат наиболее релевантную информацию об его обучении.`
     : '\n\n**Примечание**: Векторная память ученика пока пуста или недоступна. Анализ основан на базовой информации.';
@@ -449,7 +449,7 @@ ${ragSection}
 **Стиль**: Обращайся к ученику на «ты», дружелюбно но честно. Используй эмодзи умеренно.`;
 };
 
-const buildTeacherRagInstruction = (teacherProfile, studentName, geo, ragContext) => {
+export const buildTeacherRagInstruction = (teacherProfile, studentName, geo, ragContext) => {
   const teacherName = teacherProfile
     ? `${teacherProfile.last_name || ''} ${teacherProfile.first_name || ''}`.trim()
     : 'Учитель';
@@ -763,5 +763,51 @@ export const storeUserFact = async (userId, fact, score = 1, metadata = {}) => {
   } catch (e) {
     console.error('Failed to store user fact:', e);
     return false;
+  }
+};
+
+/**
+ * Migrate student history to RAG memory (Qdrant)
+ */
+export const migrateHistoryToRag = async ({ userId = null, classId = null, limit = 100 }) => {
+  try {
+    const { supabase } = await import('./supabase');
+    let query = supabase
+      .from('quiz_results')
+      .select('*, quizzes(title, quiz_sections(name))')
+      .order('created_at', { ascending: false });
+
+    if (userId) query = query.eq('user_id', userId);
+    if (classId) {
+      const { data: students } = await supabase.from('profiles').select('id').eq('class_id', classId);
+      const studentIds = students?.map(s => s.id) || [];
+      if (studentIds.length === 0) return { success: true, count: 0 };
+      query = query.in('user_id', studentIds);
+    }
+
+    const { data: attempts, error } = await query.limit(limit);
+    if (error) throw error;
+    if (!attempts || attempts.length === 0) return { success: true, count: 0 };
+
+    let totalStored = 0;
+    for (const attempt of attempts) {
+      try {
+        const result = await processAndStoreAttemptFacts(
+          attempt.id,
+          attempt.quiz_id,
+          attempt.user_id,
+          attempt.quizzes?.quiz_sections?.name,
+          classId
+        );
+        if (result?.success) totalStored += result.factsStored;
+      } catch (e) {
+        console.warn(`Failed to migrate attempt ${attempt.id}:`, e);
+      }
+    }
+
+    return { success: true, count: totalStored };
+  } catch (error) {
+    console.error('RAG Migration failed:', error);
+    throw error;
   }
 };
