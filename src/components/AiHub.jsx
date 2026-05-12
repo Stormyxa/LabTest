@@ -551,6 +551,7 @@ const AiHub = ({ session, profile }) => {
         // For students: search their own RAG
         let relevantFacts = [];
         let classStudentFacts = [];
+        let classFactStr = '';
         
         const userInfoPromise = getUserInfo();
         const ownFactsPromise = session?.user?.id 
@@ -629,9 +630,12 @@ const AiHub = ({ session, profile }) => {
         const ownFactStr = relevantFacts.length > 0
           ? `\n\nЛичные факты из памяти (RAG):\n${relevantFacts.map(f => `- ${f.fact}`).join('\n')}`
           : '';
-        const classFactStr = classStudentFacts.length > 0
-          ? `\n\nФакты учеников класса (RAG):\n${classStudentFacts.map(f => `- [${f.studentName} | ID: ${f.studentId?.slice(0,8)}] ${f.fact}`).join('\n')}`
-          : '';
+        
+        // Combine student facts with registry (if any)
+        if (classStudentFacts.length > 0) {
+          const ragPrefix = `\n\nФакты учеников класса (RAG):\n${classStudentFacts.map(f => `- [${f.studentName} | ID: ${f.studentId?.slice(0,8)}] ${f.fact}`).join('\n')}`;
+          classFactStr = ragPrefix + classFactStr;
+        }
 
         const roleContext = isTeacherRole
           ? `\nРоль пользователя: УЧИТЕЛЬ. Обращайся к нему на «вы». Он не ученик — он преподаёт и хочет знать об успехах/проблемах СВОИХ учеников. Не анализируй его личные попытки прохождения тестов как ученические.
