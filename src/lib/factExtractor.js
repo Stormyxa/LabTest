@@ -140,9 +140,10 @@ const calculateStringSimilarity = (str1, str2) => {
  * @param {string} sectionName - Section name
  * @param {string} quizClass - Class name
  * @param {object} summary - Summary metrics (avg_score, avg_time, etc.)
+ * @param {string} folderName - Folder name
  * @returns {string[]} Array of fact strings
  */
-export const extractFactsFromAttempt = (attempt, quiz, subject, sectionName = null, quizClass = null, summary = null) => {
+export const extractFactsFromAttempt = (attempt, quiz, subject, sectionName = null, quizClass = null, summary = null, folderName = null) => {
   const facts = [];
   const questions = quiz?.content?.questions || [];
   const answersData = attempt?.answers_data || [];
@@ -170,7 +171,8 @@ export const extractFactsFromAttempt = (attempt, quiz, subject, sectionName = nu
   const startedStr = startedAt.toLocaleString('ru-RU', { timeZone: 'Asia/Almaty' });
   const finishedStr = finishedAt.toLocaleString('ru-RU', { timeZone: 'Asia/Almaty' });
   
-  facts.push(`[METADATA] Quiz: "${quiz?.title || 'Неизвестный'}"${quizTypeStr}, Subject: ${subjectStr}, Section ID: ${quiz?.section_id || '—'}${classStr}${bookUrl}${resourceStr}. Started: ${startedStr}, Finished: ${finishedStr}, Duration: ${durationSec}s.`);
+  const folderStr = folderName ? `, Folder: "${folderName}"` : '';
+  facts.push(`[METADATA] Quiz: "${quiz?.title || 'Неизвестный'}"${quizTypeStr}, Subject: ${subjectStr}${folderStr}, Section ID: ${quiz?.section_id || '—'}${classStr}${bookUrl}${resourceStr}. Started: ${startedStr}, Finished: ${finishedStr}, Duration: ${durationSec}s.`);
 
   if (!answersData.length || !questions.length) {
     return facts;
@@ -356,9 +358,10 @@ export const extractFactsFromResult = (result, quiz, subject) => {
  * @param {string} params.sectionName - Section/subject name from quiz_sections
  * @param {string} params.quizClass - Class info (e.g. "10 класс")
  * @param {object} params.summary - Summary metrics from all attempts
+ * @param {string} params.folderName - Folder name
  * @returns {Promise<{facts: string[], language: string}>} Facts and detected language
  */
-export const extractAllFacts = async ({ attempt, quiz, profile, subject, sectionName = null, quizClass = null, summary = null }) => {
+export const extractAllFacts = async ({ attempt, quiz, profile, subject, sectionName = null, quizClass = null, summary = null, folderName = null }) => {
   const facts = [];
 
   // User context fact
@@ -366,7 +369,7 @@ export const extractAllFacts = async ({ attempt, quiz, profile, subject, section
   facts.push(`Пользователь: ${userName}. Класс: ${profile?.class_id || 'не указан'}.`);
 
   // Extract attempt facts with detailed metadata
-  const attemptFacts = extractFactsFromAttempt(attempt, quiz, subject, sectionName, quizClass, summary);
+  const attemptFacts = extractFactsFromAttempt(attempt, quiz, subject, sectionName, quizClass, summary, folderName);
   facts.push(...attemptFacts);
 
   // Detect language from all facts
@@ -407,16 +410,15 @@ export const limitFacts = (facts, maxFacts = 20, useImportanceScoring = true) =>
   if (!useImportanceScoring) {
     const grouped = groupFacts(deduplicated);
     
-    // Prioritize: errors > changes > performance > behavior > timing > metadata > explanations
+    // Prioritize: errors > summary > performance > behavior > timing > metadata
     const prioritized = [
-      ...grouped.errors.slice(0, 6),
-      ...grouped.changes.slice(0, 4),
-      ...grouped.performance.slice(0, 4),
+      ...grouped.legacy_errors.slice(0, 6),
+      ...grouped.summary.slice(0, 4),
+      ...grouped.legacy_performance.slice(0, 4),
       ...grouped.behavior.slice(0, 3),
-      ...grouped.summary.slice(0, 3),
-      ...grouped.timing.slice(0, 2),
+      ...grouped.legacy_timing.slice(0, 2),
       ...grouped.metadata.slice(0, 1),
-      ...grouped.explanations.slice(0, 2)
+      ...grouped.questions.slice(0, 5)
     ];
 
     return prioritized.slice(0, maxFacts);

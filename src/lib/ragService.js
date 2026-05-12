@@ -1,4 +1,4 @@
-import { searchFacts, isQdrantConfigured } from './qdrantClient.js';
+import { searchFacts, isQdrantConfigured, saveVectors } from './qdrantClient.js';
 import { generateEmbedding, generateEmbeddingsBatch } from './embeddingService.js';
 import { supabase } from './supabase';
 import { extractAllFacts, limitFacts } from './factExtractor.js';
@@ -18,23 +18,13 @@ export const buildStudentRagContext = async (userId) => {
     const { generateEmbedding } = await import('./embeddingService');
     const queryVector = await generateEmbedding('student performance quiz results errors strengths weaknesses learning progress');
 
-    // Search for relevant facts via server proxy
-    const response = await fetch('/api/search-facts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId,
-        queryVector,
-        limit: 15,
-        enableTimeDecay: true
-      })
+    // Search for relevant facts via centralized client
+    const facts = await searchFacts({
+      userId,
+      queryVector,
+      limit: 250,
+      enableTimeDecay: true
     });
-
-    if (!response.ok) {
-      throw new Error('Failed to search facts');
-    }
-
-    const { facts } = await response.json();
 
     if (!facts || facts.length === 0) {
       return null;
@@ -97,20 +87,13 @@ export const buildQuizRagContext = async (quizId, classId = null) => {
       const batch = userIds.slice(i, i + batchSize);
       const batchPromises = batch.map(async (userId) => {
         try {
-          const response = await fetch('/api/search-facts', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId,
-              queryVector,
-              quizId,
-              limit: 5,
-              enableTimeDecay: true
-            })
+          const facts = await searchFacts({
+            userId,
+            queryVector,
+            quizId,
+            limit: 25,
+            enableTimeDecay: true
           });
-
-          if (!response.ok) return [];
-          const { facts } = await response.json();
           return facts || [];
         } catch (error) {
           console.error(`Failed to fetch facts for user ${userId}:`, error);
@@ -175,20 +158,13 @@ export const buildClassRagContext = async (classId) => {
       const batch = userIds.slice(i, i + batchSize);
       const batchPromises = batch.map(async (userId) => {
         try {
-          const response = await fetch('/api/search-facts', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId,
-              queryVector,
-              classId,
-              limit: 5,
-              enableTimeDecay: true
-            })
+          const facts = await searchFacts({
+            userId,
+            queryVector,
+            classId,
+            limit: 25,
+            enableTimeDecay: true
           });
-
-          if (!response.ok) return [];
-          const { facts } = await response.json();
           return facts || [];
         } catch (error) {
           console.error(`Failed to fetch facts for user ${userId}:`, error);
@@ -315,8 +291,8 @@ export const processAndStoreAttemptFacts = async (attemptId, quizId, userId, sec
 
     // 1. Fetch data from Supabase (client-side has session)
     const [attemptRes, quizRes, profileRes] = await Promise.all([
-      supabase.from('quiz_attempts').select('*').eq('id', attemptId).single(),
-      supabase.from('quizzes').select('*, quiz_sections(name, class_id, book_url)').eq('id', quizId).single(),
+      supabase.from('quiz_attempts').select('*, profiles(*)').eq('id', attemptId).single(),
+      supabase.from('quizzes').select('*, quiz_sections(name, class_id, book_url, section_folders(name))').eq('id', quizId).single(),
       supabase.from('profiles').select('*').eq('id', userId).single()
     ]);
 
@@ -359,6 +335,8 @@ export const processAndStoreAttemptFacts = async (attemptId, quizId, userId, sec
     // 3. Extract facts
     const sName = sectionName || quiz.quiz_sections?.name || null;
     const subject = sName || 'Неизвестный предмет';
+    const folderName = quiz.quiz_sections?.section_folders?.name || '—';
+
     const { facts, language } = await extractAllFacts({
       attempt,
       quiz,
@@ -366,15 +344,16 @@ export const processAndStoreAttemptFacts = async (attemptId, quizId, userId, sec
       subject,
       sectionName: sName,
       quizClass,
-      summary
+      summary,
+      folderName
     });
 
-    const limitedFacts = limitFacts(facts, 20, true);
-    console.log(`📝 RAG: Extracted ${facts.length} facts`);
+    const limitedFacts = limitFacts(facts, 100, true);
+    console.log(`📝 RAG: Extracted ${facts.length} facts, limited to ${limitedFacts.length}`);
     dispatchStatus('vectorizing', 'Векторизация фактов...', 40);
 
     const { generateEmbeddingsBatch } = await import('./embeddingService');
-    const vectors = await generateEmbeddingsBatch(facts);
+    const vectors = await generateEmbeddingsBatch(limitedFacts);
     
     dispatchStatus('storing', 'Сохранение в память...', 80);
     const readyFacts = limitedFacts.map((fact, i) => ({
@@ -390,30 +369,24 @@ export const processAndStoreAttemptFacts = async (attemptId, quizId, userId, sec
       }
     }));
 
-    // 5. Send to "dumb" save-vectors API
-    const response = await fetch('/api/save-vectors', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId,
-        quizId,
-        attemptId,
-        subject,
-        language,
-        profile: { class_id: profile.class_id },
-        facts: readyFacts
-      })
+    // 5. Send to centralized save-vectors API
+    const result = await saveVectors({
+      userId,
+      quizId,
+      attemptId,
+      subject,
+      language,
+      profile: { class_id: profile.class_id },
+      facts: readyFacts
     });
 
-    if (response.ok) {
-      const result = await response.json();
+    if (result) {
       console.log(`✅ RAG: Successfully stored ${facts.length} facts via client-side pipeline`);
       dispatchStatus('done', `Память обновлена (${facts.length} фактов)`, 100);
 
       return { success: true, factsStored: facts.length };
     } else {
-      const err = await response.json();
-      throw new Error(err.error || 'Failed to save vectors');
+      throw new Error('Failed to save vectors');
     }
 
   } catch (error) {
@@ -423,9 +396,19 @@ export const processAndStoreAttemptFacts = async (attemptId, quizId, userId, sec
 };
 
 export const buildStudentRagInstruction = (name, geo, ragContext) => {
-  const ragSection = ragContext 
-    ? `\n${ragContext}\n\n**Примечание**: Используй эти факты для анализа. Они извлечены из векторной памяти ученика и содержат наиболее релевантную информацию об его обучении.`
-    : '\n\n**Примечание**: Векторная память ученика пока пуста или недоступна. Анализ основан на базовой информации.';
+  let ragContent = '';
+  if (ragContext) {
+    if (typeof ragContext === 'string') {
+      ragContent = ragContext;
+    } else if (ragContext.facts && Array.isArray(ragContext.facts)) {
+      ragContent = `## Релевантные факты (из векторной памяти)\n\n` + 
+        ragContext.facts.map((f, i) => `${i + 1}. ${f}`).join('\n');
+    }
+  }
+
+  const ragSection = ragContent 
+    ? `\n### ИСТОРИЧЕСКИЙ КОНТЕКСТ ИЗ ПАМЯТИ (RAG)\n*Внимание: эти факты извлечены из твоей прошлой активности. Используй их для оценки прогресса, но приоритет отдавай текущим данным.*\n${ragContent}`
+    : '\n\n**Примечание**: Векторная память пока пуста или недоступна. Анализ основан на текущей информации.';
 
   return `# Инструкция для ИИ (Личный Наставник LabTest с RAG)
 
@@ -454,9 +437,19 @@ export const buildTeacherRagInstruction = (teacherProfile, studentName, geo, rag
     ? `${teacherProfile.last_name || ''} ${teacherProfile.first_name || ''}`.trim()
     : 'Учитель';
 
-  const ragSection = ragContext 
-    ? `\n${ragContext}\n\n**Примечание**: Используй эти факты для анализа. Они извлечены из векторной памяти ученика и содержат наиболее релевантную информацию об его обучении.`
-    : '\n\n**Примечание**: Векторная память ученика пока пуста или недоступна. Анализ основан на базовой информации.';
+  let ragContent = '';
+  if (ragContext) {
+    if (typeof ragContext === 'string') {
+      ragContent = ragContext;
+    } else if (ragContext.facts && Array.isArray(ragContext.facts)) {
+      ragContent = `## Релевантные факты (из векторной памяти)\n\n` + 
+        ragContext.facts.map((f, i) => `${i + 1}. ${f}`).join('\n');
+    }
+  }
+
+  const ragSection = ragContent 
+    ? `\n### ИСТОРИЧЕСКИЙ КОНТЕКСТ ИЗ ПАМЯТИ (RAG)\n*Внимание: эти факты извлечены из долгосрочной памяти ученика. Используй их для выявления системных проблем и трендов.*\n${ragContent}`
+    : '\n\n**Примечание**: Векторная память ученика пока пуста или недоступна. Анализ основан на текущей информации.';
 
   return `# Инструкция для ИИ (Педагогический Аналитик LabTest с RAG)
 
@@ -714,22 +707,18 @@ export const vectorizeConversation = async (userId, title, messages, contextId =
     const { generateEmbedding } = await import('./embeddingService');
     const vector = await generateEmbedding(summaryFact);
 
-    await fetch('/api/save-vectors', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId,
-        facts: [{
-          fact: summaryFact,
-          vector,
-          metadata: {
-            type: 'chat_memory',
-            title,
-            contextId,
-            timestamp: new Date().toISOString()
-          }
-        }]
-      })
+    await saveVectors({
+      userId,
+      facts: [{
+        fact: summaryFact,
+        vector,
+        metadata: {
+          type: 'chat_memory',
+          title,
+          contextId,
+          timestamp: new Date().toISOString()
+        }
+      }]
     });
     console.log('🧠 RAG: Conversation vectorized into memory');
   } catch (e) {
@@ -744,20 +733,16 @@ export const storeUserFact = async (userId, fact, score = 1, metadata = {}) => {
     const { generateEmbedding } = await import('./embeddingService');
     const vector = await generateEmbedding(fact);
     
-    await fetch('/api/save-vectors', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId,
-        facts: [{
-          fact,
-          vector,
-          metadata: {
-            ...metadata,
-            timestamp: new Date().toISOString()
-          }
-        }]
-      })
+    await saveVectors({
+      userId,
+      facts: [{
+        fact,
+        vector,
+        metadata: {
+          ...metadata,
+          timestamp: new Date().toISOString()
+        }
+      }]
     });
     return true;
   } catch (e) {

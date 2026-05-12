@@ -524,16 +524,23 @@ const AiHub = ({ session, profile }) => {
         // Search RAG for every message to provide maximum context
         let ragStr = '';
         if (session?.user?.id) {
-          const relevantFacts = await searchUserFacts(session.user.id, searchQuery, {
+          // If we are analyzing a specific student, we should search their RAG memory
+          const targetUserId = (contextType === 'student' || contextType === 'detailed_quiz') 
+            ? contextId 
+            : session.user.id;
+
+          const relevantFacts = await searchUserFacts(targetUserId, searchQuery, {
             quizId: quizId || currentQuizId,
-            limit: 15
+            limit: 30
           });
           if (relevantFacts.length > 0) {
-            ragStr = `\n\nРелевантные факты из памяти (RAG):\n${relevantFacts.map(f => `- ${f.fact}`).join('\n')}`;
+            ragStr = `\n\n### ИСТОРИЧЕСКИЙ КОНТЕКСТ ИЗ ПАМЯТИ (RAG)\n*Внимание: эти данные могут быть устаревшими или относиться к прошлым попыткам. Ты можешь просить пользователя предоставить более свежие данные через "Детальный анализ", если видишь противоречия.*\n${relevantFacts.map((f, i) => `${i + 1}. ${f.fact}`).join('\n')}`;
           }
         }
 
-        apiMessages[0].content = `${instruction}${contextJson}${ragStr}\n\nПользователь запросил анализ этого контекста.`;
+        const currentDataContext = contextData ? `\n\n### АКТУАЛЬНЫЕ ДАННЫЕ ДЛЯ АНАЛИЗА (ПРИОРИТЕТ)\n*Это текущий контекст, который пользователь просит проанализировать прямо сейчас.*\n${JSON.stringify(contextData)}` : '';
+
+        apiMessages[0].content = `${instruction}${currentDataContext}${ragStr}\n\nПользователь запросил детальный анализ этого актуального контекста. В первую очередь опирайся на "АКТУАЛЬНЫЕ ДАННЫЕ". Ты имеешь право просить дополнительные данные по конкретным ученикам или тестам, если это поможет сделать анализ глубже.`;
       } else if (profile) {
         // Case: General chat mode
         const lastUserMsg = chatMessages[chatMessages.length - 1].content;
