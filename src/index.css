@@ -487,6 +487,15 @@ select {
 }
 
 /* AI Components Styles */
+.ai-analysis-control-wrapper {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-height: 42px;
+  gap: 2px;
+}
+
 .ai-legacy-toggle {
   background: transparent;
   box-shadow: none;
@@ -513,7 +522,7 @@ select {
   max-height: 0;
   overflow: hidden;
   opacity: 0;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -522,7 +531,7 @@ select {
 }
 
 .ai-legacy-panel.open {
-  max-height: 100px;
+  max-height: 200px; /* Increased to avoid clipping */
   opacity: 1;
   margin-top: 8px;
   margin-bottom: 5px;

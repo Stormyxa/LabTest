@@ -1070,8 +1070,8 @@ const AnalyticsAiButton = ({ quiz, filteredResults, cities, schools, classes, fi
       }
       
       if (result) {
-        if (type === 'copy' && result.instruction) {
-          await navigator.clipboard.writeText(result.instruction);
+        if (type === 'copy' && (result.manualInstruction || result.instruction)) {
+          await navigator.clipboard.writeText(result.manualInstruction || result.instruction);
           setStatus('copied');
         } else if (type === 'file' && (result.downloadData || result.data)) {
           downloadJSON(result.downloadData || result.data, result.filename);
@@ -1101,20 +1101,19 @@ const AnalyticsAiButton = ({ quiz, filteredResults, cities, schools, classes, fi
 
   return (
     <>
-      <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', height: '50px' }}>
-        <div style={{ display: 'flex', gap: '10px', height: '50px' }}>
+      <div className="ai-analysis-control-wrapper">
+        <div style={{ display: 'flex', gap: '10px' }}>
           <button
             onClick={handleAiAnalysis}
             disabled={status === 'loading_ai'}
             className="flex-center"
             style={{
-              padding: '0 25px', borderRadius: '15px', fontSize: '0.95rem', fontWeight: 'bold',
+              padding: '12px 25px', borderRadius: '15px', fontSize: '0.95rem', fontWeight: 'bold',
               background: 'linear-gradient(135deg, #7c3aed, #6366f1)',
               color: 'white', border: 'none',
               boxShadow: '0 4px 15px rgba(99, 102, 241, 0.4)', gap: '10px',
               cursor: status === 'loading_ai' ? 'wait' : 'pointer',
-              transition: 'all 0.3s',
-              height: '100%'
+              transition: 'all 0.3s'
             }}
           >
             {status === 'loading_ai' ? <RefreshCw size={20} className="spinner" /> : <Sparkles size={20} />}

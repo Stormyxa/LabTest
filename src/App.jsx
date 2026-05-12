@@ -201,8 +201,11 @@ export default App;
 
 const StatusToast = () => {
   const [status, setStatus] = useState(null);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
     const handleStatus = (e) => {
       setStatus(e.detail);
       if (e.detail.status === 'done') {
@@ -210,36 +213,44 @@ const StatusToast = () => {
       }
     };
     window.addEventListener('rag-status', handleStatus);
-    return () => window.removeEventListener('rag-status', handleStatus);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('rag-status', handleStatus);
+    };
   }, []);
 
   if (!status) return null;
 
   return (
     <div style={{
-      position: 'fixed', bottom: '20px', right: '20px', zIndex: 9999,
+      position: 'fixed', 
+      top: isMobile ? '20px' : 'auto',
+      bottom: isMobile ? 'auto' : '20px', 
+      right: '20px', 
+      zIndex: 11000,
       background: 'var(--card-bg)', color: 'var(--text-color)',
-      padding: '15px 20px', borderRadius: '16px',
-      boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
-      border: '1px solid rgba(124, 58, 237, 0.2)',
-      display: 'flex', flexDirection: 'column', gap: '10px',
-      minWidth: '250px', maxWidth: '350px',
-      animation: 'slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+      padding: '12px 18px', borderRadius: '16px',
+      boxShadow: '0 15px 35px rgba(0,0,0,0.25)',
+      border: '1px solid rgba(124, 58, 237, 0.3)',
+      display: 'flex', flexDirection: 'column', gap: '8px',
+      minWidth: isMobile ? '200px' : '250px', 
+      maxWidth: '350px',
+      animation: isMobile ? 'slideDown 0.3s cubic-bezier(0.4, 0, 0.2, 1)' : 'slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
     }}>
       <div className="flex-center" style={{ justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           {status.status === 'done' ? (
-            <div style={{ background: '#4ade80', borderRadius: '50%', padding: '2px' }}><CheckCircle size={14} color="white" /></div>
+            <div style={{ background: '#4ade80', borderRadius: '50%', padding: '2px', display: 'flex' }}><CheckCircle size={14} color="white" /></div>
           ) : (
-            <div style={{ width: '14px', height: '14px', borderRadius: '50%', border: '2px solid var(--primary-color)', borderTopColor: 'transparent', animation: 'spin 1s linear infinite' }} />
+            <div className="rag-spinner" style={{ width: '14px', height: '14px', borderRadius: '50%', border: '2px solid var(--primary-color)', borderTopColor: 'transparent', animation: 'spin 1s linear infinite' }} />
           )}
-          <span style={{ fontWeight: '600', fontSize: '0.9rem' }}>{status.message}</span>
+          <span style={{ fontWeight: '600', fontSize: '0.85rem' }}>{status.message}</span>
         </div>
-        {status.progress !== undefined && <span style={{ fontSize: '0.8rem', opacity: 0.6 }}>{status.progress}%</span>}
+        {status.progress !== undefined && <span style={{ fontSize: '0.75rem', opacity: 0.6 }}>{status.progress}%</span>}
       </div>
       
       {status.progress !== undefined && (
-        <div style={{ height: '4px', background: 'rgba(0,0,0,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
+        <div style={{ height: '3px', background: 'rgba(0,0,0,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
           <div style={{ 
             height: '100%', background: 'var(--primary-color)', 
             width: `${status.progress}%`, transition: 'width 0.3s' 
@@ -249,6 +260,7 @@ const StatusToast = () => {
       
       <style>{`
         @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @keyframes slideDown { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
     </div>

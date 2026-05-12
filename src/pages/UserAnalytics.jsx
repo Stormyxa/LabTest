@@ -1147,8 +1147,8 @@ const AiAnalysisButton = ({ userId, viewerUserId, viewerProfile }) => {
       }
       
       if (result) {
-        if (type === 'copy' && result.instruction) {
-          await navigator.clipboard.writeText(result.instruction);
+        if (type === 'copy' && (result.manualInstruction || result.instruction)) {
+          await navigator.clipboard.writeText(result.manualInstruction || result.instruction);
           setStatus('copied');
         } else if (type === 'file' && (result.downloadData || result.data)) {
           downloadJSON(result.downloadData || result.data, result.filename);
@@ -1178,20 +1178,20 @@ const AiAnalysisButton = ({ userId, viewerUserId, viewerProfile }) => {
 
   return (
     <>
-      <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', height: '36px' }}>
-        <div style={{ display: 'flex', gap: '8px', height: '100%' }}>
+      <div className="ai-analysis-control-wrapper">
+        <div style={{ display: 'flex', gap: '8px' }}>
           <button
             onClick={handleAiAnalysis}
             disabled={status === 'loading_ai' || count === null}
             className="flex-center"
             title={isSelf ? 'Запустить ИИ-наставника' : 'Запустить педагогический ИИ-анализ'}
             style={{
-              padding: '0 16px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 'bold',
+              padding: '10px 16px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 'bold',
               background: 'linear-gradient(135deg, #7c3aed, #6366f1)',
               color: 'white', border: 'none',
               boxShadow: '0 2px 8px rgba(99, 102, 241, 0.3)', gap: '7px',
               cursor: (status === 'loading_ai' || count === null) ? 'wait' : 'pointer',
-              transition: 'all 0.3s', flexShrink: 0, whiteSpace: 'nowrap', height: '100%'
+              transition: 'all 0.3s', flexShrink: 0, whiteSpace: 'nowrap'
             }}
           >
             {status === 'loading_ai' ? <RefreshCw size={14} className="spinner" /> : <Sparkles size={14} />}

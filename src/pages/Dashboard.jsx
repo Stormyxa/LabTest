@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { fetchWithCache, useCacheSync } from '../lib/cache';
 import { User, Shield, Search, Edit3, Trash2, Mail, X, AlertTriangle, MapPin, Building, GraduationCap, Plus, History, Ban, ShieldAlert, Unlock, Eye, EyeOff, Zap, ChevronDown, ChevronRight, Settings, Users, UserPlus, UserMinus, ArrowUp, ArrowDown, UserCheck, CheckCircle, XCircle, Sparkles, Check, RefreshCw, FileText, Copy } from 'lucide-react';
 import { buildClassPrompt, downloadJSON } from '../lib/aiPromptBuilder';
-import { buildClassRagPrompt } from '../lib/ragService';
+import { buildClassRagPrompt, migrateHistoryToRag } from '../lib/ragService';
 import { buildAiCacheKey } from '../lib/aiService';
 import { useScrollRestoration } from '../lib/useScrollRestoration';
 
@@ -1579,8 +1579,8 @@ const DashboardAiButton = ({ classId, className }) => {
       }
       
       if (result) {
-        if (type === 'copy' && result.instruction) {
-          await navigator.clipboard.writeText(result.instruction);
+        if (type === 'copy' && (result.manualInstruction || result.instruction)) {
+          await navigator.clipboard.writeText(result.manualInstruction || result.instruction);
           setStatus('copied');
         } else if (type === 'file' && (result.downloadData || result.data)) {
           downloadJSON(result.downloadData || result.data, `class_${classId.slice(0, 8)}.json`);
@@ -1598,22 +1598,35 @@ const DashboardAiButton = ({ classId, className }) => {
     }
   };
 
+  const handleSyncHistory = async () => {
+    if (!confirm('Начать синхронизацию старых результатов этого класса с ИИ? Это может занять некоторое время.')) return;
+    setStatus('loading_sync');
+    try {
+      await migrateHistoryToRag({ classId, limit: 50 });
+      setStatus('idle');
+    } catch (e) {
+      console.error('Sync failed:', e);
+      setStatus('error');
+      setTimeout(() => setStatus('idle'), 3000);
+    }
+  };
+
   return (
     <>
-      <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', height: '40px' }}>
-        <div style={{ display: 'flex', gap: '8px', height: '100%' }}>
+      <div className="ai-analysis-control-wrapper">
+        <div style={{ display: 'flex', gap: '8px' }}>
           <button
             onClick={handleAiAnalysis}
             disabled={status === 'loading_ai'}
             className="flex-center"
             title="Запустить ИИ-анализ успеваемости класса"
             style={{
-              padding: '0 14px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 'bold',
+              padding: '10px 14px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 'bold',
               background: 'linear-gradient(135deg, #7c3aed, #6366f1)',
               color: 'white', border: 'none',
               boxShadow: '0 2px 8px rgba(99, 102, 241, 0.3)', gap: '7px',
               cursor: status === 'loading_ai' ? 'wait' : 'pointer',
-              transition: 'all 0.3s', flexShrink: 0, whiteSpace: 'nowrap', height: '100%'
+              transition: 'all 0.3s', flexShrink: 0, whiteSpace: 'nowrap'
             }}
           >
             {status === 'loading_ai' ? <RefreshCw size={14} className="spinner" /> : <Sparkles size={14} />}
@@ -1665,6 +1678,23 @@ const DashboardAiButton = ({ classId, className }) => {
             >
               {status === 'loading_file' ? <RefreshCw size={12} className="spinner" /> : status === 'downloaded' ? <Check size={12} /> : <FileText size={12} />}
               JSON
+            </button>
+
+            <button
+              onClick={handleSyncHistory}
+              disabled={status.startsWith('loading')}
+              className="flex-center"
+              title="Синхронизировать историю попыток с ИИ"
+              style={{
+                padding: '0 12px', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 'bold',
+                background: status === 'loading_sync' ? 'rgba(99, 102, 241, 0.1)' : 'rgba(245, 158, 11, 0.05)',
+                color: '#f59e0b',
+                border: '1px solid rgba(245, 158, 11, 0.2)',
+                boxShadow: 'none', gap: '5px', height: '100%', marginBottom: 0
+              }}
+            >
+              {status === 'loading_sync' ? <RefreshCw size={12} className="spinner" /> : <RefreshCw size={12} />}
+              Синхр. RAG
             </button>
           </div>
         </div>

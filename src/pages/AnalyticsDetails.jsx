@@ -634,8 +634,8 @@ const AiDetailedAnalysisButton = ({ userId, quizId, viewerProfile }) => {
     try {
       const result = await buildDetailedQuizPrompt(userId, quizId, viewerRole, isSelf ? null : viewerProfile);
       if (result) {
-        if (type === 'copy' && result.instruction) {
-          await navigator.clipboard.writeText(result.instruction);
+        if (type === 'copy' && (result.manualInstruction || result.instruction)) {
+          await navigator.clipboard.writeText(result.manualInstruction || result.instruction);
           setStatus('copied');
         } else if (type === 'file' && result.data) {
           downloadJSON(result.data, result.filename);
@@ -668,7 +668,7 @@ const AiDetailedAnalysisButton = ({ userId, quizId, viewerProfile }) => {
 
   return (
     <>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+      <div className="ai-analysis-control-wrapper">
         <div style={{ display: 'flex', gap: '8px' }}>
           <button
             onClick={handleAiAnalysis}
@@ -676,7 +676,7 @@ const AiDetailedAnalysisButton = ({ userId, quizId, viewerProfile }) => {
             className="flex-center"
             title="Запустить детальный ИИ-анализ попыток"
             style={{
-              padding: '8px 16px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 'bold',
+              padding: '10px 18px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 'bold',
               background: 'linear-gradient(135deg, #7c3aed, #6366f1)',
               color: 'white', border: 'none',
               boxShadow: '0 2px 8px rgba(99, 102, 241, 0.3)', gap: '7px',
