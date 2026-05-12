@@ -525,8 +525,8 @@ const AiHub = ({ session, profile }) => {
         let ragStr = '';
         if (session?.user?.id) {
           // If we are analyzing a specific student, we should search their RAG memory
-          const targetUserId = (contextType === 'student' || contextType === 'detailed_quiz') 
-            ? contextId 
+          const targetUserId = (type === 'student' || type === 'detailed_quiz') 
+            ? id 
             : session.user.id;
 
           const relevantFacts = await searchUserFacts(targetUserId, searchQuery, {
@@ -565,65 +565,72 @@ const AiHub = ({ session, profile }) => {
           ? searchUserFacts(session.user.id, generalSearchQuery, { quizId: currentQuizId, limit: 10 }) 
           : Promise.resolve([]);
 
-        if (isTeacherRole && profile.class_id) {
-          // Teacher: also get facts from class students
+        if (isTeacherRole) {
+          // Teacher: also get facts from class students across all their classes
           try {
-            const { data: classStudents } = await supabase
-              .from('profiles')
-              .select('id, first_name, last_name')
-              .eq('class_id', profile.class_id)
-              .eq('is_observer', false)
-              .neq('id', session.user.id)
-              .limit(100); // Increased limit to cover full class
+            // 1. Get teacher's classes
+            const { data: teacherClasses } = await supabase
+              .from('class_teachers')
+              .select('class_id')
+              .eq('email', session.user.email.toLowerCase());
+            
+            const classIds = teacherClasses?.map(tc => tc.class_id) || [];
+            if (profile.class_id) classIds.push(profile.class_id);
+            const uniqueClassIds = [...new Set(classIds)].filter(Boolean);
 
-            if (classStudents && classStudents.length > 0) {
-              const { generateEmbedding } = await import('../lib/embeddingService');
-              const queryVector = await generateEmbedding(generalSearchQuery);
-              
-              const studentFactPromises = classStudents.map(async (student) => {
-                try {
-                  const resp = await fetch('/api/search-facts', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userId: student.id, queryVector, limit: 5, enableTimeDecay: true })
-                  });
-                  if (!resp.ok) return [];
-                  const { facts } = await resp.json();
-                  return (facts || []).map(f => ({ 
+            if (uniqueClassIds.length > 0) {
+              // 2. Get students from these classes
+              const { data: classStudents } = await supabase
+                .from('profiles')
+                .select('id, first_name, last_name')
+                .in('class_id', uniqueClassIds)
+                .eq('is_observer', false)
+                .neq('id', session.user.id)
+                .limit(100);
+
+              if (classStudents && classStudents.length > 0) {
+                const { generateEmbedding } = await import('../lib/embeddingService');
+                const queryVector = await generateEmbedding(generalSearchQuery);
+                
+                const studentFactPromises = classStudents.map(async (student) => {
+                  return searchUserFacts(student.id, generalSearchQuery, { 
+                    queryVector, 
+                    limit: 5 
+                  }).then(facts => (facts || []).map(f => ({ 
                     ...f, 
                     studentName: `${student.last_name} ${student.first_name}`,
                     studentId: student.id 
-                  }));
-                } catch { return []; }
-              });
+                  })));
+                });
 
-              const studentResults = await Promise.all(studentFactPromises);
-              classStudentFacts = studentResults.flat().sort((a, b) => b.score - a.score).slice(0, 40);
+                const studentResults = await Promise.all(studentFactPromises);
+                classStudentFacts = studentResults.flat().sort((a, b) => b.score - a.score).slice(0, 50);
 
-              // Add a "Dry Facts" summary for the teacher (Hybrid mode)
-              const { data: studentStats } = await supabase
-                .from('quiz_results')
-                .select('user_id, score, total_questions, is_passed, attempt_count')
-                .in('user_id', classStudents.map(s => s.id));
-              
-              const statsMap = {};
-              (studentStats || []).forEach(s => {
-                if (!statsMap[s.user_id]) statsMap[s.user_id] = { tests: 0, avg: 0, sum: 0 };
-                statsMap[s.user_id].tests++;
-                statsMap[s.user_id].sum += (s.score / (s.total_questions || 1)) * 100;
-              });
+                // Add a "Dry Facts" summary for the teacher (Hybrid mode)
+                const { data: studentStats } = await supabase
+                  .from('quiz_results')
+                  .select('user_id, score, total_questions, is_passed, attempt_count')
+                  .in('user_id', classStudents.map(s => s.id));
+                
+                const statsMap = {};
+                (studentStats || []).forEach(s => {
+                  if (!statsMap[s.user_id]) statsMap[s.user_id] = { tests: 0, avg: 0, sum: 0 };
+                  statsMap[s.user_id].tests++;
+                  statsMap[s.user_id].sum += (s.score / (s.total_questions || 1)) * 100;
+                });
 
-              const registry = classStudents.map(s => {
-                const stat = statsMap[s.id] || { tests: 0, sum: 0 };
-                return {
-                  id: s.id.slice(0, 8),
-                  n: `${s.last_name} ${s.first_name}`,
-                  ts: stat.tests,
-                  avg: stat.tests > 0 ? Math.round(stat.sum / stat.tests) : 0
-                };
-              });
+                const registry = classStudents.map(s => {
+                  const stat = statsMap[s.id] || { tests: 0, sum: 0 };
+                  return {
+                    id: s.id.slice(0, 8),
+                    n: `${s.last_name} ${s.first_name}`,
+                    ts: stat.tests,
+                    avg: stat.tests > 0 ? Math.round(stat.sum / stat.tests) : 0
+                  };
+                });
 
-              classFactStr += `\n\nСВОДНЫЙ РЕЕСТР КЛАССА (Dry Facts):\n${JSON.stringify(registry)}`;
+                classFactStr += `\n\nСВОДНЫЙ РЕЕСТР КЛАССА (Dry Facts):\n${JSON.stringify(registry)}`;
+              }
             }
           } catch (e) {
             console.warn('Failed to fetch class student RAG:', e);
@@ -707,8 +714,8 @@ const AiHub = ({ session, profile }) => {
     } catch (e) {
       console.error('Streaming error:', e);
       console.error('Error message:', e.message);
-      console.error('Error reason:', e.reason);
-      console.error('Error detail:', e.messageDetail);
+      if (e.reason) console.error('Error reason:', e.reason);
+      if (e.messageDetail) console.error('Error detail:', e.messageDetail);
 
       // Handle access denial errors specifically
       if (e.message?.includes('NO_ACCESS') || e.reason === 'NO_ACCESS' || e.message?.includes('SPECTATOR') || e.message?.includes('NOT_AUTHENTICATED')) {

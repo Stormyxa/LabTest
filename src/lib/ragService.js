@@ -66,7 +66,7 @@ export const buildQuizRagContext = async (quizId, classId = null) => {
         .select('id')
         .eq('class_id', classId)
         .eq('is_observer', false);
-      
+
       userIds = profiles?.map(p => p.id) || [];
     }
 
@@ -77,12 +77,12 @@ export const buildQuizRagContext = async (quizId, classId = null) => {
     // Search facts for each student and aggregate via proxy
     const allFacts = [];
     const query = 'Анализ результатов теста: общие ошибки, проблемные вопросы, успеваемость класса';
-    
+
     const batchSize = 10;
-    
+
     const { generateEmbedding } = await import('./embeddingService');
     const queryVector = await generateEmbedding(query);
-    
+
     for (let i = 0; i < userIds.length; i += batchSize) {
       const batch = userIds.slice(i, i + batchSize);
       const batchPromises = batch.map(async (userId) => {
@@ -114,7 +114,7 @@ export const buildQuizRagContext = async (quizId, classId = null) => {
     const topFacts = allFacts.slice(0, 30);
 
     const context = `## Релевантные факты по тесту (из векторной памяти)\n\n` +
-      topFacts.map((fact, idx) => 
+      topFacts.map((fact, idx) =>
         `${idx + 1}. ${fact.fact} (релевантность: ${Math.round(fact.score * 100)}%)`
       ).join('\n');
 
@@ -140,7 +140,7 @@ export const buildClassRagContext = async (classId) => {
       .select('id')
       .eq('class_id', classId)
       .eq('is_observer', false);
-    
+
     const userIds = profiles?.map(p => p.id) || [];
 
     if (userIds.length === 0) {
@@ -150,10 +150,10 @@ export const buildClassRagContext = async (classId) => {
     // Search facts for each student and aggregate via proxy
     const allFacts = [];
     const batchSize = 10;
-    
+
     const { generateEmbedding } = await import('./embeddingService');
     const queryVector = await generateEmbedding(query);
-    
+
     for (let i = 0; i < userIds.length; i += batchSize) {
       const batch = userIds.slice(i, i + batchSize);
       const batchPromises = batch.map(async (userId) => {
@@ -185,7 +185,7 @@ export const buildClassRagContext = async (classId) => {
     }
 
     const context = `## Релевантные факты по классу (из векторной памяти)\n\n` +
-      topFacts.map((fact, idx) => 
+      topFacts.map((fact, idx) =>
         `${idx + 1}. ${fact.fact} (релевантность: ${Math.round(fact.score * 100)}%)`
       ).join('\n');
 
@@ -281,8 +281,8 @@ export const buildStudentRagPrompt = async (userId, viewerRole = 'student', view
 export const processAndStoreAttemptFacts = async (attemptId, quizId, userId, sectionName = null, quizClass = null) => {
   try {
     const dispatchStatus = (status, message, progress) => {
-      window.dispatchEvent(new CustomEvent('rag-status', { 
-        detail: { status, message, progress } 
+      window.dispatchEvent(new CustomEvent('rag-status', {
+        detail: { status, message, progress }
       }));
     };
 
@@ -354,7 +354,7 @@ export const processAndStoreAttemptFacts = async (attemptId, quizId, userId, sec
 
     const { generateEmbeddingsBatch } = await import('./embeddingService');
     const vectors = await generateEmbeddingsBatch(limitedFacts);
-    
+
     dispatchStatus('storing', 'Сохранение в память...', 80);
     const readyFacts = limitedFacts.map((fact, i) => ({
       fact,
@@ -401,12 +401,12 @@ export const buildStudentRagInstruction = (name, geo, ragContext) => {
     if (typeof ragContext === 'string') {
       ragContent = ragContext;
     } else if (ragContext.facts && Array.isArray(ragContext.facts)) {
-      ragContent = `## Релевантные факты (из векторной памяти)\n\n` + 
+      ragContent = `## Релевантные факты (из векторной памяти)\n\n` +
         ragContext.facts.map((f, i) => `${i + 1}. ${f}`).join('\n');
     }
   }
 
-  const ragSection = ragContent 
+  const ragSection = ragContent
     ? `\n### ИСТОРИЧЕСКИЙ КОНТЕКСТ ИЗ ПАМЯТИ (RAG)\n*Внимание: эти факты извлечены из твоей прошлой активности. Используй их для оценки прогресса, но приоритет отдавай текущим данным.*\n${ragContent}`
     : '\n\n**Примечание**: Векторная память пока пуста или недоступна. Анализ основан на текущей информации.';
 
@@ -442,12 +442,12 @@ export const buildTeacherRagInstruction = (teacherProfile, studentName, geo, rag
     if (typeof ragContext === 'string') {
       ragContent = ragContext;
     } else if (ragContext.facts && Array.isArray(ragContext.facts)) {
-      ragContent = `## Релевантные факты (из векторной памяти)\n\n` + 
+      ragContent = `## Релевантные факты (из векторной памяти)\n\n` +
         ragContext.facts.map((f, i) => `${i + 1}. ${f}`).join('\n');
     }
   }
 
-  const ragSection = ragContent 
+  const ragSection = ragContent
     ? `\n### ИСТОРИЧЕСКИЙ КОНТЕКСТ ИЗ ПАМЯТИ (RAG)\n*Внимание: эти факты извлечены из долгосрочной памяти ученика. Используй их для выявления системных проблем и трендов.*\n${ragContent}`
     : '\n\n**Примечание**: Векторная память ученика пока пуста или недоступна. Анализ основан на текущей информации.';
 
@@ -520,7 +520,7 @@ export const buildQuizRagPrompt = async (quiz, filteredResults, scopeLabel) => {
 
       if (topFacts.length > 0) {
         ragContext = `## Релевантные факты по тесту (из векторной памяти)\n\n` +
-          topFacts.map((fact, idx) => 
+          topFacts.map((fact, idx) =>
             `${idx + 1}. ${fact.fact} (релевантность: ${Math.round(fact.score * 100)}%)`
           ).join('\n');
       }
@@ -534,7 +534,7 @@ export const buildQuizRagPrompt = async (quiz, filteredResults, scopeLabel) => {
   const { buildQuizPromptFromData } = await import('./aiPromptBuilder');
   const legacyData = buildQuizPromptFromData({ quiz, filteredResults, scopeLabel });
 
-  const ragSection = ragContext 
+  const ragSection = ragContext
     ? `\n${ragContext}\n\n**Примечание**: Используй эти факты для анализа. Они извлечены из векторной памяти и содержат наиболее релевантную информацию об учениках.`
     : '\n\n**Примечание**: Векторная память недоступна. Анализ основан на агрегированных данных.';
 
@@ -608,7 +608,7 @@ export const buildClassRagPrompt = async (classId) => {
       .eq('is_observer', false)
       .order('last_name');
 
-    const studentList = (students || []).map(s => 
+    const studentList = (students || []).map(s =>
       `${s.last_name || ''} ${s.first_name || ''} ${s.patronymic || ''}`.trim()
     );
 
@@ -622,7 +622,7 @@ export const buildClassRagPrompt = async (classId) => {
       }
     }
 
-    const ragSection = ragContext 
+    const ragSection = ragContext
       ? `\n${ragContext}\n\n**Примечание**: Используй эти факты для детального анализа. Они извлечены из векторной памяти учеников класса.`
       : '';
 
@@ -648,13 +648,26 @@ ${ragSection}
 2. **Слабые ученики**: Определи учеников с наибольшими трудностями.
 3. **Проблемные предметы**: Определи предметы/тесты с наименьшей успеваемостью.
 4. **Паттерны поведения**: Есть ли общие паттерны ошибок или подозрительной активности?
-5. **Рекомендации**: 3-5 конкретных действий для улучшения результатов класса.
+5. **Рекомендации учителю**: 3 конкретных шага по улучшению результатов класса.
 
-**Стиль**: Профессиональный, педагогический. Обращайся к учителю на «вы».`;
+**Стиль**: Профессиональный, аналитический. Обращайся к учителю на «вы».`;
+
+    // Fetch legacy data for full download/JSON view
+    const { buildClassPrompt } = await import('./aiPromptBuilder');
+    const legacyData = await buildClassPrompt(classId);
 
     return {
       instruction,
-      data: { classId, className: cls.name, studentCount: studentList.length, hasRagContext: !!ragContext }
+      data: {
+        classId,
+        className: cls.name,
+        schoolName: cls.schools?.name,
+        cityName,
+        studentCount: studentList.length,
+        hasRagContext: !!ragContext
+      },
+      downloadData: legacyData.data,
+      filename: `class_${classId.slice(0, 8)}.json`
     };
   } catch (error) {
     console.error('Failed to build class RAG prompt:', error);
@@ -671,7 +684,7 @@ export const triggerFactStorage = async (attemptId, quizId, userId, sectionName 
     await processAndStoreAttemptFacts(attemptId, quizId, userId, sectionName, quizClass);
   } catch (error) {
     console.warn('RAG fact storage failed (non-critical):', error);
-    
+
     // Fallback to legacy server-side flow if client-side fails
     try {
       console.log('🔄 RAG: Falling back to server-side processing...');
@@ -703,7 +716,7 @@ export const vectorizeConversation = async (userId, title, messages, contextId =
   try {
     const lastMsgs = messages.slice(-4).map(m => `${m.role === 'user' ? 'Ученик' : 'ИИ'}: ${m.content}`).join('\n');
     const summaryFact = `В чате "${title}" обсуждали: ${lastMsgs.slice(0, 500)}...`;
-    
+
     const { generateEmbedding } = await import('./embeddingService');
     const vector = await generateEmbedding(summaryFact);
 
@@ -732,7 +745,7 @@ export const storeUserFact = async (userId, fact, score = 1, metadata = {}) => {
   try {
     const { generateEmbedding } = await import('./embeddingService');
     const vector = await generateEmbedding(fact);
-    
+
     await saveVectors({
       userId,
       facts: [{

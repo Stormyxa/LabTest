@@ -284,11 +284,11 @@ export const streamAiAnalysis = async ({
  * @param {object} options - Search options { limit, quizId, classId }
  */
 export const searchUserFacts = async (userId, query, options = {}) => {
-  const { limit = 20, quizId = null, classId = null } = options;
+  const { limit = 20, quizId = null, classId = null, queryVector: precomputedVector = null } = options;
   try {
-    // Generate query vector locally in the browser
-    let queryVector = null;
-    if (query && typeof query === 'string' && query.trim()) {
+    // Generate query vector locally in the browser if not provided
+    let queryVector = precomputedVector;
+    if (!queryVector && query && typeof query === 'string' && query.trim()) {
       try {
         const { generateEmbedding } = await import('./embeddingService');
         queryVector = await generateEmbedding(query);
