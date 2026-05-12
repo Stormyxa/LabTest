@@ -12,13 +12,13 @@ const MODELS = {
   google: ['gemini-3.1-flash-lite'], // Free plan model
   groq: ['llama-3.1-8b-instant'], // Best Groq model
   cerebras: ['llama-3.1-8b'], // Best Cerebras model  
-  openrouter: ['meta-llama/llama-3.1-8b-instruct:free'], // Best OpenRouter free model
+  openrouter: ['inclusionai/ring-2.6-1t:free'], // Best OpenRouter free model
   openai: ['gpt-4o-mini'], // Smart and fast OpenAI model (last priority due to 0 free tries)
 };
 
 const ALL_MODELS = [
   ...MODELS.google,
-  ...MODELS.groq, 
+  ...MODELS.groq,
   ...MODELS.cerebras,
   ...MODELS.openrouter,
   ...MODELS.openai
@@ -36,7 +36,7 @@ export default async function handler(req, res) {
   const cerebrasKey = process.env.CEREBRAS_API_KEY;
   const openrouterKey = process.env.OPENROUTER_API_KEY;
   const openaiKey = process.env.OPENAI_API_KEY;
-  
+
   // Enhanced debugging and user role checking
   const userRole = req.body?.viewerRole;
   const isCreator = userRole === 'creator' || userRole === 'admin';
@@ -47,7 +47,7 @@ export default async function handler(req, res) {
   const contextId = req.body?.contextId;
   const contextType = req.body?.contextType;
   const isAuthenticated = !!userRole;
-  
+
   // User-based rate limits
   const getRateLimits = (role, hasClass) => {
     switch (role) {
@@ -66,7 +66,7 @@ export default async function handler(req, res) {
         return { daily: 0, perMinute: 0 }; // No access
     }
   };
-  
+
   const debugInfo = {
     timestamp: new Date().toISOString(),
     geminiKey: geminiKey ? 'SET' : 'NOT SET',
@@ -82,11 +82,11 @@ export default async function handler(req, res) {
     hasClass,
     rateLimits: getRateLimits(userRole, hasClass)
   };
-  
+
   if (isCreator) {
     console.log('🔍 AI API Debug (Creator):', debugInfo);
   }
-  
+
   // --- Security & Role Verification ---
   let dbRole = userRole || 'player';
   let dbHasClass = hasClass || false;
@@ -99,7 +99,7 @@ export default async function handler(req, res) {
         .select('role, class_id, email')
         .eq('id', userId)
         .single();
-        
+
       if (profile) {
         dbRole = profile.role;
         dbHasClass = profile.class_id ? true : false;
@@ -154,27 +154,27 @@ export default async function handler(req, res) {
   }
 
   if (!canAccessSubject && dbRole !== 'admin' && dbRole !== 'creator') {
-    return res.status(403).json({ 
-      error: 'NO_ACCESS', 
+    return res.status(403).json({
+      error: 'NO_ACCESS',
       reason: 'NOT_ASSIGNED_TEACHER',
-      message: 'У вас нет доступа к аналитике этого ученика (вы не являетесь его учителем).' 
+      message: 'У вас нет доступа к аналитике этого ученика (вы не являетесь его учителем).'
     });
   }
 
   const rateLimits = getRateLimits(dbRole, dbHasClass);
   if (rateLimits.daily === 0 && rateLimits.perMinute === 0) {
     const reason = (dbRole === 'player' && !dbHasClass) ? 'SPECTATOR' : 'NO_ACCESS';
-    return res.status(403).json({ 
+    return res.status(403).json({
       error: 'NO_ACCESS',
       reason: reason,
-      message: (dbRole === 'player' && !dbHasClass) 
+      message: (dbRole === 'player' && !dbHasClass)
         ? 'Наблюдатели (без класса) не имеют доступа к ИИ-анализу'
         : 'У вас нет доступа к ИИ-анализу'
     });
   }
-  
+
   if (!geminiKey && !groqKey && !cerebrasKey && !openrouterKey && !openaiKey) {
-    return res.status(500).json({ 
+    return res.status(500).json({
       error: 'API keys not configured. Please add at least one API key to your Vercel Environment Variables.',
       debug: {
         geminiKey: !!geminiKey,
@@ -252,7 +252,7 @@ export default async function handler(req, res) {
 - НЕ ГАЛЛЮЦИНИРУЙ. Если в RAG нет данных о времени — не выдумывай их.
 - Если видишь "rapid fail" или "blind guessing", мягко, но твердо укажи на неэффективность такой стратегии.
 - Твоя цель — не просто отчет, а трансформация ученика из "игрока" в "исследователя".`;
-    
+
     // Token estimation (rough approximation: 1 token ≈ 4 characters for English, 1 token ≈ 1 character for Russian)
     const estimateTokens = (text) => {
       // Russian text typically uses ~1 token per character, English ~4 chars per token
@@ -260,26 +260,26 @@ export default async function handler(req, res) {
       const otherChars = text.length - russianChars;
       return Math.ceil(russianChars + otherChars / 4);
     };
-    
+
     const totalTokens = messages.reduce((sum, msg) => sum + estimateTokens(msg.content), 0);
-    
+
     // Use priority order: Gemini -> OpenAI -> Others
     let modelsToTry = ALL_MODELS;
-    
+
     // Log token info for creators
     if (isCreator) {
       console.log(`🔍 Token Analysis: ${totalTokens} tokens, using models:`, modelsToTry);
     }
-    
+
     let lastError = null;
     let isRateLimited = false;
-    
+
     for (const model of modelsToTry) {
       try {
         // Google Gemini models
         if (MODELS.google.includes(model)) {
           if (!geminiKey) continue;
-          
+
           const ai = new GoogleGenAI({ apiKey: geminiKey });
           const contents = messages.map(m => ({
             role: m.role === 'assistant' ? 'model' : 'user',
@@ -309,13 +309,13 @@ export default async function handler(req, res) {
           res.end();
           return;
         }
-        
+
         // Groq models
         else if (MODELS.groq.includes(model)) {
           if (!groqKey) continue;
-          
+
           const groq = new OpenAI({ apiKey: groqKey, baseURL: 'https://api.groq.com/openai/v1' });
-          
+
           const stream = await groq.chat.completions.create({
             model,
             messages: [
@@ -338,13 +338,13 @@ export default async function handler(req, res) {
           res.end();
           return;
         }
-        
+
         // Cerebras models
         else if (MODELS.cerebras.includes(model)) {
           if (!cerebrasKey) continue;
-          
+
           const cerebras = new OpenAI({ apiKey: cerebrasKey, baseURL: 'https://api.cerebras.ai/v1' });
-          
+
           const stream = await cerebras.chat.completions.create({
             model,
             messages: [
@@ -367,20 +367,20 @@ export default async function handler(req, res) {
           res.end();
           return;
         }
-        
+
         // OpenRouter models
         else if (MODELS.openrouter.includes(model)) {
           if (!openrouterKey) continue;
-          
-          const openrouter = new OpenAI({ 
-            apiKey: openrouterKey, 
+
+          const openrouter = new OpenAI({
+            apiKey: openrouterKey,
             baseURL: 'https://openrouter.ai/api/v1',
             defaultHeaders: {
               'HTTP-Referer': 'https://labtest.kz',
               'X-Title': 'LabTest AI Analysis'
             }
           });
-          
+
           const stream = await openrouter.chat.completions.create({
             model,
             messages: [
@@ -403,11 +403,11 @@ export default async function handler(req, res) {
           res.end();
           return;
         }
-        
+
         // OpenAI models (fallback)
         else if (openaiKey && model.includes('gpt')) {
           const openai = new OpenAI({ apiKey: openaiKey });
-          
+
           const stream = await openai.chat.completions.create({
             model,
             messages: [
@@ -432,7 +432,7 @@ export default async function handler(req, res) {
         }
       } catch (err) {
         lastError = err;
-        
+
         // Check for 429 rate limit error
         if (err.status === 429 || err.message?.includes('429') || err.message?.includes('rate limit')) {
           isRateLimited = true;
@@ -441,7 +441,7 @@ export default async function handler(req, res) {
           }
           continue; // Try next model only on 429
         }
-        
+
         // For other errors, continue trying models
         const errorInfo = {
           model,
@@ -449,7 +449,7 @@ export default async function handler(req, res) {
           stack: err.stack?.substring(0, 200),
           timestamp: new Date().toISOString()
         };
-        
+
         if (isCreator) {
           console.warn(`🔴 Model ${model} failed:`, errorInfo);
           console.warn('🔍 Full error details:', {
