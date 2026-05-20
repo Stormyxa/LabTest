@@ -75,6 +75,50 @@ function App() {
     }
   }, [session, profile]);
 
+  useEffect(() => {
+    if (session && profile) {
+      const timer = setTimeout(async () => {
+        try {
+          const queueData = localStorage.getItem('pending_vector_facts');
+          if (!queueData) return;
+
+          let queue = JSON.parse(queueData);
+          const myPending = queue.filter(item => item.userId === session.user.id);
+          if (myPending.length === 0) return;
+
+          console.log(`🔄 RAG: Found ${myPending.length} pending vector facts for this user. Processing sequentially...`);
+
+          const { processAndStoreAttemptFacts } = await import('./lib/ragService');
+
+          for (const item of myPending) {
+            try {
+              console.log(`🔄 RAG: Sequential processing of cached attempt ${item.attemptId}`);
+              const result = await processAndStoreAttemptFacts(
+                item.attemptId,
+                item.quizId,
+                item.userId,
+                item.sectionName,
+                item.quizClass
+              );
+              if (result?.success) {
+                const currentQueue = JSON.parse(localStorage.getItem('pending_vector_facts') || '[]');
+                const filteredQueue = currentQueue.filter(qItem => qItem.attemptId !== item.attemptId);
+                localStorage.setItem('pending_vector_facts', JSON.stringify(filteredQueue));
+                console.log(`✅ RAG: Successfully processed cached attempt ${item.attemptId}`);
+              }
+            } catch (err) {
+              console.warn(`❌ RAG: Failed to process cached attempt ${item.attemptId}. Will retry next time.`, err);
+            }
+          }
+        } catch (queueErr) {
+          console.error('Error processing pending vector facts queue:', queueErr);
+        }
+      }, 3000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [session, profile]);
+
   const fetchProfile = async (id, currentSession = null) => {
     // console.log("DEBUG: Fetching profile for ID:", id);
     const { data, error } = await supabase

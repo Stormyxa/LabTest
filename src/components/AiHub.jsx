@@ -3,12 +3,61 @@ import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import MathRenderer from './MathRenderer';
-import { X, Maximize2, Minimize2, Sparkles, Send, Download, Copy, RefreshCw, History, Trash2, ChevronLeft, ChevronRight, MessageSquare, Check, User, Shield, AlertTriangle } from 'lucide-react';
+import { X, Maximize2, Minimize2, Sparkles, Send, Download, Copy, RefreshCw, History, Trash2, ChevronLeft, ChevronRight, MessageSquare, Check, User, Shield, AlertTriangle, Play } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { streamAiAnalysis, getAiHistory, saveAiAnalysis, deleteAiAnalysis, searchUserFacts } from '../lib/aiService';
 import { buildStudentRagPrompt, vectorizeConversation } from '../lib/ragService';
 import { createModalOverlay } from '../utils/blurUtils';
+import ResourcePlayer from './ResourcePlayer';
 import './AiAnalysisModal.css';
+
+const getSystemInstruction = (role) => {
+  const isTeacher = ['teacher', 'editor', 'admin', 'creator'].includes(role);
+  
+  let instruction = `Ты - продвинутый педагогический ИИ-ассистент LabTest.
+Твоя задача - помогать \${isTeacher ? 'учителю' : 'ученику'} анализировать результаты обучения.
+
+`;
+
+  if (isTeacher) {
+    instruction += `ОБРАЩЕНИЕ И СТИЛЬ:
+- Обращайся к пользователю исключительно на «вы» (уважительно, с большой буквы, когда это уместно).
+- Твой фокус — общие метрики класса, выявление проблемных зон у групп учеников, подготовка рекомендаций по темам и планам уроков.
+- Анализируй результаты учеников в разрезе их классов, выявляй слабые темы и предлагай методические решения.
+- При анализе отдельных учеников выводи их списком с краткой конструктивной рецензией на каждого.
+`;
+  } else {
+    instruction += `ОБРАЩЕНИЕ И СТИЛЬ:
+- Обращайся к пользователю исключительно на «ты». Будь дружелюбным, поддерживающим наставником.
+- Твой фокус — индивидуальный прогресс ученика, его сильные и слабые зоны, персональные рекомендации, мотивация и разбор конкрещих ошибок.
+- Подсказывай, какие темы нужно подтянуть, давай практические советы и подбадривай.
+`;
+  }
+
+  instruction += `
+ПРАВИЛА РАСЧЕТА СТАТИСТИКИ (КРИТИЧЕСКИ ВАЖНО):
+- В системе LabTest общая сумма баллов (totalPoints) рассчитывается строго как СУММА МАКСИМАЛЬНЫХ БАЛЛОВ по уникальным тестам (а не сумма всех попыток).
+- Приоритет расчетов: Всегда используй и озвучивай те предварительные расчеты и статистику (overallStats, сводки класса и т.д.), которые передаются тебе в контексте данных (подготовлены на стороне клиента). Никогда не пытайся пересчитывать их вручную арифметически, так как модели могут допускать ошибки в расчетах. Просто озвучивай и интерпретируй готовые цифры.
+
+ВАЖНО ДЛЯ ВИЗУАЛИЗАЦИИ:
+- Для визуализации данных (диаграммы, графики, тренды) ОБЯЗАТЕЛЬНО используй формат JSON для библиотеки Plotly.js.
+- Пример формата в твоем ответе:
+{
+  "type": "chart",
+  "data": {
+    "data": [{ "x": ["Тест 1", "Тест 2"], "y": [70, 85], "type": "scatter", "mode": "lines+markers", "name": "Успеваемость" }],
+    "layout": { "title": "Динамика результатов", "xaxis": {"title": "Попытки"}, "yaxis": {"title": "Баллы", "range": [0, 100]} }
+  }
+}
+Используй Plotly для наглядной демонстрации прогресса.
+
+ОТВЕТЫ И ЯЗЫК:
+- Пиши на русском языке.
+- Будь конструктивным, точным и вежливым.
+`;
+
+  return instruction;
+};
 
 const AiHub = ({ session, profile }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -18,6 +67,7 @@ const AiHub = ({ session, profile }) => {
   const [currentChatId, setCurrentChatId] = useState(null);
   const [aiChatTitle, setAiChatTitle] = useState('ИИ-Хаб LabTest');
   const [currentQuizId, setCurrentQuizId] = useState(null);
+  const [activeResource, setActiveResource] = useState(null);
 
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -458,6 +508,25 @@ const AiHub = ({ session, profile }) => {
             userClass = data;
           }
 
+          // Fetch user's quiz_results to calculate overall statistics
+          const { data: quizResults, error: resultsError } = await supabase
+            .from('quiz_results')
+            .select('score, total_questions, is_passed, quiz_id')
+            .eq('user_id', session.user.id);
+
+          if (resultsError) {
+            console.error('Error fetching quiz_results:', resultsError);
+          }
+
+          const overallStats = {
+            totalPoints: quizResults?.reduce((acc, curr) => acc + (curr.score || 0), 0) || 0,
+            passedQuizzes: quizResults?.filter(r => r.is_passed).length || 0,
+            totalQuizzesCount: quizResults?.length || 0,
+            avgScore: quizResults && quizResults.length > 0 && quizResults.reduce((acc, curr) => acc + (curr.total_questions || 1), 0) > 0
+              ? Math.round((quizResults.reduce((acc, curr) => acc + (curr.score || 0), 0) / quizResults.reduce((acc, curr) => acc + (curr.total_questions || 1), 0)) * 100)
+              : 0
+          };
+
           return {
             profile: {
               name: `${profile.first_name} ${profile.last_name}`,
@@ -491,6 +560,7 @@ const AiHub = ({ session, profile }) => {
                   } : null;
                 }).filter(Boolean).slice(0, 3)
             })),
+            overallStats,
             summary: {
               totalRecent: recentAttempts?.length || 0,
               avgScorePercent: recentAttempts?.reduce((sum, a) => sum + (a.score / (a.max_score || 1)) * 100, 0) / (recentAttempts?.length || 1)
@@ -672,23 +742,7 @@ const AiHub = ({ session, profile }) => {
         profile: profile,
         chatId: currentChatId, // Pass current chat ID to update existing chat
         displayMessages: displayMessages || chatMessages, // Pass user-friendly messages for display
-        systemInstruction: `
-          Ты - продвинутый педагогический ИИ-ассистент LabTest. 
-          Твоя задача - помогать учителю и ученику анализировать результаты обучения.
-          
-          ВАЖНО: Для визуализации данных (диаграммы, графики, тренды) ОБЯЗАТЕЛЬНО используй формат JSON для библиотеки Plotly.js.
-          Пример формата в твоем ответе:
-          {
-            "type": "chart",
-            "data": {
-              "data": [{ "x": ["Тест 1", "Тест 2"], "y": [70, 85], "type": "scatter", "mode": "lines+markers", "name": "Успеваемость" }],
-              "layout": { "title": "Динамика результатов", "xaxis": {"title": "Попытки"}, "yaxis": {"title": "Баллы", "range": [0, 100]} }
-            }
-          }
-          
-          Используй Plotly для наглядной демонстрации прогресса.
-          Пиши на русском языке. Будь конструктивным.
-        `,
+        systemInstruction: getSystemInstruction(profile?.role || 'student'),
         onChunk: (chunk) => {
           fullText += chunk;
           setMessages(prev => {
@@ -701,14 +755,8 @@ const AiHub = ({ session, profile }) => {
           // Reload history after streaming completes
           loadHistory();
           // If this was a new chat, get the saved chat ID and set it as current
-          if (!currentChatId && savedChat) {
-            // Find the newly saved chat in history
-            setTimeout(() => {
-              loadHistory().then(() => {
-                const newChat = history.find(h => h.data?.messages === chatMessages);
-                if (newChat) setCurrentChatId(newChat.id);
-              });
-            }, 100);
+          if (!currentChatId && savedChat?.id) {
+            setCurrentChatId(savedChat.id);
           }
         }
       });
@@ -1048,6 +1096,35 @@ const AiHub = ({ session, profile }) => {
                         }
                       }
                       return <code className={className} {...props}>{children}</code>;
+                    },
+                    a: ({ href, children, ...props }) => {
+                      if (!href) return null;
+                      const isMedia = href.includes('youtube.com') || href.includes('youtu.be') || href.includes('drive.google.com');
+                      if (isMedia) {
+                        return (
+                          <a
+                            href={href}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setActiveResource({ url: href, title: children?.[0] || 'Учебный ресурс' });
+                            }}
+                            className="premium-resource-link no-drag"
+                            style={{
+                              color: 'var(--primary-color, #7c3aed)',
+                              fontWeight: 'bold',
+                              textDecoration: 'underline',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}
+                            {...props}
+                          >
+                            <Play size={12} style={{ display: 'inline' }} /> {children}
+                          </a>
+                        );
+                      }
+                      return <a href={href} target="_blank" rel="noopener noreferrer" className="no-drag" {...props}>{children}</a>;
                     }
                   }}
                 >{msg.content}</ReactMarkdown>
@@ -1279,6 +1356,97 @@ const AiHub = ({ session, profile }) => {
             </div>
           </div>
         </div>
+      )}
+
+      {activeResource && createPortal(
+        <div 
+          className="modal-overlay" 
+          style={{ 
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(10, 10, 15, 0.65)',
+            backdropFilter: 'blur(20px) saturate(180%)',
+            WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+            zIndex: 99999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px'
+          }} 
+          onClick={() => setActiveResource(null)}
+        >
+          <div 
+            className="modal-content animate" 
+            style={{ 
+              width: '85vw', 
+              maxWidth: '1000px', 
+              padding: '24px', 
+              position: 'relative', 
+              background: 'rgba(30, 30, 46, 0.9)', 
+              backdropFilter: 'blur(16px)',
+              WebkitBackdropFilter: 'blur(16px)',
+              borderRadius: '24px', 
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              boxShadow: '0 30px 70px rgba(0, 0, 0, 0.6)',
+              animation: 'slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1)'
+            }} 
+            onClick={e => e.stopPropagation()}
+          >
+            <button 
+              onClick={() => setActiveResource(null)} 
+              style={{ 
+                position: 'absolute', 
+                top: '20px', 
+                right: '20px', 
+                background: 'rgba(255, 255, 255, 0.05)', 
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                padding: '8px', 
+                borderRadius: '50%', 
+                cursor: 'pointer', 
+                zIndex: 10,
+                color: 'white',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)';
+                e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)';
+              }}
+            >
+              <X size={20} />
+            </button>
+            <h3 style={{ 
+              marginBottom: '20px', 
+              marginTop: 0, 
+              color: 'white', 
+              fontSize: '1.25rem', 
+              fontWeight: 600,
+              paddingRight: '40px',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden'
+            }}>{activeResource.title}</h3>
+            <div style={{ 
+              height: '65vh', 
+              borderRadius: '16px', 
+              overflow: 'hidden', 
+              background: '#0c0c0e',
+              border: '1px solid rgba(255, 255, 255, 0.05)'
+            }}>
+              <ResourcePlayer resources={[activeResource]} activeIdx={0} inline={true} />
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );

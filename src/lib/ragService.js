@@ -233,13 +233,31 @@ export const buildStudentRagPrompt = async (userId, viewerRole = 'student', view
   // Fetch full history for heavy JSON download
   const { data: results } = await supabase
     .from('quiz_results')
-    .select('*, quizzes(title, quiz_sections(name))')
+    .select('*, quizzes(title, section_id)')
     .eq('user_id', userId)
     .order('created_at', { ascending: false });
 
+  // Load section names separately to avoid PostgREST nested join errors
+  let sectionMap = {};
+  if (results && results.length > 0) {
+    const sectionIds = [...new Set(results.filter(r => r.quizzes?.section_id).map(r => r.quizzes.section_id))];
+    if (sectionIds.length > 0) {
+      const { data: sections } = await supabase
+        .from('quiz_sections')
+        .select('id, name')
+        .in('id', sectionIds);
+      if (sections) {
+        sectionMap = sections.reduce((acc, s) => {
+          acc[s.id] = s.name;
+          return acc;
+        }, {});
+      }
+    }
+  }
+
   const history = (results || []).map(r => ({
     quiz: r.quizzes?.title,
-    section: r.quizzes?.quiz_sections?.name,
+    section: r.quizzes?.section_id ? sectionMap[r.quizzes.section_id] : null,
     score: r.score,
     total: r.total_questions,
     percent: Math.round((r.score / (r.total_questions || 1)) * 100),
@@ -480,7 +498,7 @@ ${ragSection}
  * @param {string} scopeLabel - Scope description
  * @returns {Promise<{instruction: string, data: object}>}
  */
-export const buildQuizRagPrompt = async (quiz, filteredResults, scopeLabel) => {
+export const buildQuizRagPrompt = async (quiz, filteredResults, scopeLabel, options = {}) => {
   if (!quiz || !filteredResults || filteredResults.length === 0) {
     return { instruction: 'Нет данных для анализа.', data: null };
   }
@@ -529,10 +547,101 @@ export const buildQuizRagPrompt = async (quiz, filteredResults, scopeLabel) => {
     }
   }
 
+  // Pre-calculate statistics for the AI (avoids calculation errors)
+  const totalPotentialScore = filteredResults.reduce((acc, curr) => acc + curr.total_questions, 0);
+  const totalEarnedScore = filteredResults.reduce((acc, curr) => acc + curr.score, 0);
+  const avgScore = totalPotentialScore > 0 ? Math.round((totalEarnedScore / totalPotentialScore) * 100) : 0;
+
+  const passedCount = filteredResults.filter(r => r.is_passed).length;
+  const failedCount = filteredResults.length - passedCount;
+
+  const getFullName = (p) => {
+    if (!p) return 'Неизвестный ученик';
+    const hasName = p.first_name || p.last_name;
+    return p.is_anonymous ? 'Анонимный профиль' : (hasName ? `${p.last_name || ''} ${p.first_name || ''}`.trim() : (p.email || 'Неизвестный ученик'));
+  };
+
+  const excellent = [];
+  const good = [];
+  const satisfactory = [];
+  const underperforming = [];
+  const suspicious = [];
+  const incomplete = [];
+
+  filteredResults.forEach(r => {
+    const name = getFullName(r.profiles);
+    const pct = r.total_questions > 0 ? Math.round((r.score / r.total_questions) * 100) : 0;
+    const scoreStr = `${r.score}/${r.total_questions} (${pct}%)`;
+    
+    if (r.is_suspicious_user) suspicious.push(`${name} - ${scoreStr}`);
+    if (r.is_incomplete_user) incomplete.push(`${name} - ${scoreStr}`);
+
+    if (pct >= 90) excellent.push(`${name} - ${scoreStr}`);
+    else if (pct >= 70) good.push(`${name} - ${scoreStr}`);
+    else if (pct >= 50) satisfactory.push(`${name} - ${scoreStr}`);
+    else underperforming.push(`${name} - ${scoreStr}`);
+  });
+
+  const missingStudentsList = options.missingStudents || [];
+  const formattedMissing = missingStudentsList.map(s => {
+    return `${s.last_name || ''} ${s.first_name || ''}`.trim() || s.email || 'Неизвестный ученик';
+  });
+
+  const questions = quiz.content?.questions || [];
+  const questionStats = questions.map((q, idx) => {
+    const correctCount = filteredResults.reduce((acc, r) => {
+      const answers = r.first_answers_array || r.answers_array;
+      if (!answers || !answers[idx]) return acc;
+      return acc + 1;
+    }, 0);
+    const pct = Math.round((correctCount / filteredResults.length) * 100);
+    return `Вопрос ${idx + 1}. "${q.question}" - ${pct}% правильных ответов (${correctCount}/${filteredResults.length})`;
+  });
+
+  const precalculatedSection = `
+### ПРЕДВАРИТЕЛЬНЫЕ РАСЧЕТЫ СИСТЕМЫ (ИСПОЛЬЗУЙ ИХ КАК ОСНОВУ ДЛЯ СТАТИСТИКИ):
+*Примечание: Эти данные вычислены нашей платформой на основе базы данных. Никогда не пересчитывай их вручную, так как ИИ может совершить арифметическую ошибку. Используй эти цифры и списки как истину.*
+
+- **Количество участников**: ${filteredResults.length} учеников прошли тест
+- **Средний результат**: ${avgScore}% (${totalEarnedScore}/${totalPotentialScore} баллов)
+- **Сдали успешно**: ${passedCount} учеников (${Math.round((passedCount / filteredResults.length) * 100)}%)
+- **Не сдали**: ${failedCount} учеников (${Math.round((failedCount / filteredResults.length) * 100)}%)
+
+#### Успеваемость по вопросам:
+${questionStats.map(qs => `- ${qs}`).join('\n')}
+
+#### Группы учеников по результатам:
+- **Отличники (>=90%) [${excellent.length}]:**
+${excellent.length > 0 ? excellent.map(s => `  * ${s}`).join('\n') : '  * (Нет)'}
+- **Хорошисты (70%-89%) [${good.length}]:**
+${good.length > 0 ? good.map(s => `  * ${s}`).join('\n') : '  * (Нет)'}
+- **Удовлетворительно (50%-69%) [${satisfactory.length}]:**
+${satisfactory.length > 0 ? satisfactory.map(s => `  * ${s}`).join('\n') : '  * (Нет)'}
+- **Неуспевающие (<50%) [${underperforming.length}]:**
+${underperforming.length > 0 ? underperforming.map(s => `  * ${s}`).join('\n') : '  * (Нет)'}
+
+#### Подозрительная активность:
+- **Подозрение на списывание/аномалии [${suspicious.length}]:**
+${suspicious.length > 0 ? suspicious.map(s => `  * ${s}`).join('\n') : '  * (Нет подозрительных учеников)'}
+- **Ранний выход/Незавершенные [${incomplete.length}]:**
+${incomplete.length > 0 ? incomplete.map(s => `  * ${s}`).join('\n') : '  * (Нет незавершенных попыток)'}
+
+#### Не проходили тест (должны были пройти) [${formattedMissing.length}]:
+${formattedMissing.length > 0 ? formattedMissing.map(s => `- ${s}`).join('\n') : '- Все ученики из выбранного сегмента прошли тест.'}
+`;
+
   // Import buildQuizPromptFromData dynamically to avoid circular dependency if needed, 
   // but here we just need a detailed data object for download
   const { buildQuizPromptFromData } = await import('./aiPromptBuilder');
-  const legacyData = buildQuizPromptFromData({ quiz, filteredResults, scopeLabel });
+  const legacyData = buildQuizPromptFromData({ 
+    quiz, 
+    filteredResults, 
+    scopeLabel, 
+    cities: options.cities, 
+    schools: options.schools, 
+    classes: options.classes, 
+    missingStudents: options.missingStudents 
+  });
 
   const ragSection = ragContext
     ? `\n${ragContext}\n\n**Примечание**: Используй эти факты для анализа. Они извлечены из векторной памяти и содержат наиболее релевантную информацию об учениках.`
@@ -540,34 +649,39 @@ export const buildQuizRagPrompt = async (quiz, filteredResults, scopeLabel) => {
 
   const instruction = `# Инструкция для ИИ (Аналитик Теста LabTest с RAG)
 
-**Цель**: Провести детальный, честный, без подобострастия и угодничества анализ результатов одного теста по группе учеников на основе релевантных фактов из векторной памяти.
+**Цель**: Провести детальный, честный, без подобострастия и угодничества анализ результатов одного теста по группе учеников на основе релевантных фактов из векторной памяти и предоставленной точной статистики.
 
 **Тест**: ${quiz.title}
 **Предмет**: ${subject}
 **Область**: ${scopeLabel}
 
+${precalculatedSection}
+
 ${ragSection}
 
 ## Задание
 
-На основе предоставленных фактов выполни:
+На основе предоставленных фактов и предварительных расчетов выполни:
 
-1. **Обзор теста**: Оцени общую сложность теста на основе фактов об успеваемости.
-2. **Проблемные вопросы**: Определи вопросы с наибольшим количеством ошибок (из фактов).
-3. **Группировка учеников**: Раздели учеников на группы по уровню на основе фактов об их результатах.
-4. **Паттерны ошибок**: Есть ли вопросы, где большинство ошибается (из фактов)?
-5. **Рекомендации учителю**: 3-5 конкретных действий на основе выявленных проблем.
+1. **Обзор теста**: Оцени общую сложность теста на основе предварительно рассчитанной успеваемости.
+2. **Проблемные вопросы**: Определи вопросы с наибольшим количеством ошибок на основе «Успеваемости по вопросам».
+3. **Группировка учеников**: Раздели учеников на группы по уровню на основе предварительно сформированных списков («Отличники», «Хорошисты» и т.д.). Дай краткую рецензию/характеристику по каждой группе и по возможности упомяни конкретных учеников и их баллы.
+4. **Не проходившие тест**: Назови учеников, которые еще не проходили тест (из раздела «Не проходили тест»).
+5. **Паттерны ошибок и подозрительной активности**: Опиши учеников с подозрительной активностью или незавершенными попытками.
+6. **Рекомендации учителю**: 3-5 конкретных педагогических действий на основе выявленных проблем.
 
 **Стиль**: Профессиональный, педагогический. Обращайся к учителю на «вы».`;
 
   return {
     instruction,
     data: {
+      ...legacyData.data,
       quizId,
       title: quiz.title,
       subject,
       scope: scopeLabel,
-      hasRagContext: !!ragContext
+      hasRagContext: !!ragContext,
+      missingStudentsCount: formattedMissing.length
     },
     downloadData: legacyData.data,
     filename: legacyData.filename
@@ -683,7 +797,19 @@ export const triggerFactStorage = async (attemptId, quizId, userId, sectionName 
     // New Flow: Process and embed on client, then save to server
     await processAndStoreAttemptFacts(attemptId, quizId, userId, sectionName, quizClass);
   } catch (error) {
-    console.warn('RAG fact storage failed (non-critical):', error);
+    console.warn('RAG fact storage failed client-side, queueing for retry:', error);
+
+    // Add to LocalStorage queue
+    try {
+      const queue = JSON.parse(localStorage.getItem('pending_vector_facts') || '[]');
+      if (!queue.some(item => item.attemptId === attemptId)) {
+        queue.push({ attemptId, quizId, userId, sectionName, quizClass });
+        localStorage.setItem('pending_vector_facts', JSON.stringify(queue));
+        console.log(`📥 Cached attempt ${attemptId} in local storage queue for retry.`);
+      }
+    } catch (storageError) {
+      console.error('Failed to write to local storage queue:', storageError);
+    }
 
     // Fallback to legacy server-side flow if client-side fails
     try {
@@ -772,7 +898,7 @@ export const migrateHistoryToRag = async ({ userId = null, classId = null, limit
     const { supabase } = await import('./supabase');
     let query = supabase
       .from('quiz_results')
-      .select('*, quizzes(title, quiz_sections(name))')
+      .select('*, quizzes(title, section_id)')
       .order('created_at', { ascending: false });
 
     if (userId) query = query.eq('user_id', userId);
@@ -787,6 +913,22 @@ export const migrateHistoryToRag = async ({ userId = null, classId = null, limit
     if (error) throw error;
     if (!attempts || attempts.length === 0) return { success: true, count: 0 };
 
+    // Load section names separately to avoid PostgREST nested join errors
+    let sectionMap = {};
+    const sectionIds = [...new Set(attempts.filter(a => a.quizzes?.section_id).map(a => a.quizzes.section_id))];
+    if (sectionIds.length > 0) {
+      const { data: sections } = await supabase
+        .from('quiz_sections')
+        .select('id, name')
+        .in('id', sectionIds);
+      if (sections) {
+        sectionMap = sections.reduce((acc, s) => {
+          acc[s.id] = s.name;
+          return acc;
+        }, {});
+      }
+    }
+
     let totalStored = 0;
     for (const attempt of attempts) {
       try {
@@ -794,7 +936,7 @@ export const migrateHistoryToRag = async ({ userId = null, classId = null, limit
           attempt.id,
           attempt.quiz_id,
           attempt.user_id,
-          attempt.quizzes?.quiz_sections?.name,
+          attempt.quizzes?.section_id ? sectionMap[attempt.quizzes.section_id] : null,
           classId
         );
         if (result?.success) totalStored += result.factsStored;

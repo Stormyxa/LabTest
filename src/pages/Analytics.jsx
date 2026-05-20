@@ -96,7 +96,7 @@ const Analytics = () => {
       fetchWithCache('cities', () => supabase.from('cities').select('*').order('name').then(res => res.data)),
       fetchWithCache('schools', () => supabase.from('schools').select('*').order('name').then(res => res.data)),
       fetchWithCache('classes', () => supabase.from('classes').select('*').order('name').then(res => res.data)),
-      fetchWithCache('all_students_map', () => supabase.from('profiles').select('id, first_name, last_name, patronymic, city_id, school_id, class_id, is_observer').then(res => res.data))
+      fetchWithCache('all_students_map', () => supabase.from('profiles').select('id, role, first_name, last_name, patronymic, city_id, school_id, class_id, is_observer').then(res => res.data))
     ]);
     if (c) setCities(c);
     if (s) setSchools(s);
@@ -366,6 +366,9 @@ const Analytics = () => {
     const p = res.profiles;
     if (!p) return false;
 
+    // Exclude non-players from student rosters/statistics
+    if (p.role && p.role !== 'player') return false;
+
     // 0. Скрыть наблюдателей если не выбран фильтр
     if (!showObservers && p.is_observer) return false;
 
@@ -379,6 +382,18 @@ const Analytics = () => {
     if (filterClass !== 'all' && p.class_id !== filterClass) return false;
     return true;
   });
+
+  const submittedUserIds = new Set(filteredResults.map(r => r.user_id));
+  const filteredAllStudents = allStudents.filter(s => {
+    if (s.role && s.role !== 'player') return false;
+    if (!showObservers && s.is_observer) return false;
+    if (filterCity !== 'all' && s.city_id !== filterCity) return false;
+    if (filterSchool !== 'all' && s.school_id !== filterSchool) return false;
+    if (filterClass !== 'all' && s.class_id !== filterClass) return false;
+    if (isTeacher && quiz?.author_id !== profile?.id && !teacherClasses.includes(s.class_id)) return false;
+    return true;
+  });
+  const missingStudents = filteredAllStudents.filter(s => !submittedUserIds.has(s.id));
 
   // Smart Reset: Removed as requested for a more intuitive filter approach
   /*
@@ -580,6 +595,7 @@ const Analytics = () => {
               profile={profile}
               teacherClasses={teacherClasses}
               allStudents={allStudents}
+              missingStudents={missingStudents}
             />
             <StatMini label="Участников" value={`${filteredResults.length} / ${totalPossibleUsers}`} icon={<User size={18} />} />
             <StatMini label="Ср. результат" value={`${avgScore}% (${totalEarnedScore}/${totalPotentialScore})`} icon={<BarChart size={18} />} />
@@ -990,7 +1006,7 @@ const AnalyticsSkeleton = () => (
 );
 
 // ─── AI Prompt Button for Analytics ──────────────────────────────
-const AnalyticsAiButton = ({ quiz, filteredResults, cities, schools, classes, filterCity, filterSchool, filterClass, profile, teacherClasses, allStudents }) => {
+const AnalyticsAiButton = ({ quiz, filteredResults, cities, schools, classes, filterCity, filterSchool, filterClass, profile, teacherClasses, allStudents, missingStudents }) => {
   const [status, setStatus] = React.useState('idle');
   const [showLegacy, setShowLegacy] = React.useState(false);
 
@@ -1017,10 +1033,21 @@ const AnalyticsAiButton = ({ quiz, filteredResults, cities, schools, classes, fi
       // Try RAG first, fall back to JSON if not available
       let result;
       try {
-        result = await buildQuizRagPrompt(quiz, filteredResults, scopeLabel);
+        result = await buildQuizRagPrompt(quiz, filteredResults, scopeLabel, {
+          cities,
+          schools,
+          classes,
+          missingStudents,
+          profile,
+          teacherClasses,
+          allStudents,
+          filterCity,
+          filterSchool,
+          filterClass
+        });
       } catch (ragError) {
         console.warn('RAG failed, falling back to JSON:', ragError);
-        result = await buildQuizPromptFromData({ quiz, filteredResults, cities, schools, classes, filterCity, filterSchool, filterClass, profile, teacherClasses, allStudents });
+        result = await buildQuizPromptFromData({ quiz, filteredResults, cities, schools, classes, filterCity, filterSchool, filterClass, profile, teacherClasses, allStudents, missingStudents });
       }
       
       if (result && result.instruction) {
@@ -1063,10 +1090,21 @@ const AnalyticsAiButton = ({ quiz, filteredResults, cities, schools, classes, fi
       // Try RAG first, fall back to JSON if not available
       let result;
       try {
-        result = await buildQuizRagPrompt(quiz, filteredResults, scopeLabel);
+        result = await buildQuizRagPrompt(quiz, filteredResults, scopeLabel, {
+          cities,
+          schools,
+          classes,
+          missingStudents,
+          profile,
+          teacherClasses,
+          allStudents,
+          filterCity,
+          filterSchool,
+          filterClass
+        });
       } catch (ragError) {
         console.warn('RAG failed, falling back to JSON:', ragError);
-        result = await buildQuizPromptFromData({ quiz, filteredResults, cities, schools, classes, filterCity, filterSchool, filterClass, profile, teacherClasses, allStudents });
+        result = await buildQuizPromptFromData({ quiz, filteredResults, cities, schools, classes, filterCity, filterSchool, filterClass, profile, teacherClasses, allStudents, missingStudents });
       }
       
       if (result) {

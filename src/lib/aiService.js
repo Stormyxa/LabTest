@@ -238,7 +238,7 @@ export const streamAiAnalysis = async ({
               context_id: contextId,
               title: title || 'AI Chat',
               messages: [...messages, { role: 'assistant', content: fullText }],
-              displayMessages: displayMessages || [...messages, { role: 'assistant', content: fullText }]
+              displayMessages: displayMessages ? [...displayMessages, { role: 'assistant', content: fullText }] : [...messages, { role: 'assistant', content: fullText }]
             });
             if (onDone) onDone(fullText, savedChat);
             return;
