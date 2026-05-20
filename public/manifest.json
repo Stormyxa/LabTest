@@ -1,0 +1,31 @@
+{
+  "name": "LabTest — Тесты по школьной программе",
+  "short_name": "LabTest",
+  "description": "Платформа LabTest для прохождения учебных тестов по казахстанской школьной программе.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f0f15",
+  "theme_color": "#7c3aed",
+  "orientation": "portrait-primary",
+  "categories": ["education", "books"],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "192x192",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "512x512",
+      "purpose": "any"
+    }
+  ]
+}

@@ -670,15 +670,15 @@ const Profile = ({ session, profile, refreshProfile }) => {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <label htmlFor="last-name">Фамилия</label>
-            <input id="last-name" name="last_name" type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} pattern="^[А-Яа-яЁё\s\-]+$" title="Только кириллица, пробелы и дефисы" placeholder="Иванов" required autoComplete="family-name" />
+            <input id="last-name" name="last_name" type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} pattern="^[А-Яа-яЁёӘәҒғҚқҢңӨөҰұҮүҺһІі\s\-]+$" title="Используйте кириллицу (русские или казахские буквы), пробелы и дефисы" placeholder="Иванов" required autoComplete="family-name" />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <label htmlFor="first-name">Имя</label>
-            <input id="first-name" name="first_name" type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} pattern="^[А-Яа-яЁё\s\-]+$" title="Только кириллица, пробелы и дефисы" placeholder="Иван" required autoComplete="given-name" />
+            <input id="first-name" name="first_name" type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} pattern="^[А-Яа-яЁёӘәҒғҚқҢңӨөҰұҮүҺһІі\s\-]+$" title="Используйте кириллицу (русские или казахские буквы), пробелы и дефисы" placeholder="Иван" required autoComplete="given-name" />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <label htmlFor="patronymic">Отчество (необязательно)</label>
-            <input id="patronymic" name="patronymic" type="text" value={patronymic} onChange={(e) => setPatronymic(e.target.value)} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} pattern="^[А-Яа-яЁё\s\-]*$" title="Только кириллица, пробелы и дефисы" placeholder="Иванович" autoComplete="additional-name" />
+            <input id="patronymic" name="patronymic" type="text" value={patronymic} onChange={(e) => setPatronymic(e.target.value)} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} pattern="^[А-Яа-яЁёӘәҒғҚқҢңӨөҰұҮүҺһІі\s\-]*$" title="Используйте кириллицу (русские или казахские буквы), пробелы и дефисы" placeholder="Иванович" autoComplete="additional-name" />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <label htmlFor="birth-date">Дата рождения</label>
