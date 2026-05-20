@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { fetchWithCache, useCacheSync, getCachedData } from '../lib/cache';
+import { fetchWithCache, useCacheSync, getCachedData, setCachedData } from '../lib/cache';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { resolveImgUrl } from '../lib/imageUtils';
@@ -126,51 +126,15 @@ const Analytics = () => {
   useCacheSync('teacher_classes', setTeacherClasses);
   useCacheSync(`an_quiz_${quizId}`, (q) => { if (q) { setQuiz(q); setQuizAuthorRole(q.profiles?.role); } });
   
-  // Custom sync for results to handle processing
-  useCacheSync(`an_results_${quizId}`, async (r) => {
-    if (r && r.length > 0) {
-      const attempts = await fetchWithCache(`an_attempts_${quizId}`, () => supabase.from('quiz_attempts').select('user_id, is_suspicious, is_passed, is_incomplete, score, max_score, created_at').eq('quiz_id', quizId).order('created_at', { ascending: true }).then(res => res.data));
-      const userIds = [...new Set(r.map(res => res.user_id))];
-      const { data: profs } = await supabase.from('profiles').select('*').in('id', userIds);
-      
-      const processResults = (rData, attemptsData, profilesData) => {
-        const statsMap = {};
-        const latestStatusMap = {};
-        if (attemptsData) {
-          attemptsData.forEach(att => {
-            if (!statsMap[att.user_id]) statsMap[att.user_id] = { total: 0, suspicious: 0, failed: 0 };
-            statsMap[att.user_id].total++;
-            if (att.is_suspicious) statsMap[att.user_id].suspicious++;
-            if (!att.is_passed && !att.is_incomplete) statsMap[att.user_id].failed++;
-            if (!latestStatusMap[att.user_id] || new Date(att.created_at) > new Date(latestStatusMap[att.user_id].created_at)) {
-              latestStatusMap[att.user_id] = att;
-            }
-          });
-        }
-        return rData.map(res => {
-          const stats = statsMap[res.user_id] || { total: 0, suspicious: 0, failed: 0 };
-          const lStatus = latestStatusMap[res.user_id] || {};
-          const isSuspiciousUserAvg = stats.total > 0 && (stats.suspicious / stats.total) > 0.4;
-          const is_incomplete_user = !!lStatus.is_incomplete;
-          const is_suspicious_user = !!lStatus.is_suspicious || isSuspiciousUserAvg;
-          const is_underperforming_user = !!lStatus.is_underperforming;
-          return { ...res, profiles: profilesData?.find(p => p.id === res.user_id), is_passed: !!lStatus.is_passed, is_incomplete_user, is_suspicious_user, is_underperforming_user };
-        });
-      };
-      const processed = processResults(r, attempts, profs);
-      setResults(processed);
-      setCachedData(`an_results_processed_${quizId}`, processed);
-    }
-    setLoading(false);
-  });
-
   const fetchQuizData = async () => {
     if (!quiz) setLoading(true);
 
-    const [q, r] = await Promise.all([
+    const [q, rRes] = await Promise.all([
       fetchWithCache(`an_quiz_${quizId}`, () => supabase.from('quizzes').select('*, profiles(role)').eq('id', quizId).single().then(res => res.data)),
-      fetchWithCache(`an_results_${quizId}`, () => supabase.from('quiz_results').select('*').eq('quiz_id', quizId).order('completed_at', { ascending: false }).then(res => res.data))
+      supabase.from('quiz_results').select('*').eq('quiz_id', quizId).order('completed_at', { ascending: false })
     ]);
+
+    const r = rRes.data;
 
     if (q) {
       setQuiz(q);
@@ -179,13 +143,12 @@ const Analytics = () => {
 
     if (r && r.length > 0) {
       // Fetch fresh attempts to calculate behavioral stats
-      const attempts = await fetchWithCache(`an_attempts_${quizId}`, () => supabase
+      const attempts = await supabase
         .from('quiz_attempts')
         .select('user_id, is_suspicious, is_passed, is_incomplete, score, max_score, created_at')
         .eq('quiz_id', quizId)
         .order('created_at', { ascending: true })
-        .then(res => res.data)
-      );
+        .then(res => res.data);
 
       const processResults = (rData, attemptsData, profilesData) => {
         const statsMap = {};
@@ -229,18 +192,20 @@ const Analytics = () => {
       };
 
       const userIds = r.map(user => user.user_id);
-      const p = await fetchWithCache(`an_profiles_${quizId}`, () => supabase.from('profiles').select('*').in('id', userIds).then(res => res.data));
+      const p = await supabase.from('profiles').select('*').in('id', userIds).then(res => res.data);
 
-      setResults(processResults(r, attempts, p));
+      const processed = processResults(r, attempts, p);
+      setResults(processed);
+      setCachedData(`an_results_processed_${quizId}`, processed);
     } else {
       setResults([]);
+      setCachedData(`an_results_processed_${quizId}`, []);
     }
     setLoading(false);
   };
 
   useCacheSync(`an_quiz_${quizId}`, (data) => { if (data) setQuiz(data); });
-  // Note: an_results_${quizId} is synced, but requires full refetch if you want attempts and profiles exactly synced perfectly without complex state management.
-  // We'll trust the main fetchQuizData for full consistency updates on mount and let SWR refresh the basic quiz info.
+
 
   const handleDeleteResult = async (id) => {
     const { error } = await supabase.from('quiz_results').delete().eq('id', id);

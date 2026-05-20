@@ -47,11 +47,12 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // Check if CDN assets (Plotly, Mermaid, Google Fonts) - Cache First Strategy
+  // Check if CDN assets (Plotly, Mermaid, Google Fonts, Hugging Face models) - Cache First Strategy
   const isCDN = url.host.includes('cdn.plot.ly') || 
                 url.host.includes('cdn.jsdelivr.net') || 
                 url.host.includes('fonts.googleapis.com') || 
-                url.host.includes('fonts.gstatic.com');
+                url.host.includes('fonts.gstatic.com') ||
+                url.host.includes('huggingface.co');
 
   if (isCDN) {
     e.respondWith(
