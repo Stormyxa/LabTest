@@ -308,15 +308,39 @@ export const processAndStoreAttemptFacts = async (attemptId, quizId, userId, sec
     dispatchStatus('extracting', 'Анализ попытки...', 10);
 
     // 1. Fetch data from Supabase (client-side has session)
-    const [attemptRes, quizRes, profileRes] = await Promise.all([
+    // Note: quiz is fetched flat to avoid triple-nested PostgREST join errors (400)
+    const [attemptRes, quizFlatRes, profileRes] = await Promise.all([
       supabase.from('quiz_attempts').select('*, profiles(*)').eq('id', attemptId).single(),
-      supabase.from('quizzes').select('*, quiz_sections(name, class_id, book_url, section_folders(name))').eq('id', quizId).single(),
+      supabase.from('quizzes').select('*').eq('id', quizId).single(),
       supabase.from('profiles').select('*').eq('id', userId).single()
     ]);
 
     if (attemptRes.error || !attemptRes.data) throw new Error('Attempt not found');
-    if (quizRes.error || !quizRes.data) throw new Error('Quiz not found');
+    if (quizFlatRes.error || !quizFlatRes.data) throw new Error('Quiz not found');
     if (profileRes.error || !profileRes.data) throw new Error('Profile not found');
+
+    // Load quiz section data separately to avoid triple-nested join (quiz_sections > section_folders)
+    let quizSectionData = null;
+    if (quizFlatRes.data.section_id) {
+      const { data: secData } = await supabase
+        .from('quiz_sections')
+        .select('name, class_id, book_url, folder_id')
+        .eq('id', quizFlatRes.data.section_id)
+        .single();
+      if (secData) {
+        quizSectionData = { ...secData };
+        if (secData.folder_id) {
+          const { data: folderData } = await supabase
+            .from('section_folders')
+            .select('name')
+            .eq('id', secData.folder_id)
+            .single();
+          if (folderData) quizSectionData.section_folders = folderData;
+        }
+      }
+    }
+    // Reconstruct quizRes with assembled section data (same shape as before)
+    const quizRes = { data: { ...quizFlatRes.data, quiz_sections: quizSectionData }, error: null };
 
     const attempt = attemptRes.data;
     const quiz = quizRes.data;

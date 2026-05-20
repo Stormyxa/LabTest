@@ -402,21 +402,27 @@ const Analytics = () => {
   }, [loading, results.length, filteredResults.length]);
   */
 
-  // Подсчитываем количество результатов для каждого заведения
+  // Подсчитываем количество результатов для каждого заведения (только игроки, как в filteredResults)
   const cityCounts = results.reduce((acc, r) => {
-    const cid = r.profiles?.city_id;
+    const p = r.profiles;
+    if (!p || (p.role && p.role !== 'player')) return acc;
+    const cid = p.city_id;
     if (cid) acc[cid] = (acc[cid] || 0) + 1;
     return acc;
   }, {});
 
   const schoolCounts = results.reduce((acc, r) => {
-    const sid = r.profiles?.school_id;
+    const p = r.profiles;
+    if (!p || (p.role && p.role !== 'player')) return acc;
+    const sid = p.school_id;
     if (sid) acc[sid] = (acc[sid] || 0) + 1;
     return acc;
   }, {});
 
   const classCounts = results.reduce((acc, r) => {
-    const clid = r.profiles?.class_id;
+    const p = r.profiles;
+    if (!p || (p.role && p.role !== 'player')) return acc;
+    const clid = p.class_id;
     if (clid) acc[clid] = (acc[clid] || 0) + 1;
     return acc;
   }, {});

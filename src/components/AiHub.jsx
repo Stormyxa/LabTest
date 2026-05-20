@@ -79,6 +79,7 @@ const AiHub = ({ session, profile }) => {
   const chatIdRef = useRef(currentChatId);
   const contextIdRef = useRef(null);
   const titleRef = useRef(aiChatTitle);
+  const contextDetailsRef = useRef(null); // Stores full contextData for lazy/fragmented injection
 
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => { chatIdRef.current = currentChatId; }, [currentChatId]);
@@ -273,6 +274,8 @@ const AiHub = ({ session, profile }) => {
 
         // Auto-run analysis if instruction and data provided
         if (e.detail?.instruction && e.detail?.data) {
+          // Store full context for lazy detail injection on follow-up questions
+          contextDetailsRef.current = e.detail?.data || null;
           // Create user-friendly message instead of showing system instructions
           let userMessage = '';
           if (e.detail.contextType === 'detailed_quiz') {
@@ -608,9 +611,27 @@ const AiHub = ({ session, profile }) => {
           }
         }
 
-        const currentDataContext = contextData ? `\n\n### АКТУАЛЬНЫЕ ДАННЫЕ ДЛЯ АНАЛИЗА (ПРИОРИТЕТ)\n*Это текущий контекст, который пользователь просит проанализировать прямо сейчас.*\n${JSON.stringify(contextData)}` : '';
+        // Detect question/detail intent for fragmented context injection (anti-hallucination)
+        const questionIntentKws = ['вопрос', 'ошибк', 'разбор', 'неверн', 'задани', 'покажи', 'вариант', 'question', 'wrong', 'answer', 'ответ на'];
+        const hasQuestionIntent = questionIntentKws.some(kw => recentMessage.toLowerCase().includes(kw));
 
-        apiMessages[0].content = `${instruction}${currentDataContext}${ragStr}\n\nПользователь запросил детальный анализ этого актуального контекста. В первую очередь опирайся на "АКТУАЛЬНЫЕ ДАННЫЕ". Ты имеешь право просить дополнительные данные по конкретным ученикам или тестам, если это поможет сделать анализ глубже.`;
+        // Build lightweight summary (strip heavy nested arrays to prevent hallucinations)
+        const summaryData = contextData ? (() => {
+          // eslint-disable-next-line no-unused-vars
+          const { questions, studentAnswers, fullResults, detailed_answers, answersData, ...rest } = contextData;
+          return rest;
+        })() : null;
+
+        // Only inject full question details when user explicitly asks about them
+        const detailsData = hasQuestionIntent && contextDetailsRef.current
+          ? `\n\n### ДЕТАЛЬНЫЕ ДАННЫЕ ПО ВОПРОСАМ (ТОЛЬКО ПО ЗАПРОСУ)\n*Полные данные о каждом вопросе, правильных ответах и ошибках учеников. Используй эти данные только когда пользователь явно спрашивает о конкретных вопросах, вариантах ответа или ошибках.*\n${JSON.stringify(contextDetailsRef.current)}`
+          : '';
+
+        const currentDataContext = summaryData
+          ? `\n\n### АКТУАЛЬНЫЕ ДАННЫЕ ДЛЯ АНАЛИЗА (ПРИОРИТЕТ)\n*Это текущий контекст, который пользователь просит проанализировать прямо сейчас. Никогда не придумывай детали, которых нет в этих данных.*\n${JSON.stringify(summaryData)}`
+          : '';
+
+        apiMessages[0].content = `${instruction}${currentDataContext}${detailsData}${ragStr}\n\nПользователь запросил детальный анализ этого актуального контекста. В первую очередь опирайся на "АКТУАЛЬНЫЕ ДАННЫЕ". Никогда не придумывай вопросы или ответы — только излагай то, что реально есть в данных. Если данных недостаточно, скажи об этом честно. Ты имеешь право просить дополнительные данные по конкретным ученикам или тестам, если это поможет сделать анализ глубже.`;
       } else if (profile) {
         // Case: General chat mode
         const lastUserMsg = chatMessages[chatMessages.length - 1].content;
@@ -1106,7 +1127,10 @@ const AiHub = ({ session, profile }) => {
                             href={href}
                             onClick={(e) => {
                               e.preventDefault();
-                              setActiveResource({ url: href, title: children?.[0] || 'Учебный ресурс' });
+                              const linkText = Array.isArray(children)
+                                ? children.map(c => (typeof c === 'string' ? c : '')).join('')
+                                : String(children || '');
+                              setActiveResource({ url: href, title: linkText || 'Учебный ресурс' });
                             }}
                             className="premium-resource-link no-drag"
                             style={{

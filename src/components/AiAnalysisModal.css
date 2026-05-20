@@ -4,18 +4,22 @@
   z-index: 10000;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(248, 250, 252, 0.9));
-  border: 1px solid rgba(99, 102, 241, 0.2);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.72), rgba(248, 250, 252, 0.65));
+  backdrop-filter: blur(22px) saturate(190%);
+  -webkit-backdrop-filter: blur(22px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.35);
   border-radius: 24px;
-  box-shadow: 0 20px 50px rgba(99, 102, 241, 0.15), 0 10px 25px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 24px 60px rgba(99, 102, 241, 0.18), 0 8px 24px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255,255,255,0.6);
   overflow: hidden;
   transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease;
 }
 
 [data-theme='dark'] .ai-hub-container {
-  background: linear-gradient(135deg, rgba(30, 31, 33, 0.98), rgba(20, 21, 23, 0.95));
-  border-color: rgba(109, 112, 255, 0.3);
-  box-shadow: 0 20px 50px rgba(109, 112, 255, 0.2), 0 10px 25px rgba(0, 0, 0, 0.4);
+  background: linear-gradient(135deg, rgba(18, 19, 28, 0.82), rgba(12, 13, 20, 0.78));
+  backdrop-filter: blur(22px) saturate(190%);
+  -webkit-backdrop-filter: blur(22px) saturate(190%);
+  border-color: rgba(109, 112, 255, 0.22);
+  box-shadow: 0 24px 60px rgba(109, 112, 255, 0.22), 0 8px 24px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255,255,255,0.06);
 }
 
 .ai-hub-header {
@@ -166,7 +170,15 @@
 /* Input Area */
 .ai-hub-footer {
   padding: 15px 20px 25px;
-  border-top: 1px solid rgba(0, 0, 0, 0.05);
+  border-top: 1px solid rgba(255, 255, 255, 0.20);
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+[data-theme='dark'] .ai-hub-footer {
+  border-top-color: rgba(109, 112, 255, 0.12);
+  background: rgba(10, 11, 18, 0.25);
 }
 
 .ai-input-wrapper {
@@ -212,14 +224,21 @@
   top: 50px;
   bottom: 0;
   width: 280px;
-  background: var(--card-bg);
-  border-right: 1px solid rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.70);
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  border-right: 1px solid rgba(255, 255, 255, 0.25);
   transform: translateX(-100%);
   transition: transform 0.3s ease;
   z-index: 1;
   display: flex;
   flex-direction: column;
   padding: 15px;
+}
+
+[data-theme='dark'] .ai-history-panel {
+  background: rgba(15, 16, 24, 0.80);
+  border-right-color: rgba(109, 112, 255, 0.15);
 }
 
 .ai-history-panel .custom-scrollbar {
