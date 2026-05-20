@@ -71,6 +71,10 @@ const Analytics = () => {
 
 
   useEffect(() => {
+    // Always clear stale processed cache so new results are never hidden by old cached data
+    if (quizId) {
+      localStorage.removeItem(`labtest_cache_an_results_processed_${quizId}`);
+    }
     fetchProfile();
     fetchStructure();
     if (quizId) fetchQuizData();
@@ -331,20 +335,33 @@ const Analytics = () => {
     const p = res.profiles;
     if (!p) return false;
 
-    // Exclude non-players from student rosters/statistics
-    if (p.role && p.role !== 'player') return false;
-
-    // 0. Скрыть наблюдателей если не выбран фильтр
+    // Скрыть наблюдателей если не выбран фильтр
     if (!showObservers && p.is_observer) return false;
+
+    // Fall back to quiz_results.class_id when profile.class_id is null
+    // (e.g. student has pending_class_id but hasn't been approved yet)
+    const effectiveClassId = p.class_id ?? res.class_id ?? null;
+
+    // Derive school/city from the class stored in quiz_results if profile fields are null
+    let effectiveSchoolId = p.school_id;
+    let effectiveCityId = p.city_id;
+    if (!effectiveSchoolId && effectiveClassId) {
+      const cls = classes.find(c => c.id === effectiveClassId);
+      effectiveSchoolId = cls?.school_id ?? null;
+    }
+    if (!effectiveCityId && effectiveSchoolId) {
+      const school = schools.find(s => s.id === effectiveSchoolId);
+      effectiveCityId = school?.city_id ?? null;
+    }
 
     // Ограничение видимости для учителя
     if (isTeacher && quiz?.author_id !== profile?.id) {
-      if (!teacherClasses.includes(p.class_id)) return false;
+      if (!teacherClasses.includes(effectiveClassId)) return false;
     }
 
-    if (filterCity !== 'all' && p.city_id !== filterCity) return false;
-    if (filterSchool !== 'all' && p.school_id !== filterSchool) return false;
-    if (filterClass !== 'all' && p.class_id !== filterClass) return false;
+    if (filterCity !== 'all' && effectiveCityId !== filterCity) return false;
+    if (filterSchool !== 'all' && effectiveSchoolId !== filterSchool) return false;
+    if (filterClass !== 'all' && effectiveClassId !== filterClass) return false;
     return true;
   });
 
@@ -367,28 +384,39 @@ const Analytics = () => {
   }, [loading, results.length, filteredResults.length]);
   */
 
-  // Подсчитываем количество результатов для каждого заведения (только игроки, как в filteredResults)
+  // Подсчитываем количество результатов для каждого заведения
   const cityCounts = results.reduce((acc, r) => {
     const p = r.profiles;
-    if (!p || (p.role && p.role !== 'player')) return acc;
-    const cid = p.city_id;
-    if (cid) acc[cid] = (acc[cid] || 0) + 1;
+    if (!p) return acc;
+    const effectiveClassId = p.class_id ?? r.class_id ?? null;
+    let effectiveCityId = p.city_id;
+    if (!effectiveCityId && effectiveClassId) {
+      const cls = classes.find(c => c.id === effectiveClassId);
+      const school = cls ? schools.find(s => s.id === cls.school_id) : null;
+      effectiveCityId = school?.city_id ?? null;
+    }
+    if (effectiveCityId) acc[effectiveCityId] = (acc[effectiveCityId] || 0) + 1;
     return acc;
   }, {});
 
   const schoolCounts = results.reduce((acc, r) => {
     const p = r.profiles;
-    if (!p || (p.role && p.role !== 'player')) return acc;
-    const sid = p.school_id;
-    if (sid) acc[sid] = (acc[sid] || 0) + 1;
+    if (!p) return acc;
+    const effectiveClassId = p.class_id ?? r.class_id ?? null;
+    let effectiveSchoolId = p.school_id;
+    if (!effectiveSchoolId && effectiveClassId) {
+      const cls = classes.find(c => c.id === effectiveClassId);
+      effectiveSchoolId = cls?.school_id ?? null;
+    }
+    if (effectiveSchoolId) acc[effectiveSchoolId] = (acc[effectiveSchoolId] || 0) + 1;
     return acc;
   }, {});
 
   const classCounts = results.reduce((acc, r) => {
     const p = r.profiles;
-    if (!p || (p.role && p.role !== 'player')) return acc;
-    const clid = p.class_id;
-    if (clid) acc[clid] = (acc[clid] || 0) + 1;
+    if (!p) return acc;
+    const effectiveClassId = p.class_id ?? r.class_id ?? null;
+    if (effectiveClassId) acc[effectiveClassId] = (acc[effectiveClassId] || 0) + 1;
     return acc;
   }, {});
 

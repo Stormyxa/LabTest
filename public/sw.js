@@ -68,7 +68,7 @@ self.addEventListener('fetch', (e) => {
             cache.put(e.request, responseToCache);
           });
           return networkResponse;
-        }).catch(() => cachedResponse);
+        }).catch(() => cachedResponse || new Response('Offline', { status: 503, statusText: 'Service Unavailable' }));
       })
     );
     return;
@@ -101,6 +101,8 @@ self.addEventListener('fetch', (e) => {
           if (e.request.mode === 'navigate' || (e.request.headers.get('accept') && e.request.headers.get('accept').includes('text/html'))) {
             return caches.match('/index.html');
           }
+          
+          return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
         });
       })
   );
