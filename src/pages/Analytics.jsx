@@ -51,6 +51,59 @@ const Analytics = () => {
     if (quizId) sessionStorage.setItem(`expanded_q_${quizId}`, JSON.stringify(expandedQuestions));
   }, [expandedQuestions, quizId]);
 
+  const [isQStatsExpanded, setIsQStatsExpanded] = useState(() => sessionStorage.getItem(`an_expand_qstats_${quizId}`) === 'true');
+  const [isPassedListExpanded, setIsPassedListExpanded] = useState(() => {
+    const val = sessionStorage.getItem(`an_expand_passed_${quizId}`);
+    return val === null ? true : val === 'true';
+  });
+  const [isMissingListExpanded, setIsMissingListExpanded] = useState(() => sessionStorage.getItem(`an_expand_missing_${quizId}`) === 'true');
+
+  const [quizContent, setQuizContent] = useState(() => {
+    const cached = getCachedData(`an_quiz_content_${quizId}`);
+    if (cached) return cached;
+    const cachedQuiz = getCachedData(`an_quiz_${quizId}`);
+    return cachedQuiz?.content || null;
+  });
+  const [questionsLoading, setQuestionsLoading] = useState(false);
+  const [selectedChartCol, setSelectedChartCol] = useState(null);
+  const [showQDetailStudents, setShowQDetailStudents] = useState(() => {
+    const val = sessionStorage.getItem('an_qdetail_show_students');
+    return val === null ? true : val === 'true';
+  });
+
+  useEffect(() => {
+    sessionStorage.setItem(`an_expand_qstats_${quizId}`, isQStatsExpanded);
+  }, [isQStatsExpanded, quizId]);
+
+  useEffect(() => {
+    sessionStorage.setItem(`an_expand_passed_${quizId}`, isPassedListExpanded);
+  }, [isPassedListExpanded, quizId]);
+
+  useEffect(() => {
+    sessionStorage.setItem(`an_expand_missing_${quizId}`, isMissingListExpanded);
+  }, [isMissingListExpanded, quizId]);
+
+  useEffect(() => {
+    sessionStorage.setItem('an_qdetail_show_students', showQDetailStudents);
+  }, [showQDetailStudents]);
+
+  useCacheSync(`an_quiz_content_${quizId}`, setQuizContent);
+
+  useEffect(() => {
+    if (isQStatsExpanded && quizId && !quizContent) {
+      setQuestionsLoading(true);
+      fetchWithCache(`an_quiz_content_${quizId}`, () =>
+        supabase.from('quizzes').select('content').eq('id', quizId).single().then(res => res.data?.content)
+      ).then(data => {
+        if (data) setQuizContent(data);
+        setQuestionsLoading(false);
+      }).catch(err => {
+        console.error("Error fetching questions content:", err);
+        setQuestionsLoading(false);
+      });
+    }
+  }, [isQStatsExpanded, quizId, quizContent]);
+
   useEffect(() => {
     sessionStorage.setItem('an_show_observers', showObservers);
   }, [showObservers]);
@@ -68,6 +121,7 @@ const Analytics = () => {
   useEffect(() => { sessionStorage.setItem('f_city', filterCity); }, [filterCity]);
   useEffect(() => { sessionStorage.setItem('f_school', filterSchool); }, [filterSchool]);
   useEffect(() => { sessionStorage.setItem('f_class', filterClass); }, [filterClass]);
+
 
 
   useEffect(() => {
@@ -134,7 +188,7 @@ const Analytics = () => {
     if (!quiz) setLoading(true);
 
     const [q, rRes] = await Promise.all([
-      fetchWithCache(`an_quiz_${quizId}`, () => supabase.from('quizzes').select('*, profiles(role)').eq('id', quizId).single().then(res => res.data)),
+      fetchWithCache(`an_quiz_${quizId}`, () => supabase.from('quizzes').select('id, section_id, author_id, title, is_verified, is_archived, created_at, sort_order, is_hidden, avg_success_rate, is_personal, is_public, resources, profiles(role)').eq('id', quizId).single().then(res => res.data)),
       supabase.from('quiz_results').select('*').eq('quiz_id', quizId).order('completed_at', { ascending: false })
     ]);
 
@@ -498,12 +552,263 @@ const Analytics = () => {
     }
   };
 
+  const questionsData = React.useMemo(() => {
+    if (!quizContent?.questions) return [];
+    return quizContent.questions.map((q, idx) => {
+      const correctAnswers = filteredResults.reduce((acc, r) => {
+        const answers = useFirstResults ? (r.first_answers_array || r.answers_array) : (r.answers_array || r.answers_map);
+        if (!answers || !answers[idx]) return acc;
+        return acc + 1;
+      }, 0);
+      const percent = filteredResults.length > 0 ? Math.round((correctAnswers / filteredResults.length) * 100) : 0;
+      return {
+        percent,
+        correctAnswers
+      };
+    });
+  }, [quizContent, filteredResults, useFirstResults]);
+
+  const missingByClass = React.useMemo(() => {
+    const groups = {};
+    missingStudents.forEach(student => {
+      const classId = student.class_id || 'no_class';
+      if (!groups[classId]) {
+        groups[classId] = [];
+      }
+      groups[classId].push(student);
+    });
+    Object.keys(groups).forEach(classId => {
+      groups[classId].sort((a, b) => {
+        const nameA = `${a.last_name || ''} ${a.first_name || ''}`.trim().toLowerCase();
+        const nameB = `${b.last_name || ''} ${b.first_name || ''}`.trim().toLowerCase();
+        return nameA.localeCompare(nameB, 'ru');
+      });
+    });
+    return groups;
+  }, [missingStudents]);
+
+  const sortedClassesWithMissing = React.useMemo(() => {
+    const list = availableClasses
+      .filter(c => missingByClass[c.id] && missingByClass[c.id].length > 0)
+      .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ru'));
+    
+    if (missingByClass['no_class'] && missingByClass['no_class'].length > 0) {
+      list.push({ id: 'no_class', name: 'Без класса' });
+    }
+    return list;
+  }, [availableClasses, missingByClass]);
+
+  const classesForAvg = React.useMemo(() => {
+    return [...availableClasses].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ru'));
+  }, [availableClasses]);
+
   if (loading) return <AnalyticsSkeleton />;
   if (!quiz) return <div className="container">Тест не найден.</div>;
 
   const totalPotentialScore = filteredResults.reduce((acc, curr) => acc + curr.total_questions, 0);
   const totalEarnedScore = filteredResults.reduce((acc, curr) => acc + (useFirstResults ? curr.first_score : curr.score), 0);
   const avgScore = totalPotentialScore > 0 ? Math.round((totalEarnedScore / totalPotentialScore) * 100) : 0;
+
+  const firstAttemptAvg = totalPotentialScore > 0 
+    ? Math.round((filteredResults.reduce((sum, r) => sum + r.first_score, 0) / totalPotentialScore) * 100) 
+    : 0;
+
+  const currentAttemptAvg = totalPotentialScore > 0 
+    ? Math.round((filteredResults.reduce((sum, r) => sum + r.score, 0) / totalPotentialScore) * 100) 
+    : 0;
+
+  const getAvgDetails = (type) => {
+    const groups = {};
+    filteredResults.forEach(res => {
+      const p = res.profiles;
+      if (!p) return;
+      const classId = p.class_id || res.class_id || 'no_class';
+      if (!groups[classId]) {
+        groups[classId] = [];
+      }
+      const scoreVal = type === 'first_avg' ? res.first_score : res.score;
+      groups[classId].push({
+        student: p,
+        score: scoreVal,
+        total: res.total_questions,
+      });
+    });
+
+    Object.keys(groups).forEach(classId => {
+      groups[classId].sort((a, b) => {
+        const nameA = `${a.student.last_name || ''} ${a.student.first_name || ''}`.trim().toLowerCase();
+        const nameB = `${b.student.last_name || ''} ${b.student.first_name || ''}`.trim().toLowerCase();
+        return nameA.localeCompare(nameB, 'ru');
+      });
+    });
+
+    return groups;
+  };
+
+  const getQuestionDetails = (idx) => {
+    const correct = {};
+    const incorrect = {};
+
+    filteredResults.forEach(res => {
+      const p = res.profiles;
+      if (!p) return;
+      
+      const classId = p.class_id || res.class_id || 'no_class';
+      const answers = useFirstResults ? (res.first_answers_array || res.answers_array) : (res.answers_array || res.answers_map);
+      const isCorrect = !!(answers && answers[idx]);
+
+      const targetGroup = isCorrect ? correct : incorrect;
+      if (!targetGroup[classId]) {
+        targetGroup[classId] = [];
+      }
+      targetGroup[classId].push(p);
+    });
+
+    const sortGroup = (group) => {
+      Object.keys(group).forEach(classId => {
+        group[classId].sort((a, b) => {
+          const nameA = `${a.last_name || ''} ${a.first_name || ''}`.trim().toLowerCase();
+          const nameB = `${b.last_name || ''} ${b.first_name || ''}`.trim().toLowerCase();
+          return nameA.localeCompare(nameB, 'ru');
+        });
+      });
+    };
+    sortGroup(correct);
+    sortGroup(incorrect);
+
+    return { correct, incorrect };
+  };
+
+  const renderStudentGroups = (group, colorClass, title) => {
+    const hasAny = Object.values(group).some(arr => arr.length > 0);
+    if (!hasAny) {
+      return <div style={{ opacity: 0.5, fontSize: '0.85rem' }}>Нет учеников.</div>;
+    }
+
+    const activeClasses = classesForAvg.filter(c => group[c.id] && group[c.id].length > 0);
+    const noClassStudents = group['no_class'] || [];
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div style={{ fontWeight: '600', fontSize: '0.9rem', color: colorClass }}>{title}</div>
+        {activeClasses.map(cls => (
+          <div key={cls.id}>
+            <div style={{ fontSize: '0.8rem', opacity: 0.6, marginBottom: '4px', fontWeight: '500' }}>
+              {cls.name} ({group[cls.id].length})
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              {group[cls.id].map(student => {
+                const hasName = student.first_name || student.last_name;
+                const displayName = student.is_anonymous ? 'Анонимный профиль' : (hasName ? `${student.last_name || ''} ${student.first_name || ''}`.trim() : (student.email || 'Неизвестный ученик'));
+                return (
+                  <span 
+                    key={student.id} 
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      padding: '3px 8px',
+                      background: colorClass === '#4ade80' ? 'rgba(74, 222, 128, 0.08)' : 'rgba(248, 113, 113, 0.08)',
+                      color: colorClass,
+                      border: `1px solid ${colorClass}22`,
+                      borderRadius: '6px',
+                      fontSize: '0.75rem'
+                    }}
+                  >
+                    {displayName}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+        {noClassStudents.length > 0 && (
+          <div>
+            <div style={{ fontSize: '0.8rem', opacity: 0.6, marginBottom: '4px', fontWeight: '500' }}>
+              Без класса ({noClassStudents.length})
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              {noClassStudents.map(student => {
+                const hasName = student.first_name || student.last_name;
+                const displayName = student.is_anonymous ? 'Анонимный профиль' : (hasName ? `${student.last_name || ''} ${student.first_name || ''}`.trim() : (student.email || 'Неизвестный ученик'));
+                return (
+                  <span 
+                    key={student.id} 
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      padding: '3px 8px',
+                      background: colorClass === '#4ade80' ? 'rgba(74, 222, 128, 0.08)' : 'rgba(248, 113, 113, 0.08)',
+                      color: colorClass,
+                      border: `1px solid ${colorClass}22`,
+                      borderRadius: '6px',
+                      fontSize: '0.75rem'
+                    }}
+                  >
+                    {displayName}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderAvgDetails = (type) => {
+    const groups = getAvgDetails(type);
+    const hasAny = Object.values(groups).some(arr => arr.length > 0);
+
+    if (!hasAny) {
+      return <div style={{ opacity: 0.5 }}>Нет результатов для отображения.</div>;
+    }
+
+    const activeClasses = classesForAvg.filter(c => groups[c.id] && groups[c.id].length > 0);
+    const noClassStudents = groups['no_class'] || [];
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+        {activeClasses.map(cls => (
+          <div key={cls.id}>
+            <div style={{ fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '8px', opacity: 0.8 }}>
+              {cls.name} ({groups[cls.id].length})
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
+              {groups[cls.id].map(({ student, score, total }) => {
+                const hasName = student.first_name || student.last_name;
+                const displayName = student.is_anonymous ? 'Анонимный профиль' : (hasName ? `${student.last_name || ''} ${student.first_name || ''}`.trim() : (student.email || 'Неизвестный ученик'));
+                return (
+                  <div key={student.id} className="card" style={{ padding: '10px 15px', marginBottom: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.02)' }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: '500' }}>{displayName}</span>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--primary-color)' }}>{score} / {total}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+        {noClassStudents.length > 0 && (
+          <div>
+            <div style={{ fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '8px', opacity: 0.8 }}>
+              Без класса ({noClassStudents.length})
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
+              {noClassStudents.map(({ student, score, total }) => {
+                const hasName = student.first_name || student.last_name;
+                const displayName = student.is_anonymous ? 'Анонимный профиль' : (hasName ? `${student.last_name || ''} ${student.first_name || ''}`.trim() : (student.email || 'Неизвестный ученик'));
+                return (
+                  <div key={student.id} className="card" style={{ padding: '10px 15px', marginBottom: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.02)' }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: '500' }}>{displayName}</span>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--primary-color)' }}>{score} / {total}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <>
@@ -584,6 +889,7 @@ const Analytics = () => {
             </button>
             <AnalyticsAiButton 
               quiz={quiz} 
+              quizContent={quizContent}
               filteredResults={filteredResults} 
               cities={cities} 
               schools={schools} 
@@ -682,73 +988,8 @@ const Analytics = () => {
           </div>
         </div>
 
-        {/* Успеваемость по вопросам (Инфографика) */}
-        {filteredResults.length > 0 && quiz.content?.questions && (
-          <div className="card" style={{ marginBottom: '40px' }}>
-            <h3 style={{ marginBottom: '25px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <BarChart size={20} /> Успеваемость по вопросам (с учетом фильтров)
-            </h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-              {quiz.content.questions.map((q, idx) => {
-                const correctAnswers = filteredResults.reduce((acc, r) => {
-                  const answers = useFirstResults ? (r.first_answers_array || r.answers_array) : (r.answers_array || r.answers_map);
-                  if (!answers || !answers[idx]) return acc;
-                  return acc + 1;
-                }, 0);
-                const percent = Math.round((correctAnswers / filteredResults.length) * 100);
-                const isExpanded = !!expandedQuestions[idx];
-
-                return (
-                  <div key={idx}>
-                    <div
-                      className="flex-center"
-                      style={{ justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.9rem', gap: '15px' }}
-                    >
-                      <div className="flex-center" style={{ gap: '10px', flex: 1, minWidth: 0 }}>
-                        <span
-                          className="animate"
-                          style={{
-                            opacity: 0.8,
-                            overflow: 'hidden',
-                            textOverflow: isExpanded ? 'unset' : 'ellipsis',
-                            whiteSpace: isExpanded ? 'normal' : 'nowrap',
-                            display: 'block',
-                            lineHeight: '1.4',
-                            cursor: 'pointer',
-                            flex: 1
-                          }}
-                          onClick={() => setExpandedQuestions(p => ({ ...p, [idx]: !p[idx] }))}
-                        >
-                          {idx + 1}. <MathRenderer text={q.question} />
-                        </span>
-                        {q.images && q.images.length > 0 && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setImagePreviewModal({ isOpen: true, images: q.images, currentIdx: 0, question: q.question }); }}
-                            className="flex-center"
-                            style={{ padding: '4px 8px', background: 'rgba(99,102,241,0.1)', color: 'var(--primary-color)', borderRadius: '6px', boxShadow: 'none', flexShrink: 0, gap: '4px' }}
-                            title="Посмотреть картинку"
-                          >
-                            <ImageIcon size={14} />
-                            <span style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>{q.images.length}</span>
-                          </button>
-                        )}
-                      </div>
-                      <span style={{ fontWeight: '700', whiteSpace: 'nowrap', color: percent > 70 ? '#4ade80' : (percent > 40 ? '#facc15' : '#f87171') }}>
-                        {percent}% ({correctAnswers}/{filteredResults.length})
-                      </span>
-                    </div>
-                    <div style={{ width: '100%', height: '8px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', overflow: 'hidden' }}>
-                      <div style={{ width: `${percent}%`, height: '100%', background: percent > 70 ? '#4ade80' : (percent > 40 ? '#facc15' : '#f87171'), transition: 'width 0.5s ease' }} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
         {/* Таблица результатов */}
-        <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
+        <div className="card" style={{ padding: '0', overflow: 'hidden', marginBottom: '40px' }}>
 
           {/* HEADER & SORTING */}
           <div className="flex-center" style={{ padding: '20px 25px', background: 'rgba(99, 102, 241, 0.04)', borderBottom: '1px solid rgba(0,0,0,0.05)', justifyContent: 'space-between', flexWrap: 'wrap', gap: '15px' }}>
@@ -782,86 +1023,354 @@ const Analytics = () => {
             </div>
           </div>
 
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '800px' }}>
-              <thead style={{ background: 'rgba(0,0,0,0.02)', fontSize: '0.9rem', opacity: 0.7 }}>
-                <tr>
-                  <th style={{ padding: '20px' }}>Ученик</th>
-                  <th style={{ padding: '20px' }}>Учебное заведение</th>
-                  <th style={{ padding: '20px' }}>Результат (Тек/1-й)</th>
-                  <th style={{ padding: '20px' }}>Баллы</th>
-                  <th style={{ padding: '20px' }}>Действия</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedResults.map((res) => {
-                  const p = res.profiles;
-                  const hasName = p?.first_name || p?.last_name;
-                  const displayName = p?.is_anonymous ? 'Анонимный профиль' : (hasName ? `${p.last_name || ''} ${p.first_name || ''}` : (p?.email || 'Неизвестный ученик'));
-                  const cityName = cities.find(c => c.id === p?.city_id)?.name || '';
-                  const schoolName = schools.find(s => s.id === p?.school_id)?.name || '';
-                  const className = classes.find(c => c.id === p?.class_id)?.name || '';
+          {/* Не прошли тест */}
+          <div style={{ borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
+            <button 
+              onClick={() => setIsMissingListExpanded(!isMissingListExpanded)}
+              className="flex-center"
+              style={{
+                width: '100%',
+                justifyContent: 'space-between',
+                padding: '15px 25px',
+                background: 'transparent',
+                border: 'none',
+                color: 'inherit',
+                fontWeight: 'bold',
+                boxShadow: 'none',
+                cursor: 'pointer',
+                textAlign: 'left'
+              }}
+            >
+              <span className="flex-center" style={{ gap: '10px' }}>
+                <XCircle size={18} style={{ color: '#ef4444' }} />
+                Не прошли тест ({missingStudents.length})
+              </span>
+              {isMissingListExpanded ? <ChevronDown size={20} style={{ transform: 'rotate(180deg)', transition: 'transform 0.2s' }} /> : <ChevronDown size={20} style={{ transition: 'transform 0.2s' }} />}
+            </button>
+            
+            {isMissingListExpanded && (
+              <div 
+                className="custom-scrollbar"
+                style={{
+                  maxHeight: '300px',
+                  overflowY: 'auto',
+                  padding: '0 25px 20px',
+                  background: 'rgba(0, 0, 0, 0.01)'
+                }}
+              >
+                {missingStudents.length === 0 ? (
+                  <div style={{ opacity: 0.5, fontSize: '0.9rem', padding: '10px 0' }}>Все ученики прошли тест.</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                    {sortedClassesWithMissing.map(cls => {
+                      const studentsInCls = missingByClass[cls.id] || [];
+                      return (
+                        <div key={cls.id}>
+                          <div style={{ fontWeight: '600', fontSize: '0.85rem', opacity: 0.7, marginBottom: '8px' }}>
+                            {cls.name} ({studentsInCls.length})
+                          </div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                            {studentsInCls.map(student => {
+                              const hasName = student.first_name || student.last_name;
+                              const displayName = student.is_anonymous ? 'Анонимный профиль' : (hasName ? `${student.last_name || ''} ${student.first_name || ''}`.trim() : (student.email || 'Неизвестный ученик'));
+                              return (
+                                <span 
+                                  key={student.id} 
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    padding: '4px 10px',
+                                    background: 'rgba(239, 68, 68, 0.06)',
+                                    color: '#ef4444',
+                                    border: '1px solid rgba(239, 68, 68, 0.12)',
+                                    borderRadius: '8px',
+                                    fontSize: '0.8rem',
+                                    fontWeight: '500'
+                                  }}
+                                >
+                                  {displayName}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
-                  return (
-                    <tr key={res.id} style={{
-                      borderBottom: '1px solid rgba(0,0,0,0.01)',
-                      background: res.is_incomplete_user ? 'rgba(156, 163, 175, 0.15)' : (res.is_suspicious_user ? 'rgba(239, 68, 68, 0.08)' : (res.is_underperforming_user ? 'rgba(250, 204, 21, 0.08)' : 'transparent'))
-                    }}>
-                      <td style={{ padding: '20px' }}>
-                        <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '8px' }}>
-                          <div style={{ fontWeight: '600', color: res.is_incomplete_user ? '#6b7280' : (res.is_suspicious_user ? '#ef4444' : 'inherit') }}>{displayName}</div>
-                          {p?.is_observer && <span style={{ padding: '2px 8px', background: 'rgba(250, 204, 21, 0.1)', color: '#ca8a04', borderRadius: '50px', fontSize: '0.65rem', fontWeight: 'bold' }}>НАБЛЮДАТЕЛЬ</span>}
-                          {p?.is_hidden && <span style={{ background: 'rgba(0,0,0,0.05)', color: 'rgba(0,0,0,0.5)', padding: '2px 8px', borderRadius: '50px', fontSize: '0.65rem' }} title="Скрытый пользователь"><EyeOff size={10} /></span>}
-                        </div>
-                        {p?.email && !p.is_anonymous && (
-                          <div style={{ fontSize: '0.8rem', opacity: 0.5, display: 'flex', alignItems: 'center', gap: '4px' }}><Mail size={12} /> {p.email}</div>
-                        )}
-                      </td>
-                      <td style={{ padding: '20px', fontSize: '0.85rem', opacity: 0.7 }}>
-                        <div>{cityName}</div>
-                        <div>{schoolName}</div>
-                        <div style={{ fontWeight: 'bold' }}>{className}</div>
-                      </td>
-                      <td style={{ padding: '20px' }}>
-                        <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px' }}>
-                          <div style={{ position: 'relative', width: '60px', height: '14px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', overflow: 'hidden' }}>
-                            <div style={{ width: `${(res.score / res.total_questions) * 100}%`, height: '100%', background: res.is_incomplete_user ? '#9ca3af' : (res.is_passed ? '#4ade80' : '#f87171') }} />
-                            <span style={{ position: 'absolute', width: '100%', left: 0, top: 0, fontSize: '0.6rem', textAlign: 'center', fontWeight: 'bold', color: 'var(--text-color)', lineHeight: '14px' }}>{res.score}/{res.total_questions}</span>
-                          </div>
-                          <span style={{ fontSize: '0.8rem', opacity: 0.5 }}>/</span>
-                          <div style={{ position: 'relative', width: '40px', height: '10px', background: 'rgba(0,0,0,0.03)', borderRadius: '10px', overflow: 'hidden' }}>
-                            <div style={{ width: `${(res.first_score / res.total_questions) * 100}%`, height: '100%', background: 'var(--primary-color)', opacity: 0.5 }} />
-                            <span style={{ position: 'absolute', width: '100%', left: 0, top: 0, fontSize: '0.5rem', textAlign: 'center', fontWeight: 'bold', color: 'black', lineHeight: '10px' }}>{res.first_score}/{res.total_questions}</span>
-                          </div>
-                        </div>
-                      </td>
-                      <td style={{ padding: '20px', fontWeight: 'bold', color: res.is_incomplete_user ? '#6b7280' : (res.is_suspicious_user ? '#ef4444' : 'inherit') }}>
-                        {res.score} / {res.total_questions}
-                      </td>
-                      <td style={{ padding: '20px' }}>
-                        <div className="flex-center" style={{ gap: '10px', justifyContent: 'flex-start' }}>
-                          <button
-                            onClick={() => navigate(`/analytics-details?quizId=${quizId}&userId=${res.user_id}`)}
-                            style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', padding: '8px', borderRadius: '10px', boxShadow: 'none' }}
-                            title="Подробная аналитика попыток"
-                          >
-                            <Info size={18} />
-                          </button>
-                          {canDelete && (
-                            <button onClick={() => setDeletingId(res.id)} style={{ background: 'rgba(255,0,0,0.05)', color: 'red', padding: '8px', borderRadius: '10px', boxShadow: 'none' }}>
-                              <Trash2 size={18} />
-                            </button>
-                          )}
-                        </div>
-                      </td>
+          {/* Прошли тест */}
+          <div>
+            <button 
+              onClick={() => setIsPassedListExpanded(!isPassedListExpanded)}
+              className="flex-center"
+              style={{
+                width: '100%',
+                justifyContent: 'space-between',
+                padding: '15px 25px',
+                background: 'transparent',
+                border: 'none',
+                color: 'inherit',
+                fontWeight: 'bold',
+                boxShadow: 'none',
+                cursor: 'pointer',
+                textAlign: 'left'
+              }}
+            >
+              <span className="flex-center" style={{ gap: '10px' }}>
+                <CheckCircle size={18} style={{ color: '#4ade80' }} />
+                Прошли тест ({sortedResults.length})
+              </span>
+              {isPassedListExpanded ? <ChevronDown size={20} style={{ transform: 'rotate(180deg)', transition: 'transform 0.2s' }} /> : <ChevronDown size={20} style={{ transition: 'transform 0.2s' }} />}
+            </button>
+            
+            {isPassedListExpanded && (
+              <div 
+                className="custom-scrollbar"
+                style={{
+                  maxHeight: '450px',
+                  overflowY: 'auto',
+                  position: 'relative'
+                }}
+              >
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '800px' }}>
+                  <thead style={{ background: 'rgba(0,0,0,0.02)', fontSize: '0.9rem', opacity: 0.7, position: 'sticky', top: 0, zIndex: 10, backdropFilter: 'blur(5px)' }}>
+                    <tr>
+                      <th style={{ padding: '20px', background: 'var(--card-bg)' }}>Ученик</th>
+                      <th style={{ padding: '20px', background: 'var(--card-bg)' }}>Учебное заведение</th>
+                      <th style={{ padding: '20px', background: 'var(--card-bg)' }}>Результат (Тек/1-й)</th>
+                      <th style={{ padding: '20px', background: 'var(--card-bg)' }}>Баллы</th>
+                      <th style={{ padding: '20px', background: 'var(--card-bg)' }}>Действия</th>
                     </tr>
-                  );
-                })}
-                {sortedResults.length === 0 && <tr><td colSpan="5" style={{ padding: '60px', textAlign: 'center', opacity: 0.5 }}>Прохождений пока нет.</td></tr>}
-              </tbody>
-            </table>
+                  </thead>
+                  <tbody>
+                    {sortedResults.map((res) => {
+                      const p = res.profiles;
+                      const hasName = p?.first_name || p?.last_name;
+                      const displayName = p?.is_anonymous ? 'Анонимный профиль' : (hasName ? `${p.last_name || ''} ${p.first_name || ''}` : (p?.email || 'Неизвестный ученик'));
+                      const cityName = cities.find(c => c.id === p?.city_id)?.name || '';
+                      const schoolName = schools.find(s => s.id === p?.school_id)?.name || '';
+                      const className = classes.find(c => c.id === p?.class_id)?.name || '';
+
+                      return (
+                        <tr key={res.id} style={{
+                          borderBottom: '1px solid rgba(0,0,0,0.01)',
+                          background: res.is_incomplete_user ? 'rgba(156, 163, 175, 0.15)' : (res.is_suspicious_user ? 'rgba(239, 68, 68, 0.08)' : (res.is_underperforming_user ? 'rgba(250, 204, 21, 0.08)' : 'transparent'))
+                        }}>
+                          <td style={{ padding: '20px' }}>
+                            <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '8px' }}>
+                              <div style={{ fontWeight: '600', color: res.is_incomplete_user ? '#6b7280' : (res.is_suspicious_user ? '#ef4444' : 'inherit') }}>{displayName}</div>
+                              {p?.is_observer && <span style={{ padding: '2px 8px', background: 'rgba(250, 204, 21, 0.1)', color: '#ca8a04', borderRadius: '50px', fontSize: '0.65rem', fontWeight: 'bold' }}>НАБЛЮДАТЕЛЬ</span>}
+                              {p?.is_hidden && <span style={{ background: 'rgba(0,0,0,0.05)', color: 'rgba(0,0,0,0.5)', padding: '2px 8px', borderRadius: '50px', fontSize: '0.65rem' }} title="Скрытый пользователь"><EyeOff size={10} /></span>}
+                            </div>
+                            {p?.email && !p.is_anonymous && (
+                              <div style={{ fontSize: '0.8rem', opacity: 0.5, display: 'flex', alignItems: 'center', gap: '4px' }}><Mail size={12} /> {p.email}</div>
+                            )}
+                          </td>
+                          <td style={{ padding: '20px', fontSize: '0.85rem', opacity: 0.7 }}>
+                            <div>{cityName}</div>
+                            <div>{schoolName}</div>
+                            <div style={{ fontWeight: 'bold' }}>{className}</div>
+                          </td>
+                          <td style={{ padding: '20px' }}>
+                            <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px' }}>
+                              <div style={{ position: 'relative', width: '60px', height: '14px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', overflow: 'hidden' }}>
+                                <div style={{ width: `${(res.score / res.total_questions) * 100}%`, height: '100%', background: res.is_incomplete_user ? '#9ca3af' : (res.is_passed ? '#4ade80' : '#f87171') }} />
+                                <span style={{ position: 'absolute', width: '100%', left: 0, top: 0, fontSize: '0.6rem', textAlign: 'center', fontWeight: 'bold', color: 'var(--text-color)', lineHeight: '14px' }}>{res.score}/{res.total_questions}</span>
+                              </div>
+                              <span style={{ fontSize: '0.8rem', opacity: 0.5 }}>/</span>
+                              <div style={{ position: 'relative', width: '40px', height: '10px', background: 'rgba(0,0,0,0.03)', borderRadius: '10px', overflow: 'hidden' }}>
+                                <div style={{ width: `${(res.first_score / res.total_questions) * 100}%`, height: '100%', background: 'var(--primary-color)', opacity: 0.5 }} />
+                                <span style={{ position: 'absolute', width: '100%', left: 0, top: 0, fontSize: '0.5rem', textAlign: 'center', fontWeight: 'bold', color: 'black', lineHeight: '10px' }}>{res.first_score}/{res.total_questions}</span>
+                              </div>
+                            </div>
+                          </td>
+                          <td style={{ padding: '20px', fontWeight: 'bold', color: res.is_incomplete_user ? '#6b7280' : (res.is_suspicious_user ? '#ef4444' : 'inherit') }}>
+                            {res.score} / {res.total_questions}
+                          </td>
+                          <td style={{ padding: '20px' }}>
+                            <div className="flex-center" style={{ gap: '10px', justifyContent: 'flex-start' }}>
+                              <button
+                                onClick={() => navigate(`/analytics-details?quizId=${quizId}&userId=${res.user_id}`)}
+                                style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', padding: '8px', borderRadius: '10px', boxShadow: 'none' }}
+                                title="Подробная аналитика попыток"
+                              >
+                                <Info size={18} />
+                              </button>
+                              {canDelete && (
+                                <button onClick={() => setDeletingId(res.id)} style={{ background: 'rgba(255,0,0,0.05)', color: 'red', padding: '8px', borderRadius: '10px', boxShadow: 'none' }}>
+                                  <Trash2 size={18} />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {sortedResults.length === 0 && <tr><td colSpan="5" style={{ padding: '60px', textAlign: 'center', opacity: 0.5 }}>Прохождений пока нет.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
+
+        {/* Успеваемость по вопросам (Инфографика) */}
+        {filteredResults.length > 0 && (
+          <div className="card" style={{ marginBottom: '40px' }}>
+            <button 
+              onClick={() => setIsQStatsExpanded(!isQStatsExpanded)}
+              className="flex-center"
+              style={{
+                width: '100%',
+                justifyContent: 'space-between',
+                background: 'transparent',
+                border: 'none',
+                color: 'inherit',
+                fontWeight: 'bold',
+                boxShadow: 'none',
+                cursor: 'pointer',
+                textAlign: 'left',
+                padding: 0,
+                fontSize: '1.2rem'
+              }}
+            >
+              <span className="flex-center" style={{ gap: '10px' }}>
+                <BarChart size={20} style={{ color: 'var(--primary-color)' }} />
+                Успеваемость по вопросам (с учетом фильтров)
+              </span>
+              {isQStatsExpanded ? <ChevronDown size={20} style={{ transform: 'rotate(180deg)', transition: 'transform 0.2s' }} /> : <ChevronDown size={20} style={{ transition: 'transform 0.2s' }} />}
+            </button>
+
+            {isQStatsExpanded && (
+              <div style={{ marginTop: '25px' }}>
+                {questionsLoading ? (
+                  <div className="flex-center" style={{ padding: '40px 0', gap: '10px' }}>
+                    <RefreshCw size={24} className="spinner" style={{ color: 'var(--primary-color)' }} />
+                    <span>Загрузка вопросов...</span>
+                  </div>
+                ) : !quizContent?.questions ? (
+                  <div style={{ opacity: 0.5, textAlign: 'center', padding: '20px 0' }}>
+                    Вопросы не найдены или не удалось загрузить.
+                  </div>
+                ) : (
+                  <>
+                    <QuestionsBarChart 
+                      firstAttemptAvg={firstAttemptAvg}
+                      currentAttemptAvg={currentAttemptAvg}
+                      questionsData={questionsData}
+                      selectedCol={selectedChartCol}
+                      onSelectCol={setSelectedChartCol}
+                    />
+
+                    {selectedChartCol !== null && (
+                      <ChartColDetailsPanel 
+                        selectedCol={selectedChartCol}
+                        onClose={() => setSelectedChartCol(null)}
+                        showQDetailStudents={showQDetailStudents}
+                        setShowQDetailStudents={setShowQDetailStudents}
+                        questions={quizContent.questions}
+                        getAvgDetails={getAvgDetails}
+                        getQuestionDetails={getQuestionDetails}
+                        renderStudentGroups={renderStudentGroups}
+                        renderAvgDetails={renderAvgDetails}
+                      />
+                    )}
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '30px' }}>
+                      <h4 style={{ fontSize: '1.1rem', opacity: 0.8, marginBottom: '5px' }}>Список вопросов</h4>
+                      {quizContent.questions.map((q, idx) => {
+                        const correctAnswers = filteredResults.reduce((acc, r) => {
+                          const answers = useFirstResults ? (r.first_answers_array || r.answers_array) : (r.answers_array || r.answers_map);
+                          if (!answers || !answers[idx]) return acc;
+                          return acc + 1;
+                        }, 0);
+                        const percent = filteredResults.length > 0 ? Math.round((correctAnswers / filteredResults.length) * 100) : 0;
+                        const isExpanded = !!expandedQuestions[idx];
+
+                        return (
+                          <div key={idx} style={{ background: 'rgba(0,0,0,0.01)', padding: '15px', borderRadius: '12px', border: '1px solid rgba(0,0,0,0.02)' }}>
+                            <div
+                              className="flex-center"
+                              style={{ justifyContent: 'space-between', fontSize: '0.9rem', gap: '15px' }}
+                            >
+                              <div className="flex-center" style={{ gap: '10px', flex: 1, minWidth: 0 }}>
+                                <span
+                                  className="animate"
+                                  style={{
+                                    opacity: 0.8,
+                                    overflow: 'hidden',
+                                    textOverflow: isExpanded ? 'unset' : 'ellipsis',
+                                    whiteSpace: isExpanded ? 'normal' : 'nowrap',
+                                    display: 'block',
+                                    lineHeight: '1.4',
+                                    cursor: 'pointer',
+                                    flex: 1,
+                                    fontWeight: '500'
+                                  }}
+                                  onClick={() => setExpandedQuestions(p => ({ ...p, [idx]: !p[idx] }))}
+                                >
+                                  {idx + 1}. <MathRenderer text={q.question} />
+                                </span>
+                                {q.images && q.images.length > 0 && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); setImagePreviewModal({ isOpen: true, images: q.images, currentIdx: 0, question: q.question }); }}
+                                    className="flex-center"
+                                    style={{ padding: '4px 8px', background: 'rgba(99,102,241,0.1)', color: 'var(--primary-color)', borderRadius: '6px', boxShadow: 'none', flexShrink: 0, gap: '4px', border: 'none' }}
+                                    title="Посмотреть картинку"
+                                  >
+                                    <ImageIcon size={14} />
+                                    <span style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>{q.images.length}</span>
+                                  </button>
+                                )}
+                              </div>
+                              <span style={{ fontWeight: '700', whiteSpace: 'nowrap', color: percent > 70 ? '#4ade80' : (percent > 40 ? '#facc15' : '#f87171') }}>
+                                {percent}% ({correctAnswers}/{filteredResults.length})
+                              </span>
+                            </div>
+                            <div style={{ width: '100%', height: '8px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', overflow: 'hidden', marginTop: '10px' }}>
+                              <div style={{ width: `${percent}%`, height: '100%', background: percent > 70 ? '#4ade80' : (percent > 40 ? '#facc15' : '#f87171'), transition: 'width 0.5s ease' }} />
+                            </div>
+
+                            {isExpanded && (
+                              <div style={{ marginTop: '15px', padding: '15px', background: 'var(--card-bg)', borderRadius: '10px', border: '1px solid rgba(0,0,0,0.05)', fontSize: '0.9rem' }}>
+                                <div style={{ marginBottom: '10px' }}>
+                                  <strong>Варианты ответов:</strong>
+                                  <ul style={{ paddingLeft: '20px', marginTop: '5px', listStyleType: 'decimal' }}>
+                                    {q.options && q.options.map((opt, optIdx) => (
+                                      <li 
+                                        key={optIdx} 
+                                        style={{ 
+                                          padding: '4px 0', 
+                                          color: optIdx === q.correctIndex ? '#22c55e' : 'inherit',
+                                          fontWeight: optIdx === q.correctIndex ? 'bold' : 'normal' 
+                                        }}
+                                      >
+                                        <MathRenderer text={opt} /> {optIdx === q.correctIndex && ' (Верный ответ)'}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                                {q.explanation && (
+                                  <div style={{ marginTop: '10px', borderTop: '1px solid rgba(0,0,0,0.05)', paddingTop: '10px', opacity: 0.8 }}>
+                                    <strong>Объяснение:</strong> <MathRenderer text={q.explanation} />
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ─── MODALS ─── */}
@@ -962,12 +1471,14 @@ const Analytics = () => {
                 </>
               )}
             </div>
-             <div style={{ background: 'var(--card-bg)', color: 'var(--text-color)', padding: '25px', borderRadius: '20px', marginTop: '15px', width: '100%', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-               <h4 style={{ margin: '0', fontSize: '1.2rem', lineHeight: '1.4' }}><MathRenderer text={imagePreviewModal.question} /></h4>
-             </div>
-           </div>
-         </div>
-       )}
+            {imagePreviewModal.question && (
+              <div style={{ background: 'var(--card-bg)', color: 'var(--text-color)', padding: '25px', borderRadius: '20px', marginTop: '15px', width: '100%', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+                <h4 style={{ margin: '0', fontSize: '1.2rem', lineHeight: '1.4' }}><MathRenderer text={imagePreviewModal.question} /></h4>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </>
   );
 };
@@ -1004,8 +1515,264 @@ const AnalyticsSkeleton = () => (
   </div>
 );
 
+const ChartBar = ({ label, percent, isSpecial, isSelected, onClick }) => {
+  const getBarColor = () => {
+    if (isSpecial) return 'linear-gradient(to top, #6366f1, #818cf8)';
+    if (percent >= 80) return 'linear-gradient(to top, #16a34a, #4ade80)';
+    if (percent >= 50) return 'linear-gradient(to top, #ca8a04, #facc15)';
+    return 'linear-gradient(to top, #dc2626, #f87171)';
+  };
+
+  const getBorderColor = () => {
+    if (isSpecial) return '#6366f1';
+    if (percent >= 80) return '#16a34a';
+    if (percent >= 50) return '#ca8a04';
+    return '#dc2626';
+  };
+
+  return (
+    <div 
+      onClick={onClick}
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        cursor: 'pointer',
+        flex: '1 0 50px',
+        minWidth: '50px',
+        maxWidth: '80px',
+        height: '100%',
+        justifyContent: 'flex-end',
+        transition: 'transform 0.2s, opacity 0.2s',
+        opacity: isSelected ? 1 : 0.75,
+        transform: isSelected ? 'scale(1.05)' : 'none',
+      }}
+      className="chart-bar-hover"
+    >
+      <div style={{ height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem', marginBottom: '2px', visibility: percent === 100 ? 'visible' : 'hidden' }}>
+        👑
+      </div>
+      
+      <div style={{ fontSize: '0.75rem', fontWeight: 'bold', marginBottom: '5px', color: isSelected ? 'var(--primary-color)' : 'inherit' }}>
+        {percent}%
+      </div>
+      
+      <div 
+        style={{
+          width: '70%',
+          maxHeight: '140px',
+          height: `${(percent / 100) * 140}px`,
+          background: getBarColor(),
+          borderRadius: '6px 6px 0 0',
+          transition: 'height 0.5s ease',
+          boxShadow: isSelected ? `0 0 12px ${getBorderColor()}55` : 'none',
+          border: isSelected ? `2px solid ${getBorderColor()}` : 'none',
+        }}
+      />
+      
+      <div style={{ fontSize: '0.75rem', fontWeight: '500', marginTop: '8px', opacity: 0.7, whiteSpace: 'nowrap' }}>
+        {label}
+      </div>
+    </div>
+  );
+};
+
+const QuestionsBarChart = ({ firstAttemptAvg, currentAttemptAvg, questionsData, selectedCol, onSelectCol }) => {
+  return (
+    <div style={{ 
+      background: 'rgba(255, 255, 255, 0.02)',
+      borderRadius: '20px',
+      padding: '25px',
+      border: '1px solid rgba(0, 0, 0, 0.05)',
+      marginBottom: '25px',
+    }}>
+      <h4 style={{ marginBottom: '20px', fontSize: '1.1rem', opacity: 0.8 }}>Диаграмма успеваемости</h4>
+      <div 
+        className="custom-scrollbar"
+        style={{ 
+          display: 'flex', 
+          alignItems: 'flex-end', 
+          justifyContent: 'flex-start', 
+          gap: '12px', 
+          height: '240px', 
+          overflowX: 'auto',
+          paddingBottom: '10px',
+          paddingTop: '25px',
+        }}
+      >
+        <ChartBar 
+          label="1-я поп." 
+          percent={firstAttemptAvg} 
+          isSpecial 
+          isSelected={selectedCol === 'first_avg'} 
+          onClick={() => onSelectCol('first_avg')} 
+        />
+        
+        <ChartBar 
+          label="Ср. рез." 
+          percent={currentAttemptAvg} 
+          isSpecial 
+          isSelected={selectedCol === 'current_avg'} 
+          onClick={() => onSelectCol('current_avg')} 
+        />
+        
+        <div style={{ width: '2px', height: '180px', background: 'rgba(0,0,0,0.06)', margin: '0 5px', flexShrink: 0 }} />
+        
+        {questionsData.map((q, idx) => (
+          <ChartBar 
+            key={idx}
+            label={`Q${idx + 1}`} 
+            percent={q.percent} 
+            isSelected={selectedCol === idx} 
+            onClick={() => onSelectCol(idx)} 
+          />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const ChartColDetailsPanel = ({ 
+  selectedCol, 
+  onClose, 
+  showQDetailStudents, 
+  setShowQDetailStudents, 
+  questions, 
+  getAvgDetails, 
+  getQuestionDetails, 
+  renderStudentGroups, 
+  renderAvgDetails 
+}) => {
+  let title = '';
+  if (selectedCol === 'first_avg') {
+    title = 'Анализ: Среднее по 1-й попытке';
+  } else if (selectedCol === 'current_avg') {
+    title = 'Анализ: Среднее по текущим результатам';
+  } else {
+    title = `Анализ: Вопрос ${selectedCol + 1}`;
+  }
+
+  const isQuestion = typeof selectedCol === 'number';
+
+  return (
+    <div style={{ 
+      background: 'rgba(99, 102, 241, 0.03)',
+      borderRadius: '20px',
+      padding: '25px',
+      border: '1px dashed rgba(99, 102, 241, 0.2)',
+      marginBottom: '30px',
+      position: 'relative',
+      animation: 'fadeIn 0.3s ease'
+    }}>
+      <button 
+        onClick={onClose}
+        style={{ 
+          position: 'absolute', 
+          top: '15px', 
+          right: '15px', 
+          background: 'rgba(0,0,0,0.05)', 
+          color: 'var(--text-color)', 
+          border: 'none',
+          padding: '8px', 
+          borderRadius: '50%', 
+          cursor: 'pointer',
+          boxShadow: 'none',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}
+      >
+        <X size={16} />
+      </button>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', paddingRight: '30px', flexWrap: 'wrap', gap: '15px' }}>
+        <h4 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--primary-color)', fontWeight: 'bold' }}>{title}</h4>
+        
+        {isQuestion && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', cursor: 'pointer', userSelect: 'none' }}>
+            <input 
+              type="checkbox" 
+              style={{ width: 'auto', margin: 0 }}
+              checked={showQDetailStudents} 
+              onChange={(e) => setShowQDetailStudents(e.target.checked)} 
+            />
+            <span>Показывать учеников</span>
+          </label>
+        )}
+      </div>
+
+      {isQuestion ? (
+        <div>
+          <div style={{ background: 'var(--card-bg)', padding: '15px', borderRadius: '12px', border: '1px solid rgba(0,0,0,0.05)', marginBottom: '20px' }}>
+            <div style={{ fontWeight: '600', marginBottom: '8px' }}>Вопрос:</div>
+            <div style={{ fontSize: '1rem', lineHeight: '1.5' }}>
+              <MathRenderer text={questions[selectedCol].question} />
+            </div>
+            {questions[selectedCol].images && questions[selectedCol].images.length > 0 && (
+              <div style={{ marginTop: '10px' }}>
+                <span style={{ fontSize: '0.8rem', opacity: 0.6 }}>Прикрепленные изображения доступны в списке вопросов ниже.</span>
+              </div>
+            )}
+          </div>
+
+          <div style={{ marginBottom: '20px' }}>
+            <div style={{ fontWeight: '600', marginBottom: '8px', fontSize: '0.9rem' }}>Варианты ответов:</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {questions[selectedCol].options?.map((opt, optIdx) => {
+                const isCorrect = optIdx === questions[selectedCol].correctIndex;
+                return (
+                  <div 
+                    key={optIdx} 
+                    style={{ 
+                      padding: '10px 15px', 
+                      borderRadius: '8px', 
+                      border: isCorrect ? '1px solid #4ade80' : '1px solid rgba(0,0,0,0.05)',
+                      background: isCorrect ? 'rgba(74, 222, 128, 0.08)' : 'var(--card-bg)',
+                      color: isCorrect ? '#22c55e' : 'inherit',
+                      fontWeight: isCorrect ? 'bold' : 'normal',
+                      fontSize: '0.85rem'
+                    }}
+                  >
+                    {optIdx + 1}. <MathRenderer text={opt} /> {isCorrect && ' (Верный ответ)'}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {questions[selectedCol].explanation && (
+            <div style={{ background: 'rgba(0,0,0,0.02)', padding: '15px', borderRadius: '12px', border: '1px solid rgba(0,0,0,0.02)', marginBottom: '20px' }}>
+              <div style={{ fontWeight: '600', marginBottom: '5px', fontSize: '0.85rem' }}>Пояснение:</div>
+              <div style={{ fontSize: '0.85rem', opacity: 0.9, lineHeight: '1.4' }}>
+                <MathRenderer text={questions[selectedCol].explanation} />
+              </div>
+            </div>
+          )}
+
+          {showQDetailStudents && (
+            <div style={{ borderTop: '1px solid rgba(0,0,0,0.05)', paddingTop: '20px' }}>
+              <div className="grid-2" style={{ gap: '20px', alignItems: 'start' }}>
+                <div style={{ background: 'var(--card-bg)', padding: '15px', borderRadius: '15px', border: '1px solid rgba(0,0,0,0.05)' }}>
+                  {renderStudentGroups(getQuestionDetails(selectedCol).correct, '#4ade80', 'Ответили верно')}
+                </div>
+                <div style={{ background: 'var(--card-bg)', padding: '15px', borderRadius: '15px', border: '1px solid rgba(0,0,0,0.05)' }}>
+                  {renderStudentGroups(getQuestionDetails(selectedCol).incorrect, '#f87171', 'Ответили неверно')}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div style={{ background: 'var(--card-bg)', padding: '20px', borderRadius: '15px', border: '1px solid rgba(0,0,0,0.05)' }}>
+          {renderAvgDetails(selectedCol)}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ─── AI Prompt Button for Analytics ──────────────────────────────
-const AnalyticsAiButton = ({ quiz, filteredResults, cities, schools, classes, filterCity, filterSchool, filterClass, profile, teacherClasses, allStudents, missingStudents }) => {
+const AnalyticsAiButton = ({ quiz, quizContent, filteredResults, cities, schools, classes, filterCity, filterSchool, filterClass, profile, teacherClasses, allStudents, missingStudents }) => {
   const [status, setStatus] = React.useState('idle');
   const [showLegacy, setShowLegacy] = React.useState(false);
 
@@ -1013,7 +1780,6 @@ const AnalyticsAiButton = ({ quiz, filteredResults, cities, schools, classes, fi
     if (filteredResults.length < 5) return;
     setStatus('loading_ai');
     try {
-      // Build scope label
       const scopeParts = [];
       if (filterCity) {
         const city = cities.find(c => c.id === filterCity);
@@ -1029,10 +1795,16 @@ const AnalyticsAiButton = ({ quiz, filteredResults, cities, schools, classes, fi
       }
       const scopeLabel = scopeParts.length > 0 ? scopeParts.join(', ') : 'Все';
 
-      // Try RAG first, fall back to JSON if not available
+      let currentContent = quizContent || quiz.content;
+      if (!currentContent) {
+        const { data } = await supabase.from('quizzes').select('content').eq('id', quiz.id).single();
+        currentContent = data?.content;
+      }
+      const fullQuiz = { ...quiz, content: currentContent };
+
       let result;
       try {
-        result = await buildQuizRagPrompt(quiz, filteredResults, scopeLabel, {
+        result = await buildQuizRagPrompt(fullQuiz, filteredResults, scopeLabel, {
           cities,
           schools,
           classes,
@@ -1046,14 +1818,14 @@ const AnalyticsAiButton = ({ quiz, filteredResults, cities, schools, classes, fi
         });
       } catch (ragError) {
         console.warn('RAG failed, falling back to JSON:', ragError);
-        result = await buildQuizPromptFromData({ quiz, filteredResults, cities, schools, classes, filterCity, filterSchool, filterClass, profile, teacherClasses, allStudents, missingStudents });
+        result = await buildQuizPromptFromData({ quiz: fullQuiz, filteredResults, cities, schools, classes, filterCity, filterSchool, filterClass, profile, teacherClasses, allStudents, missingStudents });
       }
       
       if (result && result.instruction) {
         window.dispatchEvent(new CustomEvent('open-ai-hub', { 
           detail: { 
             contextType: 'quiz_results', 
-            contextId: quiz.id, 
+            contextId: fullQuiz.id, 
             instruction: result.instruction, 
             data: result.data, 
             title: 'Анализ теста' 
@@ -1070,7 +1842,6 @@ const AnalyticsAiButton = ({ quiz, filteredResults, cities, schools, classes, fi
     if (filteredResults.length < 5) return;
     setStatus(type === 'copy' ? 'loading_copy' : 'loading_file');
     try {
-      // Build scope label
       const scopeParts = [];
       if (filterCity) {
         const city = cities.find(c => c.id === filterCity);
@@ -1086,10 +1857,16 @@ const AnalyticsAiButton = ({ quiz, filteredResults, cities, schools, classes, fi
       }
       const scopeLabel = scopeParts.length > 0 ? scopeParts.join(', ') : 'Все';
 
-      // Try RAG first, fall back to JSON if not available
+      let currentContent = quizContent || quiz.content;
+      if (!currentContent) {
+        const { data } = await supabase.from('quizzes').select('content').eq('id', quiz.id).single();
+        currentContent = data?.content;
+      }
+      const fullQuiz = { ...quiz, content: currentContent };
+
       let result;
       try {
-        result = await buildQuizRagPrompt(quiz, filteredResults, scopeLabel, {
+        result = await buildQuizRagPrompt(fullQuiz, filteredResults, scopeLabel, {
           cities,
           schools,
           classes,
@@ -1103,7 +1880,7 @@ const AnalyticsAiButton = ({ quiz, filteredResults, cities, schools, classes, fi
         });
       } catch (ragError) {
         console.warn('RAG failed, falling back to JSON:', ragError);
-        result = await buildQuizPromptFromData({ quiz, filteredResults, cities, schools, classes, filterCity, filterSchool, filterClass, profile, teacherClasses, allStudents, missingStudents });
+        result = await buildQuizPromptFromData({ quiz: fullQuiz, filteredResults, cities, schools, classes, filterCity, filterSchool, filterClass, profile, teacherClasses, allStudents, missingStudents });
       }
       
       if (result) {
@@ -1158,7 +1935,6 @@ const AnalyticsAiButton = ({ quiz, filteredResults, cities, schools, classes, fi
           </button>
         </div>
 
-        {/* Legacy panel for manual prompting */}
         <button className="ai-legacy-toggle" onClick={() => setShowLegacy(p => !p)} style={{ marginTop: '2px' }}>
           <ChevronDown size={12} style={{ transform: showLegacy ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
           Ручной режим
@@ -1206,7 +1982,6 @@ const AnalyticsAiButton = ({ quiz, filteredResults, cities, schools, classes, fi
           </div>
         </div>
       </div>
-
     </>
   );
 };
