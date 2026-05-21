@@ -421,7 +421,6 @@ const Analytics = () => {
 
   const submittedUserIds = new Set(filteredResults.map(r => r.user_id));
   const filteredAllStudents = allStudents.filter(s => {
-    if (s.role && s.role !== 'player') return false;
     if (!showObservers && s.is_observer) return false;
     if (filterCity !== 'all' && s.city_id !== filterCity) return false;
     if (filterSchool !== 'all' && s.school_id !== filterSchool) return false;
@@ -1545,7 +1544,6 @@ const ChartBar = ({ label, percent, isSpecial, isSelected, onClick }) => {
         justifyContent: 'flex-end',
         transition: 'transform 0.2s, opacity 0.2s',
         opacity: isSelected ? 1 : 0.75,
-        transform: isSelected ? 'scale(1.05)' : 'none',
       }}
       className="chart-bar-hover"
     >
@@ -1587,46 +1585,71 @@ const QuestionsBarChart = ({ firstAttemptAvg, currentAttemptAvg, questionsData, 
       marginBottom: '25px',
     }}>
       <h4 style={{ marginBottom: '20px', fontSize: '1.1rem', opacity: 0.8 }}>Диаграмма успеваемости</h4>
-      <div 
-        className="custom-scrollbar"
-        style={{ 
-          display: 'flex', 
-          alignItems: 'flex-end', 
-          justifyContent: 'flex-start', 
-          gap: '12px', 
-          height: '240px', 
-          overflowX: 'auto',
-          paddingBottom: '10px',
-          paddingTop: '25px',
-        }}
-      >
-        <ChartBar 
-          label="1-я поп." 
-          percent={firstAttemptAvg} 
-          isSpecial 
-          isSelected={selectedCol === 'first_avg'} 
-          onClick={() => onSelectCol('first_avg')} 
-        />
-        
-        <ChartBar 
-          label="Ср. рез." 
-          percent={currentAttemptAvg} 
-          isSpecial 
-          isSelected={selectedCol === 'current_avg'} 
-          onClick={() => onSelectCol('current_avg')} 
-        />
-        
-        <div style={{ width: '2px', height: '180px', background: 'rgba(0,0,0,0.06)', margin: '0 5px', flexShrink: 0 }} />
-        
-        {questionsData.map((q, idx) => (
+      
+      <div style={{ position: 'relative', width: '100%' }}>
+        {/* Пунктирные линии на разных уровнях */}
+        <div style={{ position: 'absolute', left: 0, bottom: '34px', right: 0, height: '140px', pointerEvents: 'none', zIndex: 0 }}>
+          {/* 100% */}
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, borderTop: '1px dashed rgba(255,255,255,0.08)' }}>
+            <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.3)', position: 'absolute', left: '5px', top: '-12px' }}>100%</span>
+          </div>
+          {/* 80% */}
+          <div style={{ position: 'absolute', top: `${(1 - 0.8) * 140}px`, left: 0, right: 0, borderTop: '1px dashed rgba(74, 222, 128, 0.2)' }}>
+            <span style={{ fontSize: '0.65rem', color: '#4ade80', position: 'absolute', left: '5px', top: '-12px', fontWeight: 'bold' }}>80%</span>
+          </div>
+          {/* 50% */}
+          <div style={{ position: 'absolute', top: `${(1 - 0.5) * 140}px`, left: 0, right: 0, borderTop: '1px dashed rgba(250, 204, 21, 0.2)' }}>
+            <span style={{ fontSize: '0.65rem', color: '#ca8a04', position: 'absolute', left: '5px', top: '-12px', fontWeight: 'bold' }}>50%</span>
+          </div>
+          {/* 20% */}
+          <div style={{ position: 'absolute', top: `${(1 - 0.2) * 140}px`, left: 0, right: 0, borderTop: '1px dashed rgba(239, 68, 68, 0.2)' }}>
+            <span style={{ fontSize: '0.65rem', color: '#ef4444', position: 'absolute', left: '5px', top: '-12px', fontWeight: 'bold' }}>20%</span>
+          </div>
+        </div>
+
+        <div 
+          className="custom-scrollbar"
+          style={{ 
+            display: 'flex', 
+            alignItems: 'flex-end', 
+            justifyContent: 'flex-start', 
+            gap: '12px', 
+            height: '240px', 
+            overflowX: 'auto',
+            paddingBottom: '10px',
+            paddingTop: '25px',
+            position: 'relative',
+            zIndex: 1,
+          }}
+        >
           <ChartBar 
-            key={idx}
-            label={`Q${idx + 1}`} 
-            percent={q.percent} 
-            isSelected={selectedCol === idx} 
-            onClick={() => onSelectCol(idx)} 
+            label="1-я поп." 
+            percent={firstAttemptAvg} 
+            isSpecial 
+            isSelected={selectedCol === 'first_avg'} 
+            onClick={() => onSelectCol('first_avg')} 
           />
-        ))}
+          
+          <ChartBar 
+            label="Ср. рез." 
+            percent={currentAttemptAvg} 
+            isSpecial 
+            isSelected={selectedCol === 'current_avg'} 
+            onClick={() => onSelectCol('current_avg')} 
+          />
+          
+          <div style={{ width: '2px', height: '180px', background: 'rgba(255,255,255,0.06)', margin: '0 5px', flexShrink: 0 }} />
+          
+          {questionsData.map((q, idx) => (
+            <ChartBar 
+              key={idx}
+              label={`Q${idx + 1}`} 
+              percent={q.percent} 
+              isSelected={selectedCol === idx} 
+              onClick={() => onSelectCol(idx)} 
+            />
+          ))}
+        </div>
       </div>
     </div>
   );
