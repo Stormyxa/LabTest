@@ -290,7 +290,7 @@ const Editor = ({ session, profile }) => {
 
   const isTeacherOrPlayer = profile?.role === 'teacher' || profile?.role === 'player';
   const isPrivilegedEditor = profile?.role === 'admin' || profile?.role === 'creator';
-  
+
   const [editorMode, setEditorMode] = useState(() => {
     const saved = sessionStorage.getItem('editor_mode');
     if (saved) return saved;
@@ -313,7 +313,7 @@ const Editor = ({ session, profile }) => {
     newResources[index][field] = value;
     setResources(newResources);
   };
-  
+
   useEffect(() => {
     sessionStorage.setItem('editor_mode', editorMode);
     setIsPersonal(editorMode !== 'official');
@@ -479,7 +479,7 @@ const Editor = ({ session, profile }) => {
           section_id: sectionId,
           author_id: session.user.id,
           is_personal: isPersonal,
-          content: { 
+          content: {
             questions: q.questions,
             time_limit: newQuizTimeLimit > 0 ? newQuizTimeLimit : q.time_limit
           },
@@ -552,7 +552,7 @@ const Editor = ({ session, profile }) => {
         section_id: sId,
         author_id: session.user.id,
         is_personal: isPersonal,
-        content: { 
+        content: {
           questions: [],
           time_limit: newQuizTimeLimit > 0 ? newQuizTimeLimit : undefined
         },
@@ -673,7 +673,47 @@ const Editor = ({ session, profile }) => {
   };
 
   const copyJsonPrompt = () => {
-    const prompt = `Без подобострастия и на глубокую проверку настоящих знаний, мне не обидно и я хочу быть жестоко униженной, узнать все свои уязвимости и нелепые пробелы. Качественно создай на академическом языке строгий интересный тест с неоднозначными вопросами высокого порядка без подсказок в стиле ЕНТ, полностью охватывающий все аспекты параграфа с приложенных изображений в количестве XX вопросов. Выведи результат СТРОГО в формате JSON:\n{\n"title":\n"§ Номер-Номер (если есть). Название",\n"time_limit": 600 (укажи время в секундах, адекватное для XX вопросов),\n"questions": [\n{\n"question": "Текст вопроса?",\n"options": ["Вариант 1", "Вариант 2", "Вариант 3", "Вариант 4"],\n"correctIndex": 0 (всегда),\n"explanation": "Подробное объяснение, почему этот ответ верный, раскрывающее суть \nвопроса."\n}\n]\n}\nВАЖНО: Количество вариантов ответа всегда одинаковое для каждого вопроса (4), но верный только один.\nСоставляй вопросы строго в рамках информации из параграфа, но делай их самодостаточными, чтобы ученик мог ответить на них, опираясь на общие знания по теме, даже если у него нет перед глазами текста или схем с изображений.\n\nХорошо составленный тест должен следовать правилу однородности:\n\nВсе варианты ответов должны быть примерно одинаковой длины.\nЕсли верный ответ длинный, нужно либо укоротить его, либо удлинить дистракторы, \nдобавив в них детали.\nИногда детализацию лучше вынести в само условие вопроса, чтобы варианты ответов были лаконичными.\nНеверные варианты ответов должны быть такими же правдоподобными, как и верный ответ, что направлено на запутывание учащихся. Дистракторы должны опираться на смежные настоящие исторические факты той эпохи, которые являются неверными лишь в контексте данного вопроса. То есть ученик, который даже читал параграф, но поверхностно, не сможет угадать верный вариант.\n\nПоле "explanation" крайне важно: оно должно помогать ученику понять материал в обучающем режиме (после ответа).\n\nЕсли в данном параграфе есть портреты, рисунки или карты, то можешь сделать вопрос с префиксом [ИЗОБРАЖЕНИЕ] по ним и сказать что именно добавить. Я сама буду ориентироваться и прикреплю к нему соответственное изображение, имеющиеся в контексте параграфа.`;
+    const prompt = `Без подобострастия, угодничества и лишних вступлений составь сложный, академически строгий тест в стиле ЕНТ для глубокой проверки знаний учащихся. Текст должен полностью и детально охватывать содержание предоставленного параграфа.
+
+Логика вопросов и вариантов ответов:
+1. Язык вопросов лаконичный, точный, энциклопедический и не прощающий невнимательности. Никаких подсказок, наводящих слов или размытых формулировок.
+2. Все 4 варианта ответа (options) в каждом вопросе должны быть абсолютно однородными по смыслу, структуре, грамматической форме и частям речи.
+3. Длина текста во всех четырех вариантах ответов должна быть одинаковой (плюс-минус 5–10 символов). Недопустимо, чтобы правильный ответ выделялся объемом или детализацией.
+4. Дистракторы (неверные ответы) должны быть исторически или научно реальными терминами, фактами или цифрами из той же эпохи/контекста, чтобы исключить угадывание методом исключения, но строго неверными в контексте конкретного вопроса. Взаимоисключающие, абсурдные или очевидно глупые варианты запрещены.
+5. Запрещено использовать формулировки "все варианты верны", "ни один из предложенных" или ссылки на позицию автора. Вопросы должны быть полностью автономными.
+6. Избегай лингвистических подсказок, метафор и смысловых параллелей между текстом вопроса и правильным вариантом ответа, которые позволяют угадать ответ методом логического исключения.
+7. Все 4 варианта ответа должны иметь строго одинаковую грамматическую структуру. Недопустимо смешивать разные части речи или синтаксические конструкции (например, если три варианта выражены прилагательными, четвертый также должен быть прилагательным; если три варианта — это названия эпох напрямую, четвертый не должен содержать уточняющих слов вроде "эпоха" или "период").
+8. СТРОЖАЙШИЙ ЗАПРЕТ на фразы-маркеры: ни в вопросах, ни в вариантах, ни в объяснениях не должно быть фраз: "согласно тексту", "в соответствии с учебником", "как указано в параграфе", "по словам автора", "в данном блоке текста" и их синонимов. Пиши так, будто тест составляется по объективным историческим фактам, а не по конкретной книге.
+
+Работа с иллюстрациями (рисунки, карты, схемы):
+Если вопрос составляется по изображению из параграфа, обязательно начни поле "question" с префикса [ИЗОБРАЖЕНИЕ]. В самом тексте вопроса ЗАПРЕЩЕНО ссылаться на номера страниц или номера рисунков (например, "на рисунке 2"). Вместо этого текстом четко опиши, ЧТО ИМЕННО изображено на иллюстрации (например: "[ИЗОБРАЖЕНИЕ] На схеме, демонстрирующей расселение гоминид...").
+
+Требования к полю "explanation":
+Объяснение должно быть глубоким и академическим. Запрещено писать "Вариант Х верен, потому что так написано". Структура объяснения должна быть следующей: 
+- Первое предложение: Раскрытие исторической сути и фактов, подтверждающих единственную верность правильного ответа.
+- Второе предложение: Научное аргументированное опровержение дистракторов (почему остальные термины/даты относятся к другим событиям или эпохам).
+
+Технические требования к JSON (КРИТИЧЕСКИ ВАЖНО):
+1. Выведи результат ИСКЛЮЧИТЕЛЬНО в формате валидного JSON-объекта, без какого-либо текстового вступления, разметки markdown (кроме синтаксического блока \`\`\`json\`\`\`) или заключения.
+2. СТРОГО ЗАПРЕЩЕНО использовать висячие запятые (trailing commas) после последнего элемента в массивах или после последнего свойства в объектах перед закрывающими скобками ] или }. Каждая запятая должна строго разделять элементы.
+3. Для выделения терминов, цитат или названий внутри строк JSON разрешено использовать только одинарные кавычки ' '. Использование типографских кавычек-ёлочек « » или незаэкранированных двойных кавычек внутри строк ЗАПРЕЩЕНО.
+4. Все управляющие символы и кавычки внутри строк должны быть строго валидными, чтобы не сломать автоматический парсер (JSON.parse).
+
+Объем теста: Составь СТРОГО XX вопросов.
+
+Структура JSON-объекта:
+{
+  "title": "§ Номер. Название параграфа",
+  "time_limit": [укажи адекватное время в секундах, исходя из сложности],
+  "questions": [
+    {
+      "question": "Текст вопроса",
+      "options": ["Вариант 1", "Вариант 2", "Вариант 3", "Вариант 4"],
+      "correctIndex": [индекс от 0 до 3],
+      "explanation": "Текст академического объяснения"
+    }
+  ]
+}`;
     navigator.clipboard.writeText(prompt);
     setCopyFeedbackJson(true);
     setTimeout(() => setCopyFeedbackJson(false), 2000);
@@ -914,8 +954,8 @@ const Editor = ({ session, profile }) => {
                           <label style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>Лимит времени:</label>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <input 
-                            type="number" 
+                          <input
+                            type="number"
                             min="0"
                             placeholder="Мин"
                             value={Math.floor(newQuizTimeLimit / 60) || ''}
@@ -929,8 +969,8 @@ const Editor = ({ session, profile }) => {
                           <span style={{ fontSize: '0.8rem', opacity: 0.5 }}>мин</span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <input 
-                            type="number" 
+                          <input
+                            type="number"
                             min="0"
                             max="59"
                             placeholder="Сек"
@@ -968,28 +1008,28 @@ const Editor = ({ session, profile }) => {
                             </button>
                           )}
                         </div>
-                        
+
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                           {resources.map((res, idx) => (
                             <div key={idx} style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                                <input 
-                                  type="url" 
-                                  placeholder="Ссылка (YouTube, Google Drive PDF...)" 
-                                  value={res.url} 
+                                <input
+                                  type="url"
+                                  placeholder="Ссылка (YouTube, Google Drive PDF...)"
+                                  value={res.url}
                                   onChange={(e) => updateResource(idx, 'url', e.target.value)}
                                   style={{ padding: '8px 12px', fontSize: '0.85rem' }}
                                 />
-                                <input 
-                                  type="text" 
-                                  placeholder="Название (опционально)" 
-                                  value={res.title} 
+                                <input
+                                  type="text"
+                                  placeholder="Название (опционально)"
+                                  value={res.title}
                                   onChange={(e) => updateResource(idx, 'title', e.target.value)}
                                   style={{ padding: '8px 12px', fontSize: '0.85rem', opacity: 0.8 }}
                                 />
                               </div>
-                              <button 
-                                type="button" 
+                              <button
+                                type="button"
                                 onClick={() => removeResource(idx)}
                                 disabled={resources.length <= 1 && !res.url && !res.title}
                                 style={{ padding: '10px', background: 'transparent', color: 'red', opacity: 0.5, boxShadow: 'none' }}
@@ -1086,29 +1126,29 @@ const Editor = ({ session, profile }) => {
                   <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '30px', flexWrap: 'wrap', gap: '20px' }}>
                     <div style={{ display: 'flex', gap: '8px', background: 'rgba(0,0,0,0.03)', padding: '5px', borderRadius: '15px' }}>
                       {(isPrivilegedEditor || profile?.role === 'editor') && (
-                        <button 
-                          onClick={() => setEditorMode('official')} 
+                        <button
+                          onClick={() => setEditorMode('official')}
                           style={{ padding: '8px 16px', borderRadius: '10px', background: editorMode === 'official' ? 'var(--card-bg)' : 'transparent', color: editorMode === 'official' ? 'var(--primary-color)' : 'inherit', boxShadow: editorMode === 'official' ? 'var(--soft-shadow)' : 'none', fontWeight: '700', fontSize: '0.85rem' }}
                         >
                           Официальный
                         </button>
                       )}
-                      <button 
-                        onClick={() => setEditorMode('personal')} 
+                      <button
+                        onClick={() => setEditorMode('personal')}
                         style={{ padding: '8px 16px', borderRadius: '10px', background: editorMode === 'personal' ? 'var(--card-bg)' : 'transparent', color: editorMode === 'personal' ? 'var(--primary-color)' : 'inherit', boxShadow: editorMode === 'personal' ? 'var(--soft-shadow)' : 'none', fontWeight: '700', fontSize: '0.85rem' }}
                       >
                         Личный
                       </button>
                       {isPrivilegedEditor && (
-                        <button 
-                          onClick={() => setEditorMode('community')} 
+                        <button
+                          onClick={() => setEditorMode('community')}
                           style={{ padding: '8px 16px', borderRadius: '10px', background: editorMode === 'community' ? 'var(--card-bg)' : 'transparent', color: editorMode === 'community' ? 'var(--primary-color)' : 'inherit', boxShadow: editorMode === 'community' ? 'var(--soft-shadow)' : 'none', fontWeight: '700', fontSize: '0.85rem' }}
                         >
                           Общий (все)
                         </button>
                       )}
                     </div>
-                    
+
                     {(profile?.role === 'admin' || profile?.role === 'creator') && (
                       <button
                         onClick={() => setShowHidden(prev => !prev)}
