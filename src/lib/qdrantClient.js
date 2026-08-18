@@ -14,10 +14,18 @@ export const isQdrantConfigured = () => {
 /**
  * Search for relevant facts for a user
  * @param {object} params
+ * @param {string} params.userId - User ID
+ * @param {string} [params.query] - Text search query (vectorized on server via Gemini)
+ * @param {number[]} [params.queryVector] - Optional precomputed vector
+ * @param {number} [params.limit=15] - Maximum facts to return
+ * @param {string} [params.quizId] - Optional quiz ID filter
+ * @param {string} [params.classId] - Optional class ID filter
+ * @param {boolean} [params.enableTimeDecay=true] - Apply time decay scoring
  */
 export const searchFacts = async ({
   userId,
-  queryVector,
+  query = null,
+  queryVector = null,
   limit = 15,
   quizId = null,
   classId = null,
@@ -29,6 +37,7 @@ export const searchFacts = async ({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         userId, 
+        query,
         queryVector, 
         limit, 
         quizId, 
@@ -51,7 +60,8 @@ export const searchFacts = async ({
 };
 
 /**
- * Store facts with vectors into Qdrant
+ * Store facts with or without client-side vectors into Qdrant.
+ * If vectors are omitted, the server generates them via Gemini Embeddings API.
  * @param {object} params
  */
 export const saveVectors = async ({
@@ -74,7 +84,7 @@ export const saveVectors = async ({
         subject,
         language,
         profile,
-        facts // Array of { fact, vector, metadata }
+        facts // Array of { fact, metadata, [vector] } or strings
       })
     });
 
@@ -89,6 +99,11 @@ export const saveVectors = async ({
     throw e;
   }
 };
+
+/**
+ * Convenience alias for saving facts
+ */
+export const saveFacts = saveVectors;
 
 /**
  * Delete facts for user (not implemented in proxy yet)

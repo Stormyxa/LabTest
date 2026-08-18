@@ -1,3 +1,10 @@
+/**
+ * @deprecated
+ * DEPRECATED: Local client-side Web Worker embedding generation.
+ * Replaced by server-side Gemini Embeddings API (/api/geminiEmbedding.js).
+ * Preserved for rollback/fallback purposes.
+ */
+
 import { pipeline, env } from '@xenova/transformers';
 
 // Configure transformers.js to use local cache

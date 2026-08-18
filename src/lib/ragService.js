@@ -1,5 +1,4 @@
 import { searchFacts, isQdrantConfigured, saveVectors } from './qdrantClient.js';
-import { generateEmbedding, generateEmbeddingsBatch } from './embeddingService.js';
 import { supabase } from './supabase';
 import { extractAllFacts, limitFacts } from './factExtractor.js';
 
@@ -14,14 +13,12 @@ import { extractAllFacts, limitFacts } from './factExtractor.js';
  */
 export const buildStudentRagContext = async (userId) => {
   try {
-    // Generate vector on client side to avoid server-side dependency
-    const { generateEmbedding } = await import('./embeddingService');
-    const queryVector = await generateEmbedding('student performance quiz results errors strengths weaknesses learning progress');
+    const query = 'student performance quiz results errors strengths weaknesses learning progress';
 
-    // Search for relevant facts via centralized client
+    // Search for relevant facts via centralized client (vectorized on server via Gemini)
     const facts = await searchFacts({
       userId,
-      queryVector,
+      query,
       limit: 250,
       enableTimeDecay: true
     });
@@ -80,16 +77,13 @@ export const buildQuizRagContext = async (quizId, classId = null) => {
 
     const batchSize = 10;
 
-    const { generateEmbedding } = await import('./embeddingService');
-    const queryVector = await generateEmbedding(query);
-
     for (let i = 0; i < userIds.length; i += batchSize) {
       const batch = userIds.slice(i, i + batchSize);
       const batchPromises = batch.map(async (userId) => {
         try {
           const facts = await searchFacts({
             userId,
-            queryVector,
+            query,
             quizId,
             limit: 25,
             enableTimeDecay: true
@@ -151,16 +145,13 @@ export const buildClassRagContext = async (classId) => {
     const allFacts = [];
     const batchSize = 10;
 
-    const { generateEmbedding } = await import('./embeddingService');
-    const queryVector = await generateEmbedding(query);
-
     for (let i = 0; i < userIds.length; i += batchSize) {
       const batch = userIds.slice(i, i + batchSize);
       const batchPromises = batch.map(async (userId) => {
         try {
           const facts = await searchFacts({
             userId,
-            queryVector,
+            query,
             classId,
             limit: 25,
             enableTimeDecay: true
@@ -324,9 +315,9 @@ export const processAndStoreAttemptFacts = async (attemptId, quizId, userId, sec
     if (quizFlatRes.data.section_id) {
       const { data: secData } = await supabase
         .from('quiz_sections')
-        .select('name, class_id, book_url, folder_id')
+        .select('*')
         .eq('id', quizFlatRes.data.section_id)
-        .single();
+        .maybeSingle();
       if (secData) {
         quizSectionData = { ...secData };
         if (secData.folder_id) {
@@ -392,15 +383,10 @@ export const processAndStoreAttemptFacts = async (attemptId, quizId, userId, sec
 
     const limitedFacts = limitFacts(facts, 100, true);
     console.log(`📝 RAG: Extracted ${facts.length} facts, limited to ${limitedFacts.length}`);
-    dispatchStatus('vectorizing', 'Векторизация фактов...', 40);
+    dispatchStatus('storing', 'Сохранение в память...', 60);
 
-    const { generateEmbeddingsBatch } = await import('./embeddingService');
-    const vectors = await generateEmbeddingsBatch(limitedFacts);
-
-    dispatchStatus('storing', 'Сохранение в память...', 80);
-    const readyFacts = limitedFacts.map((fact, i) => ({
+    const readyFacts = limitedFacts.map((fact) => ({
       fact,
-      vector: vectors[i],
       metadata: {
         attemptId,
         score: attempt.score,
@@ -411,7 +397,7 @@ export const processAndStoreAttemptFacts = async (attemptId, quizId, userId, sec
       }
     }));
 
-    // 5. Send to centralized save-vectors API
+    // 5. Send to centralized save-vectors API (vectorized on server via Gemini)
     const result = await saveVectors({
       userId,
       quizId,
@@ -422,17 +408,21 @@ export const processAndStoreAttemptFacts = async (attemptId, quizId, userId, sec
       facts: readyFacts
     });
 
-    if (result) {
-      console.log(`✅ RAG: Successfully stored ${facts.length} facts via client-side pipeline`);
-      dispatchStatus('done', `Память обновлена (${facts.length} фактов)`, 100);
-
-      return { success: true, factsStored: facts.length };
+    if (result && result.success !== false) {
+      console.log(`✅ RAG: Successfully stored ${limitedFacts.length} facts via server-side pipeline`);
+      dispatchStatus('done', `Память обновлена (${limitedFacts.length} фактов)`, 100);
+      return { success: true, factsStored: limitedFacts.length };
     } else {
-      throw new Error('Failed to save vectors');
+      console.warn('⚠️ RAG: Fact storage skipped or Qdrant unavailable:', result?.error || result?.message);
+      dispatchStatus('done', 'Результат сохранен', 100);
+      return { success: false, factsStored: 0, error: result?.error };
     }
 
   } catch (error) {
-    console.error('❌ RAG: Client-side storage failed:', error);
+    console.error('❌ RAG: Client-side storage process error:', error);
+    window.dispatchEvent(new CustomEvent('rag-status', {
+      detail: { status: 'done', message: 'Результат сохранен', progress: 100 }
+    }));
     throw error;
   }
 };
@@ -535,7 +525,6 @@ export const buildQuizRagPrompt = async (quiz, filteredResults, scopeLabel, opti
   if (isQdrantConfigured()) {
     try {
       const query = `Анализ теста "${quiz.title}" (${subject}): общие ошибки, проблемные вопросы, успеваемость учеников`;
-      const queryVector = await generateEmbedding(query);
 
       // Get all user IDs from results
       const userIds = [...new Set(filteredResults.map(r => r.user_id))];
@@ -546,7 +535,7 @@ export const buildQuizRagPrompt = async (quiz, filteredResults, scopeLabel, opti
         try {
           const facts = await searchFacts({
             userId,
-            queryVector,
+            query,
             limit: 5, // Increased facts per user
             quizId
           });
@@ -818,39 +807,15 @@ ${ragSection}
  */
 export const triggerFactStorage = async (attemptId, quizId, userId, sectionName = null, quizClass = null) => {
   try {
-    // New Flow: Process and embed on client, then save to server
     await processAndStoreAttemptFacts(attemptId, quizId, userId, sectionName, quizClass);
-  } catch (error) {
-    console.warn('RAG fact storage failed client-side, queueing for retry:', error);
-
-    // Add to LocalStorage queue
-    try {
-      const queue = JSON.parse(localStorage.getItem('pending_vector_facts') || '[]');
-      if (!queue.some(item => item.attemptId === attemptId)) {
-        queue.push({ attemptId, quizId, userId, sectionName, quizClass });
-        localStorage.setItem('pending_vector_facts', JSON.stringify(queue));
-        console.log(`📥 Cached attempt ${attemptId} in local storage queue for retry.`);
-      }
-    } catch (storageError) {
-      console.error('Failed to write to local storage queue:', storageError);
-    }
-
-    // Fallback to legacy server-side flow if client-side fails
-    try {
-      console.log('🔄 RAG: Falling back to server-side processing...');
-      const response = await fetch('/api/store-facts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ attemptId, quizId, userId, sectionName, quizClass })
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        console.log(`✅ RAG: Stored ${result.factsStored} facts (server-side fallback)`);
-      }
-    } catch (fallbackError) {
-      console.warn('RAG server-side fallback also failed:', fallbackError);
-    }
+    window.dispatchEvent(new CustomEvent('rag-status', {
+      detail: { status: 'done', message: 'Результат сохранен', progress: 100 }
+    }));
+  } catch (err) {
+    console.warn('⚠️ RAG: Background fact storage skipped:', err.message);
+    window.dispatchEvent(new CustomEvent('rag-status', {
+      detail: { status: 'done', message: 'Результат сохранен', progress: 100 }
+    }));
   }
 };
 /**
@@ -867,14 +832,10 @@ export const vectorizeConversation = async (userId, title, messages, contextId =
     const lastMsgs = messages.slice(-4).map(m => `${m.role === 'user' ? 'Ученик' : 'ИИ'}: ${m.content}`).join('\n');
     const summaryFact = `В чате "${title}" обсуждали: ${lastMsgs.slice(0, 500)}...`;
 
-    const { generateEmbedding } = await import('./embeddingService');
-    const vector = await generateEmbedding(summaryFact);
-
     await saveVectors({
       userId,
       facts: [{
         fact: summaryFact,
-        vector,
         metadata: {
           type: 'chat_memory',
           title,
@@ -883,7 +844,7 @@ export const vectorizeConversation = async (userId, title, messages, contextId =
         }
       }]
     });
-    console.log('🧠 RAG: Conversation vectorized into memory');
+    console.log('🧠 RAG: Conversation stored into memory');
   } catch (e) {
     console.warn('Failed to vectorize conversation:', e);
   }
@@ -893,14 +854,10 @@ export const vectorizeConversation = async (userId, title, messages, contextId =
  */
 export const storeUserFact = async (userId, fact, score = 1, metadata = {}) => {
   try {
-    const { generateEmbedding } = await import('./embeddingService');
-    const vector = await generateEmbedding(fact);
-
     await saveVectors({
       userId,
       facts: [{
         fact,
-        vector,
         metadata: {
           ...metadata,
           timestamp: new Date().toISOString()

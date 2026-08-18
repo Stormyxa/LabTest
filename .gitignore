@@ -4,6 +4,7 @@ node_modules/
 dist/
 build/
 .vscode/
+.vs/
 *.log
 .vercel
 API_KEYS.md

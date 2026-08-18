@@ -1,15 +1,17 @@
 import { QdrantClient } from '@qdrant/js-client-rest';
+import { generateGeminiEmbedding } from './geminiEmbedding.js';
 
-// Initialize Qdrant client for server-side
-const QDRANT_URL = process.env.QDRANT_URL || process.env.VITE_QDRANT_URL;
-const QDRANT_API_KEY = process.env.QDRANT_API_KEY || process.env.VITE_QDRANT_API_KEY;
-
-let qdrantClient = null;
-if (QDRANT_URL && QDRANT_API_KEY) {
-  qdrantClient = new QdrantClient({
-    url: QDRANT_URL,
-    apiKey: QDRANT_API_KEY,
-  });
+function getQdrantClient() {
+  const QDRANT_URL = process.env.QDRANT_URL || process.env.VITE_QDRANT_URL;
+  const QDRANT_API_KEY = process.env.QDRANT_API_KEY || process.env.VITE_QDRANT_API_KEY;
+  if (QDRANT_URL && QDRANT_API_KEY) {
+    return new QdrantClient({
+      url: QDRANT_URL,
+      apiKey: QDRANT_API_KEY,
+      checkCompatibility: false
+    });
+  }
+  return null;
 }
 
 const COLLECTION_NAME = 'user_memory';
@@ -36,18 +38,28 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Missing required parameters: userId, query or queryVector' });
   }
 
+  const qdrantClient = getQdrantClient();
   if (!qdrantClient) {
     console.warn('Qdrant not configured on server-side');
     return res.status(200).json({ facts: [], message: 'Qdrant not configured' });
   }
 
   try {
-    // Use provided vector or return empty (server-side embedding disabled for performance)
     let vector = queryVector;
     
-    if (!vector) {
-      console.warn('⚠️ No query vector provided to search-facts');
-      return res.status(200).json({ facts: [], message: 'No vector provided' });
+    // Generate vector on server via Gemini API if only text query was provided
+    if (!vector && query && typeof query === 'string' && query.trim()) {
+      try {
+        vector = await generateGeminiEmbedding(query);
+      } catch (embErr) {
+        console.error('❌ Server Gemini embedding failed for search:', embErr.message);
+        return res.status(200).json({ facts: [], error: 'Embedding generation failed' });
+      }
+    }
+
+    if (!vector || !Array.isArray(vector)) {
+      console.warn('⚠️ No query vector available for search-facts');
+      return res.status(200).json({ facts: [], message: 'No vector provided or generated' });
     }
 
     // Build filter

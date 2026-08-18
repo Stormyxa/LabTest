@@ -64,15 +64,8 @@ function App() {
   }, []);
 
   useEffect(() => {
-    // Pre-warm embedding model early if user is logged in and has access
-    // Use global flag to ensure it only runs ONCE per session
-    if (session && profile && (profile.role !== 'player' || profile.class_id)) {
-      if (!window.__embedding_preloaded) {
-        window.__embedding_preloaded = true;
-        // console.log('🚀 Proactively preloading embedding model...');
-        import('./lib/embeddingService').then(m => m.preloadEmbeddingModel());
-      }
-    }
+    // Local embedding model pre-warming is DEPRECATED (now processed via Gemini server API)
+    // No download or memory footprint on the client side
   }, [session, profile]);
 
   useEffect(() => {

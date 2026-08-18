@@ -12,7 +12,7 @@ The RAG system replaces the previous JSON-heavy approach (10-150KB per request) 
 ## Architecture
 
 1. **Fact Extraction**: When a student completes a quiz, facts are extracted from their attempt (errors, timing, performance)
-2. **Embedding**: Facts are converted to 384-dimensional vectors using `Xenova/multilingual-e5-small`
+2. **Server-side Embedding**: Facts are converted to 768-dimensional vectors using Google Gemini `text-embedding-004` API on the server
 3. **Storage**: Vectors are stored in Qdrant with metadata (userId, quizId, classId, subject)
 4. **Retrieval**: When AI analysis is requested, relevant facts are retrieved based on semantic similarity
 5. **Analysis**: AI uses retrieved facts instead of full JSON for personalized recommendations

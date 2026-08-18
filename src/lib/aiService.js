@@ -284,26 +284,15 @@ export const streamAiAnalysis = async ({
  * @param {object} options - Search options { limit, quizId, classId }
  */
 export const searchUserFacts = async (userId, query, options = {}) => {
-  const { limit = 20, quizId = null, classId = null, queryVector: precomputedVector = null } = options;
+  const { limit = 20, quizId = null, classId = null, queryVector = null } = options;
   try {
-    // Generate query vector locally in the browser if not provided
-    let queryVector = precomputedVector;
-    if (!queryVector && query && typeof query === 'string' && query.trim()) {
-      try {
-        const { generateEmbedding } = await import('./embeddingService');
-        queryVector = await generateEmbedding(query);
-      } catch (embErr) {
-        console.error('❌ RAG: Failed to generate search embedding locally:', embErr);
-      }
-    }
-
     const response = await fetch('/api/search-facts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         userId, 
         query, 
-        queryVector, // Send pre-computed vector
+        queryVector,
         limit, 
         quizId, 
         classId 

@@ -265,8 +265,8 @@ const AiHub = ({ session, profile }) => {
         setIsOpen(true);
         setIsMinimized(false);
 
-        // Pre-warm embedding model when opening
-        import('../lib/embeddingService').then(m => m.preloadEmbeddingModel());
+        // Pre-warming of local model is deprecated (embeddings run on server via Gemini API)
+        // import('../lib/embeddingService').then(m => m.preloadEmbeddingModel());
 
         if (e.detail?.title) {
           setAiChatTitle(e.detail.title);
@@ -682,12 +682,8 @@ const AiHub = ({ session, profile }) => {
                 .limit(100);
 
               if (classStudents && classStudents.length > 0) {
-                const { generateEmbedding } = await import('../lib/embeddingService');
-                const queryVector = await generateEmbedding(generalSearchQuery);
-
                 const studentFactPromises = classStudents.map(async (student) => {
                   return searchUserFacts(student.id, generalSearchQuery, {
-                    queryVector,
                     limit: 5
                   }).then(facts => (facts || []).map(f => ({
                     ...f,

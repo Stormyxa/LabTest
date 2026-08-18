@@ -1,26 +1,64 @@
 import { createClient } from '@supabase/supabase-js';
 import { QdrantClient } from '@qdrant/js-client-rest';
 import { extractAllFacts, limitFacts } from '../src/lib/factExtractor.js';
-import { generateEmbedding } from '../src/lib/embeddingService.js';
+import { generateGeminiEmbeddingsBatch } from './geminiEmbedding.js';
 
-// Initialize Supabase client
-const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
-const supabase = createClient(supabaseUrl, supabaseKey);
-
-// Initialize Qdrant client for server-side
-const QDRANT_URL = process.env.QDRANT_URL || process.env.VITE_QDRANT_URL;
-const QDRANT_API_KEY = process.env.QDRANT_API_KEY || process.env.VITE_QDRANT_API_KEY;
-
-let qdrantClient = null;
-if (QDRANT_URL && QDRANT_API_KEY) {
-  qdrantClient = new QdrantClient({
-    url: QDRANT_URL,
-    apiKey: QDRANT_API_KEY,
+// Simple UUID generator
+function generateUUID() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
   });
 }
 
+function getSupabaseClient() {
+  const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+  const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
+  return createClient(supabaseUrl, supabaseKey);
+}
+
+function getQdrantClient() {
+  const QDRANT_URL = process.env.QDRANT_URL || process.env.VITE_QDRANT_URL;
+  const QDRANT_API_KEY = process.env.QDRANT_API_KEY || process.env.VITE_QDRANT_API_KEY;
+  if (QDRANT_URL && QDRANT_API_KEY) {
+    return new QdrantClient({
+      url: QDRANT_URL,
+      apiKey: QDRANT_API_KEY,
+      checkCompatibility: false
+    });
+  }
+  return null;
+}
+
 const COLLECTION_NAME = 'user_memory';
+let collectionEnsured = false;
+
+async function ensureCollection(client) {
+  if (collectionEnsured || !client) return;
+  try {
+    const collections = await client.getCollections();
+    const exists = collections.collections?.some(c => c.name === COLLECTION_NAME);
+    if (exists) {
+      const info = await client.getCollection(COLLECTION_NAME);
+      const currentSize = info.config?.params?.vectors?.size;
+      if (currentSize && currentSize !== 768) {
+        console.log(`⚠️ Qdrant: Existing collection size ${currentSize}. Recreating for Gemini 768 dims...`);
+        await client.deleteCollection(COLLECTION_NAME);
+        await client.createCollection(COLLECTION_NAME, {
+          vectors: { size: 768, distance: 'Cosine' }
+        });
+      }
+    } else {
+      await client.createCollection(COLLECTION_NAME, {
+        vectors: { size: 768, distance: 'Cosine' }
+      });
+    }
+    collectionEnsured = true;
+  } catch (err) {
+    console.warn('⚠️ Qdrant collection check/create warning:', err.message);
+  }
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -32,6 +70,9 @@ export default async function handler(req, res) {
   if (!attemptId || !quizId || !userId) {
     return res.status(400).json({ error: 'Missing required parameters: attemptId, quizId, userId' });
   }
+
+  const supabase = getSupabaseClient();
+  const qdrantClient = getQdrantClient();
 
   try {
     console.log(`🔄 Extracting facts for attempt ${attemptId}, user ${userId}, quiz ${quizId}`);
@@ -48,10 +89,10 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'Attempt not found' });
     }
 
-    // 2. Fetch the quiz with questions and section info (including class_id and book_url)
+    // 2. Fetch the quiz with questions and section info
     const { data: quiz, error: quizError } = await supabase
       .from('quizzes')
-      .select('*, quiz_sections(name, class_id, book_url)')
+      .select('*, quiz_sections(*)')
       .eq('id', quizId)
       .single();
 
@@ -84,7 +125,7 @@ export default async function handler(req, res) {
     }
 
     // 4b. Fetch all attempts for this quiz and user to calculate statistics
-    const { data: allAttempts, error: allAttemptsError } = await supabase
+    const { data: allAttempts } = await supabase
       .from('quiz_attempts')
       .select('score, max_score, time_spent_total, created_at')
       .eq('quiz_id', quizId)
@@ -139,7 +180,7 @@ export default async function handler(req, res) {
 
     console.log(`📝 Extracted ${limitedFacts.length} facts from attempt`);
 
-    // 5. Generate embeddings and upsert to Qdrant
+    // 6. Generate Gemini embeddings and upsert to Qdrant
     if (!qdrantClient) {
       console.warn('Qdrant not configured on server-side, skipping fact storage');
       return res.status(200).json({ 
@@ -148,61 +189,49 @@ export default async function handler(req, res) {
       });
     }
 
-    const upsertResults = [];
-    for (const fact of limitedFacts) {
-      try {
-        const vector = await generateEmbedding(fact);
-        
-        const pointId = `${userId}_${quizId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        
-        await qdrantClient.upsert(COLLECTION_NAME, {
-          points: [
-            {
-              id: pointId,
-              vector,
-              payload: {
-                userId,
-                quizId,
-                classId: profile.class_id || null,
-                subject,
-                fact,
-                timestamp: new Date().toISOString(),
-                attemptId,
-                score: attempt.score,
-                maxScore: attempt.max_score,
-                isPassed: attempt.is_passed,
-                isSuspicious: attempt.is_suspicious,
-                isIncomplete: attempt.is_incomplete,
-                isSuspiciousUser: summary?.is_suspicious_user || false,
-                isIncompleteUser: summary?.is_incomplete_user || false,
-                language
-              }
-            }
-          ]
-        });
+    await ensureCollection(qdrantClient);
 
-        upsertResults.push({ fact, success: true });
-      } catch (error) {
-        console.error('Failed to upsert fact:', error);
-        upsertResults.push({ fact, success: false, error: error.message });
+    console.log(`⚡ Generating server-side Gemini embeddings for ${limitedFacts.length} facts...`);
+    const vectors = await generateGeminiEmbeddingsBatch(limitedFacts);
+
+    const points = limitedFacts.map((fact, idx) => ({
+      id: generateUUID(),
+      vector: vectors[idx],
+      payload: {
+        userId,
+        quizId,
+        classId: profile.class_id || null,
+        subject,
+        fact,
+        timestamp: new Date().toISOString(),
+        attemptId,
+        score: attempt.score,
+        maxScore: attempt.max_score,
+        isPassed: attempt.is_passed,
+        isSuspicious: attempt.is_suspicious,
+        isIncomplete: attempt.is_incomplete,
+        isSuspiciousUser: summary?.is_suspicious_user || false,
+        isIncompleteUser: summary?.is_incomplete_user || false,
+        language
       }
-    }
+    }));
 
-    const successCount = upsertResults.filter(r => r.success).length;
+    await qdrantClient.upsert(COLLECTION_NAME, { points });
 
-    console.log(`✅ Successfully stored ${successCount}/${limitedFacts.length} facts in Qdrant`);
+    console.log(`✅ Successfully stored ${points.length} facts in Qdrant via Gemini API`);
 
     return res.status(200).json({
       success: true,
       factsExtracted: limitedFacts.length,
-      factsStored: successCount,
-      results: upsertResults
+      factsStored: points.length
     });
 
   } catch (error) {
     console.error('❌ Error in store-facts API:', error);
-    return res.status(500).json({ 
-      error: 'Internal server error',
+    return res.status(200).json({ 
+      success: false,
+      factsStored: 0,
+      error: 'Fact storage error',
       message: error.message 
     });
   }

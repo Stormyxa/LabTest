@@ -1,3 +1,10 @@
+/**
+ * @deprecated
+ * DEPRECATED: Client-side embedding service.
+ * Fact embedding and semantic retrieval is now offloaded to Google Gemini Embeddings API on the server.
+ * Preserved for rollback/fallback purposes.
+ */
+
 import { pipeline, env } from '@xenova/transformers';
 
 // Configure transformers.js to use local cache
