@@ -41,9 +41,9 @@ export const getNotificationPermission = () => {
  * Schedule a reminder notification if user leaves tab
  * @param {string} quizId 
  * @param {string} quizTitle 
- * @param {number} delaySeconds (default 60s / 1 minute)
+ * @param {number} delaySeconds (default 30s)
  */
-export const scheduleQuizReminder = (quizId, quizTitle, delaySeconds = 60) => {
+export const scheduleQuizReminder = (quizId, quizTitle, delaySeconds = 30) => {
   if (!isNotificationSupported() || Notification.permission !== 'granted') return;
 
   // Clear existing
