@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import MathRenderer from './MathRenderer';
-import { X, Maximize2, Minimize2, Sparkles, Send, Download, Copy, RefreshCw, History, Trash2, ChevronLeft, ChevronRight, MessageSquare, Check, User, Shield, AlertTriangle, Play } from 'lucide-react';
+import { X, Maximize2, Minimize2, Minus, Sparkles, Send, Download, Copy, RefreshCw, History, Trash2, ChevronLeft, ChevronRight, MessageSquare, Check, User, Shield, AlertTriangle, Play } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { streamAiAnalysis, getAiHistory, saveAiAnalysis, deleteAiAnalysis, searchUserFacts } from '../lib/aiService';
 import { buildStudentRagPrompt, vectorizeConversation } from '../lib/ragService';
@@ -972,8 +972,8 @@ const AiHub = ({ session, profile }) => {
           <button className="ai-action-btn" onClick={() => setIsFullScreen(!isFullScreen)} title={isFullScreen ? "Оконный режим" : "На весь экран"}>
             {isFullScreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
           </button>
-          <button className="ai-action-btn" onClick={() => setIsMinimized(true)} title="Свернуть">
-            <Minimize2 size={16} />
+          <button className="ai-action-btn" onClick={() => setIsMinimized(true)} title="Свернуть в кружок">
+            <Minus size={16} />
           </button>
           <button className="ai-action-btn" onClick={() => setIsOpen(false)} title="Закрыть">
             <X size={16} />

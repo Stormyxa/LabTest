@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { resolveImgUrl } from '../lib/imageUtils';
 import { useScrollRestoration } from '../lib/useScrollRestoration';
+import { scheduleQuizReminder, clearQuizReminder, requestNotificationPermission } from '../lib/notificationService';
 import ResourcePlayer from '../components/ResourcePlayer';
 import MathRenderer from '../components/MathRenderer';
 
@@ -442,8 +443,12 @@ const QuizView = ({ session, profile }) => {
             }));
           }
         }
+        if (isFirstAttempt && timeLeft > 0 && !finishedRef.current) {
+          scheduleQuizReminder(id, quiz?.title || 'Тест', 30);
+        }
       } else {
         setIsBlurred(false);
+        clearQuizReminder(id);
         // If user came back and quiz not finished, clear the pending save
         if (!finishedRef.current) {
           localStorage.removeItem(`quiz_pending_${id}`);
@@ -451,8 +456,11 @@ const QuizView = ({ session, profile }) => {
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [showResult, loading, id]);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      clearQuizReminder(id);
+    };
+  }, [showResult, loading, id, isFirstAttempt, timeLeft, quiz]);
 
   // Timer countdown — calls through saveResultRef to avoid stale closure
   useEffect(() => {
@@ -583,9 +591,10 @@ const QuizView = ({ session, profile }) => {
       }
       setIsFirstAttempt(first);
       
-      // Set global flag for AI chat restriction
+      // Set global flag for AI chat restriction and request reminder notification
       if (first) {
         localStorage.setItem('quiz_first_attempt_mode', 'true');
+        requestNotificationPermission();
       } else {
         localStorage.removeItem('quiz_first_attempt_mode');
       }
@@ -1013,7 +1022,9 @@ const QuizView = ({ session, profile }) => {
     }
 
     localStorage.removeItem(`quiz_pending_${id}`);
-    localStorage.removeItem(`quiz_timer_${id}`);
+    if (!isFirstAttempt || (timeLeft !== null && timeLeft <= 0)) {
+      localStorage.removeItem(`quiz_timer_${id}`);
+    }
     localStorage.removeItem(`quiz_answers_${id}`);
     localStorage.removeItem(`quiz_structure_${id}`);
     localStorage.removeItem(`quiz_current_idx_${id}`);

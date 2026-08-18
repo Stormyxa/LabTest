@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Clock, ChevronUp, ChevronDown, Play, AlertCircle } from 'lucide-react';
+import { Clock, ChevronDown, Play, Bell, BellRing, X } from 'lucide-react';
+import { requestNotificationPermission, getNotificationPermission } from '../lib/notificationService';
 
 export const getActiveTimedQuizzes = () => {
   const active = [];
@@ -26,16 +27,20 @@ export const getActiveTimedQuizzes = () => {
           const percent = Math.min(100, Math.max(0, Math.round((remaining / total) * 100)));
 
           let color = '#10b981'; // Green (>50%)
-          let badgeBg = 'rgba(16, 185, 129, 0.15)';
-          let badgeBorder = 'rgba(16, 185, 129, 0.4)';
+          let badgeBg = 'rgba(16, 185, 129, 0.18)';
+          let badgeBorder = 'rgba(16, 185, 129, 0.5)';
+          let glow = 'rgba(16, 185, 129, 0.4)';
+
           if (percent <= 20) {
             color = '#ef4444'; // Red (<=20%)
-            badgeBg = 'rgba(239, 68, 68, 0.15)';
-            badgeBorder = 'rgba(239, 68, 68, 0.4)';
+            badgeBg = 'rgba(239, 68, 68, 0.18)';
+            badgeBorder = 'rgba(239, 68, 68, 0.5)';
+            glow = 'rgba(239, 68, 68, 0.4)';
           } else if (percent <= 50) {
             color = '#f59e0b'; // Yellow (20-50%)
-            badgeBg = 'rgba(245, 158, 11, 0.15)';
-            badgeBorder = 'rgba(245, 158, 11, 0.4)';
+            badgeBg = 'rgba(245, 158, 11, 0.18)';
+            badgeBorder = 'rgba(245, 158, 11, 0.5)';
+            glow = 'rgba(245, 158, 11, 0.4)';
           }
 
           active.push({
@@ -46,7 +51,8 @@ export const getActiveTimedQuizzes = () => {
             percent,
             color,
             badgeBg,
-            badgeBorder
+            badgeBorder,
+            glow
           });
         } catch {
           // ignore corrupted keys
@@ -75,6 +81,7 @@ const ActiveQuizzesIndicator = () => {
   const navigate = useNavigate();
   const [activeQuizzes, setActiveQuizzes] = useState([]);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [notifPermission, setNotifPermission] = useState(getNotificationPermission());
 
   // Check if user is currently inside an active test
   const isTakingQuiz = location.pathname.startsWith('/quiz/');
@@ -97,17 +104,24 @@ const ActiveQuizzesIndicator = () => {
 
   const urgentQuiz = activeQuizzes[0];
 
+  const handleEnableNotifications = async (e) => {
+    e.stopPropagation();
+    const res = await requestNotificationPermission();
+    setNotifPermission(res);
+  };
+
   return (
     <div
+      className="active-quizzes-wrapper"
       style={{
         position: 'fixed',
-        bottom: '24px',
+        bottom: '90px',
         right: '24px',
-        zIndex: 9990,
+        zIndex: 9995,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'flex-end',
-        gap: '10px',
+        gap: '12px',
         fontFamily: 'inherit'
       }}
     >
@@ -115,14 +129,14 @@ const ActiveQuizzesIndicator = () => {
       {isExpanded && (
         <div
           style={{
-            width: '320px',
-            maxHeight: '380px',
-            background: 'var(--card-bg, rgba(25, 27, 38, 0.95))',
-            backdropFilter: 'blur(24px) saturate(180%)',
-            WebkitBackdropFilter: 'blur(24px) saturate(180%)',
-            border: '1px solid rgba(255, 255, 255, 0.15)',
-            borderRadius: '20px',
-            boxShadow: '0 20px 45px rgba(0,0,0,0.35), 0 0 25px rgba(99, 102, 241, 0.2)',
+            width: '330px',
+            maxHeight: '420px',
+            background: 'var(--card-bg, rgba(20, 22, 32, 0.94))',
+            backdropFilter: 'blur(28px) saturate(200%)',
+            WebkitBackdropFilter: 'blur(28px) saturate(200%)',
+            border: `1.5px solid ${urgentQuiz.badgeBorder}`,
+            borderRadius: '22px',
+            boxShadow: `0 20px 50px rgba(0,0,0,0.4), 0 0 30px ${urgentQuiz.glow}`,
             padding: '16px',
             display: 'flex',
             flexDirection: 'column',
@@ -132,8 +146,8 @@ const ActiveQuizzesIndicator = () => {
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold', fontSize: '0.9rem', color: 'var(--text-color)' }}>
-              <Clock size={16} color={urgentQuiz.color} className="pulsating-timer" />
-              <span>Незавершенные тесты ({activeQuizzes.length})</span>
+              <Clock size={18} color={urgentQuiz.color} className="pulsating-timer-icon" />
+              <span>Активные тесты ({activeQuizzes.length})</span>
             </div>
             <button
               onClick={() => setIsExpanded(false)}
@@ -147,9 +161,46 @@ const ActiveQuizzesIndicator = () => {
                 display: 'flex'
               }}
             >
-              <ChevronDown size={18} />
+              <X size={18} />
             </button>
           </div>
+
+          {/* Web notification prompt banner if not granted */}
+          {notifPermission !== 'granted' && (
+            <div
+              style={{
+                background: 'rgba(99, 102, 241, 0.1)',
+                border: '1px solid rgba(99, 102, 241, 0.3)',
+                borderRadius: '12px',
+                padding: '10px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '8px',
+                fontSize: '0.75rem'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-color)' }}>
+                <BellRing size={14} color="var(--primary-color)" />
+                <span>Напоминать при уходе с вкладки</span>
+              </div>
+              <button
+                onClick={handleEnableNotifications}
+                style={{
+                  background: 'var(--primary-color)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '4px 8px',
+                  fontWeight: 'bold',
+                  fontSize: '0.7rem',
+                  cursor: 'pointer'
+                }}
+              >
+                Включить
+              </button>
+            </div>
+          )}
 
           <div className="custom-scrollbar" style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '280px' }}>
             {activeQuizzes.map(item => (
@@ -163,7 +214,7 @@ const ActiveQuizzesIndicator = () => {
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '8px',
-                  transition: 'all 0.2s ease'
+                  boxShadow: `0 4px 15px ${item.badgeBg}`
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
@@ -175,7 +226,7 @@ const ActiveQuizzesIndicator = () => {
                       background: item.badgeBg,
                       color: item.color,
                       border: `1px solid ${item.badgeBorder}`,
-                      padding: '2px 8px',
+                      padding: '3px 8px',
                       borderRadius: '8px',
                       fontSize: '0.8rem',
                       fontWeight: 'bold',
@@ -191,12 +242,12 @@ const ActiveQuizzesIndicator = () => {
                 </div>
 
                 {/* Progress bar */}
-                <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px', overflow: 'hidden' }}>
+                <div style={{ width: '100%', height: '5px', background: 'rgba(255,255,255,0.08)', borderRadius: '4px', overflow: 'hidden' }}>
                   <div
                     style={{
                       width: `${item.percent}%`,
                       height: '100%',
-                      background: item.color,
+                      background: `linear-gradient(90deg, ${item.color}, #6366f1)`,
                       borderRadius: '4px',
                       transition: 'width 1s linear'
                     }}
@@ -223,7 +274,7 @@ const ActiveQuizzesIndicator = () => {
                     alignItems: 'center',
                     justifyContent: 'center',
                     gap: '6px',
-                    boxShadow: `0 4px 12px ${item.badgeBg}`
+                    boxShadow: `0 4px 14px ${item.badgeBg}`
                   }}
                 >
                   <Play size={14} fill="currentColor" />
@@ -235,95 +286,103 @@ const ActiveQuizzesIndicator = () => {
         </div>
       )}
 
-      {/* Main floating trigger pill */}
-      <button
+      {/* Floating Circular Bubble (AiHub-style) */}
+      <div
+        className="quiz-timer-bubble"
         onClick={() => setIsExpanded(prev => !prev)}
         style={{
-          background: 'var(--card-bg, rgba(20, 22, 32, 0.9))',
-          backdropFilter: 'blur(20px) saturate(180%)',
-          WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-          border: `1.5px solid ${urgentQuiz.badgeBorder}`,
-          borderRadius: '24px',
-          padding: '10px 18px',
-          color: 'var(--text-color)',
+          width: '56px',
+          height: '56px',
+          borderRadius: '50%',
+          background: `linear-gradient(135deg, ${urgentQuiz.color}, #6366f1)`,
+          color: 'white',
           display: 'flex',
           alignItems: 'center',
-          gap: '10px',
-          boxShadow: `0 8px 30px rgba(0,0,0,0.3), 0 0 20px ${urgentQuiz.badgeBg}`,
+          justifyContent: 'center',
           cursor: 'pointer',
+          boxShadow: `0 8px 24px ${urgentQuiz.glow}, 0 4px 12px rgba(0,0,0,0.3)`,
+          position: 'relative',
           transition: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
-          transform: isExpanded ? 'scale(1.02)' : 'scale(1)'
+          transform: isExpanded ? 'scale(1.08)' : 'scale(1)'
         }}
-        title="У вас есть незавершенные тесты с таймером"
+        title="Нажмите, чтобы увидеть незавершенные тесты"
       >
+        <div className="bubble-pulse-ring" style={{ borderColor: urgentQuiz.color }} />
+        <Clock size={24} className="pulsating-timer-icon" />
+
+        {/* Floating countdown pill tag attached to bubble */}
         <div
           style={{
-            position: 'relative',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
+            position: 'absolute',
+            bottom: '-8px',
+            background: '#0f111a',
+            color: urgentQuiz.color,
+            border: `1.5px solid ${urgentQuiz.color}`,
+            borderRadius: '10px',
+            padding: '1px 6px',
+            fontSize: '0.65rem',
+            fontWeight: '900',
+            fontVariantNumeric: 'tabular-nums',
+            whiteSpace: 'nowrap',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.4)'
           }}
         >
-          <Clock size={18} color={urgentQuiz.color} />
-          <span
+          {formatTimerSeconds(urgentQuiz.remaining)}
+        </div>
+
+        {/* Counter badge if multiple quizzes */}
+        {activeQuizzes.length > 1 && (
+          <div
             style={{
               position: 'absolute',
-              top: '-6px',
-              right: '-8px',
-              background: urgentQuiz.color,
+              top: '-4px',
+              right: '-4px',
+              background: '#ef4444',
               color: 'white',
-              fontSize: '0.65rem',
-              fontWeight: '900',
-              width: '16px',
-              height: '16px',
               borderRadius: '50%',
+              width: '20px',
+              height: '20px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 2px 6px rgba(0,0,0,0.3)'
+              fontSize: '0.7rem',
+              fontWeight: 'bold',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.4)',
+              border: '2px solid var(--bg-color, #121420)'
             }}
           >
             {activeQuizzes.length}
-          </span>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-          <span style={{ fontSize: '0.7rem', opacity: 0.6, textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 'bold' }}>
-            Тест не окончен
-          </span>
-          <span
-            style={{
-              fontSize: '0.9rem',
-              fontWeight: '800',
-              color: urgentQuiz.color,
-              fontVariantNumeric: 'tabular-nums'
-            }}
-          >
-            {formatTimerSeconds(urgentQuiz.remaining)} осталось
-          </span>
-        </div>
-
-        <ChevronUp
-          size={16}
-          style={{
-            transform: isExpanded ? 'rotate(180deg)' : 'none',
-            transition: 'transform 0.3s ease',
-            opacity: 0.7
-          }}
-        />
-      </button>
+          </div>
+        )}
+      </div>
 
       <style>{`
         @keyframes slideUpActive {
           from { opacity: 0; transform: translateY(16px) scale(0.96); }
           to { opacity: 1; transform: translateY(0) scale(1); }
         }
-        .pulsating-timer {
-          animation: pulseTimer 1.5s infinite ease-in-out;
+        .pulsating-timer-icon {
+          animation: pulseIcon 1.8s infinite ease-in-out;
         }
-        @keyframes pulseTimer {
+        @keyframes pulseIcon {
           0%, 100% { transform: scale(1); opacity: 1; }
-          50% { transform: scale(1.2); opacity: 0.7; }
+          50% { transform: scale(1.15); opacity: 0.85; }
+        }
+        .bubble-pulse-ring {
+          position: absolute;
+          inset: -4px;
+          border-radius: 50%;
+          border: 2px solid;
+          opacity: 0.6;
+          animation: ringPulse 2s infinite cubic-bezier(0.25, 1, 0.5, 1);
+          pointer-events: none;
+        }
+        @keyframes ringPulse {
+          0% { transform: scale(0.95); opacity: 0.8; }
+          100% { transform: scale(1.3); opacity: 0; }
+        }
+        .quiz-timer-bubble:hover {
+          transform: scale(1.1) !important;
         }
       `}</style>
     </div>
