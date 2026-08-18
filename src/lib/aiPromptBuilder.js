@@ -390,7 +390,7 @@ export const buildClassPrompt = async (classId) => {
     // ── 3. Fetch last 200 results for these students ──
     const { data: results } = await supabase
       .from('quiz_results')
-      .select('user_id, quiz_id, score, total_questions, is_passed, first_score, is_suspicious_user, is_incomplete_user, completed_at, quizzes(title, section_id, avg_success_rate)')
+      .select('user_id, quiz_id, score, total_questions, is_passed, first_score, is_suspicious_user, is_incomplete_user, completed_at')
       .in('user_id', studentIds)
       .order('completed_at', { ascending: false })
       .limit(DATA_LIMIT_COUNT);
@@ -400,13 +400,26 @@ export const buildClassPrompt = async (classId) => {
       return { instruction: msg, data: { status: 'no_data' }, filename: `class_${cls.name.replace(/\s+/g, '_')}.json` };
     }
 
+    const quizIds = [...new Set(results.map(r => r.quiz_id).filter(Boolean))];
+    let loadedQuizzes = {};
+    if (quizIds.length > 0) {
+      const { data: qData } = await supabase
+        .from('quizzes')
+        .select('id, title, section_id, avg_success_rate')
+        .in('id', quizIds);
+      if (qData) {
+        loadedQuizzes = Object.fromEntries(qData.map(q => [q.id, q]));
+      }
+    }
+
     // 4. Aggregate quiz stats
     const quizMap = {};
     results.forEach(r => {
+      const qObj = loadedQuizzes[r.quiz_id];
       if (!quizMap[r.quiz_id]) {
         quizMap[r.quiz_id] = {
-          tn: r.quizzes?.title || '—',
-          c_avg: r.quizzes?.avg_success_rate || 0,
+          tn: qObj?.title || '—',
+          c_avg: qObj?.avg_success_rate || 0,
           scores: [],
           susp: 0
         };

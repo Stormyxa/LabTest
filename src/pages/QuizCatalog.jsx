@@ -36,6 +36,47 @@ const DividerItem = React.memo(({ quiz, qIndex, userRole, searchQuery, swapQuizz
 
 const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, passState, statsLoading, canEditQuiz, canMoveQuiz, swapQuizzes, navigate, setSelectedQuiz, onPrepQuizSelect, setHideModal, setDuplicateModal, isDimmed, quizzesLength, handleShare, fetchData, setActiveStandaloneResource }) => {
   const [toast, setToast] = useState({ visible: false, opacity: 0 });
+  const [activeTimer, setActiveTimer] = useState(null);
+
+  useEffect(() => {
+    const checkTimer = () => {
+      const raw = localStorage.getItem(`quiz_timer_${quiz.id}`);
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          const elapsed = Math.round((Date.now() - (parsed.ts || Date.now())) / 1000);
+          const remaining = Math.max(0, (parsed.timeLeft || 0) - elapsed);
+          if (remaining > 0) {
+            const total = parsed.totalTime || Math.max(remaining, 60);
+            const percent = Math.min(100, Math.max(0, Math.round((remaining / total) * 100)));
+            let color = '#10b981';
+            let bg = 'rgba(16, 185, 129, 0.15)';
+            let border = 'rgba(16, 185, 129, 0.5)';
+            if (percent <= 20) {
+              color = '#ef4444';
+              bg = 'rgba(239, 68, 68, 0.15)';
+              border = 'rgba(239, 68, 68, 0.5)';
+            } else if (percent <= 50) {
+              color = '#f59e0b';
+              bg = 'rgba(245, 158, 11, 0.15)';
+              border = 'rgba(245, 158, 11, 0.5)';
+            }
+            setActiveTimer({ remaining, percent, color, bg, border });
+            return;
+          } else {
+            localStorage.removeItem(`quiz_timer_${quiz.id}`);
+          }
+        } catch {
+          // ignore
+        }
+      }
+      setActiveTimer(null);
+    };
+
+    checkTimer();
+    const interval = setInterval(checkTimer, 1000);
+    return () => clearInterval(interval);
+  }, [quiz.id]);
 
   const onShareClick = (e) => {
     e.stopPropagation();
@@ -47,8 +88,28 @@ const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, pass
     }
   };
 
+  const formatSecs = (secs) => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
   return (
-    <div className="card animate" style={{ padding: '20px', background: 'var(--card-bg)', boxShadow: 'var(--soft-shadow)', display: 'flex', flexDirection: 'column', height: '100%', opacity: isDimmed ? 0.5 : 1, border: isDimmed ? '1px dashed #ca8a04' : '1px solid rgba(99, 102, 241, 0.1)', position: 'relative' }}>
+    <div
+      className="card animate"
+      style={{
+        padding: '20px',
+        background: 'var(--card-bg)',
+        boxShadow: activeTimer ? `0 8px 25px ${activeTimer.bg}` : 'var(--soft-shadow)',
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        opacity: isDimmed ? 0.5 : 1,
+        border: isDimmed ? '1px dashed #ca8a04' : (activeTimer ? `2px solid ${activeTimer.border}` : '1px solid rgba(99, 102, 241, 0.1)'),
+        position: 'relative',
+        transition: 'all 0.3s ease'
+      }}
+    >
       {canMoveQuiz(quiz) && !searchQuery && (
         <div style={{ position: 'absolute', top: '15px', right: '15px', display: 'flex', gap: '5px', zIndex: 10 }}>
           <button onClick={(e) => swapQuizzes(qIndex, -1, e, quiz)} disabled={qIndex === 0} style={{ padding: '4px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none', borderRadius: '8px' }} title="Переместить левее"><ChevronUp size={16} /></button>
@@ -57,6 +118,27 @@ const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, pass
       )}
       <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '15px' }}>
         <div style={{ flex: 1, minWidth: 0, paddingRight: '50px' }}>
+          {activeTimer && (
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                background: activeTimer.bg,
+                color: activeTimer.color,
+                border: `1px solid ${activeTimer.border}`,
+                padding: '3px 8px',
+                borderRadius: '8px',
+                fontSize: '0.75rem',
+                fontWeight: 'bold',
+                marginBottom: '8px',
+                fontVariantNumeric: 'tabular-nums'
+              }}
+            >
+              <Clock size={12} />
+              <span>Осталось: {formatSecs(activeTimer.remaining)}</span>
+            </div>
+          )}
           <h4 style={{ fontSize: '1.1rem', margin: 0, lineHeight: '1.4' }}>
             {quiz.title}
             {quiz.is_verified && <CheckCircle size={16} color="var(--primary-color)" style={{ marginLeft: '5px', display: 'inline' }} />}

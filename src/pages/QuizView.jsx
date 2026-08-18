@@ -465,8 +465,14 @@ const QuizView = ({ session, profile }) => {
       return;
     }
 
-    // Persist remaining time each second
-    localStorage.setItem(`quiz_timer_${id}`, JSON.stringify({ timeLeft, ts: Date.now() }));
+    // Persist remaining time each second with metadata for floating indicator
+    const totalDuration = quiz?.content?.time_limit || (questions.length * SECONDS_PER_QUESTION);
+    localStorage.setItem(`quiz_timer_${id}`, JSON.stringify({ 
+      timeLeft, 
+      ts: Date.now(), 
+      title: quiz?.title || 'Тест', 
+      totalTime: totalDuration 
+    }));
 
     timerRef.current = setTimeout(() => {
       setTimeLeft(prev => prev - 1);

@@ -16,6 +16,7 @@ import QuizRedactor from './pages/QuizRedactor';
 import AnalyticsDetails from './pages/AnalyticsDetails';
 import UserAnalytics from './pages/UserAnalytics';
 import AiHub from './components/AiHub';
+import ActiveQuizzesIndicator from './components/ActiveQuizzesIndicator';
 import './index.css';
 
 function App() {
@@ -183,6 +184,7 @@ function App() {
             </div>
           </nav>
           <AiHub session={session} profile={profile} />
+          <ActiveQuizzesIndicator />
           <StatusToast />
           <Outlet />
         </div>

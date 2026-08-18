@@ -113,7 +113,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ facts: limitedResults });
   } catch (error) {
-    console.error('Failed to search facts:', error);
-    return res.status(500).json({ error: 'Failed to search facts', details: error.message });
+    console.warn('⚠️ Qdrant search failed (falling back to empty facts):', error.message);
+    return res.status(200).json({ facts: [], error: error.message });
   }
 }

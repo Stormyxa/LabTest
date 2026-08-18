@@ -62,6 +62,7 @@ const getSystemInstruction = (role) => {
 const AiHub = ({ session, profile }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
+  const [isFullScreen, setIsFullScreen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [history, setHistory] = useState([]);
   const [currentChatId, setCurrentChatId] = useState(null);
@@ -940,8 +941,15 @@ const AiHub = ({ session, profile }) => {
 
   return (
     <div
-      className="ai-hub-container animate"
-      style={{
+      className={`ai-hub-container animate ${isFullScreen ? 'fullscreen' : ''}`}
+      style={isFullScreen ? {
+        left: 0,
+        top: 0,
+        width: '100vw',
+        height: '100vh',
+        borderRadius: 0,
+        zIndex: 100000
+      } : {
         left: position.x,
         top: position.y,
         width: size.width,
@@ -949,7 +957,7 @@ const AiHub = ({ session, profile }) => {
         opacity: isDragging ? 0.8 : 1
       }}
     >
-      <div className="ai-hub-header" onMouseDown={handleMouseDown}>
+      <div className="ai-hub-header" onMouseDown={!isFullScreen ? handleMouseDown : undefined}>
         <div className="flex-center" style={{ gap: '10px' }}>
           <Sparkles size={18} />
           <span style={{ fontWeight: 'bold', fontSize: '0.9rem' }}>ИИ-Хаб LabTest</span>
@@ -960,6 +968,9 @@ const AiHub = ({ session, profile }) => {
           </button>
           <button className="ai-action-btn" onClick={() => setIsHistoryOpen(!isHistoryOpen)} title="История">
             <History size={16} />
+          </button>
+          <button className="ai-action-btn" onClick={() => setIsFullScreen(!isFullScreen)} title={isFullScreen ? "Оконный режим" : "На весь экран"}>
+            {isFullScreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
           </button>
           <button className="ai-action-btn" onClick={() => setIsMinimized(true)} title="Свернуть">
             <Minimize2 size={16} />

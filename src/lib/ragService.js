@@ -232,42 +232,62 @@ export const buildStudentRagPrompt = async (userId, viewerRole = 'student', view
   // 2. Fetch full history for overview
   const { data: results } = await supabase
     .from('quiz_results')
-    .select('*, quizzes(title, section_id)')
+    .select('*')
     .eq('user_id', userId)
     .order('created_at', { ascending: false });
 
-  // 3. Load section names
-  let sectionMap = {};
-  const sectionIds = [...new Set([
-    ...(recentAttempts || []).map(a => a.quizzes?.section_id),
-    ...(results || []).map(r => r.quizzes?.section_id)
+  // 3. Load quizzes and section names
+  const allQuizIds = [...new Set([
+    ...(recentAttempts || []).map(a => a.quiz_id),
+    ...(results || []).map(r => r.quiz_id)
   ].filter(Boolean))];
 
-  if (sectionIds.length > 0) {
-    const { data: sections } = await supabase
-      .from('quiz_sections')
-      .select('id, name')
-      .in('id', sectionIds);
-    if (sections) {
-      sectionMap = sections.reduce((acc, s) => {
-        acc[s.id] = s.name;
+  let quizMap = {};
+  let sectionMap = {};
+
+  if (allQuizIds.length > 0) {
+    const { data: quizzesData } = await supabase
+      .from('quizzes')
+      .select('id, title, section_id')
+      .in('id', allQuizIds);
+
+    if (quizzesData) {
+      quizMap = quizzesData.reduce((acc, q) => {
+        acc[q.id] = q;
         return acc;
       }, {});
+
+      const sectionIds = [...new Set(quizzesData.map(q => q.section_id).filter(Boolean))];
+      if (sectionIds.length > 0) {
+        const { data: sections } = await supabase
+          .from('quiz_sections')
+          .select('id, name')
+          .in('id', sectionIds);
+        if (sections) {
+          sectionMap = sections.reduce((acc, s) => {
+            acc[s.id] = s.name;
+            return acc;
+          }, {});
+        }
+      }
     }
   }
 
-  const history = (results || []).map(r => ({
-    quiz: r.quizzes?.title || 'Тест',
-    section: r.quizzes?.section_id ? sectionMap[r.quizzes.section_id] : '—',
-    score: r.score,
-    total: r.total_questions,
-    percent: Math.round((r.score / (r.total_questions || 1)) * 100),
-    date: new Date(r.created_at).toLocaleDateString('ru-RU'),
-    passed: r.is_passed,
-    is_suspicious_user: r.is_suspicious_user,
-    is_incomplete_user: r.is_incomplete_user,
-    attempts: r.attempt_count || 1
-  }));
+  const history = (results || []).map(r => {
+    const qObj = quizMap[r.quiz_id];
+    return {
+      quiz: qObj?.title || 'Тест',
+      section: qObj?.section_id ? sectionMap[qObj.section_id] : '—',
+      score: r.score,
+      total: r.total_questions,
+      percent: Math.round((r.score / (r.total_questions || 1)) * 100),
+      date: new Date(r.created_at).toLocaleDateString('ru-RU'),
+      passed: r.is_passed,
+      is_suspicious_user: r.is_suspicious_user,
+      is_incomplete_user: r.is_incomplete_user,
+      attempts: r.attempt_count || 1
+    };
+  });
 
   const recentDetailedAttempts = (recentAttempts || []).map(a => {
     const answers = Array.isArray(a.answers_data) ? a.answers_data : [];
@@ -988,7 +1008,7 @@ export const migrateHistoryToRag = async ({ userId = null, classId = null, limit
     const { supabase } = await import('./supabase');
     let query = supabase
       .from('quiz_results')
-      .select('*, quizzes(title, section_id)')
+      .select('*')
       .order('created_at', { ascending: false });
 
     if (userId) query = query.eq('user_id', userId);
@@ -1003,30 +1023,33 @@ export const migrateHistoryToRag = async ({ userId = null, classId = null, limit
     if (error) throw error;
     if (!attempts || attempts.length === 0) return { success: true, count: 0 };
 
-    // Load section names separately to avoid PostgREST nested join errors
+    const quizIds = [...new Set(attempts.map(a => a.quiz_id).filter(Boolean))];
+    let quizMap = {};
     let sectionMap = {};
-    const sectionIds = [...new Set(attempts.filter(a => a.quizzes?.section_id).map(a => a.quizzes.section_id))];
-    if (sectionIds.length > 0) {
-      const { data: sections } = await supabase
-        .from('quiz_sections')
-        .select('id, name')
-        .in('id', sectionIds);
-      if (sections) {
-        sectionMap = sections.reduce((acc, s) => {
-          acc[s.id] = s.name;
-          return acc;
-        }, {});
+
+    if (quizIds.length > 0) {
+      const { data: quizzesData } = await supabase.from('quizzes').select('id, title, section_id').in('id', quizIds);
+      if (quizzesData) {
+        quizMap = Object.fromEntries(quizzesData.map(q => [q.id, q]));
+        const sectionIds = [...new Set(quizzesData.map(q => q.section_id).filter(Boolean))];
+        if (sectionIds.length > 0) {
+          const { data: sections } = await supabase.from('quiz_sections').select('id, name').in('id', sectionIds);
+          if (sections) {
+            sectionMap = Object.fromEntries(sections.map(s => [s.id, s.name]));
+          }
+        }
       }
     }
 
     let totalStored = 0;
     for (const attempt of attempts) {
       try {
+        const qObj = quizMap[attempt.quiz_id];
         const result = await processAndStoreAttemptFacts(
           attempt.id,
           attempt.quiz_id,
           attempt.user_id,
-          attempt.quizzes?.section_id ? sectionMap[attempt.quizzes.section_id] : null,
+          qObj?.section_id ? sectionMap[qObj.section_id] : null,
           classId
         );
         if (result?.success) totalStored += result.factsStored;
