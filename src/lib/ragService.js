@@ -221,49 +221,106 @@ export const buildStudentRagPrompt = async (userId, viewerRole = 'student', view
   const displayName = `${profile.last_name || ''} ${initials}`.trim() || 'Ученик';
   const fullName = `${profile.last_name || ''} ${profile.first_name || ''} ${profile.patronymic || ''}`.trim() || 'Ученик';
 
-  // Fetch full history for heavy JSON download
+  // 1. Fetch user's recent detailed attempts with telemetry & questions
+  const { data: recentAttempts } = await supabase
+    .from('quiz_attempts')
+    .select('*, quizzes(id, title, section_id, content)')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(10);
+
+  // 2. Fetch full history for overview
   const { data: results } = await supabase
     .from('quiz_results')
     .select('*, quizzes(title, section_id)')
     .eq('user_id', userId)
     .order('created_at', { ascending: false });
 
-  // Load section names separately to avoid PostgREST nested join errors
+  // 3. Load section names
   let sectionMap = {};
-  if (results && results.length > 0) {
-    const sectionIds = [...new Set(results.filter(r => r.quizzes?.section_id).map(r => r.quizzes.section_id))];
-    if (sectionIds.length > 0) {
-      const { data: sections } = await supabase
-        .from('quiz_sections')
-        .select('id, name')
-        .in('id', sectionIds);
-      if (sections) {
-        sectionMap = sections.reduce((acc, s) => {
-          acc[s.id] = s.name;
-          return acc;
-        }, {});
-      }
+  const sectionIds = [...new Set([
+    ...(recentAttempts || []).map(a => a.quizzes?.section_id),
+    ...(results || []).map(r => r.quizzes?.section_id)
+  ].filter(Boolean))];
+
+  if (sectionIds.length > 0) {
+    const { data: sections } = await supabase
+      .from('quiz_sections')
+      .select('id, name')
+      .in('id', sectionIds);
+    if (sections) {
+      sectionMap = sections.reduce((acc, s) => {
+        acc[s.id] = s.name;
+        return acc;
+      }, {});
     }
   }
 
   const history = (results || []).map(r => ({
-    quiz: r.quizzes?.title,
-    section: r.quizzes?.section_id ? sectionMap[r.quizzes.section_id] : null,
+    quiz: r.quizzes?.title || 'Тест',
+    section: r.quizzes?.section_id ? sectionMap[r.quizzes.section_id] : '—',
     score: r.score,
     total: r.total_questions,
     percent: Math.round((r.score / (r.total_questions || 1)) * 100),
     date: new Date(r.created_at).toLocaleDateString('ru-RU'),
     passed: r.is_passed,
+    is_suspicious_user: r.is_suspicious_user,
+    is_incomplete_user: r.is_incomplete_user,
     attempts: r.attempt_count || 1
   }));
 
-  // Build RAG context
+  const recentDetailedAttempts = (recentAttempts || []).map(a => {
+    const answers = Array.isArray(a.answers_data) ? a.answers_data : [];
+    const questions = a.quizzes?.content?.questions || [];
+    const errors = answers
+      .filter(ans => !ans.isCorrect && ans.chosenIndex !== null)
+      .map(ans => {
+        const q = questions[ans.originalIndex];
+        return q ? {
+          q: q.question,
+          ua: q.options?.[ans.chosenIndex] || '—',
+          ca: q.options?.[ans.correctIndex] || '—'
+        } : null;
+      }).filter(Boolean).slice(0, 3);
+
+    return {
+      id: a.id.slice(0, 8),
+      quiz: a.quizzes?.title || 'Тест',
+      subject: a.quizzes?.section_id ? sectionMap[a.quizzes.section_id] : '—',
+      score: `${a.score}/${a.max_score}`,
+      percent: Math.round((a.score / (a.max_score || 1)) * 100),
+      time_sec: a.time_spent_total || a.time_spent || 0,
+      date: new Date(a.created_at).toLocaleDateString('ru-RU') + ' ' + new Date(a.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+      is_passed: a.is_passed,
+      is_incomplete: a.is_incomplete,
+      is_suspicious: a.is_suspicious,
+      telemetry: {
+        focus_lost: a.focus_lost_cnt || 0,
+        off_site_sec: Math.round((a.off_site_ms || 0) / 1000),
+        suspicion_reason: a.suspicion_reason || (a.is_suspicious ? 'suspicious' : 'none')
+      },
+      errors
+    };
+  });
+
+  const overallStats = {
+    totalQuizzes: history.length,
+    passedQuizzes: history.filter(h => h.passed).length,
+    avgScore: history.length > 0
+      ? Math.round(history.reduce((sum, h) => sum + h.percent, 0) / history.length)
+      : 0,
+    suspiciousCount: history.filter(h => h.is_suspicious_user).length,
+    incompleteCount: history.filter(h => h.is_incomplete_user).length
+  };
+
+  // Build RAG context from Qdrant
   const ragContext = await buildStudentRagContext(userId);
 
-  // Build instruction with or without RAG
+  // Build instruction with embedded telemetry summary
+  const extraContext = { overallStats, recentDetailedAttempts, history };
   const instruction = viewerRole === 'teacher'
-    ? buildTeacherRagInstruction(viewerProfile, fullName, `${cityName}, ${schoolName}, ${className}`, ragContext)
-    : buildStudentRagInstruction(displayName, `${cityName}, ${schoolName}, ${className}`, ragContext);
+    ? buildTeacherRagInstruction(viewerProfile, fullName, `${cityName}, ${schoolName}, ${className}`, ragContext, extraContext)
+    : buildStudentRagInstruction(displayName, `${cityName}, ${schoolName}, ${className}`, ragContext, extraContext);
 
   return {
     instruction,
@@ -273,7 +330,9 @@ export const buildStudentRagPrompt = async (userId, viewerRole = 'student', view
       fullName,
       geo: `${cityName}, ${schoolName}, ${className}`,
       hasRagContext: !!ragContext,
-      history, // Full history for manual download
+      overallStats,
+      recentDetailedAttempts,
+      history,
       meta: {
         v: 2,
         mode: 'HYBRID_RAG_FULL_JSON',
@@ -437,7 +496,7 @@ export const processAndStoreAttemptFacts = async (attemptId, quizId, userId, sec
   }
 };
 
-export const buildStudentRagInstruction = (name, geo, ragContext) => {
+export const buildStudentRagInstruction = (name, geo, ragContext, extraData = {}) => {
   let ragContent = '';
   if (ragContext) {
     if (typeof ragContext === 'string') {
@@ -449,32 +508,46 @@ export const buildStudentRagInstruction = (name, geo, ragContext) => {
   }
 
   const ragSection = ragContent
-    ? `\n### ИСТОРИЧЕСКИЙ КОНТЕКСТ ИЗ ПАМЯТИ (RAG)\n*Внимание: эти факты извлечены из твоей прошлой активности. Используй их для оценки прогресса, но приоритет отдавай текущим данным.*\n${ragContent}`
-    : '\n\n**Примечание**: Векторная память пока пуста или недоступна. Анализ основан на текущей информации.';
+    ? `\n### ИСТОРИЧЕСКИЙ КОНТЕКСТ ИЗ ПАМЯТИ (RAG)\n*Внимание: эти факты извлечены из твоей активности. Используй их для оценки прогресса, но приоритет отдавай текущим данным.*\n${ragContent}`
+    : '';
 
-  return `# Инструкция для ИИ (Личный Наставник LabTest с RAG)
+  const { overallStats, recentDetailedAttempts } = extraData;
+  let attemptsSummary = '';
+  if (recentDetailedAttempts && recentDetailedAttempts.length > 0) {
+    attemptsSummary = `\n### ПОСЛЕДНИЕ ПОПЫТКИ И ТЕЛЕМЕТРИЯ (АКТУАЛЬНЫЕ ДАННЫЕ)\n` +
+      `- Сводка: Пройдено ${overallStats?.passedQuizzes || 0}/${overallStats?.totalQuizzes || 0} тестов, Средний балл: ${overallStats?.avgScore || 0}%, Подозрительных тестов: ${overallStats?.suspiciousCount || 0}, Досрочных выходов: ${overallStats?.incompleteCount || 0}.\n` +
+      `- Детализация недавних попыток:\n` +
+      recentDetailedAttempts.map((a, i) => {
+        let errStr = a.errors && a.errors.length > 0
+          ? ` | Ошибки: ${a.errors.map(e => `[Вопрос: "${e.q}" -> Выбрал: "${e.ua}", Верно: "${e.ca}"]`).join('; ')}`
+          : '';
+        return `  ${i + 1}. [${a.date}] "${a.quiz}" (${a.subject}): Балл ${a.score} (${a.percent}%), Время: ${a.time_sec}с, Статус: ${a.is_passed ? 'Сдан' : 'Не сдан'}, Потеря фокуса: ${a.telemetry.focus_lost} раз, Вне вкладки: ${a.telemetry.off_site_sec}с${a.is_incomplete ? ' [НЕЗАВЕРШЕН]' : ''}${a.is_suspicious ? ` [ПОДОЗРИТЕЛЬНО: ${a.telemetry.suspicion_reason}]` : ''}${errStr}`;
+      }).join('\n');
+  }
 
-**Цель**: Провести без подобострастия и угодничества глубокий, честный анализ обучения ученика и дать персональные рекомендации на основе релевантных фактов из векторной памяти.
+  return `# Инструкция для ИИ (Личный Наставник LabTest)
+
+**Цель**: Провести глубокий, честный и полезный анализ обучения ученика и дать персональные рекомендации на основе предоставленных данных и памяти.
 
 **Ученик**: ${name}
 **Локация**: ${geo}
-
+${attemptsSummary}
 ${ragSection}
 
 ## Задание
 
-На основе предоставленных фактов выполни:
+На основе предоставленных данных выполни:
 
-1. **Общий вердикт**: Оцени вовлеченность и честность на основе фактов о подозрительных попытках и ранних выходах.
-2. **Анализ знаний**: Проанализируй конкретные ошибки и паттерны ответов. На какие темы ученик систематически ошибается?
-3. **Поиск аномалий**: Проанализируй факты о времени на вопросы. Есть ли вопросы, на которые ученик тратит слишком много или слишком мало времени?
-4. **Оценка прогресса**: Используй факты о прогрессе с первой попытки. Улучшается ли результат осознанно?
-5. **Персональный план**: Дай 3 конкретных совета на основе выявленных слабых мест.
+1. **Общий вердикт**: Оцени вовлеченность, честность и стабильность на основе телеметрии (потери фокуса, время вне сайта, досрочные выходы).
+2. **Анализ знаний**: Проанализируй допущенные ошибки и сильные/слабые стороны по предметам.
+3. **Поиск аномалий**: Обрати внимание на время выполнения и поведение во время тестов.
+4. **Оценка прогресса**: Улучшаются ли результаты от попытки к попытке?
+5. **Персональный план**: Дай 3 конкретных, мотивирующих совета.
 
-**Стиль**: Обращайся к ученику на «ты», дружелюбно но честно. Используй эмодзи умеренно.`;
+**Стиль**: Обращайся к ученику на «ты», дружелюбно но честно.`;
 };
 
-export const buildTeacherRagInstruction = (teacherProfile, studentName, geo, ragContext) => {
+export const buildTeacherRagInstruction = (teacherProfile, studentName, geo, ragContext, extraData = {}) => {
   const teacherName = teacherProfile
     ? `${teacherProfile.last_name || ''} ${teacherProfile.first_name || ''}`.trim()
     : 'Учитель';
@@ -490,29 +563,43 @@ export const buildTeacherRagInstruction = (teacherProfile, studentName, geo, rag
   }
 
   const ragSection = ragContent
-    ? `\n### ИСТОРИЧЕСКИЙ КОНТЕКСТ ИЗ ПАМЯТИ (RAG)\n*Внимание: эти факты извлечены из долгосрочной памяти ученика. Используй их для выявления системных проблем и трендов.*\n${ragContent}`
-    : '\n\n**Примечание**: Векторная память ученика пока пуста или недоступна. Анализ основан на текущей информации.';
+    ? `\n### ИСТОРИЧЕСКИЙ КОНТЕКСТ ИЗ ПАМЯТИ (RAG)\n*Внимание: эти факты извлечены из долгосрочной памяти ученика.*\n${ragContent}`
+    : '';
 
-  return `# Инструкция для ИИ (Педагогический Аналитик LabTest с RAG)
+  const { overallStats, recentDetailedAttempts } = extraData;
+  let attemptsSummary = '';
+  if (recentDetailedAttempts && recentDetailedAttempts.length > 0) {
+    attemptsSummary = `\n### ПОСЛЕДНИЕ ПОПЫТКИ И ТЕЛЕМЕТРИЯ УЧЕНИКА\n` +
+      `- Сводка: Пройдено ${overallStats?.passedQuizzes || 0}/${overallStats?.totalQuizzes || 0} тестов, Средний балл: ${overallStats?.avgScore || 0}%, Подозрительных тестов: ${overallStats?.suspiciousCount || 0}, Досрочных выходов: ${overallStats?.incompleteCount || 0}.\n` +
+      `- Детализация недавних попыток:\n` +
+      recentDetailedAttempts.map((a, i) => {
+        let errStr = a.errors && a.errors.length > 0
+          ? ` | Ошибки: ${a.errors.map(e => `[Вопрос: "${e.q}" -> Выбрал: "${e.ua}", Верно: "${e.ca}"]`).join('; ')}`
+          : '';
+        return `  ${i + 1}. [${a.date}] "${a.quiz}" (${a.subject}): Балл ${a.score} (${a.percent}%), Время: ${a.time_sec}с, Статус: ${a.is_passed ? 'Сдан' : 'Не сдан'}, Потеря фокуса: ${a.telemetry.focus_lost} раз, Вне вкладки: ${a.telemetry.off_site_sec}с${a.is_incomplete ? ' [НЕЗАВЕРШЕН]' : ''}${a.is_suspicious ? ` [ПОДОЗРИТЕЛЬНО: ${a.telemetry.suspicion_reason}]` : ''}${errStr}`;
+      }).join('\n');
+  }
 
-**Цель**: Провести без подобострастия и угодничества профессиональный педагогический анализ данного ученика для учителя **${teacherName}** на основе релевантных фактов из векторной памяти.
+  return `# Инструкция для ИИ (Педагогический Аналитик LabTest)
+
+**Цель**: Провести профессиональный педагогический анализ ученика для учителя **${teacherName}** на основе предоставленных данных и памяти.
 
 **Ученик**: ${studentName}
 **Локация**: ${geo}
-
+${attemptsSummary}
 ${ragSection}
 
 ## Задание
 
-На основе предоставленных фактов выполни:
+На основе предоставленных данных выполни:
 
-1. **Диагностика**: Определи уровень ученика на основе фактов об ошибках и успеваемости.
-2. **Честность**: Оцени наличие подозрительных попыток и ранних выходов на основе фактов.
-3. **Динамика**: Анализ прогресса через факты об улучшении результатов.
-4. **Слабые зоны**: Конкретные темы/тесты, где ученик систематически ошибается (из фактов).
-5. **Рекомендации учителю**: 3-5 конкретных действий на основе выявленных проблем.
+1. **Диагностика**: Определи уровень ученика на основе ошибок и успеваемости.
+2. **Честность**: Оцени наличие подозрительных попыток и ранних выходов на основе телеметрии.
+3. **Динамика**: Анализ прогресса между попытками.
+4. **Слабые зоны**: Конкретные темы/тесты, где ученик систематически ошибается.
+5. **Рекомендации учителю**: 3-5 конкретных педагогических действий.
 
-**Стиль**: Профессиональный, педагогический. Используй термины: «зона ближайшего развития», «учебная мотивация», «самостоятельность». Обращайся к учителю на «вы».`;
+**Стиль**: Профессиональный, педагогический. Обращайся к учителю на «вы».`;
 };
 
 /**
@@ -759,6 +846,20 @@ export const buildClassRagPrompt = async (classId) => {
       }
     }
 
+    // Fetch legacy data for full class overview
+    const { buildClassPrompt } = await import('./aiPromptBuilder');
+    const legacyData = await buildClassPrompt(classId);
+
+    let classDataSummary = '';
+    if (legacyData?.data) {
+      const { overview, weakest_quizzes, strongest_quizzes } = legacyData.data;
+      classDataSummary = `\n### СВОДНЫЕ ДАННЫЕ ПО КЛАССУ\n` +
+        `- Результативность: Всего результатов: ${overview?.total_results || 0}, Средний процент класса: ${overview?.['avg%'] || 0}%\n` +
+        `- Учеников с подозрительными попытками: ${overview?.susp_students || 0}, Неактивных: ${overview?.inactive || 0}\n` +
+        (weakest_quizzes?.length > 0 ? `- Проблемные тесты (низкий балл): ${weakest_quizzes.map(q => `"${q.tn}" (Класс: ${q.cls_avg}%, Система: ${q.c_avg}%)`).join(', ')}\n` : '') +
+        (strongest_quizzes?.length > 0 ? `- Успешные тесты: ${strongest_quizzes.map(q => `"${q.tn}" (${q.cls_avg}%)`).join(', ')}\n` : '');
+    }
+
     const ragSection = ragContext
       ? `\n${ragContext}\n\n**Примечание**: Используй эти факты для детального анализа. Они извлечены из векторной памяти учеников класса.`
       : '';
@@ -769,33 +870,31 @@ export const buildClassRagPrompt = async (classId) => {
 
     const instruction = `# Инструкция для ИИ (Аналитик Класса LabTest)
 
-**Цель**: Провести детальный анализ класса${ragContext ? ' на основе релевантных фактов из векторной памяти учеников' : ''}.
+**Цель**: Провести детальный анализ успеваемости класса ${cls.name} на основе сводных данных и векторной памяти учеников.
 
 **Класс**: ${cls.name}
 **Школа**: ${cls.schools?.name || '—'}
 **Город**: ${cityName}
 ${studentSection}
+${classDataSummary}
 ${ragSection}
 
 ## Задание
 
 На основе предоставленных данных выполни:
 
-1. **Общая успеваемость**: Оцени общую успеваемость класса.
+1. **Общая успеваемость**: Оцени уровень класса и распределение результатов.
 2. **Слабые ученики**: Определи учеников с наибольшими трудностями.
-3. **Проблемные предметы**: Определи предметы/тесты с наименьшей успеваемостью.
-4. **Паттерны поведения**: Есть ли общие паттерны ошибок или подозрительной активности?
-5. **Рекомендации учителю**: 3 конкретных шага по улучшению результатов класса.
+3. **Проблемные предметы**: Какие тесты требуют повторного разбора на уроке?
+4. **Паттерны поведения**: Есть ли аномалии или подозрительная активность?
+5. **Рекомендации учителю**: 3-5 конкретных педагогических шагов по улучшению результатов класса.
 
 **Стиль**: Профессиональный, аналитический. Обращайся к учителю на «вы».`;
-
-    // Fetch legacy data for full download/JSON view
-    const { buildClassPrompt } = await import('./aiPromptBuilder');
-    const legacyData = await buildClassPrompt(classId);
 
     return {
       instruction,
       data: {
+        ...(legacyData?.data || {}),
         classId,
         className: cls.name,
         schoolName: cls.schools?.name,
@@ -803,7 +902,7 @@ ${ragSection}
         studentCount: studentList.length,
         hasRagContext: !!ragContext
       },
-      downloadData: legacyData.data,
+      downloadData: legacyData?.data,
       filename: `class_${classId.slice(0, 8)}.json`
     };
   } catch (error) {
