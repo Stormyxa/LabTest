@@ -764,6 +764,19 @@ const useIsMobile = () => {
 const QuizCatalog = ({ profile }) => {
   const isMobile = useIsMobile();
   const navigate = useNavigate();
+
+  // Returns true if this quiz is currently in an active first-attempt with a running timer
+  const isActiveFirstAttempt = (quizId) => {
+    try {
+      const raw = localStorage.getItem(`quiz_timer_${quizId}`);
+      if (!raw) return false;
+      const parsed = JSON.parse(raw);
+      const endTime = parsed.endTime || (parsed.ts + (parsed.timeLeft || 0) * 1000);
+      return endTime > Date.now();
+    } catch {
+      return false;
+    }
+  };
   const [searchParams, setSearchParams] = useSearchParams();
   const [isFromShare, setIsFromShare] = useState(false);
   const [cities, setCities] = useState([]);
@@ -1933,12 +1946,16 @@ const QuizCatalog = ({ profile }) => {
               <button onClick={() => setSelectedQuiz(null)} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>Отмена</button>
               <button onClick={() => {
                 const id = selectedQuiz.id;
+                const resuming = isActiveFirstAttempt(id);
                 localStorage.removeItem(`quiz_show_result_${id}`);
-                localStorage.removeItem(`quiz_answers_${id}`);
-                localStorage.removeItem(`quiz_current_idx_${id}`);
-                localStorage.removeItem(`quiz_times_${id}`);
-                localStorage.removeItem(`quiz_start_time_${id}`);
-                localStorage.removeItem(`quiz_timer_${id}`);
+                if (!resuming) {
+                  // Fresh start: wipe previous session
+                  localStorage.removeItem(`quiz_answers_${id}`);
+                  localStorage.removeItem(`quiz_current_idx_${id}`);
+                  localStorage.removeItem(`quiz_times_${id}`);
+                  localStorage.removeItem(`quiz_start_time_${id}`);
+                  localStorage.removeItem(`quiz_timer_${id}`);
+                }
                 navigate(`/quiz/${id}`);
               }} style={{ padding: '15px', background: 'var(--primary-color)', color: 'white' }}>Начать тест</button>
             </div>
@@ -2032,12 +2049,15 @@ const QuizCatalog = ({ profile }) => {
               <button onClick={() => setRandomQuizModal(null)} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>Отмена</button>
               <button onClick={() => {
                 const id = randomQuizModal.quiz.id;
+                const resuming = isActiveFirstAttempt(id);
                 localStorage.removeItem(`quiz_show_result_${id}`);
-                localStorage.removeItem(`quiz_answers_${id}`);
-                localStorage.removeItem(`quiz_current_idx_${id}`);
-                localStorage.removeItem(`quiz_times_${id}`);
-                localStorage.removeItem(`quiz_start_time_${id}`);
-                localStorage.removeItem(`quiz_timer_${id}`);
+                if (!resuming) {
+                  localStorage.removeItem(`quiz_answers_${id}`);
+                  localStorage.removeItem(`quiz_current_idx_${id}`);
+                  localStorage.removeItem(`quiz_times_${id}`);
+                  localStorage.removeItem(`quiz_start_time_${id}`);
+                  localStorage.removeItem(`quiz_timer_${id}`);
+                }
                 navigate(`/quiz/${id}`);
               }} style={{ padding: '15px', background: 'linear-gradient(135deg, var(--primary-color) 0%, #a855f7 100%)', color: 'white' }}>Начать тест</button>
             </div>
@@ -2183,13 +2203,16 @@ const QuizCatalog = ({ profile }) => {
                       const id = prepQuiz.id;
                       onPrepQuizSelect(null);
                       // DIRECT START LOGIC
+                      const resuming = isActiveFirstAttempt(id);
                       localStorage.removeItem(`quiz_show_result_${id}`);
-                      localStorage.removeItem(`quiz_answers_${id}`);
-                      localStorage.removeItem(`quiz_current_idx_${id}`);
-                      localStorage.removeItem(`quiz_times_${id}`);
-                      localStorage.removeItem(`quiz_start_time_${id}`);
-                      localStorage.removeItem(`quiz_timer_${id}`);
-                      navigate(`/quiz/${id}?fresh=1`);
+                      if (!resuming) {
+                        localStorage.removeItem(`quiz_answers_${id}`);
+                        localStorage.removeItem(`quiz_current_idx_${id}`);
+                        localStorage.removeItem(`quiz_times_${id}`);
+                        localStorage.removeItem(`quiz_start_time_${id}`);
+                        localStorage.removeItem(`quiz_timer_${id}`);
+                      }
+                      navigate(`/quiz/${id}${resuming ? '' : '?fresh=1'}`);
                     }}
                     style={{ padding: '12px 30px', background: 'var(--primary-color)' }}
                     className="flex-center"
@@ -2240,13 +2263,16 @@ const QuizCatalog = ({ profile }) => {
                       const id = prepQuiz.id;
                       onPrepQuizSelect(null);
                       // DIRECT START LOGIC
+                      const resuming = isActiveFirstAttempt(id);
                       localStorage.removeItem(`quiz_show_result_${id}`);
-                      localStorage.removeItem(`quiz_answers_${id}`);
-                      localStorage.removeItem(`quiz_current_idx_${id}`);
-                      localStorage.removeItem(`quiz_times_${id}`);
-                      localStorage.removeItem(`quiz_start_time_${id}`);
-                      localStorage.removeItem(`quiz_timer_${id}`);
-                      navigate(`/quiz/${id}?fresh=1`);
+                      if (!resuming) {
+                        localStorage.removeItem(`quiz_answers_${id}`);
+                        localStorage.removeItem(`quiz_current_idx_${id}`);
+                        localStorage.removeItem(`quiz_times_${id}`);
+                        localStorage.removeItem(`quiz_start_time_${id}`);
+                        localStorage.removeItem(`quiz_timer_${id}`);
+                      }
+                      navigate(`/quiz/${id}${resuming ? '' : '?fresh=1'}`);
                     }}
                     style={{ flex: 2 }}
                     className="flex-center"
