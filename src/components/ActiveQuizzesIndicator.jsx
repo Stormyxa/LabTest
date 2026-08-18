@@ -1,10 +1,14 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Clock, ChevronDown, Play, Bell, BellRing, X } from 'lucide-react';
-import { requestNotificationPermission, getNotificationPermission } from '../lib/notificationService';
+import { Clock, Play, BellRing, X, CheckCircle, AlertCircle, RotateCcw } from 'lucide-react';
+import { requestNotificationPermission, getNotificationPermission, sendQuizExpiredDeviceNotification } from '../lib/notificationService';
+import { supabase } from '../lib/supabase';
+import { triggerFactStorage } from '../lib/ragService';
 
 export const getActiveTimedQuizzes = () => {
   const active = [];
+  const expiredToFinalize = [];
+
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
@@ -18,8 +22,11 @@ export const getActiveTimedQuizzes = () => {
           const remaining = Math.max(0, (parsed.timeLeft || 0) - elapsed);
 
           if (remaining <= 0) {
-            // Expired, clean up
-            localStorage.removeItem(key);
+            expiredToFinalize.push({
+              id: quizId,
+              title: parsed.title || 'Тест',
+              totalTime: parsed.totalTime || 60
+            });
             continue;
           }
 
@@ -62,7 +69,27 @@ export const getActiveTimedQuizzes = () => {
   } catch (e) {
     console.warn('Error reading active timed quizzes:', e);
   }
-  return active.sort((a, b) => a.remaining - b.remaining);
+  return { active: active.sort((a, b) => a.remaining - b.remaining), expiredToFinalize };
+};
+
+export const getExpiredNotices = () => {
+  const notices = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('quiz_expired_notice_')) {
+        const quizId = key.replace('quiz_expired_notice_', '');
+        try {
+          const raw = localStorage.getItem(key);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            notices.push(parsed);
+          }
+        } catch {}
+      }
+    }
+  } catch (e) {}
+  return notices.sort((a, b) => b.timestamp - a.timestamp);
 };
 
 export const formatTimerSeconds = (secs) => {
@@ -80,15 +107,178 @@ const ActiveQuizzesIndicator = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [activeQuizzes, setActiveQuizzes] = useState([]);
+  const [expiredNotices, setExpiredNotices] = useState([]);
   const [isExpanded, setIsExpanded] = useState(false);
   const [notifPermission, setNotifPermission] = useState(getNotificationPermission());
+  const finalizingSetRef = useRef(new Set());
 
-  // Check if user is currently inside an active test
+  // Check if user is currently inside an active test view
   const isTakingQuiz = location.pathname.startsWith('/quiz/');
 
+  const handleFinalizeExpired = async (item) => {
+    const qId = item.id;
+    if (finalizingSetRef.current.has(qId)) return;
+    finalizingSetRef.current.add(qId);
+
+    try {
+      // 1. Fetch user session
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+
+      // 2. Fetch quiz details
+      let questions = [];
+      let quizTitle = item.title || 'Тест';
+      let sectionName = null;
+      let quizClass = null;
+
+      // Try local structure cache first
+      const cachedStruct = localStorage.getItem(`quiz_structure_${qId}`);
+      if (cachedStruct) {
+        try {
+          questions = JSON.parse(cachedStruct);
+        } catch {}
+      }
+
+      // If not cached, fetch from DB
+      if (questions.length === 0) {
+        const { data: quizData } = await supabase
+          .from('quizzes')
+          .select('*, quiz_sections(name, quiz_classes(name))')
+          .eq('id', qId)
+          .single();
+
+        if (quizData) {
+          questions = quizData.content?.questions || [];
+          quizTitle = quizData.title || quizTitle;
+          sectionName = quizData.quiz_sections?.name;
+          quizClass = quizData.quiz_sections?.quiz_classes?.name;
+        }
+      }
+
+      const maxScore = questions.length || 1;
+
+      // 3. Load user answers from localStorage
+      let finalAnswers = {};
+      const storedAnswers = localStorage.getItem(`quiz_answers_${qId}`);
+      if (storedAnswers) {
+        try { finalAnswers = JSON.parse(storedAnswers); } catch {}
+      }
+
+      // 4. Grade
+      let correctCount = 0;
+      const originalAnswers = [];
+      const detailedAnswers = questions.map((q, idx) => {
+        const chosen = finalAnswers[idx];
+        const isCorrect = chosen !== undefined && chosen === q.correctIndex;
+        if (isCorrect) correctCount++;
+        originalAnswers[idx] = isCorrect;
+        return {
+          originalIndex: q.originalIndex !== undefined ? q.originalIndex : idx,
+          chosenIndex: chosen !== undefined ? chosen : null,
+          correctIndex: q.correctIndex,
+          timeSpent: 25,
+          isCorrect
+        };
+      });
+
+      const isPassed = (correctCount / maxScore) >= 0.5;
+      const totalSeconds = item.totalTime || (maxScore * 25);
+      const now = new Date().toISOString();
+      const percent = Math.round((correctCount / maxScore) * 100);
+
+      if (userId) {
+        // Save to quiz_attempts marked as incomplete (grey)
+        const { data: insertedAttempt, error: attError } = await supabase.from('quiz_attempts').insert({
+          quiz_id: qId,
+          user_id: userId,
+          score: correctCount,
+          max_score: maxScore,
+          time_spent_total: totalSeconds,
+          is_passed: isPassed,
+          is_incomplete: true, // Marked incomplete (grey)
+          finish_reason: 'timer_expired_away',
+          suspicion_reason: 'incomplete_exit',
+          is_suspicious: false,
+          answers_data: detailedAnswers
+        }).select('id').single();
+
+        if (attError) {
+          console.error('Error inserting expired quiz_attempt:', attError);
+        }
+
+        // Update / insert summary in quiz_results
+        const { data: existing } = await supabase.from('quiz_results').select('id').eq('quiz_id', qId).eq('user_id', userId).maybeSingle();
+        if (existing) {
+          await supabase.from('quiz_results').update({
+            score: correctCount,
+            total_questions: maxScore,
+            is_passed: isPassed,
+            completed_at: now,
+            answers_array: originalAnswers,
+            is_incomplete_user: true
+          }).eq('id', existing.id);
+        } else {
+          const { data: prof } = await supabase.from('profiles').select('class_id').eq('id', userId).single();
+          await supabase.from('quiz_results').insert({
+            quiz_id: qId,
+            user_id: userId,
+            score: correctCount,
+            total_questions: maxScore,
+            is_passed: isPassed,
+            completed_at: now,
+            first_score: correctCount,
+            first_completed_at: now,
+            answers_array: originalAnswers,
+            first_answers_array: originalAnswers,
+            is_incomplete_user: true,
+            class_id: prof?.class_id || null
+          });
+        }
+
+        // Trigger RAG memory fact extraction
+        if (insertedAttempt?.id) {
+          triggerFactStorage(insertedAttempt.id, qId, userId, sectionName, quizClass).catch(console.error);
+        }
+      }
+
+      // Save expired notice to localStorage so UI and bubble show completion details
+      localStorage.setItem(`quiz_show_result_${qId}`, 'true');
+      localStorage.setItem(`quiz_expired_notice_${qId}`, JSON.stringify({
+        quizId: qId,
+        title: quizTitle,
+        score: correctCount,
+        total: maxScore,
+        percent,
+        isPassed,
+        timestamp: Date.now()
+      }));
+
+      // Send direct OS/device notification
+      sendQuizExpiredDeviceNotification(qId, quizTitle, correctCount, maxScore, percent);
+
+    } catch (e) {
+      console.error('Failed to auto-finalize expired quiz:', e);
+    } finally {
+      localStorage.removeItem(`quiz_timer_${qId}`);
+      localStorage.removeItem(`quiz_pending_${qId}`);
+      localStorage.removeItem('quiz_first_attempt_mode');
+      finalizingSetRef.current.delete(qId);
+    }
+  };
+
   const updateList = useCallback(() => {
-    const list = getActiveTimedQuizzes();
-    setActiveQuizzes(list);
+    const { active, expiredToFinalize } = getActiveTimedQuizzes();
+    setActiveQuizzes(active);
+
+    // Auto-finalize expired quizzes
+    if (expiredToFinalize.length > 0) {
+      expiredToFinalize.forEach(item => {
+        handleFinalizeExpired(item);
+      });
+    }
+
+    const notices = getExpiredNotices();
+    setExpiredNotices(notices);
   }, []);
 
   useEffect(() => {
@@ -97,12 +287,11 @@ const ActiveQuizzesIndicator = () => {
     return () => clearInterval(interval);
   }, [updateList]);
 
-  // Don't render if taking a quiz or no active timed quizzes
-  if (isTakingQuiz || activeQuizzes.length === 0) {
-    return null;
-  }
-
-  const urgentQuiz = activeQuizzes[0];
+  const dismissNotice = (e, quizId) => {
+    e.stopPropagation();
+    localStorage.removeItem(`quiz_expired_notice_${quizId}`);
+    setExpiredNotices(prev => prev.filter(n => n.quizId !== quizId));
+  };
 
   const handleEnableNotifications = async (e) => {
     e.stopPropagation();
@@ -110,19 +299,29 @@ const ActiveQuizzesIndicator = () => {
     setNotifPermission(res);
   };
 
+  // Don't render if user is inside quiz view or no items to show
+  if (isTakingQuiz || (activeQuizzes.length === 0 && expiredNotices.length === 0)) {
+    return null;
+  }
+
+  const hasActive = activeQuizzes.length > 0;
+  const urgentQuiz = hasActive ? activeQuizzes[0] : null;
+  const latestNotice = expiredNotices[0];
+
   return (
     <div
       className="active-quizzes-wrapper"
       style={{
         position: 'fixed',
-        bottom: '90px',
-        right: '24px',
-        zIndex: 9995,
+        bottom: '105px', // Perfectly stacked above AI Hub bubble (which is at bottom: 30px, height: 60px)
+        right: '30px',   // Exactly matches AI Hub right: 30px offset
+        zIndex: 10001,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'flex-end',
         gap: '12px',
-        fontFamily: 'inherit'
+        fontFamily: 'inherit',
+        pointerEvents: 'auto'
       }}
     >
       {/* Expanded popover list */}
@@ -130,13 +329,15 @@ const ActiveQuizzesIndicator = () => {
         <div
           style={{
             width: '330px',
-            maxHeight: '420px',
-            background: 'var(--card-bg, rgba(20, 22, 32, 0.94))',
+            maxHeight: '430px',
+            background: 'var(--card-bg, rgba(18, 20, 30, 0.95))',
             backdropFilter: 'blur(28px) saturate(200%)',
             WebkitBackdropFilter: 'blur(28px) saturate(200%)',
-            border: `1.5px solid ${urgentQuiz.badgeBorder}`,
-            borderRadius: '22px',
-            boxShadow: `0 20px 50px rgba(0,0,0,0.4), 0 0 30px ${urgentQuiz.glow}`,
+            border: hasActive ? `1.5px solid ${urgentQuiz.badgeBorder}` : '1.5px solid rgba(148, 163, 184, 0.3)',
+            borderRadius: '24px',
+            boxShadow: hasActive 
+              ? `0 24px 60px rgba(0,0,0,0.45), 0 0 35px ${urgentQuiz.glow}` 
+              : '0 24px 60px rgba(0,0,0,0.45), 0 0 25px rgba(99, 102, 241, 0.15)',
             padding: '16px',
             display: 'flex',
             flexDirection: 'column',
@@ -146,8 +347,17 @@ const ActiveQuizzesIndicator = () => {
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold', fontSize: '0.9rem', color: 'var(--text-color)' }}>
-              <Clock size={18} color={urgentQuiz.color} className="pulsating-timer-icon" />
-              <span>Активные тесты ({activeQuizzes.length})</span>
+              {hasActive ? (
+                <>
+                  <Clock size={18} color={urgentQuiz.color} className="pulsating-timer-icon" />
+                  <span>Активные тесты ({activeQuizzes.length})</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle size={18} color="#94a3b8" />
+                  <span>Завершенные по таймеру</span>
+                </>
+              )}
             </div>
             <button
               onClick={() => setIsExpanded(false)}
@@ -165,8 +375,8 @@ const ActiveQuizzesIndicator = () => {
             </button>
           </div>
 
-          {/* Web notification prompt banner if not granted */}
-          {notifPermission !== 'granted' && (
+          {/* Web notification permission banner if not enabled */}
+          {notifPermission !== 'granted' && hasActive && (
             <div
               style={{
                 background: 'rgba(99, 102, 241, 0.1)',
@@ -182,7 +392,7 @@ const ActiveQuizzesIndicator = () => {
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-color)' }}>
                 <BellRing size={14} color="var(--primary-color)" />
-                <span>Напоминать при уходе с вкладки</span>
+                <span>Напоминать при уходе с сайта</span>
               </div>
               <button
                 onClick={handleEnableNotifications}
@@ -203,6 +413,7 @@ const ActiveQuizzesIndicator = () => {
           )}
 
           <div className="custom-scrollbar" style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '280px' }}>
+            {/* Active Quizzes */}
             {activeQuizzes.map(item => (
               <div
                 key={item.id}
@@ -282,42 +493,121 @@ const ActiveQuizzesIndicator = () => {
                 </button>
               </div>
             ))}
+
+            {/* Expired Notices (recently completed while away) */}
+            {expiredNotices.map(notice => (
+              <div
+                key={notice.quizId}
+                style={{
+                  background: 'rgba(148, 163, 184, 0.08)',
+                  border: '1px solid rgba(148, 163, 184, 0.25)',
+                  borderRadius: '14px',
+                  padding: '12px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '0.7rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 'bold' }}>
+                      Окончен по таймеру
+                    </div>
+                    <span style={{ fontWeight: '600', fontSize: '0.85rem', color: 'var(--text-color)', lineHeight: '1.3' }}>
+                      {notice.title}
+                    </span>
+                  </div>
+                  <button
+                    onClick={(e) => dismissNotice(e, notice.quizId)}
+                    style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: 0 }}
+                    title="Закрыть уведомление"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                  <span style={{ color: notice.isPassed ? '#4ade80' : '#f87171', fontWeight: 'bold' }}>
+                    Результат: {notice.score}/{notice.total} ({notice.percent}%)
+                  </span>
+                  <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>
+                    Не завершен
+                  </span>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setIsExpanded(false);
+                    navigate(`/quiz/${notice.quizId}`);
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    borderRadius: '10px',
+                    border: 'none',
+                    background: 'linear-gradient(135deg, #64748b, #475569)',
+                    color: 'white',
+                    fontWeight: 'bold',
+                    fontSize: '0.8rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
+                  }}
+                >
+                  <RotateCcw size={14} />
+                  Открыть результаты / Пересдать
+                </button>
+              </div>
+            ))}
           </div>
         </div>
       )}
 
-      {/* Floating Circular Bubble (AiHub-style) */}
+      {/* Floating Circular Bubble (Identical 60px diameter and perfectly vertically aligned with AI Bubble at right: 30px) */}
       <div
         className="quiz-timer-bubble"
         onClick={() => setIsExpanded(prev => !prev)}
         style={{
-          width: '56px',
-          height: '56px',
+          width: '60px',
+          height: '60px',
           borderRadius: '50%',
-          background: `linear-gradient(135deg, ${urgentQuiz.color}, #6366f1)`,
+          background: hasActive
+            ? `linear-gradient(135deg, ${urgentQuiz.color}, #6366f1)`
+            : 'linear-gradient(135deg, #64748b, #475569)',
           color: 'white',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           cursor: 'pointer',
-          boxShadow: `0 8px 24px ${urgentQuiz.glow}, 0 4px 12px rgba(0,0,0,0.3)`,
+          boxShadow: hasActive
+            ? `0 10px 25px ${urgentQuiz.glow}, 0 4px 12px rgba(0,0,0,0.3)`
+            : '0 10px 25px rgba(100, 116, 139, 0.4), 0 4px 12px rgba(0,0,0,0.3)',
           position: 'relative',
           transition: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+          animation: 'bubblePop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)',
           transform: isExpanded ? 'scale(1.08)' : 'scale(1)'
         }}
-        title="Нажмите, чтобы увидеть незавершенные тесты"
+        title={hasActive ? "Незавершенный тест с таймером" : "Тест завершился по времени"}
       >
-        <div className="bubble-pulse-ring" style={{ borderColor: urgentQuiz.color }} />
-        <Clock size={24} className="pulsating-timer-icon" />
+        {hasActive && <div className="bubble-pulse-ring" style={{ borderColor: urgentQuiz.color }} />}
+        
+        {hasActive ? (
+          <Clock size={26} className="pulsating-timer-icon" />
+        ) : (
+          <AlertCircle size={26} />
+        )}
 
-        {/* Floating countdown pill tag attached to bubble */}
+        {/* Floating live tag attached to bubble */}
         <div
           style={{
             position: 'absolute',
             bottom: '-8px',
             background: '#0f111a',
-            color: urgentQuiz.color,
-            border: `1.5px solid ${urgentQuiz.color}`,
+            color: hasActive ? urgentQuiz.color : '#94a3b8',
+            border: `1.5px solid ${hasActive ? urgentQuiz.color : '#94a3b8'}`,
             borderRadius: '10px',
             padding: '1px 6px',
             fontSize: '0.65rem',
@@ -327,31 +617,27 @@ const ActiveQuizzesIndicator = () => {
             boxShadow: '0 2px 8px rgba(0,0,0,0.4)'
           }}
         >
-          {formatTimerSeconds(urgentQuiz.remaining)}
+          {hasActive ? formatTimerSeconds(urgentQuiz.remaining) : `${latestNotice?.score}/${latestNotice?.total}`}
         </div>
 
-        {/* Counter badge if multiple quizzes */}
-        {activeQuizzes.length > 1 && (
+        {/* Counter badge if multiple items */}
+        {(activeQuizzes.length + expiredNotices.length) > 1 && (
           <div
             style={{
               position: 'absolute',
-              top: '-4px',
-              right: '-4px',
+              top: '0',
+              right: '0',
               background: '#ef4444',
               color: 'white',
-              borderRadius: '50%',
-              width: '20px',
-              height: '20px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              borderRadius: '10px',
+              padding: '2px 6px',
               fontSize: '0.7rem',
               fontWeight: 'bold',
               boxShadow: '0 2px 6px rgba(0,0,0,0.4)',
-              border: '2px solid var(--bg-color, #121420)'
+              border: '2px solid white'
             }}
           >
-            {activeQuizzes.length}
+            {activeQuizzes.length + expiredNotices.length}
           </div>
         )}
       </div>
@@ -382,7 +668,7 @@ const ActiveQuizzesIndicator = () => {
           100% { transform: scale(1.3); opacity: 0; }
         }
         .quiz-timer-bubble:hover {
-          transform: scale(1.1) !important;
+          transform: scale(1.1) translateY(-5px) !important;
         }
       `}</style>
     </div>

@@ -96,3 +96,28 @@ export const clearQuizReminder = (quizId) => {
     delete scheduledTimeouts[quizId];
   }
 };
+
+/**
+ * Send immediate OS/device notification when timer expires while away
+ */
+export const sendQuizExpiredDeviceNotification = (quizId, quizTitle, score, total, percent) => {
+  if (!isNotificationSupported() || Notification.permission !== 'granted') return;
+  try {
+    const notif = new Notification(`⏰ Время вышло: «${quizTitle}»`, {
+      body: `Тест автоматически завершен. Ваш результат: ${score}/${total} (${percent}%). Нажмите, чтобы открыть результаты и разбор ошибок.`,
+      icon: '/favicon.ico',
+      badge: '/favicon.ico',
+      tag: `quiz_expired_${quizId}`,
+      renotify: true,
+      requireInteraction: true
+    });
+
+    notif.onclick = () => {
+      window.focus();
+      window.location.href = `/quiz/${quizId}`;
+      notif.close();
+    };
+  } catch (e) {
+    console.warn('Failed to send expired device notification:', e);
+  }
+};

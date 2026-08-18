@@ -77,11 +77,10 @@ export const evaluateAndSaveExpiredAttempt = async (att, userId) => {
   });
 
   const totalSeconds = maxScore * 25; // Standard default time
-  const finish_reason = 'timer_expired';
-
   const attemptData = {
-    is_incomplete: false,
-    finish_reason: finish_reason,
+    is_incomplete: true, // Marked as incomplete (grey) since timer expired while away
+    finish_reason: 'timer_expired_away',
+    suspicion_reason: 'incomplete_exit',
     score: correctCount,
     max_score: maxScore,
     time_spent_total: totalSeconds,
@@ -98,7 +97,7 @@ export const evaluateAndSaveExpiredAttempt = async (att, userId) => {
   const { data: existing } = await supabase.from('quiz_results').select('id').eq('quiz_id', qId).eq('user_id', uId).maybeSingle();
   if (existing) {
     await supabase.from('quiz_results').update({
-       score: correctCount, total_questions: maxScore, is_passed: isPassed, completed_at: now, answers_array: originalAnswers, is_incomplete_user: false
+       score: correctCount, total_questions: maxScore, is_passed: isPassed, completed_at: now, answers_array: originalAnswers, is_incomplete_user: true
     }).eq('id', existing.id);
   } else {
     // Fetch profile class ID
@@ -106,15 +105,27 @@ export const evaluateAndSaveExpiredAttempt = async (att, userId) => {
     await supabase.from('quiz_results').insert({
        quiz_id: qId, user_id: uId, score: correctCount, total_questions: maxScore,
        is_passed: isPassed, completed_at: now, first_score: correctCount, first_completed_at: now,
-       answers_array: originalAnswers, first_answers_array: originalAnswers, is_incomplete_user: false,
+       answers_array: originalAnswers, first_answers_array: originalAnswers, is_incomplete_user: true,
        class_id: prof?.class_id || null
     });
   }
 
-  // Clear local storage pending items
+  // Set show result flag so navigating to quiz opens the finished results screen
+  localStorage.setItem(`quiz_show_result_${qId}`, 'true');
+  localStorage.setItem(`quiz_expired_notice_${qId}`, JSON.stringify({
+    quizId: qId,
+    title: att.quizzes?.title || 'Тест',
+    score: correctCount,
+    total: maxScore,
+    percent: Math.round((correctCount / maxScore) * 100),
+    isPassed,
+    timestamp: Date.now()
+  }));
+
+  // Clear local storage timer & pending items
   localStorage.removeItem(`quiz_pending_${qId}`);
   localStorage.removeItem(`quiz_timer_${qId}`);
-  localStorage.removeItem(`quiz_answers_${qId}`);
+  localStorage.removeItem(`quiz_first_attempt_mode`);
 
   // Also aggressively update catalog cache for instant UI feedback
   const catalogCacheKey = `labtest_cache_catalog_stats_${att.quizzes?.section_id}`;
