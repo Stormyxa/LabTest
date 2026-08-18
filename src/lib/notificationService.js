@@ -1,107 +1,73 @@
 // Web Notifications Service for LabTest Active Quizzes Reminder
+// Primary delivery path: Service Worker (runs in separate thread, not throttled on mobile).
+// Fallback: page-level setTimeout + localStorage timestamp checked on return.
 
-let scheduledTimeouts = {};
+let pageLevelTimers = {}; // fallback timers when SW unavailable
 
-/**
- * Check if notifications are supported
- */
-export const isNotificationSupported = () => {
-  return typeof window !== 'undefined' && 'Notification' in window;
-};
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/**
- * Request notification permission from user
- */
+export const isNotificationSupported = () =>
+  typeof window !== 'undefined' && 'Notification' in window;
+
 export const requestNotificationPermission = async () => {
   if (!isNotificationSupported()) return 'unsupported';
   try {
     if (Notification.permission === 'granted') return 'granted';
     if (Notification.permission !== 'denied') {
-      const permission = await Notification.requestPermission();
-      return permission;
+      return await Notification.requestPermission();
     }
     return Notification.permission;
   } catch (e) {
-    console.warn('Error requesting notification permission:', e);
+    console.warn('[Notif] requestPermission error:', e);
     return 'denied';
   }
 };
 
-/**
- * Get current notification permission
- */
 export const getNotificationPermission = () => {
   if (!isNotificationSupported()) return 'unsupported';
   return Notification.permission;
 };
 
 /**
- * Get the active Service Worker registration (if available).
+ * Retrieve the active (controlling) Service Worker registration.
+ * Uses `navigator.serviceWorker.ready` which resolves when an active SW exists.
+ * Times out after 2 s to avoid blocking the caller.
  */
-const getSWRegistration = async () => {
+const getActiveSW = async () => {
   if (!('serviceWorker' in navigator)) return null;
   try {
-    const reg = await navigator.serviceWorker.ready;
-    return reg;
+    const reg = await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('SW ready timeout')), 2000))
+    ]);
+    return reg?.active ?? null;
   } catch {
+    // SW not ready or timed-out
     return null;
   }
 };
 
 /**
- * Schedule a reminder notification 60 seconds after the user leaves the quiz.
- * Primary: delegates to the Service Worker (not throttled by browser on mobile).
- * Fallback: page-level setTimeout (for browsers without SW support).
- *
- * Only fires during first attempt (enforced by caller).
- *
- * @param {string} quizId
- * @param {string} quizTitle
- * @param {number} delaySeconds (default 60s)
+ * Send a message to the active SW. Returns true on success.
  */
-export const scheduleQuizReminder = async (quizId, quizTitle, delaySeconds = 60) => {
-  if (!isNotificationSupported() || Notification.permission !== 'granted') return;
-
-  // Clear any existing reminder first
-  clearQuizReminder(quizId);
-
-  const fireAt = Date.now() + delaySeconds * 1000;
-
-  // Store fireAt in localStorage so checkPendingReminderOnReturn can fire
-  // immediately when user returns if the browser killed/throttled both timers.
-  localStorage.setItem(
-    `quiz_reminder_pending_${quizId}`,
-    JSON.stringify({ fireAt, quizTitle })
-  );
-
-  // Primary path: tell the Service Worker to schedule the notification.
-  // SW timers run in a separate thread and are NOT throttled on mobile.
-  const reg = await getSWRegistration();
-  if (reg && reg.active) {
-    reg.active.postMessage({
-      type: 'SCHEDULE_REMINDER',
-      quizId,
-      quizTitle,
-      fireAt
-    });
-    return; // SW will handle it — no need for page-level timer
+const postToSW = async (message) => {
+  const sw = await getActiveSW();
+  if (!sw) return false;
+  try {
+    sw.postMessage(message);
+    return true;
+  } catch (e) {
+    console.warn('[Notif] postMessage to SW failed:', e);
+    return false;
   }
-
-  // Fallback: page-level setTimeout (may be throttled on mobile background)
-  scheduledTimeouts[quizId] = setTimeout(() => {
-    if (document.hidden) {
-      _dispatchReminderNotif(quizId, quizTitle);
-      localStorage.removeItem(`quiz_reminder_pending_${quizId}`);
-    }
-  }, delaySeconds * 1000);
 };
 
-/**
- * Internal: show a reminder notification directly from the page context.
- */
+// ─── Page-level fallback ───────────────────────────────────────────────────────
+
 const _dispatchReminderNotif = (quizId, quizTitle) => {
+  if (!isNotificationSupported() || Notification.permission !== 'granted') return;
   try {
-    const notif = new Notification('⏰ LabTest: незавершенный тест!', {
+    const notif = new Notification('⏰ LabTest: незавершённый тест!', {
       body: `Вы проходите тест «${quizTitle}». Нажмите, чтобы вернуться к выполнению!`,
       icon: '/favicon.ico',
       badge: '/favicon.ico',
@@ -114,16 +80,56 @@ const _dispatchReminderNotif = (quizId, quizTitle) => {
       notif.close();
     };
   } catch (e) {
-    console.warn('Failed to dispatch reminder notification:', e);
+    console.warn('[Notif] page-level notification failed:', e);
   }
+};
+
+// ─── Public API ───────────────────────────────────────────────────────────────
+
+/**
+ * Schedule a reminder notification `delaySeconds` after the user leaves the quiz.
+ * Only meaningful during the FIRST attempt (caller is responsible for the guard).
+ *
+ * Flow:
+ *  1. Store absolute `fireAt` in localStorage (always — for checkPendingReminderOnReturn).
+ *  2. Try to delegate to the SW (preferred — SW is not throttled on mobile).
+ *  3. If SW unavailable, fall back to a page-level setTimeout.
+ */
+export const scheduleQuizReminder = async (quizId, quizTitle, delaySeconds = 60) => {
+  if (!isNotificationSupported() || Notification.permission !== 'granted') return;
+
+  // Cancel any existing reminder first
+  await clearQuizReminder(quizId);
+
+  const fireAt = Date.now() + delaySeconds * 1000;
+
+  // Always persist so checkPendingReminderOnReturn works even if both timers got killed
+  localStorage.setItem(
+    `quiz_reminder_pending_${quizId}`,
+    JSON.stringify({ fireAt, quizTitle })
+  );
+
+  // Primary: delegate to SW
+  const sentToSW = await postToSW({ type: 'SCHEDULE_REMINDER', quizId, quizTitle, fireAt });
+  if (sentToSW) {
+    console.log(`[Notif] Reminder delegated to SW for quiz ${quizId} (${delaySeconds}s)`);
+    return;
+  }
+
+  // Fallback: page-level timer
+  console.log(`[Notif] SW unavailable — using page-level timer for quiz ${quizId}`);
+  pageLevelTimers[quizId] = setTimeout(() => {
+    if (document.hidden) {
+      _dispatchReminderNotif(quizId, quizTitle);
+      localStorage.removeItem(`quiz_reminder_pending_${quizId}`);
+    }
+  }, delaySeconds * 1000);
 };
 
 /**
  * Call when the tab becomes visible again.
- * If the scheduled fire-time has already passed while the app was in the background,
- * dispatch the notification immediately (handles both SW-killed and throttled cases).
- *
- * @param {string} quizId
+ * If the fire deadline already passed while the app was in the background
+ * (and neither the SW timer nor the page timer fired), dispatch immediately.
  */
 export const checkPendingReminderOnReturn = (quizId) => {
   if (!isNotificationSupported() || Notification.permission !== 'granted') return;
@@ -132,42 +138,38 @@ export const checkPendingReminderOnReturn = (quizId) => {
     if (!raw) return;
     const { fireAt, quizTitle } = JSON.parse(raw);
     if (Date.now() >= fireAt) {
-      // Timer would have fired while we were away — dispatch now
+      console.log(`[Notif] Firing overdue reminder for quiz ${quizId} on return`);
       _dispatchReminderNotif(quizId, quizTitle);
       localStorage.removeItem(`quiz_reminder_pending_${quizId}`);
-      clearQuizReminder(quizId);
     }
   } catch (e) {
-    console.warn('checkPendingReminderOnReturn error:', e);
+    console.warn('[Notif] checkPendingReminderOnReturn error:', e);
   }
 };
 
 /**
- * Cancel a scheduled reminder for a quiz.
+ * Cancel any scheduled reminder for a quiz (both SW and page-level).
  */
 export const clearQuizReminder = async (quizId) => {
-  // Cancel page-level timer if any
-  if (scheduledTimeouts[quizId]) {
-    clearTimeout(scheduledTimeouts[quizId]);
-    delete scheduledTimeouts[quizId];
+  // Cancel page-level timer
+  if (pageLevelTimers[quizId]) {
+    clearTimeout(pageLevelTimers[quizId]);
+    delete pageLevelTimers[quizId];
   }
-  // Cancel in-SW timer
-  const reg = await getSWRegistration().catch(() => null);
-  if (reg && reg.active) {
-    reg.active.postMessage({ type: 'CLEAR_REMINDER', quizId });
-  }
-  // Clear persisted reminder
+  // Cancel in-SW timer (fire-and-forget, don't block)
+  postToSW({ type: 'CLEAR_REMINDER', quizId }).catch(() => {});
+  // Remove localStorage marker
   localStorage.removeItem(`quiz_reminder_pending_${quizId}`);
 };
 
 /**
- * Send immediate OS/device notification when timer expires while away.
+ * Send an immediate notification when the quiz timer expires while the user is away.
  */
 export const sendQuizExpiredDeviceNotification = (quizId, quizTitle, score, total, percent) => {
   if (!isNotificationSupported() || Notification.permission !== 'granted') return;
   try {
     const notif = new Notification(`⏰ Время вышло: «${quizTitle}»`, {
-      body: `Тест автоматически завершен. Ваш результат: ${score}/${total} (${percent}%). Нажмите, чтобы открыть результаты и разбор ошибок.`,
+      body: `Тест автоматически завершён. Ваш результат: ${score}/${total} (${percent}%). Нажмите, чтобы открыть результаты.`,
       icon: '/favicon.ico',
       badge: '/favicon.ico',
       tag: `quiz_expired_${quizId}`,
@@ -180,6 +182,6 @@ export const sendQuizExpiredDeviceNotification = (quizId, quizTitle, score, tota
       notif.close();
     };
   } catch (e) {
-    console.warn('Failed to send expired device notification:', e);
+    console.warn('[Notif] sendQuizExpiredDeviceNotification failed:', e);
   }
 };

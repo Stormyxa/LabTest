@@ -1,4 +1,4 @@
-const CACHE_NAME = 'labtest-cache-v1';
+const CACHE_NAME = 'labtest-cache-v2'; // bumped to force SW update
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -6,29 +6,27 @@ const STATIC_ASSETS = [
   '/manifest.json'
 ];
 
-// Install Event
+// Install: cache static assets and immediately take control
 self.addEventListener('install', (e) => {
   e.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('[Service Worker] Caching static shell');
       return cache.addAll(STATIC_ASSETS);
-    }).then(() => self.skipWaiting())
+    }).then(() => self.skipWaiting()) // activate new SW without waiting for old clients to close
   );
 });
 
-// Activate Event
+// Activate: purge old caches and claim all open clients immediately
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(
         keys.map((key) => {
           if (key !== CACHE_NAME) {
-            console.log('[Service Worker] Removing old cache', key);
             return caches.delete(key);
           }
         })
       );
-    }).then(() => self.clients.claim())
+    }).then(() => self.clients.claim()) // take control of all pages immediately
   );
 });
 
@@ -47,7 +45,7 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // Check if CDN assets (Plotly, Mermaid, Google Fonts, Hugging Face models) - Cache First Strategy
+  // CDN assets — Cache First Strategy
   const isCDN = url.host.includes('cdn.plot.ly') ||
                 url.host.includes('cdn.jsdelivr.net') ||
                 url.host.includes('fonts.googleapis.com') ||
@@ -58,66 +56,68 @@ self.addEventListener('fetch', (e) => {
     e.respondWith(
       caches.match(e.request).then((cachedResponse) => {
         if (cachedResponse) return cachedResponse;
-
         return fetch(e.request).then((networkResponse) => {
-          if (!networkResponse || networkResponse.status !== 200) {
-            return networkResponse;
-          }
+          if (!networkResponse || networkResponse.status !== 200) return networkResponse;
           const responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(e.request, responseToCache);
-          });
+          caches.open(CACHE_NAME).then((cache) => cache.put(e.request, responseToCache));
           return networkResponse;
-        }).catch(() => cachedResponse || new Response('Offline', { status: 503, statusText: 'Service Unavailable' }));
+        }).catch(() => cachedResponse || new Response('Offline', { status: 503 }));
       })
     );
     return;
   }
 
-  // Same-origin App code - Network First (falling back to cache, then to index.html for React SPA routing)
+  // Same-origin — Network First, falling back to cache / index.html for SPA routing
   e.respondWith(
     fetch(e.request)
       .then((networkResponse) => {
-        // Cache dynamic static assets on the fly
         if (
           networkResponse &&
           networkResponse.status === 200 &&
-          (url.origin === self.location.origin) &&
-          (url.pathname.includes('.js') || url.pathname.includes('.css') || url.pathname.includes('.png') || url.pathname.includes('.svg'))
+          url.origin === self.location.origin &&
+          (url.pathname.includes('.js') || url.pathname.includes('.css') ||
+           url.pathname.includes('.png') || url.pathname.includes('.svg'))
         ) {
           const responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(e.request, responseToCache);
-          });
+          caches.open(CACHE_NAME).then((cache) => cache.put(e.request, responseToCache));
         }
         return networkResponse;
       })
       .catch(() => {
-        // Fallback strategy: return cached item or index.html for client routing
         return caches.match(e.request).then((cachedResponse) => {
           if (cachedResponse) return cachedResponse;
-
-          // For HTML/navigation requests, return root index.html
-          if (e.request.mode === 'navigate' || (e.request.headers.get('accept') && e.request.headers.get('accept').includes('text/html'))) {
+          if (
+            e.request.mode === 'navigate' ||
+            (e.request.headers.get('accept') && e.request.headers.get('accept').includes('text/html'))
+          ) {
             return caches.match('/index.html');
           }
-
-          return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
+          return new Response('Offline', { status: 503 });
         });
       })
   );
 });
 
 // ─── Quiz Reminder Notifications ─────────────────────────────────────────────
-// SW timers are NOT throttled by the browser like page-level setTimeout,
-// so this fires accurately even when the tab is backgrounded or the app is minimized.
+// SW timers run in a separate thread — NOT throttled on mobile/backgrounded tabs.
+// The page posts SCHEDULE_REMINDER with an absolute fireAt timestamp;
+// the SW fires showNotification exactly on time regardless of page state.
 
 const reminderTimers = {};
 
 self.addEventListener('message', (event) => {
-  const { type, quizId, quizTitle, fireAt } = event.data || {};
+  const data = event.data;
+  if (!data || !data.type) return;
 
-  if (type === 'SCHEDULE_REMINDER') {
+  // Allow the page to force-activate a waiting SW (used on SW update)
+  if (data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+    return;
+  }
+
+  if (data.type === 'SCHEDULE_REMINDER') {
+    const { quizId, quizTitle, fireAt } = data;
+
     // Cancel any existing timer for this quiz
     if (reminderTimers[quizId]) {
       clearTimeout(reminderTimers[quizId]);
@@ -125,18 +125,21 @@ self.addEventListener('message', (event) => {
     }
 
     const delay = Math.max(0, fireAt - Date.now());
+    console.log(`[SW] Scheduling reminder for quiz ${quizId} in ${Math.round(delay / 1000)}s`);
 
     reminderTimers[quizId] = setTimeout(async () => {
       delete reminderTimers[quizId];
       try {
-        await self.registration.showNotification('⏰ LabTest: незавершенный тест!', {
+        await self.registration.showNotification('⏰ LabTest: незавершённый тест!', {
           body: `Вы проходите тест «${quizTitle}». Нажмите, чтобы вернуться к выполнению!`,
           icon: '/favicon.ico',
           badge: '/favicon.ico',
           tag: `quiz_reminder_${quizId}`,
           renotify: true,
+          requireInteraction: false,
           data: { url: `/quiz/${quizId}` }
         });
+        console.log(`[SW] Reminder sent for quiz ${quizId}`);
       } catch (err) {
         console.warn('[SW] Failed to show reminder notification:', err);
       }
@@ -144,29 +147,36 @@ self.addEventListener('message', (event) => {
     return;
   }
 
-  if (type === 'CLEAR_REMINDER') {
+  if (data.type === 'CLEAR_REMINDER') {
+    const { quizId } = data;
     if (reminderTimers[quizId]) {
       clearTimeout(reminderTimers[quizId]);
       delete reminderTimers[quizId];
+      console.log(`[SW] Cleared reminder for quiz ${quizId}`);
     }
     return;
   }
 });
 
-// Handle notification click — open/focus the quiz tab
+// Handle notification click — open or focus the correct quiz tab
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const targetUrl = event.notification.data?.url || '/';
+
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
-      for (const client of clients) {
-        if (client.url.includes(targetUrl) && 'focus' in client) {
-          return client.focus();
+    self.clients
+      .matchAll({ type: 'window', includeUncontrolled: true })
+      .then((clients) => {
+        // Try to focus an already-open tab at the target URL
+        for (const client of clients) {
+          if (new URL(client.url).pathname === targetUrl && 'focus' in client) {
+            return client.focus();
+          }
         }
-      }
-      if (self.clients.openWindow) {
-        return self.clients.openWindow(targetUrl);
-      }
-    })
+        // Otherwise open a new tab
+        if (self.clients.openWindow) {
+          return self.clients.openWindow(targetUrl);
+        }
+      })
   );
 });

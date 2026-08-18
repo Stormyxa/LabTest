@@ -483,37 +483,36 @@ const QuizView = ({ session, profile }) => {
 
   // Timer countdown — driven by absolute endTime so drift is impossible
   useEffect(() => {
-    if (!isFirstAttempt || timeLeft === null || showResult) return;
-
-    if (timeLeft <= 0) {
-      if (!finishedRef.current) finishQuiz(answersRef.current);
-      return;
-    }
-
-    // Establish endTime on first tick (or restore from ref)
-    if (!quizEndTimeRef.current) {
-      quizEndTimeRef.current = Date.now() + timeLeft * 1000;
-    }
+    if (!isFirstAttempt || showResult) return;
+    if (!quizEndTimeRef.current) return; // not yet initialized by fetchQuiz
 
     const totalDuration = quiz?.content?.time_limit || (questions.length * SECONDS_PER_QUESTION);
 
-    // Persist endTime each second for ActiveQuizzesIndicator and restoration on reload
-    localStorage.setItem(`quiz_timer_${id}`, JSON.stringify({
-      endTime: quizEndTimeRef.current,
-      // legacy fields kept for backward-compat with ActiveQuizzesIndicator
-      timeLeft,
-      ts: Date.now(),
-      title: quiz?.title || 'Тест',
-      totalTime: totalDuration
-    }));
-
-    timerRef.current = setTimeout(() => {
+    const tick = () => {
       const remaining = Math.max(0, Math.ceil((quizEndTimeRef.current - Date.now()) / 1000));
-      setTimeLeft(remaining);
-    }, 500); // tick every 500ms for responsiveness without extra overhead
 
-    return () => clearTimeout(timerRef.current);
-  }, [isFirstAttempt, timeLeft, showResult]);
+      // Persist for ActiveQuizzesIndicator + cross-tab resync
+      localStorage.setItem(`quiz_timer_${id}`, JSON.stringify({
+        endTime: quizEndTimeRef.current,
+        timeLeft: remaining,
+        ts: Date.now(),
+        title: quiz?.title || 'Тест',
+        totalTime: totalDuration
+      }));
+
+      setTimeLeft(remaining);
+
+      if (remaining <= 0 && !finishedRef.current) {
+        finishQuiz(answersRef.current);
+      }
+    };
+
+    tick(); // run immediately so display is correct on mount
+    timerRef.current = setInterval(tick, 500);
+
+    return () => clearInterval(timerRef.current);
+  // ⚠ DO NOT add timeLeft here — that causes the freeze when React bails out on same value
+  }, [isFirstAttempt, showResult, id, quiz, questions.length]);
 
   const fetchQuiz = async () => {
     const { data } = await supabase
