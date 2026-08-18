@@ -289,14 +289,24 @@ export const buildStudentRagPrompt = async (userId, viewerRole = 'student', view
  */
 export const processAndStoreAttemptFacts = async (attemptId, quizId, userId, sectionName = null, quizClass = null) => {
   try {
+    if (!attemptId) return { success: false };
+
+    // Prevent duplicate vectorization for the same attempt
+    const processedKey = `vectorized_attempt_${attemptId}`;
+    if (localStorage.getItem(processedKey)) {
+      console.log(`ℹ️ RAG: Attempt ${attemptId} has already been vectorized. Skipping.`);
+      return { success: true, alreadyProcessed: true };
+    }
+
     const dispatchStatus = (status, message, progress) => {
       window.dispatchEvent(new CustomEvent('rag-status', {
         detail: { status, message, progress }
       }));
     };
 
-    console.log(`🔄 RAG: Starting client-side processing for attempt ${attemptId}`);
+    console.log(`🔄 RAG: Starting server-side processing for attempt ${attemptId}`);
     dispatchStatus('extracting', 'Анализ попытки...', 10);
+    localStorage.setItem(processedKey, 'true');
 
     // 1. Fetch data from Supabase (client-side has session)
     // Note: quiz is fetched flat to avoid triple-nested PostgREST join errors (400)

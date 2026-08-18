@@ -93,14 +93,17 @@ function App() {
                 item.sectionName,
                 item.quizClass
               );
+              const currentQueue = JSON.parse(localStorage.getItem('pending_vector_facts') || '[]');
+              const filteredQueue = currentQueue.filter(qItem => qItem.attemptId !== item.attemptId);
+              localStorage.setItem('pending_vector_facts', JSON.stringify(filteredQueue));
               if (result?.success) {
-                const currentQueue = JSON.parse(localStorage.getItem('pending_vector_facts') || '[]');
-                const filteredQueue = currentQueue.filter(qItem => qItem.attemptId !== item.attemptId);
-                localStorage.setItem('pending_vector_facts', JSON.stringify(filteredQueue));
                 console.log(`✅ RAG: Successfully processed cached attempt ${item.attemptId}`);
               }
             } catch (err) {
-              console.warn(`❌ RAG: Failed to process cached attempt ${item.attemptId}. Will retry next time.`, err);
+              console.warn(`⚠️ RAG: Cached attempt ${item.attemptId} processing skipped:`, err.message);
+              const currentQueue = JSON.parse(localStorage.getItem('pending_vector_facts') || '[]');
+              const filteredQueue = currentQueue.filter(qItem => qItem.attemptId !== item.attemptId);
+              localStorage.setItem('pending_vector_facts', JSON.stringify(filteredQueue));
             }
           }
         } catch (queueErr) {
