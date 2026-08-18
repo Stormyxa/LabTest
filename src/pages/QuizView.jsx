@@ -1050,10 +1050,16 @@ const QuizView = ({ session, profile }) => {
 
     const elapsed = exitElapsedRef.current;
     const answeredCount = Object.keys(answersRef.current).length;
-    const shouldSave = elapsed >= EXIT_GRACE_SECONDS || (!isFirstAttempt && answeredCount > 2);
+    const timerStillRunning = isFirstAttempt && timeLeft !== null && timeLeft > 0;
+
+    // For first attempts with an active timer: do NOT save on manual exit.
+    // The timer (or ActiveQuizzesIndicator) will finalize the attempt when time runs out.
+    // For learning mode (non-first-attempt): save after grace period or if user answered enough.
+    const shouldSave = !timerStillRunning &&
+      (elapsed >= EXIT_GRACE_SECONDS || (!isFirstAttempt && answeredCount > 2));
 
     if (shouldSave) {
-      clearTimeout(timerRef.current);
+      clearInterval(timerRef.current);
       await saveResultRef.current(answersRef.current, true); // use stable ref
     }
 
