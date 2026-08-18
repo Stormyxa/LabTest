@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { resolveImgUrl } from '../lib/imageUtils';
 import { useScrollRestoration } from '../lib/useScrollRestoration';
-import { scheduleQuizReminder, clearQuizReminder, requestNotificationPermission } from '../lib/notificationService';
+import { scheduleQuizReminder, clearQuizReminder, checkPendingReminderOnReturn, requestNotificationPermission } from '../lib/notificationService';
 import ResourcePlayer from '../components/ResourcePlayer';
 import MathRenderer from '../components/MathRenderer';
 
@@ -459,6 +459,22 @@ const QuizView = ({ session, profile }) => {
         // If user came back and quiz not finished, clear the pending save
         if (!finishedRef.current) {
           localStorage.removeItem(`quiz_pending_${id}`);
+        }
+
+        // Resync timer from localStorage timestamp to fix mobile throttling drift
+        if (isFirstAttempt && !showResult && !finishedRef.current) {
+          try {
+            const raw = localStorage.getItem(`quiz_timer_${id}`);
+            if (raw) {
+              const { timeLeft: storedTime, ts } = JSON.parse(raw);
+              const secondsPassed = Math.round((Date.now() - ts) / 1000);
+              const corrected = Math.max(0, storedTime - secondsPassed);
+              setTimeLeft(corrected);
+            }
+          } catch (e) { /* ignore */ }
+
+          // Fire pending reminder if deadline passed while we were away
+          checkPendingReminderOnReturn(id);
         }
       }
     };
