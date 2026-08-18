@@ -43,7 +43,7 @@ export const getNotificationPermission = () => {
  * @param {string} quizTitle 
  * @param {number} delaySeconds (default 30s)
  */
-export const scheduleQuizReminder = (quizId, quizTitle, delaySeconds = 30) => {
+export const scheduleQuizReminder = (quizId, quizTitle, delaySeconds = 60) => {
   if (!isNotificationSupported() || Notification.permission !== 'granted') return;
 
   // Clear existing

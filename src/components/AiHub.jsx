@@ -59,6 +59,25 @@ const getSystemInstruction = (role) => {
   return instruction;
 };
 
+export const isFirstAttemptActive = () => {
+  try {
+    if (localStorage.getItem('quiz_first_attempt_mode') === 'true') return true;
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('quiz_timer_')) {
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          const elapsed = Math.round((Date.now() - (parsed.ts || Date.now())) / 1000);
+          const remaining = Math.max(0, (parsed.timeLeft || 0) - elapsed);
+          if (remaining > 0) return true;
+        }
+      }
+    }
+  } catch (e) {}
+  return false;
+};
+
 const AiHub = ({ session, profile }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
@@ -251,9 +270,8 @@ const AiHub = ({ session, profile }) => {
         return;
       }
 
-      // Check if user is in first attempt mode
-      const isFirstAttemptMode = localStorage.getItem('quiz_first_attempt_mode') === 'true';
-      if (isFirstAttemptMode) {
+      // Check if user is in first attempt mode or has running timer
+      if (isFirstAttemptActive()) {
         // Show restriction modal instead of opening AI
         showRestrictionModal();
         return;
@@ -304,18 +322,17 @@ const AiHub = ({ session, profile }) => {
     return () => window.removeEventListener('open-ai-hub', handleOpenAiHub);
   }, [profile, isOpen, isMinimized]);
 
-  // Auto-close AI chat when user starts first attempt
+  // Auto-close AI chat when user starts first attempt or has active timer
   useEffect(() => {
     const checkFirstAttemptStart = () => {
-      const isFirstAttemptMode = localStorage.getItem('quiz_first_attempt_mode') === 'true';
-      if (isFirstAttemptMode && isOpen) {
+      if (isFirstAttemptActive() && isOpen) {
         setIsOpen(false);
         setIsMinimized(false);
       }
     };
 
     // Check periodically
-    const interval = setInterval(checkFirstAttemptStart, 1000);
+    const interval = setInterval(checkFirstAttemptStart, 500);
     return () => clearInterval(interval);
   }, [isOpen]);
 
@@ -932,7 +949,16 @@ const AiHub = ({ session, profile }) => {
 
   if (isMinimized) {
     return (
-      <div className="ai-hub-bubble" onClick={() => setIsMinimized(false)}>
+      <div
+        className="ai-hub-bubble"
+        onClick={() => {
+          if (isFirstAttemptActive()) {
+            showRestrictionModal();
+            return;
+          }
+          setIsMinimized(false);
+        }}
+      >
         <Sparkles size={28} />
         {isStreaming && <div className="badge"><RefreshCw size={10} className="spinner" /></div>}
       </div>

@@ -74,7 +74,14 @@ const QuizView = ({ session, profile }) => {
   const [quiz, setQuiz] = useState(null);
   const [questions, setQuestions] = useState([]);
   const [currentIdx, setCurrentIdx] = useState(0);
-  const [answers, setAnswers] = useState({});
+  const [answers, setAnswers] = useState(() => {
+    try {
+      const raw = localStorage.getItem(`quiz_answers_${id}`);
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  });
   const [showResult, setShowResult] = useState(localStorage.getItem(`quiz_show_result_${id}`) === 'true');
   const [lastAttemptId, setLastAttemptId] = useState(() => localStorage.getItem(`quiz_last_attempt_${id}`));
   const [analysisReady, setAnalysisReady] = useState(false);
@@ -444,7 +451,7 @@ const QuizView = ({ session, profile }) => {
           }
         }
         if (isFirstAttempt && timeLeft > 0 && !finishedRef.current) {
-          scheduleQuizReminder(id, quiz?.title || 'Тест', 30);
+          scheduleQuizReminder(id, quiz?.title || 'Тест', 60);
         }
       } else {
         setIsBlurred(false);
@@ -956,6 +963,10 @@ const QuizView = ({ session, profile }) => {
         } catch (e) { }
       }
 
+      // Invalidate analytics cache so AnalyticsDetails always loads fresh data
+      localStorage.removeItem(`labtest_cache_ad_users_${id}`);
+      localStorage.removeItem(`labtest_cache_ad_attempts_${id}_${session.user.id}`);
+
     } catch (err) {
       console.error('Ошибка сохранения результата:', err);
     }
@@ -988,11 +999,6 @@ const QuizView = ({ session, profile }) => {
     const elapsed = Math.round((Date.now() - startTimeRef.current) / 1000);
     exitElapsedRef.current = elapsed;
     setShowExitModal(true);
-    
-    // Clear first attempt mode flag when user exits quiz
-    if (isFirstAttempt) {
-      localStorage.removeItem('quiz_first_attempt_mode');
-    }
   };
 
   const handleRetry = () => {
@@ -1024,12 +1030,13 @@ const QuizView = ({ session, profile }) => {
     localStorage.removeItem(`quiz_pending_${id}`);
     if (!isFirstAttempt || (timeLeft !== null && timeLeft <= 0)) {
       localStorage.removeItem(`quiz_timer_${id}`);
+      localStorage.removeItem(`quiz_answers_${id}`);
+      localStorage.removeItem(`quiz_structure_${id}`);
+      localStorage.removeItem(`quiz_current_idx_${id}`);
+      localStorage.removeItem(`quiz_times_${id}`);
+      localStorage.removeItem(`quiz_start_time_${id}`);
+      localStorage.removeItem('quiz_first_attempt_mode');
     }
-    localStorage.removeItem(`quiz_answers_${id}`);
-    localStorage.removeItem(`quiz_structure_${id}`);
-    localStorage.removeItem(`quiz_current_idx_${id}`);
-    localStorage.removeItem(`quiz_times_${id}`);
-    localStorage.removeItem(`quiz_start_time_${id}`);
 
     if (blocker.state === 'blocked') blocker.proceed();
     else navigate('/catalog');

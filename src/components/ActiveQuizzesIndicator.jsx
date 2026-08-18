@@ -235,9 +235,20 @@ const ActiveQuizzesIndicator = () => {
           });
         }
 
-        // Trigger RAG memory fact extraction
-        if (insertedAttempt?.id) {
-          triggerFactStorage(insertedAttempt.id, qId, userId, sectionName, quizClass).catch(console.error);
+        // Update catalog stats cache so catalog card shows the grade immediately
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith('labtest_cache_catalog_stats_')) {
+            try {
+              const parsed = JSON.parse(localStorage.getItem(k));
+              if (parsed?.data?.passed) {
+                parsed.data.passed[qId] = { is_passed: isPassed, score: correctCount, total: maxScore };
+                localStorage.setItem(k, JSON.stringify(parsed));
+                const secId = k.replace('labtest_cache_catalog_stats_', '');
+                window.dispatchEvent(new CustomEvent(`cache-update-catalog_stats_${secId}`, { detail: parsed.data }));
+              }
+            } catch {}
+          }
         }
       }
 
