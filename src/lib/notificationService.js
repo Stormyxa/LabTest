@@ -15,9 +15,7 @@ export const isNotificationSupported = () => {
 export const requestNotificationPermission = async () => {
   if (!isNotificationSupported()) return 'unsupported';
   try {
-    if (Notification.permission === 'granted') {
-      return 'granted';
-    }
+    if (Notification.permission === 'granted') return 'granted';
     if (Notification.permission !== 'denied') {
       const permission = await Notification.requestPermission();
       return permission;
@@ -38,62 +36,58 @@ export const getNotificationPermission = () => {
 };
 
 /**
- * Immediately dispatch a reminder notification (call when returning to page if deadline passed while away)
+ * Get the active Service Worker registration (if available).
  */
-const _dispatchReminderNotif = (quizId, quizTitle) => {
+const getSWRegistration = async () => {
+  if (!('serviceWorker' in navigator)) return null;
   try {
-    const raw = localStorage.getItem(`quiz_timer_${quizId}`);
-    if (!raw) return;
-    const parsed = JSON.parse(raw);
-    const elapsed = Math.round((Date.now() - (parsed.ts || Date.now())) / 1000);
-    const remaining = Math.max(0, (parsed.timeLeft || 0) - elapsed);
-    if (remaining <= 0) return; // already expired — expiry notif handles this
-
-    const mins = Math.ceil(remaining / 60);
-    const remainingStr = remaining < 60
-      ? `Осталось: ~${remaining} сек.`
-      : `Осталось: ~${mins} мин.`;
-
-    const notif = new Notification('⏰ LabTest: незавершенный тест!', {
-      body: `Вы проходите тест «${quizTitle}». ${remainingStr} Нажмите, чтобы вернуться к выполнению!`,
-      icon: '/favicon.ico',
-      badge: '/favicon.ico',
-      tag: `quiz_reminder_${quizId}`,
-      renotify: true
-    });
-
-    notif.onclick = () => {
-      window.focus();
-      window.location.href = `/quiz/${quizId}`;
-      notif.close();
-    };
-  } catch (e) {
-    console.warn('Failed to dispatch notification:', e);
+    const reg = await navigator.serviceWorker.ready;
+    return reg;
+  } catch {
+    return null;
   }
 };
 
 /**
- * Schedule a reminder notification if user leaves tab.
- * Stores the planned fire-time in localStorage so that even if the browser
- * throttles/kills the setTimeout, the notification fires immediately when the
- * user returns and `checkPendingReminderOnReturn` is called.
+ * Schedule a reminder notification 60 seconds after the user leaves the quiz.
+ * Primary: delegates to the Service Worker (not throttled by browser on mobile).
+ * Fallback: page-level setTimeout (for browsers without SW support).
+ *
+ * Only fires during first attempt (enforced by caller).
  *
  * @param {string} quizId
  * @param {string} quizTitle
  * @param {number} delaySeconds (default 60s)
  */
-export const scheduleQuizReminder = (quizId, quizTitle, delaySeconds = 60) => {
+export const scheduleQuizReminder = async (quizId, quizTitle, delaySeconds = 60) => {
   if (!isNotificationSupported() || Notification.permission !== 'granted') return;
 
   // Clear any existing reminder first
   clearQuizReminder(quizId);
 
-  // Store the target fire-time in localStorage so it survives browser throttling
   const fireAt = Date.now() + delaySeconds * 1000;
-  localStorage.setItem(`quiz_reminder_pending_${quizId}`, JSON.stringify({ fireAt, quizTitle }));
 
-  // Best-effort setTimeout — may fire late on mobile but that's ok,
-  // because checkPendingReminderOnReturn() corrects it on visibility restore.
+  // Store fireAt in localStorage so checkPendingReminderOnReturn can fire
+  // immediately when user returns if the browser killed/throttled both timers.
+  localStorage.setItem(
+    `quiz_reminder_pending_${quizId}`,
+    JSON.stringify({ fireAt, quizTitle })
+  );
+
+  // Primary path: tell the Service Worker to schedule the notification.
+  // SW timers run in a separate thread and are NOT throttled on mobile.
+  const reg = await getSWRegistration();
+  if (reg && reg.active) {
+    reg.active.postMessage({
+      type: 'SCHEDULE_REMINDER',
+      quizId,
+      quizTitle,
+      fireAt
+    });
+    return; // SW will handle it — no need for page-level timer
+  }
+
+  // Fallback: page-level setTimeout (may be throttled on mobile background)
   scheduledTimeouts[quizId] = setTimeout(() => {
     if (document.hidden) {
       _dispatchReminderNotif(quizId, quizTitle);
@@ -103,8 +97,32 @@ export const scheduleQuizReminder = (quizId, quizTitle, delaySeconds = 60) => {
 };
 
 /**
- * Call this when the tab/app becomes visible again.
- * Fires a pending reminder immediately if the scheduled time has passed while the app was in background.
+ * Internal: show a reminder notification directly from the page context.
+ */
+const _dispatchReminderNotif = (quizId, quizTitle) => {
+  try {
+    const notif = new Notification('⏰ LabTest: незавершенный тест!', {
+      body: `Вы проходите тест «${quizTitle}». Нажмите, чтобы вернуться к выполнению!`,
+      icon: '/favicon.ico',
+      badge: '/favicon.ico',
+      tag: `quiz_reminder_${quizId}`,
+      renotify: true
+    });
+    notif.onclick = () => {
+      window.focus();
+      window.location.href = `/quiz/${quizId}`;
+      notif.close();
+    };
+  } catch (e) {
+    console.warn('Failed to dispatch reminder notification:', e);
+  }
+};
+
+/**
+ * Call when the tab becomes visible again.
+ * If the scheduled fire-time has already passed while the app was in the background,
+ * dispatch the notification immediately (handles both SW-killed and throttled cases).
+ *
  * @param {string} quizId
  */
 export const checkPendingReminderOnReturn = (quizId) => {
@@ -125,18 +143,25 @@ export const checkPendingReminderOnReturn = (quizId) => {
 };
 
 /**
- * Clear reminder for a quiz
+ * Cancel a scheduled reminder for a quiz.
  */
-export const clearQuizReminder = (quizId) => {
+export const clearQuizReminder = async (quizId) => {
+  // Cancel page-level timer if any
   if (scheduledTimeouts[quizId]) {
     clearTimeout(scheduledTimeouts[quizId]);
     delete scheduledTimeouts[quizId];
   }
+  // Cancel in-SW timer
+  const reg = await getSWRegistration().catch(() => null);
+  if (reg && reg.active) {
+    reg.active.postMessage({ type: 'CLEAR_REMINDER', quizId });
+  }
+  // Clear persisted reminder
   localStorage.removeItem(`quiz_reminder_pending_${quizId}`);
 };
 
 /**
- * Send immediate OS/device notification when timer expires while away
+ * Send immediate OS/device notification when timer expires while away.
  */
 export const sendQuizExpiredDeviceNotification = (quizId, quizTitle, score, total, percent) => {
   if (!isNotificationSupported() || Notification.permission !== 'granted') return;
@@ -149,7 +174,6 @@ export const sendQuizExpiredDeviceNotification = (quizId, quizTitle, score, tota
       renotify: true,
       requireInteraction: true
     });
-
     notif.onclick = () => {
       window.focus();
       window.location.href = `/quiz/${quizId}`;

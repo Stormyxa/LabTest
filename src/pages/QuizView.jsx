@@ -121,6 +121,8 @@ const QuizView = ({ session, profile }) => {
   // Timer
   const [isFirstAttempt, setIsFirstAttempt] = useState(false);
   const [timeLeft, setTimeLeft] = useState(null);
+  // Absolute end timestamp — source of truth for the countdown, immune to throttling drift
+  const quizEndTimeRef = useRef(null);
 
   const [currentImageIdx, setCurrentImageIdx] = useState(0);
 
@@ -461,18 +463,12 @@ const QuizView = ({ session, profile }) => {
           localStorage.removeItem(`quiz_pending_${id}`);
         }
 
-        // Resync timer from localStorage timestamp to fix mobile throttling drift
+        // Resync timer from absolute endTime to fix mobile throttling drift
         if (isFirstAttempt && !showResult && !finishedRef.current) {
-          try {
-            const raw = localStorage.getItem(`quiz_timer_${id}`);
-            if (raw) {
-              const { timeLeft: storedTime, ts } = JSON.parse(raw);
-              const secondsPassed = Math.round((Date.now() - ts) / 1000);
-              const corrected = Math.max(0, storedTime - secondsPassed);
-              setTimeLeft(corrected);
-            }
-          } catch (e) { /* ignore */ }
-
+          if (quizEndTimeRef.current) {
+            const corrected = Math.max(0, Math.ceil((quizEndTimeRef.current - Date.now()) / 1000));
+            setTimeLeft(corrected);
+          }
           // Fire pending reminder if deadline passed while we were away
           checkPendingReminderOnReturn(id);
         }
@@ -485,29 +481,36 @@ const QuizView = ({ session, profile }) => {
     };
   }, [showResult, loading, id, isFirstAttempt, timeLeft, quiz]);
 
-  // Timer countdown — calls through saveResultRef to avoid stale closure
+  // Timer countdown — driven by absolute endTime so drift is impossible
   useEffect(() => {
     if (!isFirstAttempt || timeLeft === null || showResult) return;
 
     if (timeLeft <= 0) {
-      if (!finishedRef.current) {
-        finishQuiz(answersRef.current);
-      }
+      if (!finishedRef.current) finishQuiz(answersRef.current);
       return;
     }
 
-    // Persist remaining time each second with metadata for floating indicator
+    // Establish endTime on first tick (or restore from ref)
+    if (!quizEndTimeRef.current) {
+      quizEndTimeRef.current = Date.now() + timeLeft * 1000;
+    }
+
     const totalDuration = quiz?.content?.time_limit || (questions.length * SECONDS_PER_QUESTION);
-    localStorage.setItem(`quiz_timer_${id}`, JSON.stringify({ 
-      timeLeft, 
-      ts: Date.now(), 
-      title: quiz?.title || 'Тест', 
-      totalTime: totalDuration 
+
+    // Persist endTime each second for ActiveQuizzesIndicator and restoration on reload
+    localStorage.setItem(`quiz_timer_${id}`, JSON.stringify({
+      endTime: quizEndTimeRef.current,
+      // legacy fields kept for backward-compat with ActiveQuizzesIndicator
+      timeLeft,
+      ts: Date.now(),
+      title: quiz?.title || 'Тест',
+      totalTime: totalDuration
     }));
 
     timerRef.current = setTimeout(() => {
-      setTimeLeft(prev => prev - 1);
-    }, 1000);
+      const remaining = Math.max(0, Math.ceil((quizEndTimeRef.current - Date.now()) / 1000));
+      setTimeLeft(remaining);
+    }, 500); // tick every 500ms for responsiveness without extra overhead
 
     return () => clearTimeout(timerRef.current);
   }, [isFirstAttempt, timeLeft, showResult]);
@@ -639,15 +642,27 @@ const QuizView = ({ session, profile }) => {
       const storedTimer = localStorage.getItem(timerKey);
       if (storedTimer && first) {
         try {
-          const { timeLeft: storedTime, ts } = JSON.parse(storedTimer);
-          const secondsPassed = Math.round((Date.now() - ts) / 1000);
-          const restored = Math.max(0, storedTime - secondsPassed);
+          const parsed = JSON.parse(storedTimer);
+          // Prefer absolute endTime; fall back to legacy timeLeft+ts format
+          let restored;
+          if (parsed.endTime) {
+            restored = Math.max(0, Math.ceil((parsed.endTime - Date.now()) / 1000));
+            quizEndTimeRef.current = parsed.endTime;
+          } else {
+            const secondsPassed = Math.round((Date.now() - (parsed.ts || Date.now())) / 1000);
+            restored = Math.max(0, (parsed.timeLeft || 0) - secondsPassed);
+            quizEndTimeRef.current = Date.now() + restored * 1000;
+          }
           setTimeLeft(restored);
-        } catch { 
-          setTimeLeft(customLimit || defaultTime); 
+        } catch {
+          const t = customLimit || defaultTime;
+          quizEndTimeRef.current = Date.now() + t * 1000;
+          setTimeLeft(t);
         }
       } else if (first) {
-        setTimeLeft(customLimit || defaultTime);
+        const t = customLimit || defaultTime;
+        quizEndTimeRef.current = Date.now() + t * 1000;
+        setTimeLeft(t);
       }
 
       // Restore answers from localStorage (always restore if cached)

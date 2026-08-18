@@ -18,8 +18,14 @@ export const getActiveTimedQuizzes = () => {
           const raw = localStorage.getItem(key);
           if (!raw) continue;
           const parsed = JSON.parse(raw);
-          const elapsed = Math.round((Date.now() - (parsed.ts || Date.now())) / 1000);
-          const remaining = Math.max(0, (parsed.timeLeft || 0) - elapsed);
+          // Prefer absolute endTime (set by new timer logic); fall back to legacy timeLeft+ts
+          let remaining;
+          if (parsed.endTime) {
+            remaining = Math.max(0, Math.ceil((parsed.endTime - Date.now()) / 1000));
+          } else {
+            const elapsed = Math.round((Date.now() - (parsed.ts || Date.now())) / 1000);
+            remaining = Math.max(0, (parsed.timeLeft || 0) - elapsed);
+          }
 
           if (remaining <= 0) {
             expiredToFinalize.push({
