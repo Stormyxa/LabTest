@@ -573,8 +573,14 @@ const QuizView = ({ session, profile }) => {
           [shuffledQuestions[i], shuffledQuestions[j]] = [shuffledQuestions[j], shuffledQuestions[i]];
         }
 
+        // Apply question bank limit if configured
+        const qLimit = data.content?.question_limit ? parseInt(data.content.question_limit, 10) : 0;
+        const sampledQuestions = (qLimit > 0 && qLimit < shuffledQuestions.length)
+          ? shuffledQuestions.slice(0, qLimit)
+          : shuffledQuestions;
+
         // Shuffle options within each question
-        finalQuestions = shuffledQuestions.map(q => {
+        finalQuestions = sampledQuestions.map(q => {
           const optionsWithIndices = q.options.map((opt, idx) => ({ opt, originalIndex: idx }));
           for (let i = optionsWithIndices.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
@@ -1148,18 +1154,18 @@ const QuizView = ({ session, profile }) => {
               <button onClick={() => navigate('/catalog')} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>В каталог</button>
               <button onClick={handleRetry} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}><RotateCcw size={18} style={{ marginRight: '8px' }} /> Перепройти</button>
               
-              {session && lastAttemptId && (
+              {session && (
                 <button 
                   onClick={() => navigate(`/analytics-details?quizId=${id}&userId=${session.user.id}`)}
-                  disabled={!analysisReady}
+                  disabled={lastAttemptId ? !analysisReady : false}
                   style={{ 
-                    background: analysisReady ? 'var(--primary-color)' : 'rgba(124, 58, 237, 0.1)', 
-                    color: analysisReady ? 'white' : 'var(--primary-color)',
+                    background: (!lastAttemptId || analysisReady) ? 'var(--primary-color)' : 'rgba(124, 58, 237, 0.1)', 
+                    color: (!lastAttemptId || analysisReady) ? 'white' : 'var(--primary-color)',
                     transition: 'all 0.5s ease'
                   }}
                 >
-                  {analysisReady ? <BarChart3 size={18} style={{ marginRight: '8px' }} /> : <Loader2 size={18} className="spinner" style={{ marginRight: '8px' }} />}
-                  {analysisReady ? 'Детальный анализ' : 'Готовим аналитику...'}
+                  {(lastAttemptId && !analysisReady) ? <Loader2 size={18} className="spinner" style={{ marginRight: '8px' }} /> : <BarChart3 size={18} style={{ marginRight: '8px' }} />}
+                  {(lastAttemptId && !analysisReady) ? 'Готовим аналитику...' : 'Детальный анализ'}
                 </button>
               )}
 

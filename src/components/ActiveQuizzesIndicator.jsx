@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Clock, Play, BellRing, X, CheckCircle, AlertCircle, RotateCcw } from 'lucide-react';
+import { Clock, Play, BellRing, X, CheckCircle, AlertCircle, RotateCcw, BarChart2 } from 'lucide-react';
 import { requestNotificationPermission, getNotificationPermission, sendQuizExpiredDeviceNotification } from '../lib/notificationService';
 import { supabase } from '../lib/supabase';
 import { triggerFactStorage } from '../lib/ragService';
@@ -552,31 +552,57 @@ const ActiveQuizzesIndicator = () => {
                   </span>
                 </div>
 
-                <button
-                  onClick={() => {
-                    setIsExpanded(false);
-                    navigate(`/quiz/${notice.quizId}`);
-                  }}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: '10px',
-                    border: 'none',
-                    background: 'linear-gradient(135deg, #64748b, #475569)',
-                    color: 'white',
-                    fontWeight: 'bold',
-                    fontSize: '0.8rem',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '6px',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
-                  }}
-                >
-                  <RotateCcw size={14} />
-                  Открыть результаты / Пересдать
-                </button>
+                <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                  <button
+                    onClick={() => {
+                      setIsExpanded(false);
+                      navigate(`/analytics-details?quizId=${notice.quizId}`);
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '8px 10px',
+                      borderRadius: '10px',
+                      border: 'none',
+                      background: 'var(--primary-color)',
+                      color: 'white',
+                      fontWeight: 'bold',
+                      fontSize: '0.78rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '5px',
+                      boxShadow: '0 4px 12px rgba(99, 102, 241, 0.25)'
+                    }}
+                  >
+                    <BarChart2 size={13} />
+                    Детальный анализ
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsExpanded(false);
+                      navigate(`/quiz/${notice.quizId}`);
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '8px 10px',
+                      borderRadius: '10px',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      background: 'rgba(255,255,255,0.06)',
+                      color: 'var(--text-color)',
+                      fontWeight: 'bold',
+                      fontSize: '0.78rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '5px'
+                    }}
+                  >
+                    <RotateCcw size={13} />
+                    Открыть / Пересдать
+                  </button>
+                </div>
               </div>
             ))}
           </div>

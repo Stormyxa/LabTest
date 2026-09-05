@@ -281,7 +281,7 @@ const AttemptChart = React.memo(({
   const last10 = attempts.slice(-10);
   const chartBars = [];
 
-  const qsLength = targetQuiz?.content?.questions?.length || 1;
+  const qsLength = targetQuiz?.content?.question_limit || targetQuiz?.content?.questions?.length || 1;
 
   // Max Score Bar
   chartBars.push({
@@ -423,10 +423,10 @@ const AttemptDetailsView = React.memo(({
       }
     });
 
-    const totalQs = qs.length || 1;
+    const totalQs = targetQuiz?.content?.question_limit || qs.length || 1;
     const skippedCount = ansData.filter(a => a.chosenIndex === null).length;
     const skippedPerc = skippedCount / totalQs;
-    const limitTime = totalQs * 25;
+    const limitTime = targetQuiz?.content?.time_limit || (totalQs * 25);
     const timeSpent = selectedAttempt.time_spent_total || 0;
     const sPercent = (selectedAttempt.score / (selectedAttempt.total_questions || totalQs)) || 0;
 

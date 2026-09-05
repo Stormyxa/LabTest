@@ -287,6 +287,7 @@ const Editor = ({ session, profile }) => {
   const [newSectionBookUrl, setNewSectionBookUrl] = useState('');
   const [resources, setResources] = useState([{ url: '', title: '' }]);
   const [newQuizTimeLimit, setNewQuizTimeLimit] = useState(0);
+  const [newQuizQuestionLimit, setNewQuizQuestionLimit] = useState(0);
 
   const isTeacherOrPlayer = profile?.role === 'teacher' || profile?.role === 'player';
   const isPrivilegedEditor = profile?.role === 'admin' || profile?.role === 'creator';
@@ -481,7 +482,10 @@ const Editor = ({ session, profile }) => {
           is_personal: isPersonal,
           content: {
             questions: q.questions,
-            time_limit: newQuizTimeLimit > 0 ? newQuizTimeLimit : q.time_limit
+            time_limit: newQuizTimeLimit > 0 ? newQuizTimeLimit : q.time_limit,
+            question_limit: (q.question_limit !== undefined && q.question_limit !== null)
+              ? (parseInt(q.question_limit, 10) || null)
+              : (newQuizQuestionLimit > 0 ? newQuizQuestionLimit : null)
           },
           resources: filteredResources.length > 0 ? filteredResources : null,
           is_verified: canBulk,
@@ -505,6 +509,7 @@ const Editor = ({ session, profile }) => {
         setSelectedClassId('');
         setResources([{ url: '', title: '' }]);
         setNewQuizTimeLimit(0);
+        setNewQuizQuestionLimit(0);
       } else {
         let titleList = titles.split('\n').map(t => t.trim()).filter(t => t.length > 0);
         if (titleList.length === 0) throw new Error('Введите хотя бы одно название');
@@ -554,7 +559,8 @@ const Editor = ({ session, profile }) => {
         is_personal: isPersonal,
         content: {
           questions: [],
-          time_limit: newQuizTimeLimit > 0 ? newQuizTimeLimit : undefined
+          time_limit: newQuizTimeLimit > 0 ? newQuizTimeLimit : undefined,
+          question_limit: newQuizQuestionLimit > 0 ? newQuizQuestionLimit : undefined
         },
         resources: pendingResources?.length > 0 ? pendingResources : null,
         is_verified: canBulk,
@@ -577,6 +583,7 @@ const Editor = ({ session, profile }) => {
       setSelectedClassId('');
       setResources([{ url: '', title: '' }]);
       setNewQuizTimeLimit(0);
+      setNewQuizQuestionLimit(0);
 
       if (inserted && inserted.length > 0) {
         navigate(`/redactor?id=${inserted[0].id}`);
@@ -677,8 +684,8 @@ const Editor = ({ session, profile }) => {
 
 Логика вопросов и вариантов ответов:
 1. Язык вопросов лаконичный, точный, энциклопедический и не прощающий невнимательности. Никаких подсказок, наводящих слов или размытых формулировок.
-2. Все 4 варианта ответа (options) в каждом вопросе должны быть абсолютно однородными по смыслу, структуре, грамматической форме и частям речи.
-3. Длина текста во всех четырех вариантах ответов должна быть одинаковой (плюс-минус 5–10 символов). Недопустимо, чтобы правильный ответ выделялся объемом или детализацией.
+2. Формат вариантов ответа: Варианты должны быть предельно лаконичными (предпочтительно 1–4 слова: термин, дата, имя, понятие, краткая категория). Все 4 варианта обязаны быть строго однородными грамматически (одна часть речи, одна форма, один падеж).
+3. Длина ответов: Не допускать пространных описаний в вариантах ответа. Вся фактологическая и описательная часть переносится в тело вопроса, а варианты ответа остаются краткими маркерами выбора.
 4. Дистракторы (неверные ответы) должны быть исторически или научно реальными терминами, фактами или цифрами из той же эпохи/контекста, чтобы исключить угадывание методом исключения, но строго неверными в контексте конкретного вопроса. Взаимоисключающие, абсурдные или очевидно глупые варианты запрещены.
 5. Запрещено использовать формулировки "все варианты верны", "ни один из предложенных" или ссылки на позицию автора. Вопросы должны быть полностью автономными.
 6. Избегай лингвистических подсказок, метафор и смысловых параллелей между текстом вопроса и правильным вариантом ответа, которые позволяют угадать ответ методом логического исключения.
@@ -699,12 +706,13 @@ const Editor = ({ session, profile }) => {
 3. Для выделения терминов, цитат или названий внутри строк JSON разрешено использовать только одинарные кавычки ' '. Использование типографских кавычек-ёлочек « » или незаэкранированных двойных кавычек внутри строк ЗАПРЕЩЕНО.
 4. Все управляющие символы и кавычки внутри строк должны быть строго валидными, чтобы не сломать автоматический парсер (JSON.parse).
 
-Объем теста: Составь СТРОГО XX вопросов.
+Объем теста: Составь СТРОГО XX вопросов (если создается банк вопросов, укажи поле question_limit для ограничения вопросов на попытку, например 10).
 
 Структура JSON-объекта:
 {
   "title": "§ Номер. Название параграфа",
   "time_limit": [укажи адекватное время в секундах, исходя из сложности],
+  "question_limit": [опционально: число случайных вопросов из банка на одну попытку, например 10],
   "questions": [
     {
       "question": "Текст вопроса",
@@ -986,6 +994,23 @@ const Editor = ({ session, profile }) => {
                         </div>
                         <div style={{ fontSize: '0.75rem', opacity: 0.4, marginLeft: '5px' }}>
                           (0 = авторасчет 25с/вопр)
+                        </div>
+                      </div>
+
+                      <div>
+                        <label style={{ fontSize: '0.85rem', opacity: 0.5, marginBottom: '8px', display: 'block' }}>
+                          Банк вопросов: лимит в билете (опционально)
+                        </label>
+                        <div className="flex-center" style={{ gap: '10px', justifyContent: 'flex-start' }}>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="Все"
+                            value={newQuizQuestionLimit || ''}
+                            onChange={(e) => setNewQuizQuestionLimit(Math.max(0, parseInt(e.target.value) || 0))}
+                            style={{ width: '100px', padding: '8px 12px', textAlign: 'center' }}
+                          />
+                          <span style={{ fontSize: '0.8rem', opacity: 0.5 }}>вопросов на 1 попытку (0 = выдавать все)</span>
                         </div>
                       </div>
 

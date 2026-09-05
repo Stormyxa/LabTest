@@ -6,14 +6,14 @@ import {
   ChevronLeft, Pencil, Check, X, Plus, Trash2, RotateCcw,
   AlertTriangle, Download, AlertCircle, Lock, BarChart2,
   GripVertical, Eye, EyeOff, Image as ImageIcon, Link as LinkIcon,
-  Upload, ChevronRight, Clock
+  Upload, ChevronRight, Clock, Layers
 } from 'lucide-react';
 import { transliterate } from '../lib/transliterate';
 import { syncGithubRenames, updateQuizzesWithNewUrls } from '../lib/githubSync';
 import { resolveImgUrl } from '../lib/imageUtils';
 import MathRenderer from '../components/MathRenderer';
 
-const MAX_QUESTIONS = 30;
+const MAX_QUESTIONS = 100;
 const MAX_OPTIONS = 6;
 const MIN_OPTIONS = 2;
 
@@ -45,6 +45,8 @@ const QuizRedactor = () => {
   const [savedResources, setSavedResources] = useState([]);
   const [timeLimit, setTimeLimit] = useState(0);
   const [savedTimeLimit, setSavedTimeLimit] = useState(0);
+  const [questionLimit, setQuestionLimit] = useState(0);
+  const [savedQuestionLimit, setSavedQuestionLimit] = useState(0);
 
   // Undo history (snapshots), max 20
   const historyRef = useRef([]);
@@ -141,6 +143,7 @@ const QuizRedactor = () => {
       
       const resList = q.resources || [];
       const tLimit = q.content?.time_limit || 0;
+      const qLimit = q.content?.question_limit || 0;
       const qs = q.content?.questions || [];
 
       setTitle(q.title);
@@ -149,6 +152,8 @@ const QuizRedactor = () => {
       setSavedResources(deepClone(resList));
       setTimeLimit(tLimit);
       setSavedTimeLimit(tLimit);
+      setQuestionLimit(qLimit);
+      setSavedQuestionLimit(qLimit);
       setSavedQuestions(deepClone(qs));
       return;
     }
@@ -156,18 +161,21 @@ const QuizRedactor = () => {
       const qs = deepClone(q.content?.questions || []);
       const resList = q.resources || [];
       const tLimit = q.content?.time_limit || 0;
+      const qLimit = q.content?.question_limit || 0;
 
       setTitle(q.title);
       setIsHidden(q.is_hidden || false);
       setQuestions(qs);
       setResources(resList);
       setTimeLimit(tLimit);
+      setQuestionLimit(qLimit);
 
       setSavedTitle(q.title);
       setSavedIsHidden(q.is_hidden || false);
       setSavedQuestions(deepClone(qs));
       setSavedResources(deepClone(resList));
       setSavedTimeLimit(tLimit);
+      setSavedQuestionLimit(qLimit);
     historyRef.current = [];
     setCanUndo(false);
     setLoading(false);
@@ -178,15 +186,17 @@ const QuizRedactor = () => {
     JSON.stringify(questions) !== JSON.stringify(savedQuestions) || 
     isHidden !== savedIsHidden ||
     JSON.stringify(resources) !== JSON.stringify(savedResources) ||
-    timeLimit !== savedTimeLimit;
+    timeLimit !== savedTimeLimit ||
+    questionLimit !== savedQuestionLimit;
 
-  const pushHistory = (prevTitle, prevQuestions, prevIsHidden, prevResources, prevTimeLimit) => {
+  const pushHistory = (prevTitle, prevQuestions, prevIsHidden, prevResources, prevTimeLimit, prevQuestionLimit) => {
     historyRef.current = [...historyRef.current.slice(-19), { 
       title: prevTitle, 
       questions: deepClone(prevQuestions),
       isHidden: prevIsHidden,
       resources: deepClone(prevResources),
-      timeLimit: prevTimeLimit
+      timeLimit: prevTimeLimit,
+      questionLimit: prevQuestionLimit !== undefined ? prevQuestionLimit : questionLimit
     }];
     setCanUndo(true);
   };
@@ -200,6 +210,7 @@ const QuizRedactor = () => {
     setIsHidden(last.isHidden);
     setResources(last.resources);
     setTimeLimit(last.timeLimit || 0);
+    setQuestionLimit(last.questionLimit || 0);
     setCanUndo(historyRef.current.length > 0);
     setEditQIdx(null); setEditOptKey(null); setEditExplIdx(null); setEditingTitle(false);
   };
@@ -210,6 +221,10 @@ const QuizRedactor = () => {
 
     if (!title.trim()) errs.push('Заголовок теста пуст');
     if (!questions.length) errs.push('Тест должен содержать хотя бы один вопрос');
+    if (questionLimit < 0) errs.push('Лимит вопросов не может быть отрицательным');
+    if (questionLimit > 0 && questionLimit > questions.length) {
+      errs.push(`Лимит вопросов (${questionLimit}) не может превышать общее число вопросов (${questions.length})`);
+    }
     
     questions.forEach((q, i) => {
       let hasQError = false;
@@ -289,7 +304,11 @@ const QuizRedactor = () => {
 
       const { error } = await supabase.from('quizzes').update({
         title: trimmedTitle,
-        content: { questions, time_limit: timeLimit > 0 ? timeLimit : null },
+        content: {
+          questions,
+          time_limit: timeLimit > 0 ? timeLimit : null,
+          question_limit: questionLimit > 0 ? questionLimit : null
+        },
         is_hidden: isHidden,
         resources: filteredResources.length > 0 ? filteredResources : null
       }).eq('id', quizId);
@@ -304,6 +323,7 @@ const QuizRedactor = () => {
       setSavedResources(deepClone(filteredResources));
       setResources(filteredResources);
       setSavedTimeLimit(timeLimit);
+      setSavedQuestionLimit(questionLimit);
       historyRef.current = [];
       setCanUndo(false);
       setShowValidErrors(false);
@@ -1264,6 +1284,52 @@ const QuizRedactor = () => {
           </div>
           <p style={{ opacity: 0.4, fontSize: '0.8rem', marginTop: '12px', marginBottom: 0 }}>
             Если оставить 0, время будет рассчитано автоматически: 25 секунд на каждый вопрос.
+          </p>
+        </div>
+
+        {/* Question Limit / Question Bank Setting */}
+        <div className="card" style={{ marginBottom: '25px', padding: '20px 25px', background: 'rgba(16, 185, 129, 0.04)', border: '1px dashed rgba(16, 185, 129, 0.2)' }}>
+          <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '15px' }}>
+            <div className="flex-center" style={{ gap: '10px', color: '#10b981' }}>
+              <Layers size={20} />
+              <span style={{ fontWeight: '700', fontSize: '1rem' }}>Банк вопросов: лимит в билете</span>
+            </div>
+            {questionLimit > 0 && !blocked && (
+              <button onClick={() => { pushHistory(title, questions, isHidden, resources, timeLimit, questionLimit); setQuestionLimit(0); }} style={{ padding: '6px 14px', fontSize: '0.85rem', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', boxShadow: 'none' }}>
+                Сбросить
+              </button>
+            )}
+          </div>
+
+          <div className="flex-center" style={{ gap: '15px', justifyContent: 'flex-start' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input 
+                type="number" 
+                min="0"
+                max={questions.length || 100}
+                placeholder="Все"
+                disabled={blocked === 'has_results'}
+                value={questionLimit || ''}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value) || 0;
+                  setQuestionLimit(Math.max(0, val));
+                }}
+                style={{ width: '90px', padding: '10px', textAlign: 'center', fontWeight: 'bold' }}
+              />
+              <span style={{ opacity: 0.5 }}>вопросов</span>
+            </div>
+            <div style={{ marginLeft: '10px', padding: '10px 15px', background: 'var(--card-bg)', borderRadius: '10px', fontSize: '0.9rem', opacity: 0.8, border: '1px solid rgba(0,0,0,0.05)' }}>
+              {questionLimit > 0 ? (
+                <>Случайная выборка: <strong>{questionLimit}</strong> из <strong>{questions.length}</strong> вопросов</>
+              ) : (
+                <>Выдавать <strong>все</strong> доступные вопросы (<strong>{questions.length}</strong> шт.)</>
+              )}
+            </div>
+          </div>
+          <p style={{ opacity: 0.4, fontSize: '0.8rem', marginTop: '12px', marginBottom: 0 }}>
+            {blocked === 'has_results' 
+              ? 'Настройки банка заблокированы, так как по тесту уже имеются результаты прохождения.'
+              : 'Если указано число (например, 10 из 50), каждому ученику при старте будет сгенерирован уникальный билет из случайных вопросов.'}
           </p>
         </div>
 

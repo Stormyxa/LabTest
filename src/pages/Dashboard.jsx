@@ -120,6 +120,17 @@ const Dashboard = ({ session, profile }) => {
   const [editingTeacher, setEditingTeacher] = useState(null);
   const [newTeacherEmail, setNewTeacherEmail] = useState('');
 
+  // Class Lifecycle & Rollover states
+  const [showArchivedClasses, setShowArchivedClasses] = useState(false);
+  const [lifecycleClass, setLifecycleClass] = useState(null);
+  const [lifecycleTab, setLifecycleTab] = useState('promote'); // 'promote' | 'archive' | 'unarchive'
+  const [promoteAction, setPromoteAction] = useState('rename'); // 'rename' | 'create_new' | 'move_existing'
+  const [targetClassName, setTargetClassName] = useState('');
+  const [targetClassId, setTargetClassId] = useState('');
+  const [archiveYear, setArchiveYear] = useState('');
+  const [unarchiveRestoreObservers, setUnarchiveRestoreObservers] = useState(false);
+  const [lifecycleLoading, setLifecycleLoading] = useState(false);
+
   useEffect(() => {
     fetchStructure();
     fetchUsers();
@@ -545,6 +556,224 @@ const Dashboard = ({ session, profile }) => {
     else fetchClassTeachers(cid);
   };
 
+  // ─── Class Lifecycle & Rollover Helpers ──────────────────────────
+  const getPromotedClassName = (name) => {
+    if (!name) return '';
+    const cleanName = name.replace(/^\[Архив\]\s*/i, '').trim();
+    const match = cleanName.match(/^(\d+)(.*)$/);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      const rest = match[2];
+      if (num >= 11) {
+        return `Выпускники (${num} кл.)`;
+      }
+      return `${num + 1}${rest}`;
+    }
+    return `${cleanName} (след. год)`;
+  };
+
+  const openLifecycleModal = (cls) => {
+    const isArchived = cls.name.startsWith('[Архив]');
+    setLifecycleClass(cls);
+    if (isArchived) {
+      setLifecycleTab('unarchive');
+    } else {
+      const match = cls.name.match(/^(\d+)/);
+      const num = match ? parseInt(match[1], 10) : 0;
+      if (num >= 11) {
+        setLifecycleTab('archive');
+      } else {
+        setLifecycleTab('promote');
+      }
+    }
+    setPromoteAction('rename');
+    setTargetClassName(getPromotedClassName(cls.name));
+    setTargetClassId('');
+    const currentYear = new Date().getFullYear();
+    setArchiveYear(`${currentYear - 1}-${currentYear}`);
+    setUnarchiveRestoreObservers(false);
+  };
+
+  const handleLifecyclePromote = async () => {
+    if (!lifecycleClass) return;
+    setLifecycleLoading(true);
+    try {
+      const cid = lifecycleClass.id;
+      const schoolId = lifecycleClass.school_id;
+      const students = users.filter(u => u.class_id === cid);
+
+      if (promoteAction === 'rename') {
+        if (!targetClassName.trim()) {
+          alert('Укажите новое название класса!');
+          setLifecycleLoading(false);
+          return;
+        }
+        const { error } = await supabase
+          .from('classes')
+          .update({ name: targetClassName.trim() })
+          .eq('id', cid);
+        if (error) throw error;
+
+        await logAction('Перевод класса (переименование)', cid, `Класс ${lifecycleClass.name} переименован в ${targetClassName.trim()} (${students.length} уч.)`);
+        setActionFeedback({
+          type: 'success',
+          message: `Класс «${lifecycleClass.name}» успешно переведён в «${targetClassName.trim()}»! Все ${students.length} учеников сохранили свой класс.`
+        });
+      } else if (promoteAction === 'create_new') {
+        if (!targetClassName.trim()) {
+          alert('Укажите название нового класса!');
+          setLifecycleLoading(false);
+          return;
+        }
+        const { data: newCls, error: createError } = await supabase
+          .from('classes')
+          .insert({
+            name: targetClassName.trim(),
+            school_id: schoolId,
+            order_index: classesList.length,
+            max_students: lifecycleClass.max_students || 50
+          })
+          .select()
+          .single();
+        if (createError) throw createError;
+
+        if (students.length > 0) {
+          const { error: moveError } = await supabase
+            .from('profiles')
+            .update({ class_id: newCls.id })
+            .eq('class_id', cid);
+          if (moveError) throw moveError;
+        }
+
+        await logAction('Перевод класса (новый класс)', newCls.id, `Создан класс ${targetClassName.trim()}, переведено ${students.length} уч. из ${lifecycleClass.name}`);
+        setActionFeedback({
+          type: 'success',
+          message: `Создан новый класс «${targetClassName.trim()}», и в него переведено ${students.length} учеников из «${lifecycleClass.name}».`
+        });
+      } else if (promoteAction === 'move_existing') {
+        if (!targetClassId) {
+          alert('Выберите целевой класс!');
+          setLifecycleLoading(false);
+          return;
+        }
+        const targetCls = classesList.find(c => c.id === targetClassId);
+        if (students.length > 0) {
+          const { error: moveError } = await supabase
+            .from('profiles')
+            .update({ class_id: targetClassId })
+            .eq('class_id', cid);
+          if (moveError) throw moveError;
+        }
+
+        await logAction('Перевод учеников в параллельный класс', targetClassId, `Переведено ${students.length} уч. из ${lifecycleClass.name} в ${targetCls?.name}`);
+        setActionFeedback({
+          type: 'success',
+          message: `${students.length} учеников переведены из «${lifecycleClass.name}» в «${targetCls?.name}».`
+        });
+      }
+
+      const cacheSuffix = profile?.role || 'anon';
+      localStorage.removeItem(`labtest_cache_classes_${cacheSuffix}`);
+      localStorage.removeItem(`labtest_cache_dashboard_users_${cacheSuffix}`);
+      localStorage.removeItem('labtest_cache_all_students_map');
+      await Promise.all([fetchStructure(), fetchUsers()]);
+      setLifecycleClass(null);
+    } catch (err) {
+      console.error('Promotion error:', err);
+      setActionFeedback({ type: 'error', message: 'Ошибка при переводе класса: ' + err.message });
+    } finally {
+      setLifecycleLoading(false);
+    }
+  };
+
+  const handleLifecycleArchive = async () => {
+    if (!lifecycleClass) return;
+    setLifecycleLoading(true);
+    try {
+      const cid = lifecycleClass.id;
+      const cleanName = lifecycleClass.name.replace(/^\[Архив\]\s*/i, '').trim();
+      const newName = `[Архив] ${cleanName}${archiveYear.trim() ? ` (${archiveYear.trim()})` : ''}`;
+
+      const { error: classError } = await supabase
+        .from('classes')
+        .update({ name: newName })
+        .eq('id', cid);
+      if (classError) throw classError;
+
+      const students = users.filter(u => u.class_id === cid);
+      if (students.length > 0) {
+        const { error: studentError } = await supabase
+          .from('profiles')
+          .update({ is_observer: true })
+          .eq('class_id', cid);
+        if (studentError) throw studentError;
+      }
+
+      await logAction('Архивация класса', cid, `Класс ${lifecycleClass.name} архивирован как ${newName}. ${students.length} уч. переведены в наблюдатели.`);
+      setActionFeedback({
+        type: 'success',
+        message: `Класс «${lifecycleClass.name}» успешно архивирован! ${students.length} учеников переведены в статус «Наблюдатель».`
+      });
+
+      const cacheSuffix = profile?.role || 'anon';
+      localStorage.removeItem(`labtest_cache_classes_${cacheSuffix}`);
+      localStorage.removeItem(`labtest_cache_dashboard_users_${cacheSuffix}`);
+      localStorage.removeItem('labtest_cache_all_students_map');
+      await Promise.all([fetchStructure(), fetchUsers()]);
+      setLifecycleClass(null);
+    } catch (err) {
+      console.error('Archival error:', err);
+      setActionFeedback({ type: 'error', message: 'Ошибка при архивации: ' + err.message });
+    } finally {
+      setLifecycleLoading(false);
+    }
+  };
+
+  const handleLifecycleUnarchive = async () => {
+    if (!lifecycleClass) return;
+    setLifecycleLoading(true);
+    try {
+      const cid = lifecycleClass.id;
+      const restoredName = lifecycleClass.name
+        .replace(/^\[Архив\]\s*/i, '')
+        .replace(/\s*\(\d{4}-\d{4}\)$/, '')
+        .trim();
+
+      const { error: classError } = await supabase
+        .from('classes')
+        .update({ name: restoredName })
+        .eq('id', cid);
+      if (classError) throw classError;
+
+      const students = users.filter(u => u.class_id === cid);
+      if (unarchiveRestoreObservers && students.length > 0) {
+        const { error: studentError } = await supabase
+          .from('profiles')
+          .update({ is_observer: false })
+          .eq('class_id', cid);
+        if (studentError) throw studentError;
+      }
+
+      await logAction('Восстановление из архива', cid, `Класс ${lifecycleClass.name} восстановлен как ${restoredName}.`);
+      setActionFeedback({
+        type: 'success',
+        message: `Класс «${restoredName}» успешно восстановлен из архива!`
+      });
+
+      const cacheSuffix = profile?.role || 'anon';
+      localStorage.removeItem(`labtest_cache_classes_${cacheSuffix}`);
+      localStorage.removeItem(`labtest_cache_dashboard_users_${cacheSuffix}`);
+      localStorage.removeItem('labtest_cache_all_students_map');
+      await Promise.all([fetchStructure(), fetchUsers()]);
+      setLifecycleClass(null);
+    } catch (err) {
+      console.error('Unarchive error:', err);
+      setActionFeedback({ type: 'error', message: 'Ошибка при восстановлении: ' + err.message });
+    } finally {
+      setLifecycleLoading(false);
+    }
+  };
+
   const fetchClassApplications = async (cid) => {
     // console.log("DEBUG: Fetching applications for class:", cid);
     const { data, error } = await supabase.from('class_applications')
@@ -849,7 +1078,9 @@ const Dashboard = ({ session, profile }) => {
                             <div style={{ display: 'grid', gap: '15px' }}>
                               {citySchools.map(school => {
                                 const isSchoolExpanded = expandedSchools[school.id];
-                                const schoolClasses = classesList.filter(c => c.school_id === school.id);
+                                const allSchoolClasses = classesList.filter(c => c.school_id === school.id);
+                                const archivedCount = allSchoolClasses.filter(c => c.name.startsWith('[Архив]')).length;
+                                const schoolClasses = allSchoolClasses.filter(c => showArchivedClasses || !c.name.startsWith('[Архив]'));
 
                                 return (
                                   <div key={school.id} className="animate" style={{ background: 'var(--card-bg)', borderRadius: '20px', border: '1px solid rgba(0, 0, 0, 0.05)', overflow: 'hidden' }}>
@@ -860,7 +1091,31 @@ const Dashboard = ({ session, profile }) => {
                                           <div style={{ fontSize: '0.7rem', opacity: 0.5 }}>Школа</div>
                                           <h4 style={{ margin: 0, fontSize: '1.05rem' }}>{school.name}</h4>
                                         </div>
-                                        <span style={{ padding: '2px 10px', background: 'rgba(0,0,0,0.05)', borderRadius: '50px', fontSize: '0.75rem', opacity: 0.6 }}>{schoolClasses.length} классов</span>
+                                        <span style={{ padding: '2px 10px', background: 'rgba(0,0,0,0.05)', borderRadius: '50px', fontSize: '0.75rem', opacity: 0.6 }}>
+                                          {schoolClasses.length} {archivedCount > 0 && !showArchivedClasses ? `(+${archivedCount} в архиве)` : 'классов'}
+                                        </span>
+                                        {archivedCount > 0 && (
+                                          <button
+                                            type="button"
+                                            onClick={(e) => { e.stopPropagation(); setShowArchivedClasses(prev => !prev); }}
+                                            style={{
+                                              background: showArchivedClasses ? 'rgba(99, 102, 241, 0.15)' : 'rgba(0,0,0,0.05)',
+                                              color: showArchivedClasses ? 'var(--primary-color)' : 'inherit',
+                                              border: 'none',
+                                              borderRadius: '8px',
+                                              padding: '4px 10px',
+                                              fontSize: '0.75rem',
+                                              cursor: 'pointer',
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              gap: '6px',
+                                              boxShadow: 'none'
+                                            }}
+                                          >
+                                            <History size={13} />
+                                            {showArchivedClasses ? `Скрыть архив (${archivedCount})` : `Архив (${archivedCount})`}
+                                          </button>
+                                        )}
                                       </div>
 
                                       {profile?.role === 'creator' && (
@@ -889,9 +1144,10 @@ const Dashboard = ({ session, profile }) => {
                                             const studentsCount = users.filter(u => u.class_id === cls.id).length;
                                             const isTeacherRole = profile?.role === 'teacher';
                                             const canManage = isTeacherRole ? teacherClasses.includes(cls.id) : true;
+                                            const isClassArchived = cls.name.startsWith('[Архив]');
 
                                             return (
-                                              <div key={cls.id} className="animate" style={{ background: 'var(--card-bg)', border: '1px solid rgba(99, 102, 241, 0.1)', borderRadius: '12px', overflow: 'hidden' }}>
+                                              <div key={cls.id} className="animate" style={{ background: isClassArchived ? 'rgba(0,0,0,0.02)' : 'var(--card-bg)', border: '1px solid rgba(99, 102, 241, 0.1)', borderRadius: '12px', overflow: 'hidden' }}>
                                                 <div className="flex-center" style={{ justifyContent: 'space-between', padding: '10px 15px' }}>
                                                   <div onClick={() => {
                                                     if (isClassExpanded) {
@@ -908,7 +1164,12 @@ const Dashboard = ({ session, profile }) => {
                                                   }} style={{ cursor: 'pointer', flex: 1 }}>
                                                     <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px' }}>
                                                       {isClassExpanded ? <ChevronDown size={14} opacity={0.5} /> : <ChevronRight size={14} opacity={0.5} />}
-                                                      <span style={{ fontWeight: '600', fontSize: '0.95rem' }}>{cls.name}</span>
+                                                      <span style={{ fontWeight: '600', fontSize: '0.95rem', opacity: isClassArchived ? 0.7 : 1 }}>{cls.name}</span>
+                                                      {isClassArchived && (
+                                                        <span style={{ padding: '2px 6px', background: 'rgba(107, 114, 128, 0.15)', color: '#6b7280', borderRadius: '6px', fontSize: '0.65rem', fontWeight: 'bold' }}>
+                                                          АРХИВ
+                                                        </span>
+                                                      )}
                                                       <div className="flex-center" style={{ gap: '5px', opacity: 0.5, fontSize: '0.75rem' }}>
                                                         <Users size={12} /> {studentsCount} / {cls.max_students || 50}
                                                         {cls.max_students && studentsCount > cls.max_students && <AlertTriangle size={12} color="red" />}
@@ -928,6 +1189,24 @@ const Dashboard = ({ session, profile }) => {
 
                                                     {canManage && (
                                                       <>
+                                                        <button
+                                                          onClick={() => openLifecycleModal(cls)}
+                                                          style={{
+                                                            background: isClassArchived ? 'rgba(107, 114, 128, 0.1)' : 'rgba(16, 185, 129, 0.1)',
+                                                            color: isClassArchived ? '#4b5563' : '#059669',
+                                                            padding: '4px 10px',
+                                                            borderRadius: '8px',
+                                                            boxShadow: 'none',
+                                                            display: 'flex',
+                                                            gap: '5px',
+                                                            alignItems: 'center',
+                                                            fontSize: '0.75rem',
+                                                            fontWeight: '600'
+                                                          }}
+                                                          title="Жизненный цикл класса (перевод, выпуск, архив)"
+                                                        >
+                                                          <GraduationCap size={14} /> {isClassArchived ? 'Архив / Возврат' : 'Перевод / Выпуск'}
+                                                        </button>
                                                         <button onClick={() => { setShowApplicationsModal(cls); fetchClassApplications(cls.id); }} style={{ background: 'rgba(99,102,241,0.1)', color: 'var(--primary-color)', padding: '4px 10px', borderRadius: '8px', boxShadow: 'none', display: 'flex', gap: '5px', alignItems: 'center', fontSize: '0.75rem' }}>
                                                           <UserPlus size={14} /> Заявки
                                                         </button>
@@ -1506,6 +1785,246 @@ const Dashboard = ({ session, profile }) => {
                 <button type="submit" style={{ background: 'var(--primary-color)', color: 'white' }}>Сохранить</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* МОДАЛКА ЖИЗНЕННОГО ЦИКЛА КЛАССА */}
+      {lifecycleClass && (
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) e.target.dataset.md = "true" }} onMouseUp={(e) => { if (e.target === e.currentTarget && e.target.dataset.md === "true") { e.target.dataset.md = "false"; if (!lifecycleLoading) setLifecycleClass(null); } }}>
+          <div className="modal-content animate" style={{ width: '560px', maxWidth: '95vw', padding: '30px' }} onClick={e => e.stopPropagation()}>
+            <div className="flex-center" style={{ justifyContent: 'space-between', marginBottom: '20px' }}>
+              <div className="flex-center" style={{ gap: '10px' }}>
+                <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'rgba(16, 185, 129, 0.1)', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <GraduationCap size={22} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.2rem' }}>Жизненный цикл класса</h3>
+                  <div style={{ fontSize: '0.85rem', opacity: 0.6 }}>
+                    Класс: <strong>{lifecycleClass.name}</strong> • {users.filter(u => u.class_id === lifecycleClass.id).length} учеников
+                  </div>
+                </div>
+              </div>
+              <button disabled={lifecycleLoading} onClick={() => setLifecycleClass(null)} style={{ background: 'transparent', color: 'inherit', padding: 0 }}><X size={22} /></button>
+            </div>
+
+            {/* Вкладки: Перевод / Архивация (или Восстановление) */}
+            <div style={{ display: 'flex', gap: '8px', background: 'rgba(0,0,0,0.04)', padding: '5px', borderRadius: '12px', marginBottom: '25px' }}>
+              <button
+                type="button"
+                onClick={() => setLifecycleTab('promote')}
+                style={{
+                  flex: 1,
+                  padding: '9px',
+                  borderRadius: '9px',
+                  fontSize: '0.85rem',
+                  fontWeight: '600',
+                  border: 'none',
+                  background: lifecycleTab === 'promote' ? 'var(--card-bg)' : 'transparent',
+                  color: lifecycleTab === 'promote' ? 'var(--primary-color)' : 'inherit',
+                  boxShadow: lifecycleTab === 'promote' ? '0 2px 8px rgba(0,0,0,0.08)' : 'none'
+                }}
+              >
+                🎓 Перевод на след. год
+              </button>
+              <button
+                type="button"
+                onClick={() => setLifecycleTab('archive')}
+                style={{
+                  flex: 1,
+                  padding: '9px',
+                  borderRadius: '9px',
+                  fontSize: '0.85rem',
+                  fontWeight: '600',
+                  border: 'none',
+                  background: lifecycleTab === 'archive' ? 'var(--card-bg)' : 'transparent',
+                  color: lifecycleTab === 'archive' ? '#dc2626' : 'inherit',
+                  boxShadow: lifecycleTab === 'archive' ? '0 2px 8px rgba(0,0,0,0.08)' : 'none'
+                }}
+              >
+                📦 Выпуск / Архив
+              </button>
+              {lifecycleClass.name.startsWith('[Архив]') && (
+                <button
+                  type="button"
+                  onClick={() => setLifecycleTab('unarchive')}
+                  style={{
+                    flex: 1,
+                    padding: '9px',
+                    borderRadius: '9px',
+                    fontSize: '0.85rem',
+                    fontWeight: '600',
+                    border: 'none',
+                    background: lifecycleTab === 'unarchive' ? 'var(--card-bg)' : 'transparent',
+                    color: lifecycleTab === 'unarchive' ? '#16a34a' : 'inherit',
+                    boxShadow: lifecycleTab === 'unarchive' ? '0 2px 8px rgba(0,0,0,0.08)' : 'none'
+                  }}
+                >
+                  🔄 Восстановление
+                </button>
+              )}
+            </div>
+
+            {/* TAB: PROMOTE */}
+            {lifecycleTab === 'promote' && (
+              <div>
+                <div style={{ marginBottom: '20px', padding: '12px 16px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '12px', border: '1px solid rgba(99, 102, 241, 0.15)', fontSize: '0.88rem', lineHeight: '1.5' }}>
+                  Перевод поднимает параллель на класс выше (например, <strong>8А → 9А</strong>). Все ученики и история сохраняются.
+                </div>
+
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={{ fontSize: '0.85rem', fontWeight: '600', display: 'block', marginBottom: '10px' }}>
+                    Стратегия перевода:
+                  </label>
+                  <div style={{ display: 'grid', gap: '10px' }}>
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '12px', borderRadius: '10px', border: promoteAction === 'rename' ? '1px solid var(--primary-color)' : '1px solid rgba(0,0,0,0.08)', background: promoteAction === 'rename' ? 'rgba(99, 102, 241, 0.04)' : 'transparent', cursor: 'pointer' }}>
+                      <input type="radio" name="promoteAction" checked={promoteAction === 'rename'} onChange={() => setPromoteAction('rename')} style={{ marginTop: '3px' }} />
+                      <div>
+                        <div style={{ fontWeight: '600', fontSize: '0.9rem' }}>Переименовать этот класс (Рекомендуется)</div>
+                        <div style={{ fontSize: '0.78rem', opacity: 0.6, marginTop: '2px' }}>Класс получает новое имя. Все ученики остаются в нём, история и привязка к учителю не меняются.</div>
+                      </div>
+                    </label>
+
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '12px', borderRadius: '10px', border: promoteAction === 'create_new' ? '1px solid var(--primary-color)' : '1px solid rgba(0,0,0,0.08)', background: promoteAction === 'create_new' ? 'rgba(99, 102, 241, 0.04)' : 'transparent', cursor: 'pointer' }}>
+                      <input type="radio" name="promoteAction" checked={promoteAction === 'create_new'} onChange={() => setPromoteAction('create_new')} style={{ marginTop: '3px' }} />
+                      <div>
+                        <div style={{ fontWeight: '600', fontSize: '0.9rem' }}>Создать новый класс и перевести учеников</div>
+                        <div style={{ fontSize: '0.78rem', opacity: 0.6, marginTop: '2px' }}>Будет создан новый класс, все {users.filter(u => u.class_id === lifecycleClass.id).length} уч. перемещены в него. Старый класс останется пустым.</div>
+                      </div>
+                    </label>
+
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '12px', borderRadius: '10px', border: promoteAction === 'move_existing' ? '1px solid var(--primary-color)' : '1px solid rgba(0,0,0,0.08)', background: promoteAction === 'move_existing' ? 'rgba(99, 102, 241, 0.04)' : 'transparent', cursor: 'pointer' }}>
+                      <input type="radio" name="promoteAction" checked={promoteAction === 'move_existing'} onChange={() => setPromoteAction('move_existing')} style={{ marginTop: '3px' }} />
+                      <div>
+                        <div style={{ fontWeight: '600', fontSize: '0.9rem' }}>Перевести в существующий класс</div>
+                        <div style={{ fontSize: '0.78rem', opacity: 0.6, marginTop: '2px' }}>Объединить состав с другим существующим классом в этой школе.</div>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                {promoteAction !== 'move_existing' ? (
+                  <div style={{ marginBottom: '25px' }}>
+                    <label style={{ fontSize: '0.85rem', fontWeight: '600', display: 'block', marginBottom: '8px' }}>
+                      Название класса после перевода:
+                    </label>
+                    <input
+                      type="text"
+                      value={targetClassName}
+                      onChange={e => setTargetClassName(e.target.value)}
+                      placeholder="Например: 9А"
+                      style={{ width: '100%', padding: '10px 14px', fontSize: '0.95rem' }}
+                    />
+                  </div>
+                ) : (
+                  <div style={{ marginBottom: '25px' }}>
+                    <label style={{ fontSize: '0.85rem', fontWeight: '600', display: 'block', marginBottom: '8px' }}>
+                      Целевой существующий класс:
+                    </label>
+                    <select
+                      value={targetClassId}
+                      onChange={e => setTargetClassId(e.target.value)}
+                      style={{ width: '100%', padding: '10px 14px', fontSize: '0.95rem' }}
+                    >
+                      <option value="" disabled>-- Выберите класс для перевода --</option>
+                      {classesList.filter(c => c.school_id === lifecycleClass.school_id && c.id !== lifecycleClass.id).map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                  <button type="button" disabled={lifecycleLoading} onClick={() => setLifecycleClass(null)} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>
+                    Отмена
+                  </button>
+                  <button type="button" disabled={lifecycleLoading} onClick={handleLifecyclePromote} style={{ background: 'var(--primary-color)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                    {lifecycleLoading && <RefreshCw size={14} className="spinner" />}
+                    Выполнить перевод
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* TAB: ARCHIVE */}
+            {lifecycleTab === 'archive' && (
+              <div>
+                <div style={{ marginBottom: '20px', padding: '14px 18px', background: 'rgba(239, 68, 68, 0.06)', borderRadius: '12px', border: '1px solid rgba(239, 68, 68, 0.2)', fontSize: '0.88rem', lineHeight: '1.5' }}>
+                  <div style={{ fontWeight: '700', color: '#dc2626', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <AlertTriangle size={16} /> Выпуск и Архивация класса
+                  </div>
+                  <div>
+                    • Класс будет переименован с префиксом <strong>[Архив]</strong> и скрыт из основного списка классов.<br />
+                    • Все <strong>{users.filter(u => u.class_id === lifecycleClass.id).length} учеников</strong> получат статус <strong>«Наблюдатель»</strong> (их оценки перестанут влиять на текущие средние баллы школы).<br />
+                    • Профили и результаты тестов выпускников сохраняются в полном объёме!
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: '25px' }}>
+                  <label style={{ fontSize: '0.85rem', fontWeight: '600', display: 'block', marginBottom: '8px' }}>
+                    Учебный год выпуска (опционально):
+                  </label>
+                  <input
+                    type="text"
+                    value={archiveYear}
+                    onChange={e => setArchiveYear(e.target.value)}
+                    placeholder="Например: 2024-2025"
+                    style={{ width: '100%', padding: '10px 14px', fontSize: '0.95rem' }}
+                  />
+                  <div style={{ fontSize: '0.78rem', opacity: 0.5, marginTop: '6px' }}>
+                    Итоговое имя: <strong>[Архив] {lifecycleClass.name.replace(/^\[Архив\]\s*/i, '')}{archiveYear.trim() ? ` (${archiveYear.trim()})` : ''}</strong>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                  <button type="button" disabled={lifecycleLoading} onClick={() => setLifecycleClass(null)} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>
+                    Отмена
+                  </button>
+                  <button type="button" disabled={lifecycleLoading} onClick={handleLifecycleArchive} style={{ background: '#dc2626', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                    {lifecycleLoading && <RefreshCw size={14} className="spinner" />}
+                    Архивировать класс
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* TAB: UNARCHIVE */}
+            {lifecycleTab === 'unarchive' && (
+              <div>
+                <div style={{ marginBottom: '20px', padding: '14px 18px', background: 'rgba(34, 197, 94, 0.06)', borderRadius: '12px', border: '1px solid rgba(34, 197, 94, 0.2)', fontSize: '0.88rem', lineHeight: '1.5' }}>
+                  <div style={{ fontWeight: '700', color: '#16a34a', marginBottom: '6px' }}>
+                    Восстановление класса из архива
+                  </div>
+                  <div>
+                    Префикс <strong>[Архив]</strong> будет удалён, и класс снова появится в активном списке школы.
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: '25px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '10px 14px', background: 'rgba(0,0,0,0.03)', borderRadius: '10px' }}>
+                    <input
+                      type="checkbox"
+                      checked={unarchiveRestoreObservers}
+                      onChange={e => setUnarchiveRestoreObservers(e.target.checked)}
+                      style={{ width: '18px', height: '18px' }}
+                    />
+                    <span style={{ fontSize: '0.88rem', fontWeight: '500' }}>
+                      Снять статус «Наблюдатель» с учеников этого класса (снова учитывать в аналитике)
+                    </span>
+                  </label>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                  <button type="button" disabled={lifecycleLoading} onClick={() => setLifecycleClass(null)} style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none' }}>
+                    Отмена
+                  </button>
+                  <button type="button" disabled={lifecycleLoading} onClick={handleLifecycleUnarchive} style={{ background: '#16a34a', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                    {lifecycleLoading && <RefreshCw size={14} className="spinner" />}
+                    Восстановить класс
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
