@@ -530,10 +530,24 @@ const QuizView = ({ session, profile }) => {
       // Try to restore shuffled structure from cache
       const structureKey = `quiz_structure_${data.id}`;
       const sessionKey = `quiz_session_struct_${data.id}`;
+      const isFresh = new URLSearchParams(window.location.search).get('fresh') === '1';
+      if (isFresh) {
+        sessionStorage.removeItem(sessionKey);
+        localStorage.removeItem(structureKey);
+        localStorage.removeItem(`quiz_show_result_${data.id}`);
+        localStorage.removeItem(`quiz_answers_${data.id}`);
+        localStorage.removeItem(`quiz_current_idx_${data.id}`);
+        localStorage.removeItem(`quiz_times_${data.id}`);
+        localStorage.removeItem(`quiz_start_time_${data.id}`);
+        localStorage.removeItem(`quiz_timer_${data.id}`);
+        localStorage.removeItem(`guest_quiz_saved_${data.id}`);
+        localStorage.removeItem(`guest_quiz_result_${data.id}`);
+        localStorage.removeItem(`quiz_expired_notice_${data.id}`);
+      }
       let finalQuestions = null;
 
       // 1. Try sessionStorage first (highest priority for tab stability)
-      const sessionStructure = sessionStorage.getItem(sessionKey);
+      const sessionStructure = isFresh ? null : sessionStorage.getItem(sessionKey);
       if (sessionStructure) {
         try { finalQuestions = JSON.parse(sessionStructure); } catch (e) { }
       }
@@ -675,7 +689,6 @@ const QuizView = ({ session, profile }) => {
       }
 
       const showResultKey = `quiz_show_result_${data.id}`;
-      const isFresh = new URLSearchParams(window.location.search).get('fresh') === '1';
       if (localStorage.getItem(showResultKey) === 'true' && !isFresh) {
         setShowResult(true);
       } else {

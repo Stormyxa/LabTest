@@ -1419,23 +1419,18 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
             {filterQuiz && (targetUser?.id === profile?.id || !targetUser) && (
               <button
                 onClick={() => {
-                  const raw = localStorage.getItem(`quiz_timer_${filterQuiz}`);
-                  let resuming = false;
-                  try {
-                    const p = JSON.parse(raw);
-                    resuming = p && (p.endTime || (p.ts + (p.timeLeft || 0) * 1000)) > Date.now();
-                  } catch {}
-                  if (!resuming) {
-                    localStorage.removeItem(`quiz_answers_${filterQuiz}`);
-                    localStorage.removeItem(`quiz_current_idx_${filterQuiz}`);
-                    localStorage.removeItem(`quiz_times_${filterQuiz}`);
-                    localStorage.removeItem(`quiz_start_time_${filterQuiz}`);
-                    localStorage.removeItem(`quiz_timer_${filterQuiz}`);
-                    localStorage.removeItem(`guest_quiz_saved_${filterQuiz}`);
-                    localStorage.removeItem(`guest_quiz_result_${filterQuiz}`);
-                    localStorage.removeItem(`quiz_expired_notice_${filterQuiz}`);
-                  }
-                  navigate(`/quiz/${filterQuiz}`);
+                  localStorage.removeItem(`quiz_show_result_${filterQuiz}`);
+                  localStorage.removeItem(`quiz_structure_${filterQuiz}`);
+                  sessionStorage.removeItem(`quiz_session_struct_${filterQuiz}`);
+                  localStorage.removeItem(`quiz_answers_${filterQuiz}`);
+                  localStorage.removeItem(`quiz_current_idx_${filterQuiz}`);
+                  localStorage.removeItem(`quiz_times_${filterQuiz}`);
+                  localStorage.removeItem(`quiz_start_time_${filterQuiz}`);
+                  localStorage.removeItem(`quiz_timer_${filterQuiz}`);
+                  localStorage.removeItem(`guest_quiz_saved_${filterQuiz}`);
+                  localStorage.removeItem(`guest_quiz_result_${filterQuiz}`);
+                  localStorage.removeItem(`quiz_expired_notice_${filterQuiz}`);
+                  navigate(`/quiz/${filterQuiz}?fresh=1`);
                 }}
                 className="flex-center"
                 style={{
@@ -1449,7 +1444,7 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
                   fontSize: '0.9rem',
                   cursor: 'pointer'
                 }}
-                title="Пройти этот тест"
+                title="Пройти этот тест заново"
               >
                 <Play size={16} fill="currentColor" /> Пройти тест
               </button>
