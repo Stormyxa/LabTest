@@ -5,10 +5,10 @@
 
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
 const CANDIDATE_MODELS = [
-  'gemini-2.5-flash',
+  'gemini-3.8-flash',
   'gemini-3.7-flash',
   'gemini-3.5-flash',
-  'gemini-3.8-flash'
+  'gemini-2.5-flash'
 ];
 
 // Polyfill URL.parse for compatibility with all browsers
