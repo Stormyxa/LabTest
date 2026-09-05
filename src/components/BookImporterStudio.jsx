@@ -295,114 +295,129 @@ const BookImporterStudio = ({
         setCurrentIndex(i);
 
         // Update item status to generating
-        setRoadmap(prev => prev.map((it, idx) => idx === i ? { ...it, status: 'generating' } : it));
+        setRoadmap(prev => prev.map((it, idx) => idx === i ? { ...it, status: 'generating', error: null } : it));
 
-        if (item.type === 'divider') {
-          // ── Create Divider in Supabase ──
-          setCurrentStatus(`Создание разделителя: ${item.title}...`);
-          const { data: dividerData, error: divErr } = await supabase.from('quizzes').insert({
-            title: item.title.trim(),
-            section_id: targetSectionId,
-            author_id: session.user.id,
-            is_personal: isPersonal,
-            is_verified: true,
-            sort_order: currentSortOrder++,
-            content: {
-              is_divider: true,
-              divider_text: item.title.trim()
+        try {
+          if (item.type === 'divider') {
+            // ── Create Divider in Supabase ──
+            setCurrentStatus(`Создание разделителя: ${item.title}...`);
+            const { data: dividerData, error: divErr } = await supabase.from('quizzes').insert({
+              title: item.title.trim(),
+              section_id: targetSectionId,
+              author_id: session.user.id,
+              is_personal: isPersonal,
+              is_verified: true,
+              sort_order: currentSortOrder++,
+              content: {
+                is_divider: true,
+                divider_text: item.title.trim()
+              }
+            }).select().single();
+
+            if (divErr) throw divErr;
+
+            setRoadmap(prev => prev.map((it, idx) => idx === i ? {
+              ...it,
+              status: 'completed',
+              createdQuizId: dividerData?.id
+            } : it));
+
+            setCreatedQuizzes(prev => [...prev, { title: item.title, id: dividerData.id, isDivider: true }]);
+          } else {
+            // ── Create Quiz: Extract Pages -> Gemini -> YouTube -> Supabase ──
+            setCurrentStatus(`[1/3] Чтение страниц ${item.startPage}–${item.endPage} из PDF...`);
+
+            const { fullText: paragraphText } = await extractPdfText(
+              source,
+              parseInt(item.startPage) || 1,
+              parseInt(item.endPage) || 1
+            );
+
+            if (!paragraphText.trim()) {
+              throw new Error(`Не удалось прочитать текст на страницах ${item.startPage}–${item.endPage}.`);
             }
-          }).select().single();
 
-          if (divErr) throw divErr;
+            setCurrentStatus(`[2/3] Gemini Flash: генерация академического теста (${questionsPerQuiz} вопр.)...`);
 
-          setRoadmap(prev => prev.map((it, idx) => idx === i ? {
-            ...it,
-            status: 'completed',
-            createdQuizId: dividerData?.id
-          } : it));
+            const quizObj = await generateQuizForParagraph(
+              paragraphText,
+              item.title,
+              {
+                questionsCount: questionsPerQuiz,
+                questionLimit: questionLimit,
+                authorName,
+                preferredModel: selectedModel
+              },
+              activeApiKey
+            );
 
-          setCreatedQuizzes(prev => [...prev, { title: item.title, id: dividerData.id, isDivider: true }]);
-        } else {
-          // ── Create Quiz: Extract Pages -> Gemini -> YouTube -> Supabase ──
-          setCurrentStatus(`[1/3] Чтение страниц ${item.startPage}–${item.endPage} из PDF...`);
+            let youtubeResources = [];
+            if (searchYoutube) {
+              setCurrentStatus(`[2.5/3] Поиск обучающего видео на YouTube...`);
+              try {
+                youtubeResources = await searchYouTubeVideo(item.title, currentSection?.name || 'История Казахстана', activeApiKey, selectedModel);
+              } catch (ytErr) {
+                console.warn('YouTube search skipped due to error:', ytErr);
+              }
+            }
 
-          const { fullText: paragraphText } = await extractPdfText(
-            source,
-            parseInt(item.startPage) || 1,
-            parseInt(item.endPage) || 1
-          );
+            setCurrentStatus(`[3/3] Сохранение теста в базу LabTest...`);
 
-          if (!paragraphText.trim()) {
-            throw new Error(`Не удалось прочитать текст на страницах ${item.startPage}–${item.endPage}.`);
+            const { data: createdQuiz, error: quizErr } = await supabase.from('quizzes').insert({
+              title: item.title.trim(),
+              section_id: targetSectionId,
+              author_id: session.user.id,
+              is_personal: isPersonal,
+              is_verified: true,
+              is_hidden: !autoPublish,
+              sort_order: currentSortOrder++,
+              content: {
+                questions: quizObj.questions,
+                time_limit: null,
+                question_limit: questionLimit > 0 ? questionLimit : null
+              },
+              resources: youtubeResources.length > 0 ? youtubeResources : null
+            }).select().single();
+
+            if (quizErr) throw quizErr;
+
+            setRoadmap(prev => prev.map((it, idx) => idx === i ? {
+              ...it,
+              status: 'completed',
+              createdQuizId: createdQuiz.id
+            } : it));
+
+            setCreatedQuizzes(prev => [...prev, {
+              title: item.title,
+              id: createdQuiz.id,
+              questionsCount: quizObj.questions.length,
+              isDivider: false
+            }]);
           }
 
-          setCurrentStatus(`[2/3] Gemini Flash: генерация академического теста (${questionsPerQuiz} вопр.)...`);
-
-          const quizObj = await generateQuizForParagraph(
-            paragraphText,
-            item.title,
-            {
-              questionsCount: questionsPerQuiz,
-              questionLimit: questionLimit,
-              authorName,
-              preferredModel: selectedModel
-            },
-            activeApiKey
-          );
-
-          let youtubeResources = [];
-          if (searchYoutube) {
-            setCurrentStatus(`[2.5/3] Поиск обучающего видео на YouTube...`);
-            youtubeResources = await searchYouTubeVideo(item.title, currentSection?.name || 'История Казахстана', activeApiKey, selectedModel);
+          // Delay between requests for 15 RPM safety
+          if (i < roadmap.length - 1 && !abortRef.current) {
+            setCurrentStatus(`Пауза безопасности для соблюдения лимитов (15 RPM)...`);
+            await waitWithCountdown(rateLimitDelaySec);
           }
-
-          setCurrentStatus(`[3/3] Сохранение теста в базу LabTest...`);
-
-          const { data: createdQuiz, error: quizErr } = await supabase.from('quizzes').insert({
-            title: item.title.trim(),
-            section_id: targetSectionId,
-            author_id: session.user.id,
-            is_personal: isPersonal,
-            is_verified: true,
-            is_hidden: !autoPublish,
-            sort_order: currentSortOrder++,
-            content: {
-              questions: quizObj.questions,
-              time_limit: null,
-              question_limit: questionLimit > 0 ? questionLimit : null
-            },
-            resources: youtubeResources.length > 0 ? youtubeResources : null
-          }).select().single();
-
-          if (quizErr) throw quizErr;
-
+        } catch (itemErr) {
+          console.error(`Ошибка при создании "${item.title}":`, itemErr);
+          const friendlyMsg = itemErr.message || 'Ошибка обработки';
           setRoadmap(prev => prev.map((it, idx) => idx === i ? {
             ...it,
-            status: 'completed',
-            createdQuizId: createdQuiz.id
+            status: 'error',
+            error: friendlyMsg
           } : it));
-
-          setCreatedQuizzes(prev => [...prev, {
-            title: item.title,
-            id: createdQuiz.id,
-            questionsCount: quizObj.questions.length,
-            isDivider: false
-          }]);
-        }
-
-        // Delay between requests for 15 RPM safety
-        if (i < roadmap.length - 1 && !abortRef.current) {
-          setCurrentStatus(`Пауза безопасности для соблюдения лимитов (15 RPM)...`);
-          await waitWithCountdown(rateLimitDelaySec);
+          setCurrentStatus(`⚠️ Пропуск "${item.title}": ${friendlyMsg}. Переход к следующему параграфу...`);
+          await new Promise(r => setTimeout(r, 1500));
         }
       }
 
-      setCurrentStatus('🎉 Все выбранные тесты и разделители успешно загружены в платформу!');
+      setCurrentStatus('🎉 Все выбранные тесты и разделители успешно обработаны!');
       if (onComplete) onComplete();
     } catch (err) {
       console.error('Pipeline Error:', err);
       setErrorMessage(err.message || 'Ошибка во время работы конвейера.');
-      setRoadmap(prev => prev.map((it, idx) => idx === currentIndex ? { ...it, status: 'error', error: err.message } : it));
     } finally {
       setIsRunning(false);
       setCountdown(0);
@@ -1046,21 +1061,45 @@ const BookImporterStudio = ({
           {/* Action Buttons */}
           <div className="flex-center" style={{ gap: '12px', justifyContent: 'flex-start', flexWrap: 'wrap' }}>
             {!isRunning ? (
-              <button
-                onClick={handleStartPipeline}
-                style={{
-                  padding: '12px 28px',
-                  borderRadius: '12px',
-                  fontWeight: '700',
-                  background: 'linear-gradient(135deg, #059669, #10b981)',
-                  color: 'white',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}
-              >
-                <Play size={18} /> Запустить конвейер генерации
-              </button>
+              <>
+                <button
+                  onClick={handleStartPipeline}
+                  style={{
+                    padding: '12px 28px',
+                    borderRadius: '12px',
+                    fontWeight: '700',
+                    background: 'linear-gradient(135deg, #059669, #10b981)',
+                    color: 'white',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}
+                >
+                  <Play size={18} /> Запустить конвейер генерации
+                </button>
+
+                {roadmap.some(i => i.status === 'error') && (
+                  <button
+                    onClick={() => {
+                      setRoadmap(prev => prev.map(item => item.status === 'error' ? { ...item, status: 'pending', error: null } : item));
+                      setErrorMessage(null);
+                    }}
+                    style={{
+                      padding: '12px 20px',
+                      borderRadius: '12px',
+                      fontWeight: '600',
+                      background: 'rgba(239, 68, 68, 0.1)',
+                      color: '#dc2626',
+                      border: '1px solid rgba(239, 68, 68, 0.3)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}
+                  >
+                    <RefreshCw size={16} /> Повторить элементы с ошибками ({roadmap.filter(i => i.status === 'error').length})
+                  </button>
+                )}
+              </>
             ) : (
               <>
                 <button

@@ -7,9 +7,10 @@ const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models'
 
 export const CANDIDATE_MODELS = [
   'gemini-3.8-flash',
+  'gemini-2.5-flash',
   'gemini-3.7-flash',
   'gemini-3.5-flash',
-  'gemini-2.5-flash'
+  'gemini-flash-latest'
 ];
 
 export const DEFAULT_MODEL = 'gemini-3.8-flash';
@@ -43,18 +44,24 @@ export async function getPdfJs() {
  */
 export async function extractPdfText(source, startPage = 1, endPage = null, onProgress = null) {
   const pdfjs = await getPdfJs();
-  let loadingTask;
-
-  if (source instanceof File) {
-    const arrayBuffer = await source.arrayBuffer();
-    loadingTask = pdfjs.getDocument({ data: arrayBuffer });
-  } else if (typeof source === 'string') {
-    loadingTask = pdfjs.getDocument(source);
-  } else {
-    throw new Error('Неверный источник PDF.');
+  let pdfDoc;
+  try {
+    let loadingTask;
+    if (source instanceof File) {
+      const arrayBuffer = await source.arrayBuffer();
+      loadingTask = pdfjs.getDocument({ data: arrayBuffer });
+    } else if (typeof source === 'string') {
+      loadingTask = pdfjs.getDocument(source);
+    } else {
+      throw new Error('Неверный источник PDF.');
+    }
+    pdfDoc = await loadingTask.promise;
+  } catch (pdfErr) {
+    if (typeof source === 'string') {
+      throw new Error(`Не удалось прочитать PDF по веб-ссылке (${pdfErr.message || 'ошибка структуры/CORS'}). Прикрепите локальный PDF-файл с диска в Блоке 2.`);
+    }
+    throw new Error(`Ошибка открытия PDF: ${pdfErr.message}`);
   }
-
-  const pdfDoc = await loadingTask.promise;
   const numPages = pdfDoc.numPages;
   const from = Math.max(1, startPage);
   const to = endPage ? Math.min(numPages, endPage) : numPages;
@@ -96,18 +103,24 @@ export async function extractPdfText(source, startPage = 1, endPage = null, onPr
  */
 export async function detectTocPages(source, onProgress = null) {
   const pdfjs = await getPdfJs();
-  let loadingTask;
-
-  if (source instanceof File) {
-    const arrayBuffer = await source.arrayBuffer();
-    loadingTask = pdfjs.getDocument({ data: arrayBuffer });
-  } else if (typeof source === 'string') {
-    loadingTask = pdfjs.getDocument(source);
-  } else {
-    throw new Error('Неверный источник PDF.');
+  let pdfDoc;
+  try {
+    let loadingTask;
+    if (source instanceof File) {
+      const arrayBuffer = await source.arrayBuffer();
+      loadingTask = pdfjs.getDocument({ data: arrayBuffer });
+    } else if (typeof source === 'string') {
+      loadingTask = pdfjs.getDocument(source);
+    } else {
+      throw new Error('Неверный источник PDF.');
+    }
+    pdfDoc = await loadingTask.promise;
+  } catch (pdfErr) {
+    if (typeof source === 'string') {
+      throw new Error(`Не удалось прочитать PDF по веб-ссылке (${pdfErr.message || 'ошибка структуры/CORS'}). Прикрепите файл PDF с диска или вставьте текст содержания.`);
+    }
+    throw new Error(`Ошибка открытия PDF: ${pdfErr.message}`);
   }
-
-  const pdfDoc = await loadingTask.promise;
   const numPages = pdfDoc.numPages;
 
   // Pages to probe: first 15 pages and last 10 pages
@@ -206,7 +219,8 @@ async function callGemini(prompt, apiKey, systemInstruction = '', preferredModel
       ],
       generationConfig: {
         temperature: 0.2,
-        maxOutputTokens: 8192
+        maxOutputTokens: 16384,
+        responseMimeType: useSearch ? undefined : 'application/json'
       }
     };
 
@@ -230,30 +244,20 @@ async function callGemini(prompt, apiKey, systemInstruction = '', preferredModel
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
         const rawMessage = errData.error?.message || errData.error?.status || `HTTP ${res.status}`;
-        const isTemporaryUnavailable =
-          res.status === 503 ||
-          res.status === 500 ||
-          res.status === 404 ||
-          String(rawMessage).includes('demand') ||
-          String(rawMessage).includes('UNAVAILABLE') ||
-          String(rawMessage).includes('capacity') ||
-          String(rawMessage).includes('overloaded');
-
-        if (isTemporaryUnavailable) {
-          console.warn(`[Gemini Fallback] Модель ${model} временно недоступна (${rawMessage}). Переключаемся на следующую модель...`);
-          lastError = new Error(`Модель ${model} перегружена: ${rawMessage}`);
-          continue;
-        }
-
-        if (res.status === 429) {
-          throw new Error('Превышен лимит запросов Gemini (Rate Limit 429). Пожалуйста, подождите несколько секунд.');
-        }
-
-        throw new Error(`Gemini API Error (${model}): ${rawMessage}`);
+        console.warn(`[Gemini Fallback] Модель ${model} вернула ошибку (${res.status}: ${rawMessage}). Переключаемся на следующую модель...`);
+        lastError = new Error(`Модель ${model} (${res.status}): ${rawMessage}`);
+        continue;
       }
 
       const data = await res.json();
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      const candidate = data.candidates?.[0];
+      const parts = candidate?.content?.parts || [];
+      // Join all text parts, ignoring internal thought/reasoning signatures
+      const text = parts
+        .map(p => p.text || '')
+        .filter(Boolean)
+        .join('');
+
       if (!text) {
         throw new Error(`Пустой ответ от модели ${model}.`);
       }
@@ -261,18 +265,9 @@ async function callGemini(prompt, apiKey, systemInstruction = '', preferredModel
       return text;
     } catch (fetchErr) {
       const errMsg = fetchErr.message || '';
-      if (errMsg.includes('429') || errMsg.includes('Лимит')) {
-        throw fetchErr;
-      }
-
-      // If it is our fallback signal, keep trying
-      if (errMsg.includes('перегружена') || errMsg.includes('UNAVAILABLE') || errMsg.includes('demand')) {
-        lastError = fetchErr;
-        continue;
-      }
-
+      console.warn(`[Gemini Fallback] Ошибка при обращении к ${model}: ${errMsg}. Пробуем следующую модель...`);
       lastError = fetchErr;
-      console.warn(`Ошибка запроса к ${model}:`, errMsg);
+      continue;
     }
   }
 
@@ -311,16 +306,51 @@ function cleanAndParseJson(raw) {
     } catch {}
   }
 
-  // 4. Relaxed cleanup for quotes and trailing commas
+  // 4. Relaxed cleanup for quotes, trailing commas, and unescaped linebreaks
   try {
     const cleaned = str
       .replace(/,\s*([\]}])/g, '$1')
       .replace(/[\u201C\u201D]/g, '"')
       .replace(/[\u2018\u2019]/g, "'");
     return JSON.parse(cleaned);
-  } catch (finalErr) {
+  } catch (err) {
+    // 5. Auto-repair truncated JSON: if model stopped mid-string (Unterminated string)
+    try {
+      let repaired = str.trim();
+      // If ends with unclosed string, close the string quote
+      const quotesCount = (repaired.match(/(?<!\\)"/g) || []).length;
+      if (quotesCount % 2 !== 0) {
+        repaired += '"';
+      }
+
+      // 5a. If questions array was cut off, try slicing back to the last complete question object
+      const lastCompleteObj = repaired.lastIndexOf('},');
+      if (lastCompleteObj !== -1) {
+        const truncatedSlice = repaired.substring(0, lastCompleteObj + 1) + ']}';
+        try {
+          const parsed = JSON.parse(truncatedSlice);
+          if (parsed && (Array.isArray(parsed.questions) || Array.isArray(parsed))) {
+            console.warn('[cleanAndParseJson] Успешно восстановлен обрезанный JSON ответ (отсечена неполная часть).');
+            return parsed;
+          }
+        } catch {}
+      }
+
+      // 5b. Balance any remaining open brackets and braces
+      const openBrackets = (repaired.match(/\[/g) || []).length;
+      const closeBrackets = (repaired.match(/\]/g) || []).length;
+      const openBraces = (repaired.match(/\{/g) || []).length;
+      const closeBraces = (repaired.match(/\}/g) || []).length;
+
+      for (let i = 0; i < (openBrackets - closeBrackets); i++) repaired += ']';
+      for (let i = 0; i < (openBraces - closeBraces); i++) repaired += '}';
+      repaired = repaired.replace(/,\s*([\]}])/g, '$1');
+      const parsed = JSON.parse(repaired);
+      if (parsed) return parsed;
+    } catch {}
+
     console.error('Failed to parse JSON string:', str.substring(0, 300));
-    throw new Error(`Ошибка разбора JSON от модели: ${finalErr.message}`);
+    throw new Error(`Ошибка разбора JSON от модели: ${err.message}`);
   }
 }
 
