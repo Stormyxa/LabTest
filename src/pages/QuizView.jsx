@@ -604,8 +604,8 @@ const QuizView = ({ session, profile }) => {
         } catch (e) { }
       }
 
-      // Check if this is first attempt
-      let first = true;
+      // Check if this is first attempt (guests always use learning mode)
+      let first = false;
       if (session) {
         const { count } = await supabase
           .from('quiz_results')
@@ -1041,6 +1041,7 @@ const QuizView = ({ session, profile }) => {
     localStorage.removeItem(`quiz_start_time_${id}`);
     localStorage.removeItem(`guest_quiz_saved_${id}`);
     localStorage.removeItem(`guest_quiz_result_${id}`);
+    localStorage.removeItem(`quiz_expired_notice_${id}`);
     window.location.reload();
   };
 

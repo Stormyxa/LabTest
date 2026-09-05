@@ -34,7 +34,7 @@ const DividerItem = React.memo(({ quiz, qIndex, userRole, searchQuery, swapQuizz
   </div>
 ));
 
-const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, passState, statsLoading, canEditQuiz, canMoveQuiz, swapQuizzes, navigate, setSelectedQuiz, onPrepQuizSelect, setHideModal, setDuplicateModal, isDimmed, quizzesLength, handleShare, fetchData, setActiveStandaloneResource }) => {
+const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, passState, statsLoading, canEditQuiz, canMoveQuiz, swapQuizzes, navigate, setSelectedQuiz, onPrepQuizSelect, setHideModal, setDuplicateModal, isDimmed, quizzesLength, activeTab, handleShare, fetchData, setActiveStandaloneResource }) => {
   const [toast, setToast] = useState({ visible: false, opacity: 0 });
   const [activeTimer, setActiveTimer] = useState(null);
 
@@ -208,6 +208,26 @@ const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, pass
                 title={quiz.is_public ? "Сделать приватным" : "Сделать публичным"}
               >
                 {quiz.is_public ? <Eye size={15} /> : <EyeOff size={15} />}
+              </button>
+            )}
+            {quiz.is_personal && quiz.author_id === userId && activeTab === 'personal' && (
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  if (window.confirm('Удалить тест? Это действие нельзя отменить.')) {
+                    const { error } = await supabase.from('quizzes').delete().eq('id', quiz.id);
+                    if (error) {
+                      alert('Ошибка при удалении теста: ' + error.message);
+                    } else {
+                      localStorage.removeItem(`labtest_cache_catalog_quizzes_${quiz.section_id}`);
+                      fetchData();
+                    }
+                  }
+                }}
+                style={{ padding: '8px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', boxShadow: 'none', borderRadius: '10px' }}
+                title="Удалить тест"
+              >
+                <Trash2 size={15} />
               </button>
             )}
             {(userRole === 'admin' || userRole === 'creator' || userRole === 'teacher' || userId === quiz.author_id) && <button onClick={() => navigate(`/analytics?id=${quiz.id}`)} style={{ padding: '8px', background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none', borderRadius: '10px' }} title="Аналитика"><BarChart2 size={15} /></button>}
@@ -510,24 +530,26 @@ const CatalogSectionRow = React.memo(({
   onToggle, onQuizzesChange, setHideModal, setDuplicateModal, handleRenameTrigger, setSelectedQuiz, onPrepQuizSelect, setRandomQuizModal,
   handleCreateDivider, swapSections, setNewName, activeTab, handleShare, fetchData, setActiveStandaloneResource
 }) => {
+  const canExpand = !section.isEmpty || profile?.role === 'creator' || activeTab === 'public' || activeTab === 'shared';
+
   return (
     <div className="catalog-container" style={{
       padding: '0',
       overflow: 'hidden',
-      border: section.isEmpty ? '1px dashed rgba(0,0,0,0.1)' : '1px solid rgba(99, 102, 241, 0.15)',
+      border: (section.isEmpty && activeTab !== 'public' && activeTab !== 'shared') ? '1px dashed rgba(0,0,0,0.1)' : '1px solid rgba(99, 102, 241, 0.15)',
       borderRadius: '20px',
-      opacity: section.isEmpty ? 0.5 : 1,
+      opacity: (section.isEmpty && activeTab !== 'public' && activeTab !== 'shared') ? 0.5 : 1,
       boxShadow: 'var(--soft-shadow)'
     }}>
       <div
-        onClick={() => (!section.isEmpty || profile?.role === 'creator') && onToggle(section.id)}
+        onClick={() => canExpand && onToggle(section.id)}
         className="flex-center catalog-section-head"
         style={{
           padding: '15px 25px',
-          background: section.isEmpty ? 'transparent' : 'rgba(99, 102, 241, 0.04)',
+          background: (section.isEmpty && activeTab !== 'public' && activeTab !== 'shared') ? 'transparent' : 'rgba(99, 102, 241, 0.04)',
           borderRadius: '20px 20px 0 0',
           justifyContent: 'space-between',
-          cursor: (!section.isEmpty || profile?.role === 'creator') ? 'pointer' : 'default'
+          cursor: canExpand ? 'pointer' : 'default'
         }}
       >
         <div className="flex-center" style={{ gap: '15px' }}>
@@ -561,7 +583,7 @@ const CatalogSectionRow = React.memo(({
             {section.name}
             <span style={{ opacity: 0.5, fontSize: '0.9rem', marginLeft: '5px' }}>({section.realQuizCount})</span>
           </h4>
-          {section.isEmpty && (
+          {section.isEmpty && activeTab !== 'public' && activeTab !== 'shared' && (
             <span style={{ fontSize: '0.65rem', padding: '3px 8px', background: 'rgba(0,0,0,0.05)', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 'bold' }}>
               <Clock size={10} /> В РАЗРАБОТКЕ
             </span>
@@ -585,10 +607,10 @@ const CatalogSectionRow = React.memo(({
             </div>
           )}
         </div>
-        {(!section.isEmpty || profile?.role === 'creator') && (isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />)}
+        {canExpand && (isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />)}
       </div>
 
-      {(isExpanded || searchQuery) && (!section.isEmpty || profile?.role === 'creator') && (
+      {(isExpanded || searchQuery) && canExpand && (
         <SectionContent
           section={section}
           profile={profile}
@@ -616,26 +638,28 @@ const CatalogClassRow = React.memo(({
   onToggle, onSectionToggle, swapClasses, swapSections, handleRenameTrigger, handleCreateDivider, handleCreateSectionDivider, setNewName,
   onQuizzesChange, setHideModal, setDuplicateModal, setSelectedQuiz, onPrepQuizSelect, setRandomQuizModal, activeTab, handleShare, fetchData, setActiveStandaloneResource
 }) => {
+  const canExpand = !cls.isEmpty || profile?.role === 'creator' || activeTab === 'public' || activeTab === 'shared';
+
   return (
     <div className="card animate" style={{
       padding: '0',
       marginBottom: '40px',
       overflow: 'hidden',
-      border: cls.isEmpty ? '1px dashed rgba(0,0,0,0.1)' : '1px solid var(--border-color)',
+      border: (cls.isEmpty && activeTab !== 'public' && activeTab !== 'shared') ? '1px dashed rgba(0,0,0,0.1)' : '1px solid var(--border-color)',
       background: 'var(--card-bg)',
       boxShadow: 'var(--soft-shadow)'
     }}>
       <div
         className="flex-center catalog-class-head"
-        onClick={() => (!cls.isEmpty || profile?.role === 'creator') && onToggle(cls.id)}
+        onClick={() => canExpand && onToggle(cls.id)}
         style={{
           padding: '20px 30px',
-          background: cls.isEmpty ? 'rgba(0,0,0,0.02)' : 'rgba(99, 102, 241, 0.08)',
+          background: (cls.isEmpty && activeTab !== 'public' && activeTab !== 'shared') ? 'rgba(0,0,0,0.02)' : 'rgba(99, 102, 241, 0.08)',
           borderRadius: '24px 24px 0 0',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          cursor: (!cls.isEmpty || profile?.role === 'creator') ? 'pointer' : 'default'
+          cursor: canExpand ? 'pointer' : 'default'
         }}
       >
         <div className="flex-center" style={{ gap: '15px' }}>
@@ -659,7 +683,7 @@ const CatalogClassRow = React.memo(({
           <h3 style={{ fontSize: '1.5rem', margin: 0, fontWeight: 'bold' }}>
             {cls.name} <span style={{ fontSize: '0.9rem', opacity: 0.5, marginLeft: '10px' }}>({cls.realSectionCount ?? 0} предметов)</span>
           </h3>
-          {cls.isEmpty && (
+          {cls.isEmpty && activeTab !== 'public' && activeTab !== 'shared' && (
             <span style={{ fontSize: '0.7rem', padding: '4px 10px', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 'bold', opacity: 0.6 }}>
               <Clock size={12} /> В РАЗРАБОТКЕ
             </span>
@@ -692,10 +716,10 @@ const CatalogClassRow = React.memo(({
             </div>
           )}
         </div>
-        {(!cls.isEmpty || profile?.role === 'creator') && (isExpanded ? <ChevronUp size={24} /> : <ChevronDown size={24} />)}
+        {canExpand && (isExpanded ? <ChevronUp size={24} /> : <ChevronDown size={24} />)}
       </div>
 
-      {isExpanded && (!cls.isEmpty || profile?.role === 'creator') && (
+      {isExpanded && canExpand && (
         <div className="animate catalog-class-content" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px', background: 'rgba(0,0,0,0.02)' }}>
           {cls.sections.map((section, sIndex) => {
             if (section.is_divider) {
@@ -1955,6 +1979,7 @@ const QuizCatalog = ({ profile }) => {
                   localStorage.removeItem(`quiz_times_${id}`);
                   localStorage.removeItem(`quiz_start_time_${id}`);
                   localStorage.removeItem(`quiz_timer_${id}`);
+                  localStorage.removeItem(`quiz_expired_notice_${id}`);
                 }
                 navigate(`/quiz/${id}`);
               }} style={{ padding: '15px', background: 'var(--primary-color)', color: 'white' }}>Начать тест</button>
@@ -2057,6 +2082,7 @@ const QuizCatalog = ({ profile }) => {
                   localStorage.removeItem(`quiz_times_${id}`);
                   localStorage.removeItem(`quiz_start_time_${id}`);
                   localStorage.removeItem(`quiz_timer_${id}`);
+                  localStorage.removeItem(`quiz_expired_notice_${id}`);
                 }
                 navigate(`/quiz/${id}`);
               }} style={{ padding: '15px', background: 'linear-gradient(135deg, var(--primary-color) 0%, #a855f7 100%)', color: 'white' }}>Начать тест</button>
@@ -2211,6 +2237,7 @@ const QuizCatalog = ({ profile }) => {
                         localStorage.removeItem(`quiz_times_${id}`);
                         localStorage.removeItem(`quiz_start_time_${id}`);
                         localStorage.removeItem(`quiz_timer_${id}`);
+                        localStorage.removeItem(`quiz_expired_notice_${id}`);
                       }
                       navigate(`/quiz/${id}${resuming ? '' : '?fresh=1'}`);
                     }}
@@ -2271,6 +2298,7 @@ const QuizCatalog = ({ profile }) => {
                         localStorage.removeItem(`quiz_times_${id}`);
                         localStorage.removeItem(`quiz_start_time_${id}`);
                         localStorage.removeItem(`quiz_timer_${id}`);
+                        localStorage.removeItem(`quiz_expired_notice_${id}`);
                       }
                       navigate(`/quiz/${id}${resuming ? '' : '?fresh=1'}`);
                     }}

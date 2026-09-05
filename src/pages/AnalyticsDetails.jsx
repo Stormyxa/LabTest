@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { fetchWithCache, useCacheSync } from '../lib/cache';
 import { resolveImgUrl } from '../lib/imageUtils';
-import { ChevronLeft, BarChart2, Clock, CheckCircle, XCircle, Search, Filter, AlertTriangle, Menu, Pencil, Trash2, Eye, X, ChevronRight, Sparkles, Copy, Check, RefreshCw, FileText, Book, Shield } from 'lucide-react';
+import { ChevronLeft, Play, BarChart2, Clock, CheckCircle, XCircle, Search, Filter, AlertTriangle, Menu, Pencil, Trash2, Eye, X, ChevronRight, Sparkles, Copy, Check, RefreshCw, FileText, Book, Shield } from 'lucide-react';
 import MathRenderer from '../components/MathRenderer';
 import { buildDetailedQuizPrompt, downloadJSON } from '../lib/aiPromptBuilder';
 import { buildAiCacheKey } from '../lib/aiService';
@@ -1412,9 +1412,49 @@ const AnalyticsDetails = ({ session, profile: initialProfile }) => {
           </button>
         )}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', marginLeft: (!sidebarOpen && isPrivileged) ? '50px' : '0' }}>
-          <button onClick={() => navigate(-1)} className="flex-center" style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', boxShadow: 'none', padding: '10px 20px', width: 'max-content' }}>
-            <ChevronLeft size={20} /> Вернуться
-          </button>
+          <div className="flex-center" style={{ gap: '10px' }}>
+            <button onClick={() => navigate(-1)} className="flex-center" style={{ background: 'rgba(0,0,0,0.05)', color: 'inherit', boxShadow: 'none', padding: '10px 20px', width: 'max-content' }}>
+              <ChevronLeft size={20} /> Вернуться
+            </button>
+            {filterQuiz && (targetUser?.id === profile?.id || !targetUser) && (
+              <button
+                onClick={() => {
+                  const raw = localStorage.getItem(`quiz_timer_${filterQuiz}`);
+                  let resuming = false;
+                  try {
+                    const p = JSON.parse(raw);
+                    resuming = p && (p.endTime || (p.ts + (p.timeLeft || 0) * 1000)) > Date.now();
+                  } catch {}
+                  if (!resuming) {
+                    localStorage.removeItem(`quiz_answers_${filterQuiz}`);
+                    localStorage.removeItem(`quiz_current_idx_${filterQuiz}`);
+                    localStorage.removeItem(`quiz_times_${filterQuiz}`);
+                    localStorage.removeItem(`quiz_start_time_${filterQuiz}`);
+                    localStorage.removeItem(`quiz_timer_${filterQuiz}`);
+                    localStorage.removeItem(`guest_quiz_saved_${filterQuiz}`);
+                    localStorage.removeItem(`guest_quiz_result_${filterQuiz}`);
+                    localStorage.removeItem(`quiz_expired_notice_${filterQuiz}`);
+                  }
+                  navigate(`/quiz/${filterQuiz}`);
+                }}
+                className="flex-center"
+                style={{
+                  background: 'var(--primary-color)',
+                  color: 'white',
+                  padding: '10px 20px',
+                  borderRadius: '12px',
+                  border: 'none',
+                  fontWeight: '600',
+                  gap: '6px',
+                  fontSize: '0.9rem',
+                  cursor: 'pointer'
+                }}
+                title="Пройти этот тест"
+              >
+                <Play size={16} fill="currentColor" /> Пройти тест
+              </button>
+            )}
+          </div>
 
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             {(profile?.role === 'admin' || profile?.role === 'creator' || profile?.role === 'teacher' || targetQuiz?.author_id === profile?.id) && (

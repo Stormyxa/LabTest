@@ -814,7 +814,7 @@ const QuizRedactor = () => {
               </button>
             )}
           </div>
-          {!canDelete && isAuthor && (
+          {!canDelete && isAuthor && !quiz?.is_personal && (
             <p style={{ fontSize: '0.85rem', color: '#f87171', background: 'rgba(248,113,113,0.05)', padding: '10px 20px', borderRadius: '12px', marginTop: '10px' }}>
               Для удаления теста обратитесь к администратору или создателю платформы (обнаружены результаты учеников).
             </p>
