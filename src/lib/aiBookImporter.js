@@ -12,6 +12,8 @@ const CANDIDATE_MODELS = [
   'gemini-2.5-flash'
 ];
 
+const DEFAULT_MODEL = 'gemini-2.5-flash';
+
 // Polyfill URL.parse for compatibility with all browsers
 if (typeof URL !== 'undefined' && !URL.parse) {
   URL.parse = (url, base) => {
@@ -174,7 +176,7 @@ export async function detectTocPages(source, onProgress = null) {
 }
 
 export function getEffectiveApiKey(customKey = null) {
-  return customKey || import.meta.env.VITE_GEMINI_API_KEY || BUILTIN_GEMINI_KEY || '';
+  return customKey || import.meta.env.VITE_GEMINI_API_KEY || '';
 }
 
 /**
@@ -227,12 +229,19 @@ async function callGemini(prompt, apiKey, systemInstruction = '', preferredModel
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        const message = errData.error?.message || `HTTP ${res.status}`;
+        const rawMessage = errData.error?.message || errData.error?.status || `HTTP ${res.status}`;
+        const isTemporaryUnavailable =
+          res.status === 503 ||
+          res.status === 500 ||
+          res.status === 404 ||
+          String(rawMessage).includes('demand') ||
+          String(rawMessage).includes('UNAVAILABLE') ||
+          String(rawMessage).includes('capacity') ||
+          String(rawMessage).includes('overloaded');
 
-        // If 503 / overloaded or 404, try next candidate model
-        if (res.status === 503 || res.status === 404 || message.includes('high demand') || message.includes('UNAVAILABLE')) {
-          console.warn(`Модель ${model} недоступна (${message}), пробуем резервную модель...`);
-          lastError = new Error(`Модель ${model} перегружена: ${message}`);
+        if (isTemporaryUnavailable) {
+          console.warn(`[Gemini Fallback] Модель ${model} временно недоступна (${rawMessage}). Переключаемся на следующую модель...`);
+          lastError = new Error(`Модель ${model} перегружена: ${rawMessage}`);
           continue;
         }
 
@@ -240,7 +249,7 @@ async function callGemini(prompt, apiKey, systemInstruction = '', preferredModel
           throw new Error('Превышен лимит запросов Gemini (Rate Limit 429). Пожалуйста, подождите несколько секунд.');
         }
 
-        throw new Error(`Gemini API Error (${model}): ${message}`);
+        throw new Error(`Gemini API Error (${model}): ${rawMessage}`);
       }
 
       const data = await res.json();
@@ -251,11 +260,19 @@ async function callGemini(prompt, apiKey, systemInstruction = '', preferredModel
 
       return text;
     } catch (fetchErr) {
-      if (fetchErr.message && (fetchErr.message.includes('429') || fetchErr.message.includes('Лимит'))) {
+      const errMsg = fetchErr.message || '';
+      if (errMsg.includes('429') || errMsg.includes('Лимит')) {
         throw fetchErr;
       }
+
+      // If it is our fallback signal, keep trying
+      if (errMsg.includes('перегружена') || errMsg.includes('UNAVAILABLE') || errMsg.includes('demand')) {
+        lastError = fetchErr;
+        continue;
+      }
+
       lastError = fetchErr;
-      console.warn(`Ошибка запроса к ${model}:`, fetchErr.message);
+      console.warn(`Ошибка запроса к ${model}:`, errMsg);
     }
   }
 
