@@ -6,7 +6,8 @@ import {
   analyzeTextbookStructure,
   generateQuizForParagraph,
   searchYouTubeVideo,
-  getEffectiveApiKey
+  getEffectiveApiKey,
+  CANDIDATE_MODELS
 } from '../lib/aiBookImporter';
 import {
   Sparkles, Book, FileText, Play, Pause, Square, CheckCircle,
@@ -49,6 +50,7 @@ const BookImporterStudio = ({
   // Roadmap (parsed structure)
   const [roadmap, setRoadmap] = useState([]);
   const [customApiKey, setCustomApiKey] = useState(() => localStorage.getItem('gemini_custom_api_key') || '');
+  const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem('gemini_selected_model') || 'gemini-3.8-flash');
   const [showKeyInput, setShowKeyInput] = useState(false);
 
   // Generation settings
@@ -157,7 +159,7 @@ const BookImporterStudio = ({
         setTocScanProgress('Анализ структуры и распознавание глав с помощью Gemini Flash...');
       }
 
-      const items = await analyzeTextbookStructure(contentForGemini, activeApiKey, totalPages);
+      const items = await analyzeTextbookStructure(contentForGemini, activeApiKey, totalPages, selectedModel);
       setRoadmap(items);
       setTocScanProgress('');
     } catch (err) {
@@ -342,7 +344,8 @@ const BookImporterStudio = ({
             {
               questionsCount: questionsPerQuiz,
               questionLimit: questionLimit,
-              authorName
+              authorName,
+              preferredModel: selectedModel
             },
             activeApiKey
           );
@@ -350,7 +353,7 @@ const BookImporterStudio = ({
           let youtubeResources = [];
           if (searchYoutube) {
             setCurrentStatus(`[2.5/3] Поиск обучающего видео на YouTube...`);
-            youtubeResources = await searchYouTubeVideo(item.title, currentSection?.name || 'История Казахстана', activeApiKey);
+            youtubeResources = await searchYouTubeVideo(item.title, currentSection?.name || 'История Казахстана', activeApiKey, selectedModel);
           }
 
           setCurrentStatus(`[3/3] Сохранение теста в базу LabTest...`);
@@ -460,28 +463,53 @@ const BookImporterStudio = ({
         </button>
       </div>
 
-      {/* ── Optional Custom API Key input ── */}
+      {/* ── Optional Custom API Key input & Model Selector ── */}
       {showKeyInput && (
-        <div style={{ marginBottom: '25px', padding: '15px 20px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '14px', border: '1px dashed rgba(99, 102, 241, 0.2)' }}>
-          <label style={{ fontSize: '0.85rem', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
-            Пользовательский Google Gemini API Key (опционально, если хотите использовать личный ключ):
-          </label>
-          <div className="flex-center" style={{ gap: '10px' }}>
-            <input
-              type="password"
-              placeholder="AIzaSy..."
-              value={customApiKey}
-              onChange={e => handleSaveApiKey(e.target.value)}
-              style={{ flex: 1, padding: '8px 12px', fontSize: '0.9rem' }}
-            />
-            {customApiKey && (
-              <button onClick={() => handleSaveApiKey('')} style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '8px 14px', borderRadius: '8px', boxShadow: 'none' }}>
-                Сбросить
-              </button>
-            )}
+        <div style={{ marginBottom: '25px', padding: '18px 20px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '14px', border: '1px dashed rgba(99, 102, 241, 0.2)' }}>
+          <div style={{ marginBottom: '15px' }}>
+            <label style={{ fontSize: '0.85rem', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
+              Приоритетная модель Gemini:
+            </label>
+            <select
+              value={selectedModel}
+              onChange={e => {
+                setSelectedModel(e.target.value);
+                localStorage.setItem('gemini_selected_model', e.target.value);
+              }}
+              style={{ width: '100%', maxWidth: '340px', padding: '8px 12px', fontSize: '0.9rem', borderRadius: '8px' }}
+            >
+              {CANDIDATE_MODELS.map(m => (
+                <option key={m} value={m}>
+                  {m} {m === 'gemini-3.8-flash' ? '(Новейшая, с авто-фолбэком)' : ''}
+                </option>
+              ))}
+            </select>
+            <div style={{ fontSize: '0.78rem', opacity: 0.6, marginTop: '4px' }}>
+              Если выбранная модель временно перегружена (503 High Demand), система автоматически продолжит работу на резервных моделях (3.7 / 3.5 / 2.5).
+            </div>
           </div>
-          <div style={{ fontSize: '0.78rem', opacity: 0.6, marginTop: '6px' }}>
-            По умолчанию используется встроенный ключ проекта из .env.local ({activeApiKey ? '✓ Настроен' : '✕ Не найден'}).
+
+          <div>
+            <label style={{ fontSize: '0.85rem', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
+              Пользовательский Google Gemini API Key (опционально, если хотите использовать личный ключ):
+            </label>
+            <div className="flex-center" style={{ gap: '10px' }}>
+              <input
+                type="password"
+                placeholder="AIzaSy..."
+                value={customApiKey}
+                onChange={e => handleSaveApiKey(e.target.value)}
+                style={{ flex: 1, padding: '8px 12px', fontSize: '0.9rem' }}
+              />
+              {customApiKey && (
+                <button onClick={() => handleSaveApiKey('')} style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '8px 14px', borderRadius: '8px', boxShadow: 'none' }}>
+                  Сбросить
+                </button>
+              )}
+            </div>
+            <div style={{ fontSize: '0.78rem', opacity: 0.6, marginTop: '6px' }}>
+              По умолчанию используется ключ из .env.local ({activeApiKey ? '✓ Настроен' : '✕ Не найден'}).
+            </div>
           </div>
         </div>
       )}

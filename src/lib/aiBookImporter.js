@@ -5,14 +5,14 @@
 
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
 
-const CANDIDATE_MODELS = [
+export const CANDIDATE_MODELS = [
   'gemini-3.8-flash',
   'gemini-3.7-flash',
   'gemini-3.5-flash',
   'gemini-2.5-flash'
 ];
 
-const DEFAULT_MODEL = 'gemini-2.5-flash';
+export const DEFAULT_MODEL = 'gemini-3.8-flash';
 
 // Polyfill URL.parse for compatibility with all browsers
 if (typeof URL !== 'undefined' && !URL.parse) {
@@ -280,21 +280,47 @@ async function callGemini(prompt, apiKey, systemInstruction = '', preferredModel
 }
 
 /**
- * Clean and parse JSON from Markdown code blocks
+ * Clean and parse JSON from Markdown code blocks or free text
  */
 function cleanAndParseJson(raw) {
   let str = raw.trim();
-  // Remove markdown code fences if present
+  // 1. Remove markdown code fences if present
   str = str.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```$/g, '').trim();
+
+  // 2. Direct JSON parse try
   try {
     return JSON.parse(str);
-  } catch (err) {
-    // Attempt relaxed cleanup for trailing commas
+  } catch {}
+
+  // 3. Extract JSON array [...] or object {...} if Gemini output extra commentary
+  const firstBracket = str.indexOf('[');
+  const lastBracket = str.lastIndexOf(']');
+  if (firstBracket !== -1 && lastBracket > firstBracket) {
+    const candidateArray = str.substring(firstBracket, lastBracket + 1);
+    try {
+      return JSON.parse(candidateArray);
+    } catch {}
+  }
+
+  const firstBrace = str.indexOf('{');
+  const lastBrace = str.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    const candidateObj = str.substring(firstBrace, lastBrace + 1);
+    try {
+      return JSON.parse(candidateObj);
+    } catch {}
+  }
+
+  // 4. Relaxed cleanup for quotes and trailing commas
+  try {
     const cleaned = str
       .replace(/,\s*([\]}])/g, '$1')
       .replace(/[\u201C\u201D]/g, '"')
       .replace(/[\u2018\u2019]/g, "'");
     return JSON.parse(cleaned);
+  } catch (finalErr) {
+    console.error('Failed to parse JSON string:', str.substring(0, 300));
+    throw new Error(`Ошибка разбора JSON от модели: ${finalErr.message}`);
   }
 }
 
@@ -302,7 +328,7 @@ function cleanAndParseJson(raw) {
  * Analyze Table of Contents (TOC) and construct hierarchical structure
  * Supports Sections (Разделы), Chapters (Главы), and Paragraphs (Параграфы)
  */
-export async function analyzeTextbookStructure(tocOrPagesText, apiKey, totalPdfPages = 200) {
+export async function analyzeTextbookStructure(tocOrPagesText, apiKey, totalPdfPages = 200, preferredModel = null) {
   const systemInstruction = `Ты — эксперт по анализу оглавления и структуры школьных учебников (включая учебники Казахстана).
 Твоя задача — извлечь строго хронологическую последовательность разделителей и тестов.
 
@@ -331,7 +357,7 @@ export async function analyzeTextbookStructure(tocOrPagesText, apiKey, totalPdfP
 
   const prompt = `Вот текст первых страниц учебника и оглавления (всего страниц в файле: ${totalPdfPages}):\n\n${tocOrPagesText}\n\nСформируй полную хронологическую структуру книги в виде JSON-массива объектов.`;
 
-  const rawJson = await callGemini(prompt, apiKey, systemInstruction);
+  const rawJson = await callGemini(prompt, apiKey, systemInstruction, preferredModel);
   const items = cleanAndParseJson(rawJson);
 
   if (!Array.isArray(items)) {
@@ -359,7 +385,8 @@ export async function generateQuizForParagraph(paragraphText, paragraphTitle, op
   const {
     questionsCount = 15,
     questionLimit = 10,
-    authorName = 'Афанасиади Анастас'
+    authorName = 'Афанасиади Анастас',
+    preferredModel = null
   } = options;
 
   const systemInstruction = `Без подобострастия, угодничества и лишних вступлений составь сложный, академически строгий тест в стиле ЕНТ для глубокой проверки знаний учащихся. Текст должен полностью и детально охватывать содержание предоставленного параграфа.
@@ -410,7 +437,7 @@ ${paragraphText}
   ]
 }`;
 
-  const rawJson = await callGemini(prompt, apiKey, systemInstruction);
+  const rawJson = await callGemini(prompt, apiKey, systemInstruction, preferredModel);
   const quizObj = cleanAndParseJson(rawJson);
 
   if (!quizObj || !Array.isArray(quizObj.questions) || quizObj.questions.length === 0) {
@@ -423,7 +450,7 @@ ${paragraphText}
 /**
  * Search YouTube educational video for a topic
  */
-export async function searchYouTubeVideo(topicTitle, subjectName = 'История Казахстана', apiKey) {
+export async function searchYouTubeVideo(topicTitle, subjectName = 'История Казахстана', apiKey, preferredModel = null) {
   try {
     const cleanTopic = topicTitle.replace(/^§\s*[\d–\-]+(\s*\(ч\.\s*\d+\))?\.?\s*/i, '').trim();
     const prompt = `Найди актуальный, качественный образовательный видеоурок на YouTube по теме:
@@ -434,7 +461,7 @@ export async function searchYouTubeVideo(topicTitle, subjectName = 'Истори
   "title": "Видеоурок: ${cleanTopic}"
 }`;
 
-    const raw = await callGemini(prompt, apiKey, 'Ты поисковый ассистент образовательного контента на YouTube. Верни строго валидный JSON с реальной ссылкой.', DEFAULT_MODEL, true);
+    const raw = await callGemini(prompt, apiKey, 'Ты поисковый ассистент образовательного контента на YouTube. Верни строго валидный JSON с реальной ссылкой.', preferredModel || DEFAULT_MODEL, true);
     const parsed = cleanAndParseJson(raw);
     if (parsed?.url && (parsed.url.includes('youtube.com') || parsed.url.includes('youtu.be'))) {
       return [{
