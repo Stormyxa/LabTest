@@ -6,10 +6,11 @@ import {
   Plus, Trash2, FileJson, AlertCircle, TrendingUp,
   CheckCircle, Check, Copy, X, AlertTriangle,
   ChevronUp, ChevronDown, Save, Book, Link as LinkIcon,
-  Pencil, Eye, EyeOff, Shield, Clock, Lock
+  Pencil, Eye, EyeOff, Shield, Clock, Lock, Sparkles
 } from 'lucide-react';
 import { syncGithubRenames, updateQuizzesWithNewUrls } from '../lib/githubSync';
 import { fetchWithCache, useCacheSync } from '../lib/cache';
+import BookImporterStudio from '../components/BookImporterStudio';
 
 const EditorSkeleton = () => (
   <div style={{ width: '100%', padding: '20px' }}>
@@ -886,9 +887,25 @@ const Editor = ({ session, profile }) => {
       <div className="container animate" style={{ padding: '40px 20px' }}>
         <div className="flex-center animate" style={{ justifyContent: 'space-between', marginBottom: '40px', flexWrap: 'wrap', gap: '20px' }}>
           <h2 style={{ fontSize: '2rem', fontWeight: '800', letterSpacing: '-1px', margin: 0 }}>Управление тестами</h2>
-          <div style={{ background: 'rgba(0,0,0,0.05)', padding: '5px', borderRadius: '15px', display: 'flex' }}>
+          <div style={{ background: 'rgba(0,0,0,0.05)', padding: '5px', borderRadius: '15px', display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
             <button onClick={() => handleTabChange('create')} style={{ background: activeTab === 'create' ? 'var(--primary-color)' : 'transparent', color: activeTab === 'create' ? 'white' : 'inherit', boxShadow: 'none' }}>Создать тест</button>
             <button onClick={() => handleTabChange('manage')} style={{ background: activeTab === 'manage' ? 'var(--primary-color)' : 'transparent', color: activeTab === 'manage' ? 'white' : 'inherit', boxShadow: 'none' }}>Дерево тестов</button>
+            {profile?.role === 'creator' && (
+              <button
+                onClick={() => handleTabChange('ai_import')}
+                style={{
+                  background: activeTab === 'ai_import' ? 'linear-gradient(135deg, var(--primary-color), #a855f7)' : 'transparent',
+                  color: activeTab === 'ai_import' ? 'white' : 'inherit',
+                  boxShadow: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontWeight: '600'
+                }}
+              >
+                <Sparkles size={16} /> Авто-импорт (ИИ)
+              </button>
+            )}
           </div>
         </div>
 
@@ -897,7 +914,22 @@ const Editor = ({ session, profile }) => {
             <EditorSkeleton />
           ) : (
             <div className="grid-2 animate" style={{ alignItems: 'start', gap: '30px', gridColumn: '1 / -1' }}>
-              {activeTab === 'create' ? (
+              {activeTab === 'ai_import' && profile?.role === 'creator' ? (
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <BookImporterStudio
+                    session={session}
+                    profile={profile}
+                    classes={classes}
+                    sections={sections}
+                    initialClassId={selectedClassId}
+                    initialSectionId={sectionId}
+                    isPersonal={editorMode === 'personal'}
+                    onComplete={() => {
+                      fetchData();
+                    }}
+                  />
+                </div>
+              ) : activeTab === 'create' ? (
                 <>
                   <div className="card">
                     <h3 style={{ marginBottom: '25px' }}>Новый тест</h3>
@@ -1306,6 +1338,31 @@ const Editor = ({ session, profile }) => {
                                         <div className="flex-center" style={{ gap: '5px' }}>
                                           <button onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: section.id, name: section.name, type: 'section' }); setNewName(section.name); }} style={{ background: 'transparent', color: 'var(--primary-color)', opacity: 0.5, boxShadow: 'none', padding: '5px' }} title="Переименовать предмет"><Pencil size={18} /></button>
                                           <button onClick={(e) => { e.stopPropagation(); setEditSectionLink({ id: section.id, url: section.book_url || '' }); }} style={{ background: 'transparent', color: 'var(--primary-color)', opacity: 0.5, boxShadow: 'none', padding: '5px' }} title="Ссылка на учебник"><LinkIcon size={18} /></button>
+                                           {section.book_url && (
+                                             <button
+                                               onClick={(e) => {
+                                                 e.stopPropagation();
+                                                 setSelectedClassId(cls.id);
+                                                 setSectionId(section.id);
+                                                 handleTabChange('ai_import');
+                                               }}
+                                               style={{
+                                                 background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(168, 85, 247, 0.15))',
+                                                 color: 'var(--primary-color)',
+                                                 borderRadius: '8px',
+                                                 boxShadow: 'none',
+                                                 padding: '4px 8px',
+                                                 display: 'flex',
+                                                 alignItems: 'center',
+                                                 gap: '4px',
+                                                 fontSize: '0.75rem',
+                                                 fontWeight: '600'
+                                               }}
+                                               title="Запустить генерацию тестов по учебнику этой секции"
+                                             >
+                                               <Sparkles size={14} /> Импорт
+                                             </button>
+                                           )}
                                         </div>
                                       )}
                                     </div>
