@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import {
   extractPdfText,
+  detectTocPages,
   analyzeTextbookStructure,
   generateQuizForParagraph,
   searchYouTubeVideo
@@ -10,7 +11,7 @@ import {
   Sparkles, Book, FileText, Play, Pause, Square, CheckCircle,
   AlertCircle, ChevronRight, Split, Trash2, Plus, ExternalLink,
   Layers, Clock, Youtube, Eye, EyeOff, RefreshCw, Upload, FileUp,
-  Settings, Check, HelpCircle
+  Settings, Check, HelpCircle, Search, ClipboardList
 } from 'lucide-react';
 
 const BookImporterStudio = ({
@@ -33,10 +34,15 @@ const BookImporterStudio = ({
   const [useSectionBook, setUseSectionBook] = useState(true);
   const [pdfTotalPages, setPdfTotalPages] = useState(0);
 
+  // TOC Mode: 'pdf' (scan from pdf) or 'text' (paste text directly)
+  const [tocMode, setTocMode] = useState('pdf');
+  const [manualTocText, setManualTocText] = useState('');
+
   // TOC extraction settings
   const [tocStartPage, setTocStartPage] = useState(1);
   const [tocEndPage, setTocEndPage] = useState(10);
   const [scanningToc, setScanningToc] = useState(false);
+  const [autoDetectingToc, setAutoDetectingToc] = useState(false);
   const [tocScanProgress, setTocScanProgress] = useState('');
 
   // Roadmap (parsed structure)
@@ -83,12 +89,11 @@ const BookImporterStudio = ({
 
   const activeApiKey = customApiKey || import.meta.env.VITE_GEMINI_API_KEY;
 
-  // ─── Step 1: Scan TOC ──────────────────────────────────────────
-  const handleScanToc = async () => {
-    setScanningToc(true);
+  // ─── Step 1A: Auto-detect TOC pages in PDF ───────────────────────
+  const handleAutoDetectTocPages = async () => {
+    setAutoDetectingToc(true);
     setErrorMessage(null);
-    setRoadmap([]);
-    setTocScanProgress('Чтение страниц оглавления из PDF...');
+    setTocScanProgress('Поиск содержания в учебнике...');
 
     try {
       const source = (useSectionBook && currentSection?.book_url) ? currentSection.book_url : pdfFile;
@@ -96,24 +101,67 @@ const BookImporterStudio = ({
         throw new Error('Пожалуйста, выберите локальный PDF-файл или секцию с прикреплённым учебником.');
       }
 
-      const { fullText, numPages } = await extractPdfText(
-        source,
-        parseInt(tocStartPage) || 1,
-        parseInt(tocEndPage) || 10,
-        (curr, total) => {
-          setTocScanProgress(`Извлечение текста: страница ${curr} из ${total}...`);
+      const res = await detectTocPages(source, (curr, total, msg) => {
+        setTocScanProgress(msg);
+      });
+
+      setPdfTotalPages(res.numPages);
+      setTocStartPage(res.startPage);
+      setTocEndPage(res.endPage);
+      setTocScanProgress(`✓ ${res.reason}`);
+    } catch (err) {
+      console.error('Detect TOC error:', err);
+      setErrorMessage(err.message || 'Не удалось автоматически найти оглавление. Введите номера страниц вручную или вставьте текст.');
+      setTocScanProgress('');
+    } finally {
+      setAutoDetectingToc(false);
+    }
+  };
+
+  // ─── Step 1B: Scan TOC from PDF or Text ────────────────────────
+  const handleScanToc = async () => {
+    setScanningToc(true);
+    setErrorMessage(null);
+    setRoadmap([]);
+
+    try {
+      let contentForGemini = '';
+      let totalPages = pdfTotalPages || 200;
+
+      if (tocMode === 'text') {
+        if (!manualTocText.trim()) {
+          throw new Error('Пожалуйста, вставьте скопированный текст содержания / оглавления книги.');
         }
-      );
+        contentForGemini = manualTocText.trim();
+        setTocScanProgress('Анализ структуры по введённому тексту с помощью Gemini Flash...');
+      } else {
+        const source = (useSectionBook && currentSection?.book_url) ? currentSection.book_url : pdfFile;
+        if (!source) {
+          throw new Error('Пожалуйста, выберите локальный PDF-файл или секцию с прикреплённым учебником.');
+        }
 
-      setPdfTotalPages(numPages);
-      setTocScanProgress('Анализ структуры и распознавание глав с помощью Gemini Flash...');
+        setTocScanProgress('Чтение страниц оглавления из PDF...');
+        const { fullText, numPages } = await extractPdfText(
+          source,
+          parseInt(tocStartPage) || 1,
+          parseInt(tocEndPage) || 10,
+          (curr, total) => {
+            setTocScanProgress(`Извлечение текста: страница ${curr} из ${total}...`);
+          }
+        );
 
-      const items = await analyzeTextbookStructure(fullText, activeApiKey, numPages);
+        totalPages = numPages;
+        setPdfTotalPages(numPages);
+        contentForGemini = fullText;
+        setTocScanProgress('Анализ структуры и распознавание глав с помощью Gemini Flash...');
+      }
+
+      const items = await analyzeTextbookStructure(contentForGemini, activeApiKey, totalPages);
       setRoadmap(items);
       setTocScanProgress('');
     } catch (err) {
       console.error('TOC Scan Error:', err);
-      setErrorMessage(err.message || 'Ошибка при сканировании оглавления.');
+      setErrorMessage(err.message || 'Ошибка при распознавании оглавления.');
       setTocScanProgress('');
     } finally {
       setScanningToc(false);
@@ -528,52 +576,165 @@ const BookImporterStudio = ({
 
         {/* TOC Scan Options */}
         <div style={{ padding: '20px', background: 'rgba(0,0,0,0.02)', borderRadius: '16px', border: '1px solid rgba(0,0,0,0.05)' }}>
-          <div style={{ fontWeight: '700', fontSize: '1rem', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px', color: '#f59e0b' }}>
-            <FileText size={18} /> 3. Диапазон оглавления
+          <div style={{ fontWeight: '700', fontSize: '1rem', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px', color: '#f59e0b' }}>
+            <FileText size={18} /> 3. Содержание / Оглавление
           </div>
 
-          <div className="flex-center" style={{ gap: '10px', marginBottom: '15px' }}>
-            <div>
-              <label style={{ fontSize: '0.75rem', opacity: 0.6, display: 'block' }}>Со страницы</label>
-              <input
-                type="number"
-                min="1"
-                value={tocStartPage}
-                onChange={e => setTocStartPage(e.target.value)}
-                style={{ width: '80px', padding: '8px', textAlign: 'center' }}
-              />
-            </div>
-            <div>
-              <label style={{ fontSize: '0.75rem', opacity: 0.6, display: 'block' }}>По страницу</label>
-              <input
-                type="number"
-                min="1"
-                value={tocEndPage}
-                onChange={e => setTocEndPage(e.target.value)}
-                style={{ width: '80px', padding: '8px', textAlign: 'center' }}
-              />
-            </div>
+          {/* Mode Tabs */}
+          <div style={{ display: 'flex', gap: '6px', background: 'rgba(0,0,0,0.04)', padding: '4px', borderRadius: '10px', marginBottom: '15px' }}>
+            <button
+              type="button"
+              onClick={() => setTocMode('pdf')}
+              style={{
+                flex: 1,
+                padding: '6px 10px',
+                fontSize: '0.8rem',
+                borderRadius: '8px',
+                border: 'none',
+                cursor: 'pointer',
+                background: tocMode === 'pdf' ? 'var(--card-bg)' : 'transparent',
+                boxShadow: tocMode === 'pdf' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                fontWeight: tocMode === 'pdf' ? '700' : '500',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '5px'
+              }}
+            >
+              <FileText size={13} /> Из PDF
+            </button>
+            <button
+              type="button"
+              onClick={() => setTocMode('text')}
+              style={{
+                flex: 1,
+                padding: '6px 10px',
+                fontSize: '0.8rem',
+                borderRadius: '8px',
+                border: 'none',
+                cursor: 'pointer',
+                background: tocMode === 'text' ? 'var(--card-bg)' : 'transparent',
+                boxShadow: tocMode === 'text' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                fontWeight: tocMode === 'text' ? '700' : '500',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '5px'
+              }}
+            >
+              <ClipboardList size={13} /> Вставить текст
+            </button>
           </div>
 
-          <button
-            onClick={handleScanToc}
-            disabled={scanningToc || (!pdfFile && (!useSectionBook || !currentSection?.book_url))}
-            style={{
-              width: '100%',
-              padding: '12px',
-              borderRadius: '12px',
-              fontWeight: '700',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '8px',
-              background: 'linear-gradient(135deg, var(--primary-color), #a855f7)',
-              color: 'white'
-            }}
-          >
-            {scanningToc ? <RefreshCw size={18} className="spinner" /> : <Sparkles size={18} />}
-            {scanningToc ? 'Сканирование...' : '🔍 Сканировать оглавление'}
-          </button>
+          {tocMode === 'pdf' ? (
+            <div>
+              <div className="flex-center" style={{ gap: '10px', marginBottom: '12px' }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: '0.75rem', opacity: 0.6, display: 'block', marginBottom: '2px' }}>Стр. с</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={tocStartPage}
+                    onChange={e => setTocStartPage(e.target.value)}
+                    style={{ width: '100%', padding: '8px', textAlign: 'center' }}
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: '0.75rem', opacity: 0.6, display: 'block', marginBottom: '2px' }}>По стр.</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={tocEndPage}
+                    onChange={e => setTocEndPage(e.target.value)}
+                    style={{ width: '100%', padding: '8px', textAlign: 'center' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={handleAutoDetectTocPages}
+                  disabled={autoDetectingToc || (!pdfFile && (!useSectionBook || !currentSection?.book_url))}
+                  style={{
+                    width: '100%',
+                    padding: '8px',
+                    borderRadius: '10px',
+                    fontSize: '0.82rem',
+                    background: 'rgba(245, 158, 11, 0.1)',
+                    color: '#d97706',
+                    border: '1px solid rgba(245, 158, 11, 0.25)',
+                    boxShadow: 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  {autoDetectingToc ? <RefreshCw size={14} className="spinner" /> : <Search size={14} />}
+                  {autoDetectingToc ? 'Поиск...' : '🔍 Найти страницы содержания в PDF'}
+                </button>
+
+                <button
+                  onClick={handleScanToc}
+                  disabled={scanningToc || (!pdfFile && (!useSectionBook || !currentSection?.book_url))}
+                  style={{
+                    width: '100%',
+                    padding: '11px',
+                    borderRadius: '12px',
+                    fontWeight: '700',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    background: 'linear-gradient(135deg, var(--primary-color), #a855f7)',
+                    color: 'white'
+                  }}
+                >
+                  {scanningToc ? <RefreshCw size={17} className="spinner" /> : <Sparkles size={17} />}
+                  {scanningToc ? 'Распознавание...' : 'Распознать структуру'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <textarea
+                placeholder="Вставьте скопированный текст содержания / оглавления книги (например: 'Раздел 1... Глава 1... § 1-2. Развитие скотоводства... 5')..."
+                value={manualTocText}
+                onChange={e => setManualTocText(e.target.value)}
+                rows={4}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  fontSize: '0.85rem',
+                  borderRadius: '10px',
+                  marginBottom: '10px',
+                  fontFamily: 'inherit',
+                  resize: 'vertical'
+                }}
+              />
+              <button
+                onClick={handleScanToc}
+                disabled={scanningToc || !manualTocText.trim()}
+                style={{
+                  width: '100%',
+                  padding: '11px',
+                  borderRadius: '12px',
+                  fontWeight: '700',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  background: 'linear-gradient(135deg, var(--primary-color), #a855f7)',
+                  color: 'white'
+                }}
+              >
+                {scanningToc ? <RefreshCw size={17} className="spinner" /> : <Sparkles size={17} />}
+                {scanningToc ? 'Распознавание...' : 'Построить структуру по тексту'}
+              </button>
+            </div>
+          )}
+
           {tocScanProgress && (
             <div style={{ fontSize: '0.8rem', color: 'var(--primary-color)', marginTop: '8px', textAlign: 'center', fontWeight: '500' }}>
               {tocScanProgress}

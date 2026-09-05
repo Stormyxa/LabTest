@@ -4,21 +4,30 @@
  */
 
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
-const DEFAULT_MODEL = 'gemini-2.5-flash';
+const CANDIDATE_MODELS = [
+  'gemini-2.5-flash',
+  'gemini-3.7-flash',
+  'gemini-3.5-flash',
+  'gemini-3.8-flash'
+];
 
-// Dynamic loader for PDF.js to avoid bundle bloating
-let pdfjsLib = null;
+// Polyfill URL.parse for compatibility with all browsers
+if (typeof URL !== 'undefined' && !URL.parse) {
+  URL.parse = (url, base) => {
+    try {
+      return new URL(url, base);
+    } catch {
+      return null;
+    }
+  };
+}
+
+import * as pdfjs from 'pdfjs-dist';
+// Set stable worker from CDN matching 3.11.174
+pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
 export async function getPdfJs() {
-  if (pdfjsLib) return pdfjsLib;
-  try {
-    const pdfjs = await import(/* @vite-ignore */ 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/+esm');
-    pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.worker.min.mjs';
-    pdfjsLib = pdfjs;
-    return pdfjsLib;
-  } catch (err) {
-    console.error('Failed to load PDF.js from CDN:', err);
-    throw new Error('Не удалось загрузить модуль чтения PDF. Проверьте интернет-соединение.');
-  }
+  return pdfjs;
 }
 
 /**
@@ -27,7 +36,7 @@ export async function getPdfJs() {
  * @param {number} startPage - 1-indexed start page
  * @param {number} endPage - 1-indexed end page
  * @param {function} onProgress - optional callback (curr, total)
- * @returns {Promise<{ text: string, numPages: number, pageTexts: string[] }>}
+ * @returns {Promise<{ fullText: string, numPages: number, pageTexts: { page: number, text: string }[] }>}
  */
 export async function extractPdfText(source, startPage = 1, endPage = null, onProgress = null) {
   const pdfjs = await getPdfJs();
@@ -51,12 +60,17 @@ export async function extractPdfText(source, startPage = 1, endPage = null, onPr
   let fullText = '';
 
   for (let i = from; i <= to; i++) {
-    const page = await pdfDoc.getPage(i);
-    const content = await page.getTextContent();
-    const strings = content.items.map(item => item.str);
-    const pageText = strings.join(' ').replace(/\s+/g, ' ').trim();
-    pageTexts.push(pageText);
-    fullText += `\n[--- СТРАНИЦА ${i} ---]\n${pageText}\n`;
+    try {
+      const page = await pdfDoc.getPage(i);
+      const content = await page.getTextContent();
+      const strings = content.items.map(item => item.str);
+      const pageText = strings.join(' ').replace(/\s+/g, ' ').trim();
+      pageTexts.push({ page: i, text: pageText });
+      fullText += `\n[--- СТРАНИЦА ${i} ---]\n${pageText}\n`;
+    } catch (pageErr) {
+      console.warn(`Ошибка извлечения текста со страницы ${i}:`, pageErr);
+      pageTexts.push({ page: i, text: '' });
+    }
 
     if (onProgress) {
       onProgress(i - from + 1, to - from + 1);
@@ -73,61 +87,174 @@ export async function extractPdfText(source, startPage = 1, endPage = null, onPr
 }
 
 /**
- * Call Gemini Flash API
+ * Automatically search for Table of Contents / "Содержание" / "Оглавление" in PDF
+ * Checks beginning (pages 1-15) and end of document (last 10 pages)
+ * @returns {Promise<{ detected: boolean, startPage: number, endPage: number, reason: string }>}
  */
-async function callGemini(prompt, apiKey, systemInstruction = '', model = DEFAULT_MODEL, useSearch = false) {
+export async function detectTocPages(source, onProgress = null) {
+  const pdfjs = await getPdfJs();
+  let loadingTask;
+
+  if (source instanceof File) {
+    const arrayBuffer = await source.arrayBuffer();
+    loadingTask = pdfjs.getDocument({ data: arrayBuffer });
+  } else if (typeof source === 'string') {
+    loadingTask = pdfjs.getDocument(source);
+  } else {
+    throw new Error('Неверный источник PDF.');
+  }
+
+  const pdfDoc = await loadingTask.promise;
+  const numPages = pdfDoc.numPages;
+
+  // Pages to probe: first 15 pages and last 10 pages
+  const pagesToProbe = [];
+  for (let i = 1; i <= Math.min(15, numPages); i++) pagesToProbe.push(i);
+  for (let i = Math.max(16, numPages - 10); i <= numPages; i++) {
+    if (!pagesToProbe.includes(i)) pagesToProbe.push(i);
+  }
+
+  const tocKeywords = [
+    'содержание',
+    'оглавление',
+    'мазмұны',
+    'тақырыптар',
+    'table of contents',
+    'contents'
+  ];
+
+  const matchedPages = [];
+
+  for (let idx = 0; idx < pagesToProbe.length; idx++) {
+    const pageNum = pagesToProbe[idx];
+    if (onProgress) {
+      onProgress(idx + 1, pagesToProbe.length, `Поиск содержания (страница ${pageNum} из ${numPages})...`);
+    }
+
+    try {
+      const page = await pdfDoc.getPage(pageNum);
+      const content = await page.getTextContent();
+      const text = content.items.map(item => item.str).join(' ').toLowerCase();
+
+      // Check if keyword is found or strong signal of TOC lines (dots/page numbers like '.... 14')
+      const hasKeyword = tocKeywords.some(kw => text.includes(kw));
+      const hasTocDots = /(\.{3,}|_{3,})\s*\d+/.test(text) || /(параграф|бөлүм|тарау|бөлім|раздел|глава|§)\s*\d+/.test(text);
+
+      if (hasKeyword || (hasTocDots && matchedPages.length > 0 && Math.abs(pageNum - matchedPages[matchedPages.length - 1]) <= 2)) {
+        matchedPages.push(pageNum);
+      }
+    } catch {
+      // ignore single page probe errors
+    }
+  }
+
+  if (matchedPages.length > 0) {
+    // Find contiguous or near range
+    const start = Math.min(...matchedPages);
+    // Usually TOC takes 1 to 5 pages
+    const end = Math.min(numPages, Math.max(...matchedPages) + 1);
+    return {
+      detected: true,
+      startPage: start,
+      endPage: end,
+      numPages,
+      reason: `Найдено на страницах ${start}–${end}`
+    };
+  }
+
+  // Default fallback: pages 1 to 10
+  return {
+    detected: false,
+    startPage: 1,
+    endPage: Math.min(10, numPages),
+    numPages,
+    reason: 'Ключевые слова не найдены, установлен диапазон по умолчанию (1–10).'
+  };
+}
+
+/**
+ * Call Gemini Flash API with automatic fallback on 503 / high demand
+ */
+async function callGemini(prompt, apiKey, systemInstruction = '', preferredModel = null, useSearch = false) {
   const key = apiKey || import.meta.env.VITE_GEMINI_API_KEY;
   if (!key) {
     throw new Error('Ключ Gemini API не найден. Укажите его в настройках или .env.local (VITE_GEMINI_API_KEY).');
   }
 
-  const url = `${GEMINI_API_URL}/${model}:generateContent?key=${key}`;
+  const modelsToTry = preferredModel
+    ? [preferredModel, ...CANDIDATE_MODELS.filter(m => m !== preferredModel)]
+    : CANDIDATE_MODELS;
 
-  const requestBody = {
-    contents: [
-      {
-        role: 'user',
-        parts: [{ text: prompt }]
+  let lastError = null;
+
+  for (const model of modelsToTry) {
+    const url = `${GEMINI_API_URL}/${model}:generateContent?key=${key}`;
+
+    const requestBody = {
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text: prompt }]
+        }
+      ],
+      generationConfig: {
+        temperature: 0.2,
+        maxOutputTokens: 8192
       }
-    ],
-    generationConfig: {
-      temperature: 0.2,
-      maxOutputTokens: 8192
-    }
-  };
-
-  if (systemInstruction) {
-    requestBody.systemInstruction = {
-      parts: [{ text: systemInstruction }]
     };
-  }
 
-  if (useSearch) {
-    requestBody.tools = [{ googleSearch: {} }];
-  }
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(requestBody)
-  });
-
-  if (!res.ok) {
-    const errData = await res.json().catch(() => ({}));
-    const message = errData.error?.message || `Ошибка HTTP ${res.status}`;
-    if (res.status === 429) {
-      throw new Error('Превышен лимит запросов Gemini (Rate Limit 429). Ожидание...');
+    if (systemInstruction) {
+      requestBody.systemInstruction = {
+        parts: [{ text: systemInstruction }]
+      };
     }
-    throw new Error(`Gemini API Error: ${message}`);
+
+    if (useSearch) {
+      requestBody.tools = [{ googleSearch: {} }];
+    }
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        const message = errData.error?.message || `HTTP ${res.status}`;
+
+        // If 503 / overloaded or 404, try next candidate model
+        if (res.status === 503 || res.status === 404 || message.includes('high demand') || message.includes('UNAVAILABLE')) {
+          console.warn(`Модель ${model} недоступна (${message}), пробуем резервную модель...`);
+          lastError = new Error(`Модель ${model} перегружена: ${message}`);
+          continue;
+        }
+
+        if (res.status === 429) {
+          throw new Error('Превышен лимит запросов Gemini (Rate Limit 429). Пожалуйста, подождите несколько секунд.');
+        }
+
+        throw new Error(`Gemini API Error (${model}): ${message}`);
+      }
+
+      const data = await res.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) {
+        throw new Error(`Пустой ответ от модели ${model}.`);
+      }
+
+      return text;
+    } catch (fetchErr) {
+      if (fetchErr.message && (fetchErr.message.includes('429') || fetchErr.message.includes('Лимит'))) {
+        throw fetchErr;
+      }
+      lastError = fetchErr;
+      console.warn(`Ошибка запроса к ${model}:`, fetchErr.message);
+    }
   }
 
-  const data = await res.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) {
-    throw new Error('Пустой ответ от модели Gemini.');
-  }
-
-  return text;
+  throw lastError || new Error('Не удалось получить ответ ни от одной модели Gemini.');
 }
 
 /**
