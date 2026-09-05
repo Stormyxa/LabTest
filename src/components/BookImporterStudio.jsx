@@ -5,7 +5,8 @@ import {
   detectTocPages,
   analyzeTextbookStructure,
   generateQuizForParagraph,
-  searchYouTubeVideo
+  searchYouTubeVideo,
+  getEffectiveApiKey
 } from '../lib/aiBookImporter';
 import {
   Sparkles, Book, FileText, Play, Pause, Square, CheckCircle,
@@ -87,7 +88,7 @@ const BookImporterStudio = ({
     localStorage.setItem('gemini_custom_api_key', val);
   };
 
-  const activeApiKey = customApiKey || import.meta.env.VITE_GEMINI_API_KEY;
+  const activeApiKey = getEffectiveApiKey(customApiKey);
 
   // ─── Step 1A: Auto-detect TOC pages in PDF ───────────────────────
   const handleAutoDetectTocPages = async () => {

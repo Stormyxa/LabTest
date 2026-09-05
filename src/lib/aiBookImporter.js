@@ -4,6 +4,7 @@
  */
 
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
+
 const CANDIDATE_MODELS = [
   'gemini-3.8-flash',
   'gemini-3.7-flash',
@@ -172,11 +173,15 @@ export async function detectTocPages(source, onProgress = null) {
   };
 }
 
+export function getEffectiveApiKey(customKey = null) {
+  return customKey || import.meta.env.VITE_GEMINI_API_KEY || BUILTIN_GEMINI_KEY || '';
+}
+
 /**
  * Call Gemini Flash API with automatic fallback on 503 / high demand
  */
 async function callGemini(prompt, apiKey, systemInstruction = '', preferredModel = null, useSearch = false) {
-  const key = apiKey || import.meta.env.VITE_GEMINI_API_KEY;
+  const key = getEffectiveApiKey(apiKey);
   if (!key) {
     throw new Error('Ключ Gemini API не найден. Укажите его в настройках или .env.local (VITE_GEMINI_API_KEY).');
   }
