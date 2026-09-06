@@ -1894,22 +1894,30 @@ const QuizCatalog = ({ profile }) => {
               <h2 style={{ marginBottom: '15px', textAlign: 'center' }}>Вы готовы?</h2>
               <p style={{ opacity: 0.7, marginBottom: '25px', lineHeight: '1.6', textAlign: 'center' }}>Начать тест: <br /> <strong>"{selectedQuiz.title}"</strong>.</p>
 
-              {/* Time info */}
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginBottom: '25px' }}>
-                <div style={{ padding: '8px 15px', background: 'rgba(0,0,0,0.03)', borderRadius: '12px', fontSize: '0.85rem' }}>
-                  <strong>{selectedQuiz.content?.questions?.length || 0}</strong> вопр.
-                </div>
-                <div style={{ padding: '8px 15px', background: 'rgba(99, 102, 241, 0.08)', color: 'var(--primary-color)', borderRadius: '12px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Clock size={14} />
-                  <strong>
-                    {selectedQuiz.content?.time_limit ? (
-                      Math.floor(selectedQuiz.content.time_limit / 60) + ' мин ' + (selectedQuiz.content.time_limit % 60) + ' сек'
-                    ) : (
-                      Math.floor(((selectedQuiz.content?.questions?.length || 0) * 25) / 60) + ' мин ' + (((selectedQuiz.content?.questions?.length || 0) * 25) % 60) + ' сек'
-                    )}
-                  </strong>
-                </div>
-              </div>
+              {/* Time & question info */}
+              {(() => {
+                const bankCount = selectedQuiz.content?.questions?.length || 0;
+                const limit = selectedQuiz.content?.question_limit;
+                const ticketCount = (limit && limit > 0 && limit < bankCount) ? limit : bankCount;
+                const timeBase = selectedQuiz.content?.time_limit
+                  ? selectedQuiz.content.time_limit
+                  : ticketCount * 25;
+                return (
+                  <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginBottom: '25px', flexWrap: 'wrap' }}>
+                    <div style={{ padding: '8px 15px', background: 'rgba(0,0,0,0.03)', borderRadius: '12px', fontSize: '0.85rem', textAlign: 'center' }}>
+                      {limit && limit > 0 && limit < bankCount ? (
+                        <><strong>{limit}</strong> из {bankCount} вопросов <span style={{ opacity: 0.5, fontSize: '0.78rem' }}>(банк)</span></>
+                      ) : (
+                        <><strong>{bankCount}</strong> вопр.</>
+                      )}
+                    </div>
+                    <div style={{ padding: '8px 15px', background: 'rgba(99, 102, 241, 0.08)', color: 'var(--primary-color)', borderRadius: '12px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Clock size={14} />
+                      <strong>{Math.floor(timeBase / 60)} мин {timeBase % 60} сек</strong>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {selectedQuiz.resources && selectedQuiz.resources.length > 0 && (
                 <div style={{ marginBottom: '30px', textAlign: 'left' }}>
@@ -2002,16 +2010,28 @@ const QuizCatalog = ({ profile }) => {
               <div style={{ padding: '15px', background: 'rgba(0,0,0,0.03)', borderRadius: '12px', marginBottom: '25px', textAlign: 'center' }}>
                 <span style={{ fontSize: '0.85rem', opacity: 0.6, display: 'block', marginBottom: '5px' }}>Вам выпал тест:</span>
                 <span style={{ fontWeight: 'bold', color: 'var(--primary-color)' }}>{randomQuizModal.quiz.title}</span>
-                <div style={{ marginTop: '10px', display: 'flex', gap: '8px', justifyContent: 'center' }}>
-                  <span style={{ fontSize: '0.75rem', opacity: 0.5 }}>{randomQuizModal.quiz.content?.questions?.length || 0} вопр.</span>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--primary-color)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <Clock size={12} />
-                    {randomQuizModal.quiz.content?.time_limit ? (
-                      Math.floor(randomQuizModal.quiz.content.time_limit / 60) + ':' + String(randomQuizModal.quiz.content.time_limit % 60).padStart(2, '0')
-                    ) : (
-                      Math.floor(((randomQuizModal.quiz.content?.questions?.length || 0) * 25) / 60) + ':' + String(((randomQuizModal.quiz.content?.questions?.length || 0) * 25) % 60).padStart(2, '0')
-                    )}
-                  </span>
+                <div style={{ marginTop: '10px', display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                  {(() => {
+                    const bankCount = randomQuizModal.quiz.content?.questions?.length || 0;
+                    const limit = randomQuizModal.quiz.content?.question_limit;
+                    const ticketCount = (limit && limit > 0 && limit < bankCount) ? limit : bankCount;
+                    const timeBase = randomQuizModal.quiz.content?.time_limit
+                      ? randomQuizModal.quiz.content.time_limit
+                      : ticketCount * 25;
+                    return (
+                      <>
+                        <span style={{ fontSize: '0.75rem', opacity: 0.6 }}>
+                          {limit && limit > 0 && limit < bankCount
+                            ? <><strong>{limit}</strong> из {bankCount} вопр.</>  
+                            : <><strong>{bankCount}</strong> вопр.</>}
+                        </span>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--primary-color)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <Clock size={12} />
+                          {Math.floor(timeBase / 60)}:{String(timeBase % 60).padStart(2, '0')}
+                        </span>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
 

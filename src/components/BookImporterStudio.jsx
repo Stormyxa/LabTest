@@ -4,10 +4,13 @@ import {
   extractPdfText,
   detectTocPages,
   analyzeTextbookStructure,
+  deduplicateRoadmapItems,
   generateQuizForParagraph,
   searchYouTubeVideo,
   getEffectiveApiKey,
-  CANDIDATE_MODELS
+  CANDIDATE_MODELS,
+  DEFAULT_MODEL,
+  QuotaExceededError
 } from '../lib/aiBookImporter';
 import {
   Sparkles, Book, FileText, Play, Pause, Square, CheckCircle,
@@ -50,16 +53,16 @@ const BookImporterStudio = ({
   // Roadmap (parsed structure)
   const [roadmap, setRoadmap] = useState([]);
   const [customApiKey, setCustomApiKey] = useState(() => localStorage.getItem('gemini_custom_api_key') || '');
-  const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem('gemini_selected_model') || 'gemini-3.8-flash');
+  const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem('gemini_selected_model') || DEFAULT_MODEL);
   const [showKeyInput, setShowKeyInput] = useState(false);
 
   // Generation settings
   const [questionsPerQuiz, setQuestionsPerQuiz] = useState(20);
   const [questionLimit, setQuestionLimit] = useState(10);
   const [authorName, setAuthorName] = useState('Афанасиади Анастас');
-  const [searchYoutube, setSearchYoutube] = useState(true);
+  const [searchYoutube, setSearchYoutube] = useState(false);
   const [autoPublish, setAutoPublish] = useState(false);
-  const [rateLimitDelaySec, setRateLimitDelaySec] = useState(4); // 4s = 15 RPM
+  const [rateLimitDelaySec, setRateLimitDelaySec] = useState(6); // 6s = ~10 RPM with safety margin
 
   // Pipeline execution state
   const [isRunning, setIsRunning] = useState(false);
@@ -277,7 +280,10 @@ const BookImporterStudio = ({
       if (rpcError) throw rpcError;
       let currentSortOrder = (maxOrderData ?? -1) + 1;
 
-      for (let i = 0; i < roadmap.length; i++) {
+      // Take a snapshot of the roadmap at start to avoid stale-closure reads
+      const roadmapSnapshot = [...roadmap];
+
+      for (let i = 0; i < roadmapSnapshot.length; i++) {
         if (abortRef.current) break;
 
         // Check for pause
@@ -287,7 +293,8 @@ const BookImporterStudio = ({
         }
         if (abortRef.current) break;
 
-        const item = roadmap[i];
+        const item = roadmapSnapshot[i];
+        // Skip disabled or already-completed items
         if (!item.enabled || item.status === 'completed') {
           continue;
         }
@@ -401,6 +408,23 @@ const BookImporterStudio = ({
             await waitWithCountdown(rateLimitDelaySec);
           }
         } catch (itemErr) {
+          // ── QuotaExceededError: wait announced time then re-queue item (don't skip) ──
+          if (itemErr instanceof QuotaExceededError) {
+            const extraWait = Math.max(itemErr.waitSec || 60, 60);
+            setCurrentStatus(`⏳ Квота RPM исчерпана. Ждём ${extraWait}с перед повтором "${item.title}"...`);
+            setRoadmap(prev => prev.map((it, idx) => idx === i ? { ...it, status: 'pending', error: null } : it));
+            // Wait the announced time
+            for (let t = extraWait; t > 0 && !abortRef.current; t--) {
+              setCountdown(t);
+              await new Promise(r => setTimeout(r, 1000));
+            }
+            setCountdown(0);
+            if (!abortRef.current) {
+              i--; // re-process same index on next iteration
+            }
+            continue;
+          }
+          // ── Other errors: skip and mark as error ──
           console.error(`Ошибка при создании "${item.title}":`, itemErr);
           const friendlyMsg = itemErr.message || 'Ошибка обработки';
           setRoadmap(prev => prev.map((it, idx) => idx === i ? {
@@ -408,7 +432,7 @@ const BookImporterStudio = ({
             status: 'error',
             error: friendlyMsg
           } : it));
-          setCurrentStatus(`⚠️ Пропуск "${item.title}": ${friendlyMsg}. Переход к следующему параграфу...`);
+          setCurrentStatus(`⚠️ Пропуск "${item.title}": ${friendlyMsg}. Переход к следующему...`);
           await new Promise(r => setTimeout(r, 1500));
         }
       }
@@ -495,12 +519,12 @@ const BookImporterStudio = ({
             >
               {CANDIDATE_MODELS.map(m => (
                 <option key={m} value={m}>
-                  {m} {m === 'gemini-3.8-flash' ? '(Новейшая, с авто-фолбэком)' : ''}
+                  {m} {m === 'gemini-2.5-flash' ? '(Стабильная ✓ — рекомендуется)' : m === 'gemini-3.8-flash' ? '(Новейшая, бывают 503)' : ''}
                 </option>
               ))}
             </select>
             <div style={{ fontSize: '0.78rem', opacity: 0.6, marginTop: '4px' }}>
-              Если выбранная модель временно перегружена (503 High Demand), система автоматически продолжит работу на резервных моделях (3.7 / 3.5 / 2.5).
+              При ошибке 429 (квота) система автоматически ждёт ~15с и повторяет. При 503 (перегрузка) — сразу переключается на следующую модель.
             </div>
           </div>
 
@@ -806,7 +830,27 @@ const BookImporterStudio = ({
               </div>
             </div>
 
-            <div className="flex-center" style={{ gap: '8px' }}>
+            <div className="flex-center" style={{ gap: '8px', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => {
+                  const deduped = deduplicateRoadmapItems(roadmap.map(item => ({
+                    ...item,
+                    type: item.type,
+                    title: item.title,
+                    start_page: item.startPage,
+                    end_page: item.endPage
+                  })));
+                  const removed = roadmap.length - deduped.length;
+                  setRoadmap(deduped);
+                  if (removed > 0) alert(`✅ Удалено дубликатов: ${removed}. Осталось элементов: ${deduped.length}.`);
+                  else alert('Дубликатов не найдено — план уже чистый.');
+                }}
+                disabled={isRunning}
+                title="Удалить повторяющиеся темы и разделители"
+                style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(99, 102, 241, 0.08)', color: '#6366f1', borderRadius: '8px', boxShadow: 'none', display: 'flex', alignItems: 'center', gap: '5px' }}
+              >
+                <RefreshCw size={13} /> Дедуплицировать
+              </button>
               <button
                 onClick={() => handleAddManualItem('divider')}
                 style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(168, 85, 247, 0.1)', color: '#9333ea', borderRadius: '8px', boxShadow: 'none' }}

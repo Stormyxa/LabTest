@@ -5,15 +5,26 @@
 
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
 
+/**
+ * Thrown when all retries are exhausted due to rate limit (429).
+ * The pipeline catches this and retries the item after a longer wait.
+ */
+export class QuotaExceededError extends Error {
+  constructor(waitSec, message) {
+    super(message);
+    this.name = 'QuotaExceededError';
+    this.waitSec = waitSec;
+  }
+}
+
 export const CANDIDATE_MODELS = [
-  'gemini-3.8-flash',
   'gemini-2.5-flash',
+  'gemini-3.8-flash',
   'gemini-3.7-flash',
-  'gemini-3.5-flash',
-  'gemini-flash-latest'
+  'gemini-3.5-flash'
 ];
 
-export const DEFAULT_MODEL = 'gemini-3.8-flash';
+export const DEFAULT_MODEL = 'gemini-2.5-flash';
 
 // Polyfill URL.parse for compatibility with all browsers
 if (typeof URL !== 'undefined' && !URL.parse) {
@@ -193,7 +204,7 @@ export function getEffectiveApiKey(customKey = null) {
 }
 
 /**
- * Call Gemini Flash API with automatic fallback on 503 / high demand
+ * Call Gemini Flash API with automatic fallback on 503/overload and smart wait on 429
  */
 async function callGemini(prompt, apiKey, systemInstruction = '', preferredModel = null, useSearch = false) {
   const key = getEffectiveApiKey(apiKey);
@@ -234,40 +245,64 @@ async function callGemini(prompt, apiKey, systemInstruction = '', preferredModel
       requestBody.tools = [{ googleSearch: {} }];
     }
 
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody)
-      });
+    // Retry current model up to 3 times with backoff on 429
+    let attemptsLeft = 3;
+    let last429WaitSec = 0;
+    while (attemptsLeft-- > 0) {
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody)
+        });
 
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        const rawMessage = errData.error?.message || errData.error?.status || `HTTP ${res.status}`;
-        console.warn(`[Gemini Fallback] Модель ${model} вернула ошибку (${res.status}: ${rawMessage}). Переключаемся на следующую модель...`);
-        lastError = new Error(`Модель ${model} (${res.status}): ${rawMessage}`);
-        continue;
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          const rawMessage = errData.error?.message || errData.error?.status || `HTTP ${res.status}`;
+
+          // On 429: parse retry-after hint and wait, then retry same model
+          if (res.status === 429) {
+            const retryAfterMatch = rawMessage.match(/(\d+(?:\.\d+)?)\s*s/i);
+            const waitSec = retryAfterMatch ? Math.min(Math.ceil(parseFloat(retryAfterMatch[1])), 65) + 3 : 20;
+            last429WaitSec = waitSec;
+            console.warn(`[Gemini 429] Квота ${model}. Ждём ${waitSec}с (осталось попыток: ${attemptsLeft})...`);
+            await new Promise(r => setTimeout(r, waitSec * 1000));
+            continue; // retry same model
+          }
+
+          // On 503/500/overload: skip to next model immediately
+          console.warn(`[Gemini Fallback] Модель ${model} вернула ошибку (${res.status}). Переключаемся...`);
+          lastError = new Error(`Модель ${model} (${res.status}): ${rawMessage}`);
+          attemptsLeft = 0; // skip remaining retries for this model
+          break;
+        }
+
+        const data = await res.json();
+        const candidate = data.candidates?.[0];
+        const parts = candidate?.content?.parts || [];
+        const text = parts
+          .map(p => p.text || '')
+          .filter(Boolean)
+          .join('');
+
+        if (!text) {
+          lastError = new Error(`Пустой ответ от модели ${model}.`);
+          break;
+        }
+
+        return text;
+      } catch (fetchErr) {
+        const errMsg = fetchErr.message || '';
+        console.warn(`[Gemini Fallback] Сетевая ошибка ${model}: ${errMsg}.`);
+        lastError = fetchErr;
+        break;
       }
+    }
 
-      const data = await res.json();
-      const candidate = data.candidates?.[0];
-      const parts = candidate?.content?.parts || [];
-      // Join all text parts, ignoring internal thought/reasoning signatures
-      const text = parts
-        .map(p => p.text || '')
-        .filter(Boolean)
-        .join('');
-
-      if (!text) {
-        throw new Error(`Пустой ответ от модели ${model}.`);
-      }
-
-      return text;
-    } catch (fetchErr) {
-      const errMsg = fetchErr.message || '';
-      console.warn(`[Gemini Fallback] Ошибка при обращении к ${model}: ${errMsg}. Пробуем следующую модель...`);
-      lastError = fetchErr;
-      continue;
+    // If we exhausted 429 retries on this model, throw QuotaExceededError
+    // (don't try other models — they share the same free-tier quota)
+    if (last429WaitSec > 0 && attemptsLeft < 0) {
+      throw new QuotaExceededError(last429WaitSec, `Квота исчерпана на ${model}. Все модели делят один лимит RPM.`);
     }
   }
 
@@ -358,20 +393,93 @@ function cleanAndParseJson(raw) {
  * Analyze Table of Contents (TOC) and construct hierarchical structure
  * Supports Sections (Разделы), Chapters (Главы), and Paragraphs (Параграфы)
  */
+/**
+ * Deduplicate roadmap items and merge overlapping page ranges for identical topics
+ */
+export function deduplicateRoadmapItems(rawItems) {
+  if (!Array.isArray(rawItems)) return [];
+  const result = [];
+  const seenQuizTitles = new Map(); // normalized title -> index in result
+
+  for (let idx = 0; idx < rawItems.length; idx++) {
+    const raw = rawItems[idx];
+    const title = (raw.title || raw.text || '').trim();
+    if (!title) continue;
+
+    const isDivider = raw.type === 'divider';
+    // Clean normalized title for matching: lowercased, spaces normalized, punctuation trimmed
+    const norm = title.toLowerCase().replace(/[\s\-_–—\.]+/g, ' ').trim();
+
+    if (isDivider) {
+      // Check if previous item was a divider with identical title
+      const last = result[result.length - 1];
+      if (last && last.type === 'divider' && last.title.toLowerCase().replace(/[\s\-_–—\.]+/g, ' ').trim() === norm) {
+        continue; // skip identical consecutive divider
+      }
+      // Check if identical divider exists in recent history (within 4 items)
+      const recent = result.slice(-4).filter(r => r.type === 'divider');
+      if (recent.some(r => r.title.toLowerCase().replace(/[\s\-_–—\.]+/g, ' ').trim() === norm)) {
+        continue;
+      }
+      result.push({
+        id: `item-${Date.now()}-${result.length}`,
+        type: 'divider',
+        title,
+        startPage: null,
+        endPage: null,
+        enabled: true,
+        status: 'pending',
+        error: null,
+        createdQuizId: null
+      });
+    } else {
+      // Quiz item
+      const start = parseInt(raw.start_page || raw.startPage) || 1;
+      const end = parseInt(raw.end_page || raw.endPage) || (start + 4);
+
+      if (seenQuizTitles.has(norm)) {
+        // SAME TOPIC ALREADY EXISTS! Merge the page range instead of creating a duplicate!
+        const existingIdx = seenQuizTitles.get(norm);
+        const existing = result[existingIdx];
+        existing.startPage = Math.min(existing.startPage, start);
+        existing.endPage = Math.max(existing.endPage, end);
+        console.log(`[Importer] Объединены страницы для темы "${title}": стр. ${existing.startPage}–${existing.endPage}`);
+      } else {
+        seenQuizTitles.set(norm, result.length);
+        result.push({
+          id: `item-${Date.now()}-${result.length}`,
+          type: 'quiz',
+          title,
+          startPage: start,
+          endPage: Math.max(start, end),
+          enabled: true,
+          status: 'pending',
+          error: null,
+          createdQuizId: null
+        });
+      }
+    }
+  }
+
+  return result;
+}
+
 export async function analyzeTextbookStructure(tocOrPagesText, apiKey, totalPdfPages = 200, preferredModel = null) {
   const systemInstruction = `Ты — эксперт по анализу оглавления и структуры школьных учебников (включая учебники Казахстана).
 Твоя задача — извлечь строго хронологическую последовательность разделителей и тестов.
 
-Важные правила структуры:
-1. Разделителями (type: "divider") являются:
+СТРОЖАЙШИЕ ПРАВИЛА УНИКАЛЬНОСТИ И СТРУКТУРЫ:
+1. Каждая тема/параграф (quiz) обязана присутствовать в итоговом массиве СТРОГО ОДИН РАЗ.
+   - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО дублировать параграфы, даже если их заголовки или колонтитулы повторяются на нескольких страницах текста.
+   - Для каждого параграфа определи полный непрерывный диапазон его страниц: "start_page" (первая страница) и "end_page" (последняя страница перед началом следующего параграфа).
+2. Разделителями (type: "divider") являются:
    - Разделы (например: "I РАЗДЕЛ. ЦИВИЛИЗАЦИЯ: ОСОБЕННОСТИ РАЗВИТИЯ")
    - Главы (например: "Глава 1. Традиционная система жизнеобеспечения казахов")
-   - Подразделы или крупные блоки тем.
-2. Тестами (type: "quiz") являются конкретные параграфы и темы:
+   - Разделители не должны повторяться или идти дублями подряд. Один раздел — строго один разделитель.
+3. Тестами (type: "quiz") являются конкретные параграфы и темы:
    - Например: "§ 1–2. Развитие кочевого скотоводства и земледелия на территории Казахстана"
    - Например: "§ 3. Традиционное ремесло казахов"
-3. Для каждого теста обязательно определи диапазон страниц (start_page, end_page) на основе номеров страниц в оглавлении или соседних тем.
-4. Если параграф очень большой (охватывает более 8-10 страниц, либо содержит сдвоенный параграф вроде "§ 1–2" или "§ 1-4"), разбей его на части:
+4. Если параграф очень большой (охватывает более 8-10 страниц, либо содержит сдвоенный параграф вроде "§ 1–2"), разбей его на части:
    - "§ 1–2 (ч. 1). Название темы" (первая половина страниц)
    - "§ 1–2 (ч. 2). Название темы" (вторая половина страниц)
    Если тема стандартного размера (3-7 страниц), оставь в одной части.
@@ -385,7 +493,7 @@ export async function analyzeTextbookStructure(tocOrPagesText, apiKey, totalPdfP
   "end_page": 12   // только для quiz (число)
 }`;
 
-  const prompt = `Вот текст первых страниц учебника и оглавления (всего страниц в файле: ${totalPdfPages}):\n\n${tocOrPagesText}\n\nСформируй полную хронологическую структуру книги в виде JSON-массива объектов.`;
+  const prompt = `Вот текст первых страниц учебника и оглавления (всего страниц в файле: ${totalPdfPages}):\n\n${tocOrPagesText}\n\nСформируй полную хронологическую структуру книги в виде JSON-массива объектов БЕЗ дублирования параграфов.`;
 
   const rawJson = await callGemini(prompt, apiKey, systemInstruction, preferredModel);
   const items = cleanAndParseJson(rawJson);
@@ -394,18 +502,8 @@ export async function analyzeTextbookStructure(tocOrPagesText, apiKey, totalPdfP
     throw new Error('Ответ от Gemini не является массивом элементов.');
   }
 
-  // Normalize items
-  return items.map((item, idx) => ({
-    id: `item-${Date.now()}-${idx}`,
-    type: item.type === 'divider' ? 'divider' : 'quiz',
-    title: (item.title || item.text || '').trim(),
-    startPage: item.start_page || item.startPage || 1,
-    endPage: item.end_page || item.endPage || (item.start_page ? item.start_page + 4 : 5),
-    enabled: true,
-    status: 'pending', // 'pending' | 'generating' | 'completed' | 'error'
-    error: null,
-    createdQuizId: null
-  }));
+  // Deduplicate and merge page ranges
+  return deduplicateRoadmapItems(items);
 }
 
 /**
