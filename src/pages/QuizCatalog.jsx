@@ -241,7 +241,7 @@ const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, pass
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); onPrintQuiz?.(quiz); }}
-              style={{ padding: '8px', background: 'rgba(16, 185, 129, 0.1)', color: '#059669', boxShadow: 'none', borderRadius: '10px' }}
+              style={{ padding: '8px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none', borderRadius: '10px' }}
               title="Печать теста А4 и PDF (для уроков и проверочных)"
             >
               <Printer size={15} />
