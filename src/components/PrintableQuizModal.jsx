@@ -1,11 +1,12 @@
-import React, { useState, useMemo, useRef } from 'react';
-import { Printer, X, Scissors, RefreshCw, Copy, Check, CheckSquare, Circle, FileText } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { Printer, X, Scissors, RefreshCw, Copy, Check, CheckSquare, Circle, FileText, Loader2 } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 import MathRenderer from './MathRenderer';
 
 // Letters for answer options (Cyrillic by default)
 const OPTION_LETTERS = ['А', 'Б', 'В', 'Г', 'Д', 'Е', 'Ж', 'З'];
 
-// Simple deterministic hash & PRNG for consistent variant generation
 function hashString(str) {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
@@ -24,16 +25,46 @@ function createSeededRandom(seed) {
   };
 }
 
-const PrintableQuizModal = ({ isOpen, onClose, quiz }) => {
+const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
   const [variantIndex, setVariantIndex] = useState(1);
   const [randomSalt, setRandomSalt] = useState(0);
   const [bubbleShape, setBubbleShape] = useState('circle'); // 'circle' | 'square'
   const [copiedKeys, setCopiedKeys] = useState(false);
+  const [loadedContent, setLoadedContent] = useState(null);
+  const [loadedSection, setLoadedSection] = useState(null);
+  const [loading, setLoading] = useState(false);
   const sheetRef = useRef(null);
 
+  // Fetch quiz content if not passed or empty
+  useEffect(() => {
+    if (!isOpen || !quiz?.id) return;
+
+    const hasQuestions = quizContent?.questions && quizContent.questions.length > 0;
+    const hasInlineQuestions = quiz?.content?.questions && quiz.content.questions.length > 0;
+
+    if (!hasQuestions && !hasInlineQuestions && !loadedContent) {
+      setLoading(true);
+      supabase
+        .from('quizzes')
+        .select('content, quiz_sections(name, quiz_classes(name))')
+        .eq('id', quiz.id)
+        .single()
+        .then(({ data, error }) => {
+          if (!error && data) {
+            if (data.content) setLoadedContent(data.content);
+            if (data.quiz_sections) setLoadedSection(data.quiz_sections);
+          }
+        })
+        .finally(() => setLoading(false));
+    }
+  }, [isOpen, quiz?.id, quizContent, quiz?.content, loadedContent]);
+
   const rawQuestions = useMemo(() => {
-    return quiz?.content?.questions || [];
-  }, [quiz]);
+    return quizContent?.questions || loadedContent?.questions || quiz?.content?.questions || [];
+  }, [quizContent, loadedContent, quiz]);
+
+  const subjectName = quiz?.quiz_sections?.name || loadedSection?.name || '';
+  const className = quiz?.quiz_sections?.quiz_classes?.name || loadedSection?.quiz_classes?.name || '';
 
   // Generate variant questions (shuffled questions + shuffled options, max 14)
   const variantData = useMemo(() => {
@@ -44,7 +75,7 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz }) => {
     const seed = hashString(`${quiz?.id || 'quiz'}_var_${variantIndex}_salt_${randomSalt}`);
     const rng = createSeededRandom(seed);
 
-    // 1. Clone and assign original index
+    // 1. Clone questions
     const cloned = rawQuestions.map((q, idx) => ({ ...q, originalQuestionIndex: idx }));
 
     // 2. Shuffle questions
@@ -54,7 +85,9 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz }) => {
     }
 
     // 3. Limit to max 14 questions (or quiz limit if smaller)
-    const limit = Math.min(14, quiz?.content?.question_limit ? parseInt(quiz.content.question_limit, 10) : 14, cloned.length);
+    const configuredLimit = quiz?.content?.question_limit || loadedContent?.question_limit || quizContent?.question_limit;
+    const parsedLimit = configuredLimit ? parseInt(configuredLimit, 10) : 14;
+    const limit = Math.min(14, parsedLimit > 0 ? parsedLimit : 14, cloned.length);
     const chosenQuestions = cloned.slice(0, limit);
 
     // 4. Shuffle options within each question and compute new correct answer
@@ -88,7 +121,7 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz }) => {
     }));
 
     return { questions: finalQuestions, keys };
-  }, [rawQuestions, quiz, variantIndex, randomSalt]);
+  }, [rawQuestions, quiz, loadedContent, quizContent, variantIndex, randomSalt]);
 
   if (!isOpen || !quiz) return null;
 
@@ -103,7 +136,7 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz }) => {
 
   const handleCopyKeys = () => {
     const text = variantData.keys.map(k => `${k.num}: ${k.letter}`).join(' | ');
-    const fullText = `Ключи к тесту "${quiz.title}" (Вариант ${variantIndex}):\n${text}`;
+    const fullText = `Ключи к тесту "${quiz.title}" (${subjectName ? subjectName + ', ' : ''}Вариант ${variantIndex}):\n${text}`;
     navigator.clipboard.writeText(fullText);
     setCopiedKeys(true);
     setTimeout(() => setCopiedKeys(false), 2000);
@@ -113,7 +146,7 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz }) => {
     setRandomSalt(prev => prev + 1);
   };
 
-  return (
+  const modalContent = (
     <div className="printable-modal-backdrop" onClick={onClose}>
       <div className="printable-modal-window" onClick={e => e.stopPropagation()}>
         {/* Controls Toolbar (Hidden when printing) */}
@@ -172,6 +205,7 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz }) => {
               type="button"
               className="toolbar-btn"
               onClick={handleCopyKeys}
+              disabled={totalQuestions === 0}
               title="Скопировать ключи в буфер обмена"
             >
               {copiedKeys ? <Check size={14} color="#16a34a" /> : <Copy size={14} />}
@@ -182,6 +216,7 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz }) => {
               type="button"
               className="print-primary-btn"
               onClick={handlePrint}
+              disabled={loading || totalQuestions === 0}
             >
               <Printer size={16} /> Печать / Сохранить в PDF
             </button>
@@ -199,126 +234,144 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz }) => {
 
         {/* Scrollable Preview Area */}
         <div className="printable-preview-area">
-          {/* Exact A4 Printable Sheet */}
-          <div ref={sheetRef} className="a4-sheet" id="printable-quiz-sheet">
-            {/* SHEET HEADER */}
-            <header className="sheet-header">
-              <div className="sheet-header-left">
-                <h1 className="sheet-quiz-title">{quiz.title}</h1>
-                <div className="sheet-student-fields">
-                  <div className="field-row">
-                    <span className="field-label">ФИО:</span>
-                    <span className="field-line"></span>
-                  </div>
-                  <div className="field-row-split">
-                    <div className="field-inline">
-                      <span className="field-label">Класс:</span>
-                      <span className="field-line short"></span>
+          {loading ? (
+            <div className="printable-loading">
+              <Loader2 size={32} className="spinner" style={{ color: '#4f46e5', marginBottom: '12px' }} />
+              <div>Загрузка вопросов теста...</div>
+            </div>
+          ) : totalQuestions === 0 ? (
+            <div className="printable-loading">
+              <p style={{ margin: 0, fontWeight: 'bold' }}>В этом тесте пока нет вопросов.</p>
+            </div>
+          ) : (
+            /* Exact A4 Printable Sheet */
+            <div ref={sheetRef} className="a4-sheet" id="printable-quiz-sheet">
+              {/* SHEET HEADER */}
+              <header className="sheet-header">
+                <div className="sheet-header-left">
+                  <h1 className="sheet-quiz-title">{quiz.title}</h1>
+                  {(subjectName || className) && (
+                    <div className="sheet-subject-subtitle">
+                      {subjectName && <span>{subjectName}</span>}
+                      {subjectName && className && <span className="subtitle-dot">•</span>}
+                      {className && <span>{className}</span>}
                     </div>
-                    <div className="field-inline">
-                      <span className="field-label">Дата:</span>
-                      <span className="field-line short"></span>
+                  )}
+                  <div className="sheet-student-fields">
+                    <div className="field-row">
+                      <span className="field-label">ФИО:</span>
+                      <span className="field-line"></span>
+                    </div>
+                    <div className="field-row-split">
+                      <div className="field-inline">
+                        <span className="field-label">Класс:</span>
+                        <span className="field-line short"></span>
+                      </div>
+                      <div className="field-inline">
+                        <span className="field-label">Дата:</span>
+                        <span className="field-line short"></span>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="sheet-header-right">
-                <div className="variant-badge">
-                  ВАРИАНТ {variantIndex}
+                <div className="sheet-header-right">
+                  <div className="variant-badge">
+                    ВАРИАНТ {variantIndex}
+                  </div>
+                  <div className="grading-box">
+                    <div className="grading-row">
+                      <span>Баллы:</span>
+                      <strong>____ / {totalQuestions}</strong>
+                    </div>
+                    <div className="grading-row">
+                      <span>Оценка:</span>
+                      <strong>________</strong>
+                    </div>
+                  </div>
                 </div>
-                <div className="grading-box">
-                  <div className="grading-row">
-                    <span>Баллы:</span>
-                    <strong>____ / {totalQuestions}</strong>
-                  </div>
-                  <div className="grading-row">
-                    <span>Оценка:</span>
-                    <strong>________</strong>
-                  </div>
-                </div>
-              </div>
-            </header>
+              </header>
 
-            {/* QUESTIONS 2-COLUMN GRID */}
-            <main className="sheet-questions-grid">
-              {/* Left Column */}
-              <div className="sheet-column">
-                {leftColQuestions.map(q => (
-                  <div key={q.number} className="sheet-question-item">
-                    <div className="sheet-question-title">
-                      <span className="q-num">{q.number}.</span>
-                      <span className="q-text"><MathRenderer text={q.question} /></span>
-                    </div>
-                    <div className="sheet-options-list">
-                      {q.options.map((optText, oIdx) => (
-                        <div key={oIdx} className="sheet-option-row">
-                          <span className={`sheet-bubble ${bubbleShape}`}>
-                            {OPTION_LETTERS[oIdx]}
-                          </span>
-                          <span className="sheet-option-text">
-                            <MathRenderer text={optText} />
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Right Column */}
-              <div className="sheet-column">
-                {rightColQuestions.map(q => (
-                  <div key={q.number} className="sheet-question-item">
-                    <div className="sheet-question-title">
-                      <span className="q-num">{q.number}.</span>
-                      <span className="q-text"><MathRenderer text={q.question} /></span>
-                    </div>
-                    <div className="sheet-options-list">
-                      {q.options.map((optText, oIdx) => (
-                        <div key={oIdx} className="sheet-option-row">
-                          <span className={`sheet-bubble ${bubbleShape}`}>
-                            {OPTION_LETTERS[oIdx]}
-                          </span>
-                          <span className="sheet-option-text">
-                            <MathRenderer text={optText} />
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </main>
-
-            {/* CUT-OFF STRIP FOR TEACHER (BOTTOM) */}
-            <footer className="sheet-teacher-cut">
-              <div className="cut-line">
-                <Scissors size={14} className="cut-icon" />
-                <span className="cut-dash"></span>
-                <span className="cut-label">Линия отреза для учителя (отрезать перед выдачей бланка)</span>
-                <span className="cut-dash"></span>
-              </div>
-
-              <div className="teacher-key-box">
-                <div className="key-header">
-                  <strong>🔑 КЛЮЧИ ДЛЯ ПРОВЕРКИ</strong>
-                  <span className="key-subtitle">
-                    «{quiz.title}» • <strong>ВАРИАНТ {variantIndex}</strong> • Всего: {totalQuestions} вопр.
-                  </span>
-                </div>
-
-                <div className="key-grid">
-                  {variantData.keys.map(k => (
-                    <div key={k.num} className="key-badge">
-                      <span className="key-num">{k.num}</span>
-                      <span className="key-letter">{k.letter}</span>
+              {/* QUESTIONS 2-COLUMN GRID */}
+              <main className="sheet-questions-grid">
+                {/* Left Column */}
+                <div className="sheet-column">
+                  {leftColQuestions.map(q => (
+                    <div key={q.number} className="sheet-question-item">
+                      <div className="sheet-question-title">
+                        <span className="q-num">{q.number}.</span>
+                        <span className="q-text"><MathRenderer text={q.question} /></span>
+                      </div>
+                      <div className="sheet-options-list">
+                        {q.options.map((optText, oIdx) => (
+                          <div key={oIdx} className="sheet-option-row">
+                            <span className={`sheet-bubble ${bubbleShape}`}>
+                              {OPTION_LETTERS[oIdx]}
+                            </span>
+                            <span className="sheet-option-text">
+                              <MathRenderer text={optText} />
+                            </span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   ))}
                 </div>
-              </div>
-            </footer>
-          </div>
+
+                {/* Right Column */}
+                <div className="sheet-column">
+                  {rightColQuestions.map(q => (
+                    <div key={q.number} className="sheet-question-item">
+                      <div className="sheet-question-title">
+                        <span className="q-num">{q.number}.</span>
+                        <span className="q-text"><MathRenderer text={q.question} /></span>
+                      </div>
+                      <div className="sheet-options-list">
+                        {q.options.map((optText, oIdx) => (
+                          <div key={oIdx} className="sheet-option-row">
+                            <span className={`sheet-bubble ${bubbleShape}`}>
+                              {OPTION_LETTERS[oIdx]}
+                            </span>
+                            <span className="sheet-option-text">
+                              <MathRenderer text={optText} />
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </main>
+
+              {/* CUT-OFF STRIP FOR TEACHER (BOTTOM) */}
+              <footer className="sheet-teacher-cut">
+                <div className="cut-line">
+                  <Scissors size={14} className="cut-icon" />
+                  <span className="cut-dash"></span>
+                  <span className="cut-label">Линия отреза для учителя (отрезать перед выдачей бланка)</span>
+                  <span className="cut-dash"></span>
+                </div>
+
+                <div className="teacher-key-box">
+                  <div className="key-header">
+                    <strong>🔑 КЛЮЧИ ДЛЯ ПРОВЕРКИ</strong>
+                    <span className="key-subtitle">
+                      «{quiz.title}» • {subjectName ? `${subjectName} • ` : ''}<strong>ВАРИАНТ {variantIndex}</strong> • Всего: {totalQuestions} вопр.
+                    </span>
+                  </div>
+
+                  <div className="key-grid">
+                    {variantData.keys.map(k => (
+                      <div key={k.num} className="key-badge">
+                        <span className="key-num">{k.num}</span>
+                        <span className="key-letter">{k.letter}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </footer>
+            </div>
+          )}
         </div>
       </div>
 
@@ -505,6 +558,16 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz }) => {
           background: #cbd5e1;
         }
 
+        .printable-loading {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          min-height: 300px;
+          color: #334155;
+          font-size: 0.9rem;
+        }
+
         /* --- SHEET STYLING (A4 RATIO) --- */
         .a4-sheet {
           background: #ffffff;
@@ -536,10 +599,24 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz }) => {
         .sheet-quiz-title {
           font-size: 15px;
           font-weight: 800;
-          margin: 0 0 8px 0;
+          margin: 0 0 3px 0;
           color: #000000;
           line-height: 1.25;
           letter-spacing: -0.2px;
+        }
+
+        .sheet-subject-subtitle {
+          font-size: 11px;
+          color: #4b5563;
+          margin-bottom: 8px;
+          font-weight: 600;
+          display: flex;
+          align-items: center;
+          gap: 5px;
+        }
+
+        .subtitle-dot {
+          opacity: 0.5;
         }
 
         .sheet-student-fields {
@@ -641,7 +718,7 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz }) => {
           align-items: flex-start;
           gap: 4px;
           margin-bottom: 4px;
-          font-size: 11.5px;
+          font-size: 11px;
           font-weight: 700;
           line-height: 1.3;
           color: #000000;
@@ -667,19 +744,19 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz }) => {
           display: flex;
           align-items: center;
           gap: 6px;
-          font-size: 11px;
+          font-size: 10.5px;
           line-height: 1.25;
           color: #111111;
         }
 
         .sheet-bubble {
-          width: 17px;
-          height: 17px;
+          width: 16px;
+          height: 16px;
           border: 1.5px solid #000000;
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          font-size: 9.5px;
+          font-size: 9px;
           font-weight: 800;
           flex-shrink: 0;
           color: #000000;
@@ -743,14 +820,14 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz }) => {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          font-size: 10.5px;
+          font-size: 10px;
           margin-bottom: 6px;
           border-bottom: 1px solid #dddddd;
           padding-bottom: 4px;
         }
 
         .key-subtitle {
-          font-size: 9.5px;
+          font-size: 9px;
           color: #444444;
         }
 
@@ -766,7 +843,7 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz }) => {
           border: 1px solid #000000;
           border-radius: 4px;
           overflow: hidden;
-          font-size: 10px;
+          font-size: 9.5px;
           font-weight: 700;
         }
 
@@ -786,7 +863,7 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz }) => {
 
         /* --- PRINT MEDIA RULES (100% Vector Quality A4) --- */
         @media print {
-          body, html {
+          html, body {
             background: #ffffff !important;
             margin: 0 !important;
             padding: 0 !important;
@@ -794,11 +871,10 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz }) => {
             print-color-adjust: exact !important;
           }
 
-          /* Hide entire web app interface */
+          /* Hide whole app and non-sheet elements */
           .app-shell,
           .navbar,
           .printable-toolbar,
-          .printable-modal-backdrop > *:not(.printable-modal-window),
           .no-print {
             display: none !important;
           }
@@ -807,15 +883,19 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz }) => {
             position: static !important;
             background: transparent !important;
             padding: 0 !important;
+            margin: 0 !important;
             display: block !important;
           }
 
           .printable-modal-window {
             box-shadow: none !important;
+            border: none !important;
             border-radius: 0 !important;
             background: transparent !important;
             max-width: 100% !important;
             height: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
             overflow: visible !important;
             display: block !important;
           }
@@ -823,16 +903,18 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz }) => {
           .printable-preview-area {
             background: transparent !important;
             padding: 0 !important;
-            display: block !important;
+            margin: 0 !important;
             overflow: visible !important;
+            display: block !important;
           }
 
           .a4-sheet {
             box-shadow: none !important;
+            border: none !important;
             margin: 0 auto !important;
             width: 100% !important;
             min-height: auto !important;
-            padding: 5mm 6mm !important;
+            padding: 0 !important;
           }
 
           @page {
@@ -843,6 +925,8 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz }) => {
       `}</style>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 };
 
 export default PrintableQuizModal;

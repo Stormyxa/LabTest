@@ -190,7 +190,7 @@ const Analytics = () => {
     if (!quiz) setLoading(true);
 
     const [q, rRes] = await Promise.all([
-      fetchWithCache(`an_quiz_${quizId}`, () => supabase.from('quizzes').select('id, section_id, author_id, title, is_verified, is_archived, created_at, sort_order, is_hidden, avg_success_rate, is_personal, is_public, resources, profiles(role)').eq('id', quizId).single().then(res => res.data)),
+      fetchWithCache(`an_quiz_${quizId}`, () => supabase.from('quizzes').select('id, section_id, author_id, title, is_verified, is_archived, created_at, sort_order, is_hidden, avg_success_rate, is_personal, is_public, resources, profiles(role), quiz_sections(name, quiz_classes(name))').eq('id', quizId).single().then(res => res.data)),
       supabase.from('quiz_results').select('*').eq('quiz_id', quizId).order('completed_at', { ascending: false })
     ]);
 
@@ -1503,6 +1503,7 @@ const Analytics = () => {
           isOpen={showPrintModal}
           onClose={() => setShowPrintModal(false)}
           quiz={quiz}
+          quizContent={quizContent}
         />
       )}
     </>
