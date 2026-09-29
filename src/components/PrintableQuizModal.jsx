@@ -10,7 +10,11 @@ import MathRenderer from './MathRenderer';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const OPTION_LETTERS = ['А', 'Б', 'В', 'Г', 'Д', 'Е', 'Ж', 'З'];
-const A4_CSS_PX = 297 * (96 / 25.4); // 297 mm → CSS px ≈ 1122.5
+
+// Target maximum content height: 280mm in CSS px.
+// Total A4 is 297mm. With 6mm top and 6mm bottom @page print margins, 285mm is available.
+// Setting target to 280mm leaves a 5mm safety buffer so print engines never spill onto page 2.
+const A4_PRINT_MAX_PX = 280 * (96 / 25.4); // ≈ 1058.3 px
 
 // ── Pure helpers ───────────────────────────────────────────────────────────────
 function hashString(str) {
@@ -44,6 +48,50 @@ export function extractQuestionImages(q) {
     return [resolveImgUrl(q.image_url)];
   }
   return [];
+}
+
+/**
+ * Splits questions between left and right columns balancing visual heights.
+ * Accounts for questions with images (which take ~130px more height).
+ * Works for any number of questions (even or odd).
+ */
+export function splitQuestionsBalanced(questions) {
+  if (!questions || questions.length === 0) return { left: [], right: [] };
+  if (questions.length === 1) return { left: questions, right: [] };
+
+  const getWeight = (q) => {
+    let w = 40; // title & spacing
+    if (q.question && q.question.length > 50) {
+      w += Math.ceil((q.question.length - 50) / 45) * 14;
+    }
+    w += (q.options?.length || 4) * 16;
+    if (q.images && q.images.length > 0) {
+      w += 125; // image container + padding
+    }
+    return w;
+  };
+
+  const weights = questions.map(getWeight);
+  const totalWeight = weights.reduce((a, b) => a + b, 0);
+
+  let bestK = Math.ceil(questions.length / 2);
+  let minDiff = Infinity;
+  let runningLeft = 0;
+
+  for (let i = 0; i < questions.length - 1; i++) {
+    runningLeft += weights[i];
+    const runningRight = totalWeight - runningLeft;
+    const diff = Math.abs(runningLeft - runningRight);
+    if (diff < minDiff) {
+      minDiff = diff;
+      bestK = i + 1;
+    }
+  }
+
+  return {
+    left: questions.slice(0, bestK),
+    right: questions.slice(bestK),
+  };
 }
 
 /**
@@ -224,13 +272,13 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
   useLayoutEffect(() => {
     if (!isOpen || !measuring) return;
     const overflows = measureRefs.map(
-      r => (r.current ? r.current.scrollHeight - A4_CSS_PX : 0)
+      r => (r.current ? r.current.scrollHeight - A4_PRINT_MAX_PX : 0)
     );
     const maxOverflow = Math.max(...overflows, 0);
 
-    if (maxOverflow > 2 && fittedLimit > 1) {
+    if (maxOverflow > 1 && fittedLimit > 1) {
       // Step down proportional to overflow, avoiding React max update depth
-      const step = maxOverflow > 180 ? Math.ceil(maxOverflow / 65) : 1;
+      const step = maxOverflow > 120 ? Math.ceil(maxOverflow / 60) : 1;
       setFittedLimit(prev => Math.max(1, prev - step));
     } else {
       setMeasuring(false);
@@ -254,10 +302,7 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
     return [1, 2, 3, 4].map(v => buildVariantData(rawQuestions, quiz?.id, v, fittedLimit));
   }, [rawQuestions, quiz, fittedLimit, isOpen]);
 
-  const totalQ   = variantData.questions.length;
-  const midPoint = Math.ceil(totalQ / 2);
-  const leftColQ = variantData.questions.slice(0, midPoint);
-  const rightColQ = variantData.questions.slice(midPoint);
+  const totalQ = variantData.questions.length;
 
   // ── handlers ────────────────────────────────────────────────────────────────
   const handlePrint = () => window.print();
@@ -270,10 +315,12 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
       const safeName = quiz.title.replace(/[^\u0430-\u044f\u0451a-z0-9_\-]/gi, '_');
       const filename = `${safeName}_Вариант_${variantIndex}.pdf`;
 
-      // Clone to offscreen (top:0 → no blank first page)
+      // Clone to offscreen with strict 1-page constraints
       const clone   = sheetRef.current.cloneNode(true);
+      clone.style.maxHeight = '284mm';
+      clone.style.overflow = 'hidden';
       const wrapper = document.createElement('div');
-      wrapper.style.cssText = 'position:fixed;left:0;top:0;width:794px;background:#fff;z-index:-99999;overflow:hidden;';
+      wrapper.style.cssText = 'position:fixed;left:0;top:0;width:794px;height:1120px;max-height:1120px;background:#fff;z-index:-99999;overflow:hidden;';
       wrapper.appendChild(clone);
       document.body.appendChild(wrapper);
 
@@ -293,11 +340,12 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
             html2canvas: {
               scale: 2, useCORS: true, allowTaint: false,
               logging: false,
-              width: 794, windowWidth: 794,
+              width: 794, height: 1120,
+              windowWidth: 794, windowHeight: 1120,
               scrollY: 0, scrollX: 0,
             },
             jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-            pagebreak: { mode: ['avoid-all'] },
+            pagebreak: { mode: ['avoid-all', 'css'] },
           })
           .from(clone)
           .save();
@@ -375,9 +423,7 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
   /** Renders a full A4 sheet. Pass ref for the displayed sheet. */
   const renderSheet = (data, vIdx, ref = null, forMeasurement = false) => {
     const { questions, keys } = data;
-    const mid   = Math.ceil(questions.length / 2);
-    const left  = questions.slice(0, mid);
-    const right = questions.slice(mid);
+    const { left, right } = splitQuestionsBalanced(questions);
 
     return (
       <div ref={ref} className="a4-sheet">
@@ -599,47 +645,8 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
         <div className="measurement-container" aria-hidden="true">
           {measureData.map((d, i) =>
             d ? (
-              <div key={i} ref={measureRefs[i]} className="a4-sheet">
-                <header className="sheet-header">
-                  <div className="sheet-header-left">
-                    <h1 className="sheet-quiz-title">{quiz.title}</h1>
-                    <div className="sheet-student-fields">
-                      <div className="field-row">
-                        <span className="field-label">ФИО:</span>
-                        <span className="field-line"></span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="sheet-header-right">
-                    <div className="variant-badge">ВАРИАНТ {i + 1}</div>
-                    <div className="grading-box" style={{ minWidth: 90 }}>
-                      <div className="grading-row"><span>Баллы:</span><strong>__ / {d.questions.length}</strong></div>
-                    </div>
-                  </div>
-                </header>
-                <main className="sheet-questions-grid">
-                  <div className="sheet-column">
-                    {d.questions.slice(0, Math.ceil(d.questions.length / 2))
-                      .map(q => renderQuestion(q, true))}
-                  </div>
-                  <div className="sheet-column">
-                    {d.questions.slice(Math.ceil(d.questions.length / 2))
-                      .map(q => renderQuestion(q, true))}
-                  </div>
-                </main>
-                <footer className="sheet-teacher-cut">
-                  <div className="cut-line"><Scissors size={13} /><span className="cut-dash"></span></div>
-                  <div className="teacher-key-box">
-                    <div className="key-grid">
-                      {d.keys.map(k => (
-                        <div key={k.num} className="key-badge">
-                          <span className="key-num">{k.num}</span>
-                          <span className="key-letter">{k.letter}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </footer>
+              <div key={i}>
+                {renderSheet(d, i + 1, measureRefs[i], true)}
               </div>
             ) : null
           )}
@@ -785,6 +792,12 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
           width: 210mm; visibility: hidden;
           pointer-events: none; z-index: -9999; overflow: hidden;
         }
+        .measurement-container .a4-sheet {
+          min-height: 0 !important;
+          height: auto !important;
+          max-height: none !important;
+          box-shadow: none !important;
+        }
         .class-sheets-container { display: none; }
         .a4-page-break { page-break-after: always; break-after: page; }
 
@@ -875,14 +888,14 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
           padding: 2px;
           box-sizing: border-box;
           max-width: 100%;
-          min-height: 20mm;
-          max-height: 38mm;
+          height: 30mm;
+          max-height: 30mm;
           overflow: hidden;
         }
         .sheet-question-image {
           display: block;
           max-width: 100%;
-          max-height: 34mm;
+          max-height: 28mm;
           width: auto;
           height: auto;
           object-fit: contain;
@@ -982,21 +995,36 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
 
           .no-print { display: none !important; }
 
-          /* A4 sheet in print: fixed height → flex margin-top:auto keeps footer at bottom */
+          /* A4 sheet in print: exact height for 297mm paper with 6mm margins */
           .a4-sheet {
             box-shadow: none !important; border: none !important;
             margin: 0 !important; width: 100% !important;
-            height: 285mm !important;   /* 297 − 6 top − 6 bottom @page margins */
+            height: 284mm !important;
+            max-height: 284mm !important;
             min-height: unset !important; padding: 0 !important;
+            overflow: hidden !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            page-break-after: avoid !important;
+            break-after: avoid !important;
           }
-          .sheet-teacher-cut { margin-top: auto !important; padding-top: 6px !important; }
+          .a4-page-break {
+            page-break-after: always !important;
+            break-after: page !important;
+          }
+          .sheet-teacher-cut { margin-top: auto !important; padding-top: 5px !important; }
 
           /* Image sizing preserved in print */
+          .question-image-bg {
+            height: 28mm !important;
+            max-height: 28mm !important;
+            padding: 1px !important;
+          }
           .sheet-question-image {
             filter: grayscale(100%) contrast(175%) brightness(102%) !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
-            max-height: 34mm !important;
+            max-height: 26mm !important;
             max-width: 100% !important;
             object-fit: contain !important;
           }
