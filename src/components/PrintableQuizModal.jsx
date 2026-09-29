@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Printer, X, Scissors, RefreshCw, Copy, Check,
+  Printer, X, Scissors, Copy, Check,
   FileText, Loader2, Download, Users,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { resolveImgUrl } from '../lib/imageUtils';
 import MathRenderer from './MathRenderer';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -27,17 +28,36 @@ function createSeededRandom(seed) {
   return () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; };
 }
 
+/** Extracts and resolves all image URLs for a question from q.images or legacy fields */
+export function extractQuestionImages(q) {
+  if (!q) return [];
+  if (Array.isArray(q.images) && q.images.length > 0) {
+    return q.images.map(img => resolveImgUrl(img)).filter(Boolean);
+  }
+  if (typeof q.images === 'string' && q.images.trim()) {
+    return [resolveImgUrl(q.images.trim())];
+  }
+  if (q.image) {
+    return [resolveImgUrl(q.image)];
+  }
+  if (q.image_url) {
+    return [resolveImgUrl(q.image_url)];
+  }
+  return [];
+}
+
 /**
- * Builds a shuffled, limited question set for a given variant.
+ * Builds a deterministic, limited question set for a given variant.
+ * Strictly deterministic based on quiz ID and variantIndex (1–4).
  * Guarantees ≥1 question with an image when the pool contains images.
  */
-function buildVariantData(rawQ, quizId, variantIdx, salt, limit) {
+function buildVariantData(rawQ, quizId, variantIdx, limit) {
   if (!rawQ?.length) return { questions: [], keys: [] };
 
-  const seed = hashString(`${quizId || 'quiz'}_var_${variantIdx}_salt_${salt}`);
+  const seed = hashString(`${quizId || 'quiz'}_var_${variantIdx}`);
   const rng  = createSeededRandom(seed);
 
-  // 1. Shuffle questions
+  // 1. Shuffle questions deterministically
   const cloned = rawQ.map(q => ({ ...q }));
   for (let i = cloned.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));
@@ -47,13 +67,12 @@ function buildVariantData(rawQ, quizId, variantIdx, salt, limit) {
   const safeLimit = Math.min(Math.max(1, limit), cloned.length);
 
   // 2. Guarantee ≥1 image question (if any exist in pool)
-  const poolHasImg = cloned.some(q => q.image || q.image_url);
+  const poolHasImg = cloned.some(q => extractQuestionImages(q).length > 0);
   if (poolHasImg) {
-    const chosenHasImg = cloned.slice(0, safeLimit).some(q => q.image || q.image_url);
+    const chosenHasImg = cloned.slice(0, safeLimit).some(q => extractQuestionImages(q).length > 0);
     if (!chosenHasImg) {
-      const srcIdx = cloned.findIndex((q, i) => i >= safeLimit && (q.image || q.image_url));
+      const srcIdx = cloned.findIndex((q, i) => i >= safeLimit && extractQuestionImages(q).length > 0);
       if (srcIdx !== -1) {
-        // Different position per variant for variety
         const dstIdx = Math.floor(rng() * safeLimit);
         [cloned[dstIdx], cloned[srcIdx]] = [cloned[srcIdx], cloned[dstIdx]];
       }
@@ -62,7 +81,7 @@ function buildVariantData(rawQ, quizId, variantIdx, salt, limit) {
 
   const chosen = cloned.slice(0, safeLimit);
 
-  // 3. Shuffle options within each question
+  // 3. Shuffle options within each question deterministically
   const finalQ = chosen.map((q, qi) => {
     const opts = (q.options || []).map((text, oi) => ({ text, isCorrect: oi === q.correctIndex }));
     for (let i = opts.length - 1; i > 0; i--) {
@@ -70,11 +89,13 @@ function buildVariantData(rawQ, quizId, variantIdx, salt, limit) {
       [opts[i], opts[j]] = [opts[j], opts[i]];
     }
     const corr = opts.findIndex(o => o.isCorrect);
+    const resolvedImgs = extractQuestionImages(q);
     return {
       number: qi + 1,
       question: q.question,
       options: opts.map(o => o.text),
-      image: q.image || q.image_url || null,
+      images: resolvedImgs,
+      image: resolvedImgs[0] || null,
       correctIndex: corr,
       correctLetter: corr >= 0 ? OPTION_LETTERS[corr] : '?',
     };
@@ -83,9 +104,26 @@ function buildVariantData(rawQ, quizId, variantIdx, salt, limit) {
   return { questions: finalQ, keys: finalQ.map(q => ({ num: q.number, letter: q.correctLetter })) };
 }
 
-/** Attempt to fetch an image and return its base64 data-URL (for PDF). */
+/** Attempt to fetch an image and return its base64 data-URL (for html2canvas / PDF). */
 async function imageToBase64(src) {
   if (!src || src.startsWith('data:')) return src;
+
+  // 1. Direct fetch (handles same-origin and relative proxy /api/get-image)
+  try {
+    const res = await fetch(src);
+    if (res.ok) {
+      const blob = await res.blob();
+      const b64 = await new Promise((ok) => {
+        const r = new FileReader();
+        r.onload = () => ok(r.result);
+        r.onerror = () => ok(null);
+        r.readAsDataURL(blob);
+      });
+      if (b64) return b64;
+    }
+  } catch { /* proceed to external proxies */ }
+
+  // 2. Proxies if external image blocked by CORS
   const proxies = [
     `https://corsproxy.io/?${encodeURIComponent(src)}`,
     `https://api.allorigins.win/raw?url=${encodeURIComponent(src)}`,
@@ -93,41 +131,37 @@ async function imageToBase64(src) {
   for (const url of proxies) {
     try {
       const ctrl = new AbortController();
-      const tid = setTimeout(() => ctrl.abort(), 6000);
+      const tid = setTimeout(() => ctrl.abort(), 4000);
       const res = await fetch(url, { signal: ctrl.signal });
       clearTimeout(tid);
       if (!res.ok) continue;
       const blob = await res.blob();
-      const b64 = await new Promise((ok, fail) => {
+      const b64 = await new Promise((ok) => {
         const r = new FileReader();
         r.onload = () => ok(r.result);
-        r.onerror = fail;
+        r.onerror = () => ok(null);
         r.readAsDataURL(blob);
       });
       if (b64) return b64;
     } catch { /* try next proxy */ }
   }
-  return null; // give up — will be blank in PDF only
+  return src; // keep src as fallback
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
 const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
   // ── state ──────────────────────────────────────────────────────────────────
   const [variantIndex, setVariantIndex]   = useState(1);
-  const [randomSalt, setRandomSalt]       = useState(0);
   const [copiedKeys, setCopiedKeys]       = useState(false);
   const [loading, setLoading]             = useState(false);
   const [savingPdf, setSavingPdf]         = useState(false);
   const [loadedContent, setLoadedContent] = useState(null);
   const [loadedSection, setLoadedSection] = useState(null);
 
-  // Auto-fit
+  // Auto-fit (no 14-question limit: auto-fits maximum questions that fit on one A4 sheet)
   const [fittedLimit, setFittedLimit]     = useState(14);
   const [measuring, setMeasuring]         = useState(false);
   const [remeasureToken, setRemeasureToken] = useState(0); // bumped after images load
-
-  // Image sizes: { [q.number]: 'sm'|'md'|'lg' }
-  const [imageSizes, setImageSizes]       = useState({});
 
   // Class print
   const [showClassModal, setShowClassModal]     = useState(false);
@@ -179,9 +213,9 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
   // ── auto-fit: reset when questions/modal change ────────────────────────────
   useEffect(() => {
     if (isOpen && rawQuestions.length > 0) {
-      setFittedLimit(Math.min(14, rawQuestions.length));
+      // Start at maximum available questions — let the auto-fit finder detect true physical capacity
+      setFittedLimit(rawQuestions.length);
       setMeasuring(true);
-      setImageSizes({});
     }
     if (!isOpen) setMeasuring(false);
   }, [isOpen, rawQuestions.length]);
@@ -189,11 +223,15 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
   // ── auto-fit: DOM measurement (runs after every render while measuring) ─────
   useLayoutEffect(() => {
     if (!isOpen || !measuring) return;
-    const anyOverflow = measureRefs.some(
-      r => r.current && r.current.scrollHeight > A4_CSS_PX + 2
+    const overflows = measureRefs.map(
+      r => (r.current ? r.current.scrollHeight - A4_CSS_PX : 0)
     );
-    if (anyOverflow && fittedLimit > 1) {
-      setFittedLimit(prev => prev - 1);
+    const maxOverflow = Math.max(...overflows, 0);
+
+    if (maxOverflow > 2 && fittedLimit > 1) {
+      // Step down proportional to overflow, avoiding React max update depth
+      const step = maxOverflow > 180 ? Math.ceil(maxOverflow / 65) : 1;
+      setFittedLimit(prev => Math.max(1, prev - step));
     } else {
       setMeasuring(false);
     }
@@ -207,13 +245,13 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
 
   // ── derived data ────────────────────────────────────────────────────────────
   const variantData = useMemo(
-    () => buildVariantData(rawQuestions, quiz?.id, variantIndex, randomSalt, fittedLimit),
-    [rawQuestions, quiz, variantIndex, randomSalt, fittedLimit]
+    () => buildVariantData(rawQuestions, quiz?.id, variantIndex, fittedLimit),
+    [rawQuestions, quiz, variantIndex, fittedLimit]
   );
 
   const measureData = useMemo(() => {
     if (!rawQuestions.length || !isOpen) return [null, null, null, null];
-    return [1, 2, 3, 4].map(v => buildVariantData(rawQuestions, quiz?.id, v, 0, fittedLimit));
+    return [1, 2, 3, 4].map(v => buildVariantData(rawQuestions, quiz?.id, v, fittedLimit));
   }, [rawQuestions, quiz, fittedLimit, isOpen]);
 
   const totalQ   = variantData.questions.length;
@@ -239,12 +277,11 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
       wrapper.appendChild(clone);
       document.body.appendChild(wrapper);
 
-      // Convert cross-origin images to base64 so html2canvas can render them
+      // Convert images to base64 so html2canvas can render them cleanly
       const imgs = Array.from(clone.querySelectorAll('img.sheet-question-image'));
       await Promise.all(imgs.map(async img => {
         const b64 = await imageToBase64(img.src);
         if (b64) img.src = b64;
-        else img.style.display = 'none'; // graceful fallback
       }));
 
       try {
@@ -280,8 +317,6 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
     setTimeout(() => setCopiedKeys(false), 2000);
   };
 
-  const handleShuffle = () => { setRandomSalt(p => p + 1); setImageSizes({}); };
-
   const handleClassPrint = () => {
     const n = Math.max(1, parseInt(classCount) || 1);
     setClassPrintSheets(Array.from({ length: n }, (_, i) => ({ variantIndex: (i % 4) + 1 })));
@@ -295,12 +330,9 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
 
   // ── sub-renderers ───────────────────────────────────────────────────────────
   /**
-   * Renders one question. Pass forMeasurement=true in hidden sheets
-   * to skip interactive size controls and always use 'md'.
+   * Renders one question with automatic image sizing.
    */
   const renderQuestion = (q, forMeasurement = false) => {
-    const size = forMeasurement ? 'md' : (imageSizes[q.number] || 'md');
-
     return (
       <div key={q.number} className="sheet-question-item">
         {/* Question text */}
@@ -309,35 +341,21 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
           <span className="q-text"><MathRenderer text={q.question} /></span>
         </div>
 
-        {/* Image (shown above options) */}
-        {q.image && (
+        {/* Image(s) (shown above options, auto-sized) */}
+        {q.images && q.images.length > 0 && (
           <div className="question-image-wrap">
             <div className="question-image-bg">
-              <img
-                className={`sheet-question-image img-${size}`}
-                src={q.image}
-                alt=""
-                crossOrigin="anonymous"
-                onLoad={forMeasurement ? triggerImgRemeasure : undefined}
-                onError={forMeasurement ? triggerImgRemeasure : undefined}
-              />
+              {q.images.map((imgSrc, imgIdx) => (
+                <img
+                  key={imgIdx}
+                  className="sheet-question-image"
+                  src={imgSrc}
+                  alt={`Q${q.number} img ${imgIdx + 1}`}
+                  onLoad={forMeasurement ? triggerImgRemeasure : undefined}
+                  onError={forMeasurement ? triggerImgRemeasure : undefined}
+                />
+              ))}
             </div>
-            {/* Size controls — preview only */}
-            {!forMeasurement && (
-              <div className="image-size-controls no-print">
-                {['sm', 'md', 'lg'].map(s => (
-                  <button
-                    key={s}
-                    type="button"
-                    className={`img-size-btn${size === s ? ' active' : ''}`}
-                    onClick={e => { e.stopPropagation(); setImageSizes(p => ({ ...p, [q.number]: s })); }}
-                    title={{ sm: 'Малое', md: 'Среднее', lg: 'Большое' }[s]}
-                  >
-                    {s === 'sm' ? 'S' : s === 'md' ? 'M' : 'L'}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
         )}
 
@@ -456,7 +474,7 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
       {classPrintSheets && (
         <div className="class-sheets-container">
           {classPrintSheets.map((s, i) => {
-            const d = buildVariantData(rawQuestions, quiz?.id, s.variantIndex, 0, fittedLimit);
+            const d = buildVariantData(rawQuestions, quiz?.id, s.variantIndex, fittedLimit);
             return (
               <div key={i} className={i < classPrintSheets.length - 1 ? 'a4-page-break' : ''}>
                 {renderSheet(d, s.variantIndex, null, true)}
@@ -480,22 +498,22 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
                   <Loader2 size={9} style={{ display:'inline', verticalAlign:'middle' }} /> Подбор…
                 </span>
               )}
-              {!measuring && fittedLimit < Math.min(14, rawQuestions.length || 14) && (
-                <span className="fitted-badge">📐 {fittedLimit} вопр.</span>
+              {!measuring && fittedLimit < (rawQuestions.length || 0) && (
+                <span className="fitted-badge">📐 {fittedLimit} из {rawQuestions.length} вопр.</span>
+              )}
+              {!measuring && rawQuestions.length > 0 && fittedLimit >= rawQuestions.length && (
+                <span className="fitted-badge fitted-badge-all">✓ Все {fittedLimit} вопр.</span>
               )}
             </span>
             <div className="variant-pills">
               {[1, 2, 3, 4].map(n => (
                 <button key={n} type="button"
                   className={`variant-pill${variantIndex === n ? ' active' : ''}`}
-                  onClick={() => { setVariantIndex(n); setImageSizes({}); }}>
+                  onClick={() => setVariantIndex(n)}>
                   Вар. {n}
                 </button>
               ))}
             </div>
-            <button type="button" className="toolbar-btn" onClick={handleShuffle}>
-              <RefreshCw size={14} /> Перемешать
-            </button>
           </div>
 
           <div className="printable-toolbar-right">
@@ -670,6 +688,7 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
           background: #e0e7ff; color: #4338ca;
         }
         .fitted-badge.measuring { background: #fef9c3; color: #854d0e; }
+        .fitted-badge.fitted-badge-all { background: #dcfce7; color: #15803d; }
 
         .variant-pills {
           display: flex; background: #f1f5f9;
@@ -837,54 +856,40 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
         .q-num { font-weight: 800; flex-shrink: 0; }
         .q-text { flex: 1; }
 
-        /* ── IMAGE BLOCK ──────────────────────────────────────── */
+        /* ── IMAGE BLOCK (auto-adjusting) ────────────────────────── */
         .question-image-wrap {
-          position: relative;
-          margin: 4px 0 5px 0;
+          margin: 3px 0 4px 0;
+          display: flex;
+          justify-content: flex-start;
+          width: 100%;
         }
         /* White background under image — handles transparent PNGs cleanly */
         .question-image-bg {
           background: #ffffff;
           border: 1px solid #d1d5db;
-          border-radius: 3px;
+          border-radius: 4px;
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          width: 100%;
+          gap: 6px;
+          padding: 2px;
+          box-sizing: border-box;
+          max-width: 100%;
+          min-height: 20mm;
+          max-height: 38mm;
           overflow: hidden;
         }
         .sheet-question-image {
           display: block;
           max-width: 100%;
+          max-height: 34mm;
+          width: auto;
+          height: auto;
           object-fit: contain;
-          /* B&W + high contrast for legible printing */
-          filter: grayscale(100%) contrast(190%) brightness(105%);
+          /* B&W + high contrast for crisp printing */
+          filter: grayscale(100%) contrast(175%) brightness(102%);
           margin: 0 auto;
         }
-        /* Size variants */
-        .sheet-question-image.img-sm { max-height: 22mm; }
-        .sheet-question-image.img-md { max-height: 42mm; }
-        .sheet-question-image.img-lg { max-height: 66mm; }
-
-        /* S/M/L controls (visible in preview only, hidden on print) */
-        .image-size-controls {
-          position: absolute; top: 4px; right: 4px;
-          display: flex;
-          background: rgba(255,255,255,0.92);
-          border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden;
-          opacity: 0; transition: opacity 0.15s;
-          box-shadow: 0 1px 4px rgba(0,0,0,0.12);
-        }
-        .question-image-wrap:hover .image-size-controls { opacity: 1; }
-        .img-size-btn {
-          padding: 3px 8px; font-size: 0.63rem; font-weight: 800;
-          border: none; background: transparent; color: #475569;
-          cursor: pointer; border-right: 1px solid #e2e8f0;
-          transition: background 0.1s;
-        }
-        .img-size-btn:last-child { border-right: none; }
-        .img-size-btn.active { background: #4f46e5; color: #fff; }
-        .img-size-btn:hover:not(.active) { background: #f1f5f9; }
 
         /* Options */
         .sheet-options-list {
@@ -988,14 +993,13 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
 
           /* Image sizing preserved in print */
           .sheet-question-image {
-            filter: grayscale(100%) contrast(190%) brightness(105%) !important;
+            filter: grayscale(100%) contrast(175%) brightness(102%) !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
+            max-height: 34mm !important;
+            max-width: 100% !important;
+            object-fit: contain !important;
           }
-          /* Keep size classes working in print */
-          .sheet-question-image.img-sm { max-height: 22mm !important; }
-          .sheet-question-image.img-md { max-height: 42mm !important; }
-          .sheet-question-image.img-lg { max-height: 66mm !important; }
 
           @page { size: A4 portrait; margin: 6mm 10mm 6mm 10mm; }
         }
