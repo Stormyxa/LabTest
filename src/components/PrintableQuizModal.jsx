@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Printer, X, Scissors, RefreshCw, Copy, Check, FileText, Loader2 } from 'lucide-react';
+import { Printer, X, Scissors, RefreshCw, Copy, Check, FileText, Loader2, Download } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import MathRenderer from './MathRenderer';
 
@@ -32,6 +32,7 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
   const [loadedContent, setLoadedContent] = useState(null);
   const [loadedSection, setLoadedSection] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [savingPdf, setSavingPdf] = useState(false);
   const sheetRef = useRef(null);
 
   // Fetch quiz content if not passed or empty
@@ -133,6 +134,30 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
     window.print();
   };
 
+  const handleSavePdf = async () => {
+    if (!sheetRef.current) return;
+    setSavingPdf(true);
+    try {
+      const html2pdf = (await import('html2pdf.js')).default;
+      const filename = `${quiz.title.replace(/[^а-яёa-z0-9_\-]/gi, '_')}_Вариант_${variantIndex}.pdf`;
+      await html2pdf()
+        .set({
+          margin: [6, 10, 6, 10],
+          filename,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2, useCORS: true, logging: false },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+          pagebreak: { mode: ['avoid-all'] }
+        })
+        .from(sheetRef.current)
+        .save();
+    } catch (e) {
+      console.error('PDF error:', e);
+    } finally {
+      setSavingPdf(false);
+    }
+  };
+
   const handleCopyKeys = () => {
     const text = variantData.keys.map(k => `${k.num}: ${k.letter}`).join(' | ');
     const fullText = `Ключи к тесту "${quiz.title}" (${subjectName ? subjectName + ', ' : ''}Вариант ${variantIndex}):\n${text}`;
@@ -195,11 +220,23 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
 
             <button
               type="button"
+              className="toolbar-btn"
+              onClick={handleSavePdf}
+              disabled={loading || savingPdf || totalQuestions === 0}
+              title="Скачать PDF без диалога печати"
+            >
+              {savingPdf ? <Loader2 size={14} className="spinner" /> : <Download size={14} />}
+              {savingPdf ? 'Создание PDF...' : 'Сохранить в PDF'}
+            </button>
+
+            <button
+              type="button"
               className="print-primary-btn"
               onClick={handlePrint}
               disabled={loading || totalQuestions === 0}
+              title="Открыть диалог печати"
             >
-              <Printer size={16} /> Печать / Сохранить в PDF
+              <Printer size={16} /> Печать
             </button>
 
             <button
@@ -795,7 +832,12 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
             print-color-adjust: exact !important;
           }
 
-          /* Hide whole app and non-sheet elements */
+          /* Hide everything in body except the modal — fixes blank first page */
+          body > *:not(.printable-modal-backdrop) {
+            display: none !important;
+          }
+
+          /* Hide toolbar and non-print elements */
           .app-shell,
           .navbar,
           .printable-toolbar,
