@@ -20,7 +20,6 @@ const Profile = ({ session, profile, refreshProfile }) => {
   const [firstName, setFirstName] = useState(profile?.first_name || '');
   const [lastName, setLastName] = useState(profile?.last_name || '');
   const [patronymic, setPatronymic] = useState(profile?.patronymic || '');
-  const [birthDate, setBirthDate] = useState(profile?.birth_date || '');
 
   const [cityId, setCityId] = useState(profile?.city_id || '');
   const [schoolId, setSchoolId] = useState(profile?.school_id || '');
@@ -91,7 +90,6 @@ const Profile = ({ session, profile, refreshProfile }) => {
       setFirstName(prev => prev || profile.first_name || '');
       setLastName(prev => prev || profile.last_name || '');
       setPatronymic(prev => prev || profile.patronymic || '');
-      setBirthDate(prev => prev || profile.birth_date || '');
       setCityId(prev => prev || profile.city_id || '');
       setSchoolId(prev => prev || profile.school_id || '');
       setClassId(prev => prev || profile.class_id || '');
@@ -246,10 +244,27 @@ const Profile = ({ session, profile, refreshProfile }) => {
         setMsg(`Ошибка при подаче заявки: ${error.message}`);
       } else {
         // console.log("DEBUG: Application sent successfully!");
-        await supabase.from('profiles').update({ 
+        const updates = { 
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+          patronymic: patronymic.trim(),
+          city_id: cityId || null,
+          school_id: schoolId || null,
+          phone_number: phoneNumber,
+          show_phone_number: showPhone,
           pending_class_id: classId,
-          last_class_application_change: new Date().toISOString()
-        }).eq('id', session.user.id);
+          last_class_application_change: new Date().toISOString(),
+          is_profile_setup_completed: true,
+          is_observer: false
+        };
+        if (institutionChanged) {
+          updates.last_institution_change = new Date().toISOString();
+        }
+
+        const { error: profileErr } = await supabase.from('profiles').update(updates).eq('id', session.user.id);
+        if (profileErr) {
+          console.error("DEBUG: Profile update error during class application:", profileErr);
+        }
         
         setSuccessModalContent({
           title: 'Заявка отправлена!',
@@ -317,7 +332,7 @@ const Profile = ({ session, profile, refreshProfile }) => {
     if (profile?.role === 'teacher') finalObserverStatus = true;
 
     const updates = {
-      first_name: firstName, last_name: lastName, patronymic: patronymic, birth_date: birthDate,
+      first_name: firstName.trim(), last_name: lastName.trim(), patronymic: patronymic.trim(),
       city_id: cityId || null, school_id: schoolId || null, class_id: classId || null,
       phone_number: phoneNumber, show_phone_number: showPhone, is_profile_setup_completed: true,
       is_observer: finalObserverStatus
@@ -406,9 +421,6 @@ const Profile = ({ session, profile, refreshProfile }) => {
             </div>
             {profile?.is_profile_setup_completed && (
               <>
-                <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px' }}>
-                  <Calendar size={18} /> <span>{profile.birth_date}</span>
-                </div>
                 <div className="flex-center" style={{ justifyContent: 'flex-start', gap: '10px' }}>
                   <MapPin size={18} /> <span>{cities.find(c => c.id === profile.city_id)?.name || 'Город не указан'}</span>
                 </div>
@@ -679,10 +691,6 @@ const Profile = ({ session, profile, refreshProfile }) => {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <label htmlFor="patronymic">Отчество (необязательно)</label>
             <input id="patronymic" name="patronymic" type="text" value={patronymic} onChange={(e) => setPatronymic(e.target.value)} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} pattern="^[А-Яа-яЁёӘәҒғҚқҢңӨөҰұҮүҺһІі\s\-]*$" title="Используйте кириллицу (русские или казахские буквы), пробелы и дефисы" placeholder="Иванович" autoComplete="additional-name" />
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <label htmlFor="birth-date">Дата рождения</label>
-            <input id="birth-date" name="birth_date" type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} disabled={profile?.is_profile_setup_completed && profile?.role !== 'creator'} required autoComplete="bday" />
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>

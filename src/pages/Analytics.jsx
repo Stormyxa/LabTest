@@ -5,12 +5,13 @@ import { fetchWithCache, useCacheSync, getCachedData, setCachedData } from '../l
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { resolveImgUrl } from '../lib/imageUtils';
-import { ChevronLeft, User, BarChart, Calendar, CheckCircle, XCircle, Mail, Trash2, AlertTriangle, Filter, Download, Pencil, Shield, EyeOff, ArrowDown, ArrowUp, Info, Lock, Image as ImageIcon, ChevronRight, X, Sparkles, Copy, Check, RefreshCw, FileText } from 'lucide-react';
+import { ChevronLeft, User, BarChart, Calendar, CheckCircle, XCircle, Mail, Trash2, AlertTriangle, Filter, Download, Pencil, Shield, EyeOff, ArrowDown, ArrowUp, Info, Lock, Image as ImageIcon, ChevronRight, X, Sparkles, Copy, Check, RefreshCw, FileText, Printer } from 'lucide-react';
 import MathRenderer from '../components/MathRenderer';
 import { buildQuizPromptFromData, downloadJSON } from '../lib/aiPromptBuilder';
 import { buildQuizRagPrompt } from '../lib/ragService';
 import { buildAiCacheKey } from '../lib/aiService';
 import { ChevronDown } from 'lucide-react';
+import PrintableQuizModal from '../components/PrintableQuizModal';
 
 const Analytics = () => {
   const [searchParams] = useSearchParams();
@@ -33,6 +34,7 @@ const Analytics = () => {
 
   const [showObservers, setShowObservers] = useState(sessionStorage.getItem('an_show_observers') === 'true');
   const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
+  const [showPrintModal, setShowPrintModal] = useState(false);
   const [sortConfig, setSortConfig] = useState('date_desc'); // default
   const [useFirstResults, setUseFirstResults] = useState(sessionStorage.getItem('analytics_use_first') === 'true');
 
@@ -886,6 +888,23 @@ const Analytics = () => {
             <button onClick={generatePDF} className="flex-center card" style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none', padding: '15px 20px', marginBottom: 0, cursor: 'pointer', border: 'none', fontWeight: 'bold' }}>
               <Download size={20} style={{ marginRight: '8px' }} /> Отчет PDF
             </button>
+            <button 
+              onClick={() => setShowPrintModal(true)} 
+              className="flex-center card" 
+              style={{ 
+                background: 'rgba(16, 185, 129, 0.1)', 
+                color: '#059669', 
+                boxShadow: 'none', 
+                padding: '15px 20px', 
+                marginBottom: 0, 
+                cursor: 'pointer', 
+                border: 'none', 
+                fontWeight: 'bold' 
+              }}
+              title="Создать и распечатать тест на 1 страницу А4 с отрезными ключами для учителя"
+            >
+              <Printer size={20} style={{ marginRight: '8px' }} /> Печатный тест
+            </button>
             <AnalyticsAiButton 
               quiz={quiz} 
               quizContent={quizContent}
@@ -1477,6 +1496,14 @@ const Analytics = () => {
             )}
           </div>
         </div>
+      )}
+
+      {showPrintModal && (
+        <PrintableQuizModal
+          isOpen={showPrintModal}
+          onClose={() => setShowPrintModal(false)}
+          quiz={quiz}
+        />
       )}
     </>
   );
