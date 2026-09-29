@@ -200,6 +200,8 @@ async function imageToBase64(src) {
 const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
   // ── state ──────────────────────────────────────────────────────────────────
   const [variantIndex, setVariantIndex]   = useState(1);
+  const [keysMode, setKeysMode]           = useState('all'); // 'all' (all 4 variants) | 'single' (only this variant) | 'none' (no keys)
+  const [classTeacherMasterKey, setClassTeacherMasterKey] = useState(true);
   const [copiedKeys, setCopiedKeys]       = useState(false);
   const [loading, setLoading]             = useState(false);
   const [savingPdf, setSavingPdf]         = useState(false);
@@ -268,6 +270,12 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
     if (!isOpen) setMeasuring(false);
   }, [isOpen, rawQuestions.length]);
 
+  // Re-measure when keysMode changes (e.g. 'none' frees up space for more questions)
+  useEffect(() => {
+    if (!isOpen) return;
+    setMeasuring(true);
+  }, [keysMode]);
+
   // ── auto-fit: DOM measurement (runs after every render while measuring) ─────
   useLayoutEffect(() => {
     if (!isOpen || !measuring) return;
@@ -292,16 +300,14 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
   }, [remeasureToken, isOpen]);
 
   // ── derived data ────────────────────────────────────────────────────────────
-  const variantData = useMemo(
-    () => buildVariantData(rawQuestions, quiz?.id, variantIndex, fittedLimit),
-    [rawQuestions, quiz, variantIndex, fittedLimit]
-  );
-
-  const measureData = useMemo(() => {
-    if (!rawQuestions.length || !isOpen) return [null, null, null, null];
+  // Compute all 4 deterministic variants once
+  const allVariantData = useMemo(() => {
+    if (!rawQuestions.length) return [];
     return [1, 2, 3, 4].map(v => buildVariantData(rawQuestions, quiz?.id, v, fittedLimit));
-  }, [rawQuestions, quiz, fittedLimit, isOpen]);
+  }, [rawQuestions, quiz, fittedLimit]);
 
+  const variantData = allVariantData[variantIndex - 1] || { questions: [], keys: [] };
+  const measureData = allVariantData;
   const totalQ = variantData.questions.length;
 
   // ── handlers ────────────────────────────────────────────────────────────────
@@ -357,17 +363,31 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
   };
 
   const handleCopyKeys = () => {
-    const text = variantData.keys.map(k => `${k.num}: ${k.letter}`).join(' | ');
-    navigator.clipboard.writeText(
-      `Ключи к тесту "${quiz.title}" (${subjectName ? subjectName + ', ' : ''}Вариант ${variantIndex}):\n${text}`
-    );
+    if (keysMode === 'all') {
+      const lines = allVariantData.map((d, i) => {
+        const str = d.keys.map(k => `${k.num}: ${k.letter}`).join(' | ');
+        return `ВАРИАНТ ${i + 1}:\n${str}`;
+      });
+      navigator.clipboard.writeText(
+        `Ключи к тесту "${quiz.title}" (${subjectName ? subjectName + ', ' : ''}Все 4 варианта):\n\n${lines.join('\n\n')}`
+      );
+    } else {
+      const text = variantData.keys.map(k => `${k.num}: ${k.letter}`).join(' | ');
+      navigator.clipboard.writeText(
+        `Ключи к тесту "${quiz.title}" (${subjectName ? subjectName + ', ' : ''}Вариант ${variantIndex}):\n${text}`
+      );
+    }
     setCopiedKeys(true);
     setTimeout(() => setCopiedKeys(false), 2000);
   };
 
   const handleClassPrint = () => {
     const n = Math.max(1, parseInt(classCount) || 1);
-    setClassPrintSheets(Array.from({ length: n }, (_, i) => ({ variantIndex: (i % 4) + 1 })));
+    const sheets = Array.from({ length: n }, (_, i) => ({
+      variantIndex: (i % 4) + 1,
+      sheetKeysMode: classTeacherMasterKey ? (i === 0 ? 'all' : 'none') : keysMode,
+    }));
+    setClassPrintSheets(sheets);
     setShowClassModal(false);
     setIsPrintingClass(true);
     setTimeout(() => {
@@ -421,9 +441,10 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
   };
 
   /** Renders a full A4 sheet. Pass ref for the displayed sheet. */
-  const renderSheet = (data, vIdx, ref = null, forMeasurement = false) => {
+  const renderSheet = (data, vIdx, ref = null, forMeasurement = false, customKeysMode = null) => {
     const { questions, keys } = data;
     const { left, right } = splitQuestionsBalanced(questions);
+    const effectiveKeysMode = customKeysMode !== null ? customKeysMode : keysMode;
 
     return (
       <div ref={ref} className="a4-sheet">
@@ -471,29 +492,58 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
         </main>
 
         {/* Cut strip */}
-        <footer className="sheet-teacher-cut">
-          <div className="cut-line">
-            <Scissors size={13} className="cut-icon" />
-            <span className="cut-dash"></span>
-          </div>
-          <div className="teacher-key-box">
-            <div className="key-header">
-              <strong>🔑 КЛЮЧИ ДЛЯ ПРОВЕРКИ</strong>
-              <span className="key-subtitle">
-                «{quiz.title}» • {subjectName ? `${subjectName} • ` : ''}
-                <strong>ВАРИАНТ {vIdx}</strong> • Всего: {questions.length} вопр.
-              </span>
+        {effectiveKeysMode !== 'none' && (
+          <footer className="sheet-teacher-cut">
+            <div className="cut-line">
+              <Scissors size={13} className="cut-icon" />
+              <span className="cut-dash"></span>
             </div>
-            <div className="key-grid">
-              {keys.map(k => (
-                <div key={k.num} className="key-badge">
-                  <span className="key-num">{k.num}</span>
-                  <span className="key-letter">{k.letter}</span>
+            {effectiveKeysMode === 'all' ? (
+              <div className="teacher-key-box all-variants-key-box">
+                <div className="key-header">
+                  <strong>🔑 КЛЮЧИ ДЛЯ ПРОВЕРКИ (ВСЕ 4 ВАРИАНТА)</strong>
+                  <span className="key-subtitle">
+                    «{quiz.title}» • {subjectName ? `${subjectName} • ` : ''}Всего: {questions.length} вопр.
+                  </span>
                 </div>
-              ))}
-            </div>
-          </div>
-        </footer>
+                <div className="all-keys-list">
+                  {allVariantData.map((vData, vi) => (
+                    <div key={vi} className="all-keys-row">
+                      <span className="all-keys-var-badge">ВАР. {vi + 1}:</span>
+                      <div className="all-keys-items">
+                        {vData.keys.map(k => (
+                          <span key={k.num} className="all-keys-item">
+                            <span className="k-n">{k.num}</span>
+                            <span className="k-sep">:</span>
+                            <span className="k-l">{k.letter}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="teacher-key-box">
+                <div className="key-header">
+                  <strong>🔑 КЛЮЧИ ДЛЯ ПРОВЕРКИ</strong>
+                  <span className="key-subtitle">
+                    «{quiz.title}» • {subjectName ? `${subjectName} • ` : ''}
+                    <strong>ВАРИАНТ {vIdx}</strong> • Всего: {questions.length} вопр.
+                  </span>
+                </div>
+                <div className="key-grid">
+                  {keys.map(k => (
+                    <div key={k.num} className="key-badge">
+                      <span className="key-num">{k.num}</span>
+                      <span className="key-letter">{k.letter}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </footer>
+        )}
       </div>
     );
   };
@@ -523,7 +573,7 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
             const d = buildVariantData(rawQuestions, quiz?.id, s.variantIndex, fittedLimit);
             return (
               <div key={i} className={i < classPrintSheets.length - 1 ? 'a4-page-break' : ''}>
-                {renderSheet(d, s.variantIndex, null, true)}
+                {renderSheet(d, s.variantIndex, null, true, s.sheetKeysMode)}
               </div>
             );
           })}
@@ -559,6 +609,33 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
                   Вар. {n}
                 </button>
               ))}
+            </div>
+            <div className="keys-mode-selector">
+              <span className="keys-mode-label">Ключи:</span>
+              <button
+                type="button"
+                className={`keys-pill${keysMode === 'all' ? ' active' : ''}`}
+                onClick={() => setKeysMode('all')}
+                title="Ключи для всех 4 вариантов внизу листа"
+              >
+                Все 4 вар.
+              </button>
+              <button
+                type="button"
+                className={`keys-pill${keysMode === 'single' ? ' active' : ''}`}
+                onClick={() => setKeysMode('single')}
+                title="Ключи только для выбранного варианта"
+              >
+                1 вар.
+              </button>
+              <button
+                type="button"
+                className={`keys-pill${keysMode === 'none' ? ' active' : ''}`}
+                onClick={() => setKeysMode('none')}
+                title="Печать без ключей"
+              >
+                Без ключей
+              </button>
             </div>
           </div>
 
@@ -612,6 +689,20 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
                 <button type="button" className="toolbar-btn"
                   onClick={() => setShowClassModal(false)}>Отмена</button>
               </div>
+
+              <div className="class-modal-options">
+                <label className="class-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={classTeacherMasterKey}
+                    onChange={e => setClassTeacherMasterKey(e.target.checked)}
+                  />
+                  <span>
+                    <strong>1-й лист с ключами для всех 4-х вариантов</strong> (для учителя), остальные без ключей (для учеников)
+                  </span>
+                </label>
+              </div>
+
               {variantCounts && (
                 <div className="class-modal-preview">
                   {variantCounts.map(({ v, count }) => (
@@ -711,6 +802,27 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
           box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
 
+        .keys-mode-selector {
+          display: flex; align-items: center; background: #f1f5f9;
+          padding: 3px; border-radius: 10px; gap: 3px;
+        }
+        .keys-mode-label {
+          font-size: 0.72rem; font-weight: 700; color: #64748b;
+          padding: 0 4px 0 6px;
+        }
+        .keys-pill {
+          padding: 5px 9px; font-size: 0.72rem; font-weight: 600;
+          border-radius: 7px; border: none; background: transparent;
+          color: #64748b; cursor: pointer; transition: all 0.15s;
+          white-space: nowrap;
+        }
+        .keys-pill:hover { color: #1e293b; }
+        .keys-pill.active {
+          background: #fff; color: #0284c7;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+          font-weight: 700;
+        }
+
         .toolbar-btn {
           display: inline-flex; align-items: center; gap: 5px;
           padding: 6px 11px; font-size: 0.73rem; font-weight: 600;
@@ -784,6 +896,19 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
         .variant-count-badge {
           font-size: 0.75rem; font-weight: 700; padding: 3px 9px;
           background: #e0e7ff; color: #4338ca; border-radius: 6px;
+        }
+        .class-modal-options {
+          margin-top: 14px; padding-top: 12px;
+          border-top: 1px solid #e2e8f0;
+        }
+        .class-checkbox-label {
+          display: flex; align-items: flex-start; gap: 9px;
+          font-size: 0.81rem; color: #334155; cursor: pointer;
+          user-select: none; line-height: 1.4;
+        }
+        .class-checkbox-label input[type="checkbox"] {
+          margin-top: 2px; width: 16px; height: 16px;
+          accent-color: #4f46e5; cursor: pointer; flex-shrink: 0;
         }
 
         /* ── Hidden containers ──────────────────────────────────── */
@@ -944,6 +1069,41 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
           border-right: 1px solid #000; color: #222;
         }
         .key-letter { background: #fff; padding: 2px 5px; color: #000; font-weight: 800; }
+
+        .all-variants-key-box {
+          padding: 4px 8px !important;
+        }
+        .all-keys-list {
+          display: flex; flex-direction: column; gap: 3px;
+        }
+        .all-keys-row {
+          display: flex; align-items: center; gap: 6px;
+          font-size: 8.5px; line-height: 1.15;
+        }
+        .all-keys-var-badge {
+          font-weight: 800; font-size: 8px;
+          color: #000; background: #e5e7eb;
+          padding: 1px 4px; border-radius: 3px;
+          border: 1px solid #9ca3af;
+          white-space: nowrap; flex-shrink: 0;
+        }
+        .all-keys-items {
+          display: flex; flex-wrap: wrap; gap: 3px; align-items: center;
+        }
+        .all-keys-item {
+          display: inline-flex; align-items: center;
+          border: 1px solid #000; border-radius: 2.5px;
+          font-size: 8.5px; font-weight: 700; overflow: hidden;
+          background: #fff;
+        }
+        .all-keys-item .k-n {
+          background: #eee; padding: 1px 3px;
+          border-right: 1px solid #000; color: #222;
+        }
+        .all-keys-item .k-sep { display: none; }
+        .all-keys-item .k-l {
+          padding: 1px 4px; color: #000; font-weight: 800;
+        }
 
         @keyframes spin { to { transform: rotate(360deg); } }
         .spinner { animation: spin 1s linear infinite; }
