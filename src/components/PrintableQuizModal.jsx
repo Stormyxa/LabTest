@@ -286,7 +286,6 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
                       <div className="sheet-options-list">
                         {q.options.map((optText, oIdx) => (
                           <div key={oIdx} className="sheet-option-row">
-                            <span className="sheet-checkbox"></span>
                             <span className="sheet-option-letter">{OPTION_LETTERS[oIdx]})</span>
                             <span className="sheet-option-text">
                               <MathRenderer text={optText} />
@@ -309,7 +308,6 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
                       <div className="sheet-options-list">
                         {q.options.map((optText, oIdx) => (
                           <div key={oIdx} className="sheet-option-row">
-                            <span className="sheet-checkbox"></span>
                             <span className="sheet-option-letter">{OPTION_LETTERS[oIdx]})</span>
                             <span className="sheet-option-text">
                               <MathRenderer text={optText} />
@@ -697,22 +695,11 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
           color: #111111;
         }
 
-        .sheet-checkbox {
-          width: 12px;
-          height: 12px;
-          border: 1.5px solid #000000;
-          border-radius: 2px;
-          background: #ffffff;
-          flex-shrink: 0;
-          margin-top: 1px;
-          box-sizing: border-box;
-        }
-
         .sheet-option-letter {
           font-weight: 700;
           color: #000000;
           flex-shrink: 0;
-          margin-right: 1px;
+          margin-right: 2px;
         }
 
         .sheet-option-text {
