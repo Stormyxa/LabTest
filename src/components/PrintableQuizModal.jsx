@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useLayoutEffect } from 're
 import { createPortal } from 'react-dom';
 import {
   Printer, X, Copy, Check,
-  FileText, Loader2, Download, Users,
+  FileText, Loader2, Download, Users, Key,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { resolveImgUrl } from '../lib/imageUtils';
@@ -197,16 +197,25 @@ async function imageToBase64(src) {
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
-const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
+const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent, initialShowKeys = false }) => {
   // ── state ──────────────────────────────────────────────────────────────────
   const [variantIndex, setVariantIndex]   = useState(1);
-  const [keysMode, setKeysMode]           = useState('all'); // 'all' (all 4 variants) | 'single' (only this variant) | 'none' (no keys)
-  const [classTeacherMasterKey, setClassTeacherMasterKey] = useState(true);
+  const [keysMode, setKeysMode]           = useState('none'); // 'none' (default, clean sheet) | 'all' (all 4 variants) | 'single' (only this variant)
+  const [classTeacherMasterKey, setClassTeacherMasterKey] = useState(false); // default: false (all class sheets without keys)
+  const [showKeysView, setShowKeysView]   = useState(initialShowKeys);
+  const [keysViewVariant, setKeysViewVariant] = useState('all'); // 'all' | 1 | 2 | 3 | 4
   const [copiedKeys, setCopiedKeys]       = useState(false);
   const [loading, setLoading]             = useState(false);
   const [savingPdf, setSavingPdf]         = useState(false);
   const [loadedContent, setLoadedContent] = useState(null);
   const [loadedSection, setLoadedSection] = useState(null);
+
+  // Sync initialShowKeys when modal opens
+  useEffect(() => {
+    if (isOpen && initialShowKeys) {
+      setShowKeysView(true);
+    }
+  }, [isOpen, initialShowKeys]);
 
   // Auto-fit (no 14-question limit: auto-fits maximum questions that fit on one A4 sheet)
   const [fittedLimit, setFittedLimit]     = useState(14);
@@ -608,7 +617,15 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
               ))}
             </div>
             <div className="keys-mode-selector">
-              <span className="keys-mode-label">Ключи:</span>
+              <span className="keys-mode-label">Ключи на листе:</span>
+              <button
+                type="button"
+                className={`keys-pill${keysMode === 'none' ? ' active' : ''}`}
+                onClick={() => setKeysMode('none')}
+                title="Печать без ключей (по умолчанию)"
+              >
+                Без ключей
+              </button>
               <button
                 type="button"
                 className={`keys-pill${keysMode === 'all' ? ' active' : ''}`}
@@ -625,25 +642,26 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
               >
                 1 вар.
               </button>
-              <button
-                type="button"
-                className={`keys-pill${keysMode === 'none' ? ' active' : ''}`}
-                onClick={() => setKeysMode('none')}
-                title="Печать без ключей"
-              >
-                Без ключей
-              </button>
             </div>
           </div>
 
           <div className="printable-toolbar-right">
+            <button
+              type="button"
+              className="toolbar-btn keys-view-btn"
+              onClick={() => setShowKeysView(true)}
+              disabled={totalQ === 0}
+              title="Открыть ключи для проверки на экране телефона или ПК"
+            >
+              <Key size={14} style={{ color: '#d97706' }} /> Ключи для проверки
+            </button>
             <button type="button" className="toolbar-btn class-print-btn"
               onClick={() => setShowClassModal(true)} disabled={totalQ === 0}>
               <Users size={14} /> На класс…
             </button>
             <button type="button" className="toolbar-btn" onClick={handleCopyKeys} disabled={totalQ === 0}>
               {copiedKeys ? <Check size={14} color="#16a34a" /> : <Copy size={14} />}
-              {copiedKeys ? 'Скопировано' : 'Ключи'}
+              {copiedKeys ? 'Скопировано' : 'Скопировать'}
             </button>
             <button type="button" className="toolbar-btn" onClick={handleSavePdf}
               disabled={loading || savingPdf || totalQ === 0}>
@@ -660,6 +678,88 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
           </div>
         </div>
 
+        {/* Teacher Keys View (mobile-friendly digital answer sheet) */}
+        {showKeysView && (
+          <div className="class-modal-overlay" onClick={() => setShowKeysView(false)}>
+            <div className="teacher-keys-dialog" onClick={e => e.stopPropagation()}>
+              <div className="keys-dialog-header">
+                <div className="keys-dialog-title-block">
+                  <h3 className="keys-dialog-title">
+                    <Key size={18} style={{ color: '#d97706', marginRight: 7, verticalAlign: 'middle' }} />
+                    Ключи для проверки
+                  </h3>
+                  <div className="keys-dialog-subtitle">
+                    «{quiz.title}» • {totalQ} вопр.
+                  </div>
+                </div>
+                <div className="keys-dialog-header-actions">
+                  <button
+                    type="button"
+                    className="toolbar-btn"
+                    onClick={handleCopyKeys}
+                  >
+                    {copiedKeys ? <Check size={14} color="#16a34a" /> : <Copy size={14} />}
+                    {copiedKeys ? 'Скопировано' : 'Скопировать'}
+                  </button>
+                  <button
+                    type="button"
+                    className="close-btn"
+                    onClick={() => setShowKeysView(false)}
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Variant Selector Tabs */}
+              <div className="keys-dialog-tabs">
+                <button
+                  type="button"
+                  className={`keys-tab${keysViewVariant === 'all' ? ' active' : ''}`}
+                  onClick={() => setKeysViewVariant('all')}
+                >
+                  Все 4 варианта
+                </button>
+                {[1, 2, 3, 4].map(v => (
+                  <button
+                    key={v}
+                    type="button"
+                    className={`keys-tab${keysViewVariant === v ? ' active' : ''}`}
+                    onClick={() => setKeysViewVariant(v)}
+                  >
+                    Вар. {v}
+                  </button>
+                ))}
+              </div>
+
+              {/* Keys Cards Container */}
+              <div className="keys-cards-container">
+                {allVariantData.map((vData, vi) => {
+                  const varNum = vi + 1;
+                  if (keysViewVariant !== 'all' && keysViewVariant !== varNum) return null;
+
+                  return (
+                    <div key={vi} className="teacher-key-card">
+                      <div className="key-card-header">
+                        <span className="key-card-badge">ВАРИАНТ {varNum}</span>
+                        <span className="key-card-count">{vData.keys.length} ответов</span>
+                      </div>
+                      <div className="key-card-grid">
+                        {vData.keys.map(k => (
+                          <div key={k.num} className="key-tile">
+                            <span className="key-tile-num">{k.num}</span>
+                            <span className="key-tile-letter">{k.letter}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Class-print dialog */}
         {showClassModal && (
           <div className="class-modal-overlay" onClick={() => setShowClassModal(false)}>
@@ -669,7 +769,7 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
                 Печать на класс
               </h3>
               <p className="class-modal-desc">
-                Введите количество учеников. Варианты чередуются (1→2→3→4→1…), чтобы соседи не списали.
+                Введите количество учеников. Варианты чередуются (1→2→3→4→1…), чтобы соседи не списали. По стандарту все листы печатаются без ключей.
               </p>
               <div className="class-modal-row">
                 <input type="number" className="class-count-input"
@@ -695,7 +795,7 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
                     onChange={e => setClassTeacherMasterKey(e.target.checked)}
                   />
                   <span>
-                    <strong>1-й лист с ключами для всех 4-х вариантов</strong> (для учителя), остальные без ключей (для учеников)
+                    Добавить <strong>1-й лист с ключами для всех 4-х вариантов</strong> (для учителя), остальные без ключей
                   </span>
                 </label>
               </div>
@@ -828,6 +928,8 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
         }
         .toolbar-btn:hover { background: #e2e8f0; }
         .toolbar-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+        .keys-view-btn { border-color: #fcd34d; background: #fffbeb; color: #b45309; }
+        .keys-view-btn:hover { background: #fef3c7; }
         .class-print-btn { border-color: #a5b4fc; color: #4338ca; }
         .class-print-btn:hover { background: #eef2ff; }
 
@@ -906,6 +1008,69 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
         .class-checkbox-label input[type="checkbox"] {
           margin-top: 2px; width: 16px; height: 16px;
           accent-color: #4f46e5; cursor: pointer; flex-shrink: 0;
+        }
+
+        /* ── Teacher Keys Dialog ────────────────────────────────── */
+        .teacher-keys-dialog {
+          background: #fff; border-radius: 16px; padding: 20px;
+          max-width: 660px; width: 92%; max-height: 85vh;
+          display: flex; flex-direction: column;
+          box-shadow: 0 25px 50px -12px rgba(0,0,0,0.35);
+          overflow: hidden;
+        }
+        .keys-dialog-header {
+          display: flex; justify-content: space-between; align-items: center;
+          margin-bottom: 12px; gap: 10px;
+        }
+        .keys-dialog-title {
+          margin: 0; font-size: 1.1rem; font-weight: 700; color: #0f172a;
+          display: flex; align-items: center;
+        }
+        .keys-dialog-subtitle { font-size: 0.8rem; color: #64748b; margin-top: 2px; }
+        .keys-dialog-header-actions { display: flex; align-items: center; gap: 8px; }
+        .keys-dialog-tabs {
+          display: flex; gap: 5px; background: #f1f5f9; padding: 4px;
+          border-radius: 10px; margin-bottom: 14px; overflow-x: auto; flex-shrink: 0;
+        }
+        .keys-tab {
+          padding: 6px 12px; font-size: 0.78rem; font-weight: 600;
+          border-radius: 7px; border: none; background: transparent;
+          color: #64748b; cursor: pointer; white-space: nowrap; transition: all 0.15s;
+        }
+        .keys-tab:hover { color: #1e293b; }
+        .keys-tab.active {
+          background: #fff; color: #d97706;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-weight: 700;
+        }
+        .keys-cards-container {
+          flex: 1; overflow-y: auto; display: flex; flex-direction: column;
+          gap: 12px; padding-right: 4px;
+        }
+        .teacher-key-card {
+          border: 1.5px solid #e2e8f0; border-radius: 12px;
+          padding: 12px; background: #f8fafc;
+        }
+        .key-card-header {
+          display: flex; justify-content: space-between; align-items: center;
+          margin-bottom: 10px;
+        }
+        .key-card-badge {
+          font-size: 0.78rem; font-weight: 800; background: #1e293b;
+          color: #fff; padding: 3px 8px; border-radius: 6px;
+        }
+        .key-card-count { font-size: 0.75rem; color: #64748b; font-weight: 600; }
+        .key-card-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+        .key-tile {
+          display: inline-flex; border: 1.5px solid #0f172a; border-radius: 6px;
+          overflow: hidden; font-size: 0.85rem; font-weight: 700; background: #fff;
+        }
+        .key-tile-num {
+          background: #f1f5f9; padding: 4px 7px; color: #475569;
+          border-right: 1.5px solid #0f172a; min-width: 18px; text-align: center;
+        }
+        .key-tile-letter {
+          background: #fff; padding: 4px 8px; color: #d97706;
+          font-weight: 800; min-width: 18px; text-align: center;
         }
 
         /* ── Hidden containers ──────────────────────────────────── */
