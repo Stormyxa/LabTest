@@ -899,8 +899,6 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
           width: auto;
           height: auto;
           object-fit: contain;
-          /* B&W + high contrast for crisp printing */
-          filter: grayscale(100%) contrast(175%) brightness(102%);
           margin: 0 auto;
         }
 
@@ -1021,9 +1019,6 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
             padding: 1px !important;
           }
           .sheet-question-image {
-            filter: grayscale(100%) contrast(175%) brightness(102%) !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
             max-height: 26mm !important;
             max-width: 100% !important;
             object-fit: contain !important;
