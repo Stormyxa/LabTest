@@ -139,13 +139,20 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
     setSavingPdf(true);
     try {
       const html2pdf = (await import('html2pdf.js')).default;
-      const filename = `${quiz.title.replace(/[^а-яёa-z0-9_\-]/gi, '_')}_Вариант_${variantIndex}.pdf`;
+      const filename = `${quiz.title.replace(/[^\u0430-\u044f\u0451a-z0-9_\-]/gi, '_')}_\u0412\u0430\u0440\u0438\u0430\u043d\u0442_${variantIndex}.pdf`;
+      // 210mm and 297mm at 96 DPI = 794 × 1123 px
       await html2pdf()
         .set({
-          margin: [6, 10, 6, 10],
+          margin: 0, // sheet already has its own padding
           filename,
-          image: { type: 'jpeg', quality: 0.98 },
-          html2canvas: { scale: 2, useCORS: true, logging: false },
+          image: { type: 'jpeg', quality: 0.99 },
+          html2canvas: {
+            scale: 2,
+            useCORS: true,
+            logging: false,
+            width: 794,        // force exactly 210 mm wide
+            windowWidth: 794,  // prevents right-side clip on HiDPI screens
+          },
           jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
           pagebreak: { mode: ['avoid-all'] }
         })
@@ -879,8 +886,17 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
             border: none !important;
             margin: 0 auto !important;
             width: 100% !important;
-            min-height: auto !important;
+            /* Keep explicit height so flex margin-top:auto works
+               297mm - 6mm top - 6mm bottom (@page margins) = 285mm */
+            height: 285mm !important;
+            min-height: unset !important;
             padding: 0 !important;
+          }
+
+          /* Footer always at bottom — same as preview */
+          .sheet-teacher-cut {
+            margin-top: auto !important;
+            padding-top: 6px !important;
           }
 
           @page {
