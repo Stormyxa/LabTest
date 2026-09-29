@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Printer, X, Scissors, Copy, Check,
+  Printer, X, Copy, Check,
   FileText, Loader2, Download, Users,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -11,10 +11,10 @@ import MathRenderer from './MathRenderer';
 // ── Constants ──────────────────────────────────────────────────────────────────
 const OPTION_LETTERS = ['А', 'Б', 'В', 'Г', 'Д', 'Е', 'Ж', 'З'];
 
-// Target maximum content height: 280mm in CSS px.
+// Target maximum content height: 284mm in CSS px.
 // Total A4 is 297mm. With 6mm top and 6mm bottom @page print margins, 285mm is available.
-// Setting target to 280mm leaves a 5mm safety buffer so print engines never spill onto page 2.
-const A4_PRINT_MAX_PX = 280 * (96 / 25.4); // ≈ 1058.3 px
+// Target 284mm allows maximum questions while guaranteeing 1 page without spilling.
+const A4_PRINT_MAX_PX = 284 * (96 / 25.4); // ≈ 1073.4 px
 
 // ── Pure helpers ───────────────────────────────────────────────────────────────
 function hashString(str) {
@@ -270,9 +270,10 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
     if (!isOpen) setMeasuring(false);
   }, [isOpen, rawQuestions.length]);
 
-  // Re-measure when keysMode changes (e.g. 'none' frees up space for more questions)
+  // Re-measure when keysMode changes (reset to rawQuestions.length to find true maximum for this mode)
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !rawQuestions.length) return;
+    setFittedLimit(rawQuestions.length);
     setMeasuring(true);
   }, [keysMode]);
 
@@ -491,13 +492,9 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
           <div className="sheet-column">{right.map(q => renderQuestion(q, forMeasurement))}</div>
         </main>
 
-        {/* Cut strip */}
+        {/* Teacher keys footer */}
         {effectiveKeysMode !== 'none' && (
           <footer className="sheet-teacher-cut">
-            <div className="cut-line">
-              <Scissors size={13} className="cut-icon" />
-              <span className="cut-dash"></span>
-            </div>
             {effectiveKeysMode === 'all' ? (
               <div className="teacher-key-box all-variants-key-box">
                 <div className="key-header">
@@ -922,6 +919,7 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
           height: auto !important;
           max-height: none !important;
           box-shadow: none !important;
+          padding: 0 10mm !important;
         }
         .class-sheets-container { display: none; }
         .a4-page-break { page-break-after: always; break-after: page; }
@@ -1038,25 +1036,19 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
         .sheet-option-letter { font-weight: 700; color: #000; flex-shrink: 0; margin-right: 2px; }
         .sheet-option-text { flex: 1; }
 
-        /* Cut strip */
+        /* Teacher keys footer */
         .sheet-teacher-cut {
-          margin-top: auto; padding-top: 6px;
+          margin-top: auto; padding-top: 3px;
           page-break-inside: avoid; break-inside: avoid;
         }
-        .cut-line {
-          display: flex; align-items: center; gap: 6px;
-          margin-bottom: 5px; color: #000;
-        }
-        .cut-icon { flex-shrink: 0; color: #000; }
-        .cut-dash { flex: 1; border-bottom: 1.5px dashed #000; height: 1px; }
         .teacher-key-box {
-          border: 1.5px solid #000; border-radius: 5px;
-          padding: 5px 8px; background: #fafafa;
+          border-top: 1.5px dashed #374151;
+          padding: 3px 2px 0 2px;
         }
         .key-header {
           display: flex; justify-content: space-between; align-items: center;
-          font-size: 10px; margin-bottom: 5px;
-          border-bottom: 1px solid #ddd; padding-bottom: 3px;
+          font-size: 9px; margin-bottom: 3px;
+          border-bottom: 1px solid #e5e7eb; padding-bottom: 2px;
         }
         .key-subtitle { font-size: 9px; color: #444; }
         .key-grid { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
@@ -1071,7 +1063,8 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent }) => {
         .key-letter { background: #fff; padding: 2px 5px; color: #000; font-weight: 800; }
 
         .all-variants-key-box {
-          padding: 4px 8px !important;
+          border-top: 1.5px dashed #374151;
+          padding: 3px 2px 0 2px !important;
         }
         .all-keys-list {
           display: flex; flex-direction: column; gap: 3px;
