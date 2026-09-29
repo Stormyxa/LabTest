@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo, useCallback, startTransition, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { Search, Play, CheckCircle, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Award, Save, Copy, BarChart2, Book, Pencil, Eye, AlertTriangle, Plus, Shield, EyeOff, Trash2, Dices, Clock, TrendingUp, Info, Loader2, Share2, Check, X, ExternalLink, Youtube, FileText, Layout, Video } from 'lucide-react';
+import { Search, Play, CheckCircle, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Award, Save, Copy, BarChart2, Book, Pencil, Eye, AlertTriangle, Plus, Shield, EyeOff, Trash2, Dices, Clock, TrendingUp, Info, Loader2, Share2, Check, X, ExternalLink, Youtube, FileText, Layout, Video, Printer } from 'lucide-react';
 import { useScrollRestoration } from '../lib/useScrollRestoration';
 import ResourcePlayer from '../components/ResourcePlayer';
 import { fetchWithCache, useCacheSync } from '../lib/cache';
+import PrintableQuizModal from '../components/PrintableQuizModal';
 
 const DividerItem = React.memo(({ quiz, qIndex, userRole, searchQuery, swapQuizzes, handleRenameTrigger, fetchQuizzes, quizzesLength, activeTab }) => (
   <div className="grid-full animate" style={{ gridColumn: '1 / -1', margin: '10px 0', padding: '10px 0', display: 'flex', alignItems: 'center', gap: '15px' }}>
@@ -34,7 +35,7 @@ const DividerItem = React.memo(({ quiz, qIndex, userRole, searchQuery, swapQuizz
   </div>
 ));
 
-const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, passState, statsLoading, canEditQuiz, canMoveQuiz, swapQuizzes, navigate, setSelectedQuiz, onPrepQuizSelect, setHideModal, setDuplicateModal, isDimmed, quizzesLength, activeTab, handleShare, fetchData, setActiveStandaloneResource }) => {
+const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, passState, statsLoading, canEditQuiz, canMoveQuiz, swapQuizzes, navigate, setSelectedQuiz, onPrepQuizSelect, setHideModal, setDuplicateModal, isDimmed, quizzesLength, activeTab, handleShare, fetchData, setActiveStandaloneResource, onPrintQuiz }) => {
   const [toast, setToast] = useState({ visible: false, opacity: 0 });
   const [activeTimer, setActiveTimer] = useState(null);
 
@@ -238,15 +239,13 @@ const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, pass
             >
               <Share2 size={15} />
             </button>
-            {(!quiz.is_personal || (quiz.is_personal && quiz.author_id !== userId)) && (
-              <button
-                onClick={(e) => { e.stopPropagation(); setDuplicateModal(quiz); }}
-                style={{ padding: '8px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', boxShadow: 'none', borderRadius: '10px' }}
-                title="Дублировать в мою библиотеку"
-              >
-                <Copy size={15} />
-              </button>
-            )}
+            <button
+              onClick={(e) => { e.stopPropagation(); onPrintQuiz?.(quiz); }}
+              style={{ padding: '8px', background: 'rgba(16, 185, 129, 0.1)', color: '#059669', boxShadow: 'none', borderRadius: '10px' }}
+              title="Печать теста А4 и PDF (для уроков и проверочных)"
+            >
+              <Printer size={15} />
+            </button>
 
 
             {toast.visible && (
@@ -283,7 +282,7 @@ const QuizCard = React.memo(({ quiz, qIndex, userId, userRole, searchQuery, pass
   );
 });
 
-const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, onQuizzesChange, setHideModal, setDuplicateModal, handleRenameTrigger, setSelectedQuiz, onPrepQuizSelect, setRandomQuizModal, activeTab, handleShare, fetchData, setActiveStandaloneResource }) => {
+const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, onQuizzesChange, setHideModal, setDuplicateModal, handleRenameTrigger, setSelectedQuiz, onPrepQuizSelect, setRandomQuizModal, activeTab, handleShare, fetchData, setActiveStandaloneResource, onPrintQuiz }) => {
   const navigate = useNavigate();
   const [visibleCount, setVisibleCount] = useState(25); // Incremental rendering start
 
@@ -516,6 +515,7 @@ const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, 
                 handleShare={handleShare}
                 fetchData={fetchData}
                 setActiveStandaloneResource={setActiveStandaloneResource}
+                onPrintQuiz={onPrintQuiz}
               />
             );
           });
@@ -528,7 +528,7 @@ const SectionContent = React.memo(({ section, profile, searchQuery, isExpanded, 
 const CatalogSectionRow = React.memo(({
   section, clsId, sIndex, profile, searchQuery, isExpanded,
   onToggle, onQuizzesChange, setHideModal, setDuplicateModal, handleRenameTrigger, setSelectedQuiz, onPrepQuizSelect, setRandomQuizModal,
-  handleCreateDivider, swapSections, setNewName, activeTab, handleShare, fetchData, setActiveStandaloneResource
+  handleCreateDivider, swapSections, setNewName, activeTab, handleShare, fetchData, setActiveStandaloneResource, onPrintQuiz
 }) => {
   const canExpand = !section.isEmpty || profile?.role === 'creator' || activeTab === 'public' || activeTab === 'shared';
 
@@ -627,6 +627,7 @@ const CatalogSectionRow = React.memo(({
           handleShare={handleShare}
           fetchData={fetchData}
           setActiveStandaloneResource={setActiveStandaloneResource}
+          onPrintQuiz={onPrintQuiz}
         />
       )}
     </div>
@@ -636,7 +637,7 @@ const CatalogSectionRow = React.memo(({
 const CatalogClassRow = React.memo(({
   cls, cIndex, profile, searchQuery, isExpanded, expandedSections,
   onToggle, onSectionToggle, swapClasses, swapSections, handleRenameTrigger, handleCreateDivider, handleCreateSectionDivider, setNewName,
-  onQuizzesChange, setHideModal, setDuplicateModal, setSelectedQuiz, onPrepQuizSelect, setRandomQuizModal, activeTab, handleShare, fetchData, setActiveStandaloneResource
+  onQuizzesChange, setHideModal, setDuplicateModal, setSelectedQuiz, onPrepQuizSelect, setRandomQuizModal, activeTab, handleShare, fetchData, setActiveStandaloneResource, onPrintQuiz
 }) => {
   const canExpand = !cls.isEmpty || profile?.role === 'creator' || activeTab === 'public' || activeTab === 'shared';
 
@@ -766,6 +767,7 @@ const CatalogClassRow = React.memo(({
                 fetchData={fetchData}
                 setNewName={setNewName}
                 setActiveStandaloneResource={setActiveStandaloneResource}
+                onPrintQuiz={onPrintQuiz}
               />
             );
           })}
@@ -812,6 +814,7 @@ const QuizCatalog = ({ profile }) => {
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
 
   const [activeTab, setActiveTab] = useState(() => sessionStorage.getItem('catalog_tab') || 'official');
+  const [printModalQuiz, setPrintModalQuiz] = useState(null);
   const [activeStandaloneResource, setActiveStandaloneResourceState] = useState(null);
   const setActiveStandaloneResource = useCallback((resourceOrList, index = 0) => {
     if (!resourceOrList) {
@@ -1633,6 +1636,7 @@ const QuizCatalog = ({ profile }) => {
                 handleShare={handleShare}
                 fetchData={fetchData}
                 setActiveStandaloneResource={setActiveStandaloneResource}
+                onPrintQuiz={setPrintModalQuiz}
               />
             );
           })
@@ -2406,6 +2410,14 @@ const QuizCatalog = ({ profile }) => {
             </div>
           </div>
         </div>
+      )}
+
+      {printModalQuiz && (
+        <PrintableQuizModal
+          isOpen={!!printModalQuiz}
+          onClose={() => setPrintModalQuiz(null)}
+          quiz={printModalQuiz}
+        />
       )}
     </div>
   );
