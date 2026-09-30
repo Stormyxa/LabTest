@@ -694,7 +694,7 @@ const Editor = ({ session, profile }) => {
 8. СТРОЖАЙШИЙ ЗАПРЕТ на фразы-маркеры: ни в вопросах, ни в вариантах, ни в объяснениях не должно быть фраз: "согласно тексту", "в соответствии с учебником", "как указано в параграфе", "по словам автора", "в данном блоке текста" и их синонимов. Пиши так, будто тест составляется по объективным историческим фактам, а не по конкретной книге.
 
 Работа с иллюстрациями (рисунки, карты, схемы):
-Если вопрос составляется по изображению из параграфа, обязательно начни поле "question" с префикса [ИЗОБРАЖЕНИЕ]. В самом тексте вопроса ЗАПРЕЩЕНО ссылаться на номера страниц или номера рисунков (например, "на рисунке 2"). Вместо этого текстом четко опиши, ЧТО ИМЕННО изображено на иллюстрации (например: "[ИЗОБРАЖЕНИЕ] На схеме, демонстрирующей расселение гоминид...").
+Если вопрос составляется по изображению из параграфа, обязательно начни поле "question" с префикса [ИЗОБРАЖЕНИЕ]. В самом тексте вопроса ЗАПРЕЩЕНО ссылаться на номера страниц или номера рисунков (например, "на рисунке 2"). Вместо этого текстом задай чёткий вопрос без лишних описаний картинки, зная, что пользователь уже обладает изображением в качестве контекста.
 
 Требования к полю "explanation":
 Объяснение должно быть глубоким и академическим. Запрещено писать "Вариант Х верен, потому что так написано". Структура объяснения должна быть следующей: 
@@ -707,13 +707,13 @@ const Editor = ({ session, profile }) => {
 3. Для выделения терминов, цитат или названий внутри строк JSON разрешено использовать только одинарные кавычки ' '. Использование типографских кавычек-ёлочек « » или незаэкранированных двойных кавычек внутри строк ЗАПРЕЩЕНО.
 4. Все управляющие символы и кавычки внутри строк должны быть строго валидными, чтобы не сломать автоматический парсер (JSON.parse).
 
-Объем теста: Составь СТРОГО XX вопросов (если создается банк вопросов, укажи поле question_limit для ограничения вопросов на попытку, например 10).
+Объем теста: Составь ОКОЛО 30-60 вопросов в зависимости от объёма информации в параграфе (это весь банк вопросов, при этом укажи поле question_limit для ограничения вопросов на попытку СТРОГО в 20 штук).
 
 Структура JSON-объекта:
 {
   "title": "§ Номер. Название параграфа",
-  "time_limit": [укажи адекватное время в секундах, исходя из сложности],
-  "question_limit": [опционально: число случайных вопросов из банка на одну попытку, например 10],
+  "time_limit": [укажи адекватное время в секундах, исходя из сложности (относительно количества вопросов на попытку, а не на весь банк)],
+  "question_limit": [указанное в условии число],
   "questions": [
     {
       "question": "Текст вопроса",
@@ -1127,7 +1127,7 @@ const Editor = ({ session, profile }) => {
                       <code style={{ fontSize: '0.75rem', opacity: 0.7, whiteSpace: 'pre-wrap' }}>
                         <p style={{ margin: '0 0 3px 0', fontSize: '0.85rem', fontWeight: 'bold' }}>Создание теста через ИИ с JSON форматом</p>
                         1. Нажмите на кнопку копирования. По желанию измените значение в квадратных скобках на необходимое количество вопросов (от 1 до 30) и вставьте текст в качестве промпта любой ИИ-модели, приложив изображения страниц нужного параграфа.
-                        <br />(Рекомендую <a href="https://aistudio.google.com/u/0/prompts/new_chat?model=gemini-3.1-flash-lite-preview" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary-color)', textDecoration: 'underline' }}>Gemini 3.1 Flash Lite Preview с High Thinking level</a>)
+                        <br />(Рекомендую <a href="https://aistudio.google.com/u/0/prompts/new_chat?model=gemini-3.8-flash" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary-color)', textDecoration: 'underline' }}>Gemini 3.8 Flash с High Thinking level</a>)
                         <br />2. В чате с ИИ убедитесь, что вместо квадратных скобок указано желаемое число вопросов.
                         <br />3. Скопируйте полученный JSON и вставьте его в поле "JSON содержание" на сайте. Проверьте правильность форматирования заголовка.
                         <br />4. Нажмите кнопку "Опубликовать тест" или "Создать пачку тестов".
@@ -1338,31 +1338,31 @@ const Editor = ({ session, profile }) => {
                                         <div className="flex-center" style={{ gap: '5px' }}>
                                           <button onClick={(e) => { e.stopPropagation(); setRenamingItem({ id: section.id, name: section.name, type: 'section' }); setNewName(section.name); }} style={{ background: 'transparent', color: 'var(--primary-color)', opacity: 0.5, boxShadow: 'none', padding: '5px' }} title="Переименовать предмет"><Pencil size={18} /></button>
                                           <button onClick={(e) => { e.stopPropagation(); setEditSectionLink({ id: section.id, url: section.book_url || '' }); }} style={{ background: 'transparent', color: 'var(--primary-color)', opacity: 0.5, boxShadow: 'none', padding: '5px' }} title="Ссылка на учебник"><LinkIcon size={18} /></button>
-                                           {section.book_url && (
-                                             <button
-                                               onClick={(e) => {
-                                                 e.stopPropagation();
-                                                 setSelectedClassId(cls.id);
-                                                 setSectionId(section.id);
-                                                 handleTabChange('ai_import');
-                                               }}
-                                               style={{
-                                                 background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(168, 85, 247, 0.15))',
-                                                 color: 'var(--primary-color)',
-                                                 borderRadius: '8px',
-                                                 boxShadow: 'none',
-                                                 padding: '4px 8px',
-                                                 display: 'flex',
-                                                 alignItems: 'center',
-                                                 gap: '4px',
-                                                 fontSize: '0.75rem',
-                                                 fontWeight: '600'
-                                               }}
-                                               title="Запустить генерацию тестов по учебнику этой секции"
-                                             >
-                                               <Sparkles size={14} /> Импорт
-                                             </button>
-                                           )}
+                                          {section.book_url && (
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setSelectedClassId(cls.id);
+                                                setSectionId(section.id);
+                                                handleTabChange('ai_import');
+                                              }}
+                                              style={{
+                                                background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(168, 85, 247, 0.15))',
+                                                color: 'var(--primary-color)',
+                                                borderRadius: '8px',
+                                                boxShadow: 'none',
+                                                padding: '4px 8px',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '4px',
+                                                fontSize: '0.75rem',
+                                                fontWeight: '600'
+                                              }}
+                                              title="Запустить генерацию тестов по учебнику этой секции"
+                                            >
+                                              <Sparkles size={14} /> Импорт
+                                            </button>
+                                          )}
                                         </div>
                                       )}
                                     </div>
