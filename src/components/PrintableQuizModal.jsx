@@ -591,10 +591,12 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent, initialShowKey
 
         {/* Toolbar */}
         <div className="printable-toolbar no-print">
-          <div className="printable-toolbar-left">
-            <span className="printable-toolbar-title">
-              <FileText size={18} style={{ color: 'var(--primary-color)' }} />
-              Печать А4
+          <div className="printable-toolbar-top">
+            <div className="printable-toolbar-brand">
+              <span className="printable-toolbar-title">
+                <FileText size={18} style={{ color: 'var(--primary-color)' }} />
+                Печать А4
+              </span>
               {measuring && (
                 <span className="fitted-badge measuring">
                   <Loader2 size={9} style={{ display:'inline', verticalAlign:'middle' }} /> Подбор…
@@ -606,7 +608,13 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent, initialShowKey
               {!measuring && rawQuestions.length > 0 && fittedLimit >= rawQuestions.length && (
                 <span className="fitted-badge fitted-badge-all">✓ Все {fittedLimit} вопр.</span>
               )}
-            </span>
+            </div>
+            <button type="button" className="close-btn mobile-close-btn" onClick={onClose} aria-label="Закрыть">
+              <X size={18} />
+            </button>
+          </div>
+
+          <div className="printable-toolbar-controls">
             <div className="variant-pills">
               {[1, 2, 3, 4].map(n => (
                 <button key={n} type="button"
@@ -617,7 +625,7 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent, initialShowKey
               ))}
             </div>
             <div className="keys-mode-selector">
-              <span className="keys-mode-label">Ключи на листе:</span>
+              <span className="keys-mode-label">Ключи:</span>
               <button
                 type="button"
                 className={`keys-pill${keysMode === 'none' ? ' active' : ''}`}
@@ -645,7 +653,7 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent, initialShowKey
             </div>
           </div>
 
-          <div className="printable-toolbar-right">
+          <div className="printable-toolbar-actions">
             <button
               type="button"
               className="toolbar-btn keys-view-btn"
@@ -653,7 +661,7 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent, initialShowKey
               disabled={totalQ === 0}
               title="Открыть ключи для проверки на экране телефона или ПК"
             >
-              <Key size={14} style={{ color: '#d97706' }} /> Ключи для проверки
+              <Key size={14} style={{ color: '#d97706' }} /> Ключи
             </button>
             <button type="button" className="toolbar-btn class-print-btn"
               onClick={() => setShowClassModal(true)} disabled={totalQ === 0}>
@@ -666,13 +674,13 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent, initialShowKey
             <button type="button" className="toolbar-btn" onClick={handleSavePdf}
               disabled={loading || savingPdf || totalQ === 0}>
               {savingPdf ? <Loader2 size={14} className="spinner" /> : <Download size={14} />}
-              {savingPdf ? 'PDF…' : 'Сохранить PDF'}
+              {savingPdf ? 'PDF…' : 'PDF'}
             </button>
             <button type="button" className="print-primary-btn" onClick={handlePrint}
               disabled={loading || totalQ === 0}>
               <Printer size={16} /> Печать
             </button>
-            <button type="button" className="close-btn" onClick={onClose}>
+            <button type="button" className="close-btn desktop-close-btn" onClick={onClose} aria-label="Закрыть">
               <X size={18} />
             </button>
           </div>
@@ -870,9 +878,17 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent, initialShowKey
           display: flex; align-items: center; justify-content: space-between;
           flex-wrap: wrap; gap: 10px; flex-shrink: 0;
         }
-        .printable-toolbar-left, .printable-toolbar-right {
+        .printable-toolbar-top {
+          display: flex; align-items: center; gap: 8px;
+        }
+        .printable-toolbar-brand {
+          display: flex; align-items: center; gap: 7px;
+        }
+        .printable-toolbar-controls, .printable-toolbar-actions {
           display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
         }
+        .mobile-close-btn { display: none; }
+        .desktop-close-btn { display: flex; }
         .printable-toolbar-title {
           font-weight: 700; font-size: 0.92rem; color: #1e293b;
           display: flex; align-items: center; gap: 7px; margin-right: 4px;
@@ -1265,6 +1281,92 @@ const PrintableQuizModal = ({ isOpen, onClose, quiz, quizContent, initialShowKey
 
         @keyframes spin { to { transform: rotate(360deg); } }
         .spinner { animation: spin 1s linear infinite; }
+
+        /* ── Mobile / PWA Responsive styles ─────────────────────── */
+        @media (max-width: 768px) {
+          .printable-modal-backdrop {
+            padding: 0 !important;
+            align-items: stretch !important;
+            justify-content: stretch !important;
+          }
+          .printable-modal-window {
+            width: 100vw !important;
+            max-width: 100% !important;
+            height: 100% !important;
+            height: 100dvh !important;
+            max-height: 100dvh !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            padding-top: env(safe-area-inset-top, 0px) !important;
+            padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+            padding-left: env(safe-area-inset-left, 0px) !important;
+            padding-right: env(safe-area-inset-right, 0px) !important;
+          }
+
+          .mobile-close-btn { display: flex !important; }
+          .desktop-close-btn { display: none !important; }
+
+          .printable-toolbar {
+            padding: 8px 12px !important;
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 7px !important;
+          }
+          .printable-toolbar-top {
+            width: 100% !important;
+            justify-content: space-between !important;
+          }
+          .printable-toolbar-controls {
+            width: 100% !important;
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch !important;
+            scrollbar-width: none !important;
+            padding-bottom: 2px !important;
+            flex-wrap: nowrap !important;
+            gap: 6px !important;
+          }
+          .printable-toolbar-controls::-webkit-scrollbar { display: none; }
+          .printable-toolbar-actions {
+            width: 100% !important;
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch !important;
+            scrollbar-width: none !important;
+            padding-bottom: 2px !important;
+            flex-wrap: nowrap !important;
+            gap: 6px !important;
+          }
+          .printable-toolbar-actions::-webkit-scrollbar { display: none; }
+          .printable-toolbar-actions .toolbar-btn,
+          .printable-toolbar-actions .print-primary-btn {
+            white-space: nowrap !important;
+            flex-shrink: 0 !important;
+          }
+
+          .printable-preview-area {
+            padding: 10px !important;
+            overflow: auto !important;
+            -webkit-overflow-scrolling: touch !important;
+            display: flex !important;
+            justify-content: flex-start !important;
+            align-items: flex-start !important;
+          }
+
+          .teacher-keys-dialog {
+            width: 95% !important;
+            max-width: 95% !important;
+            height: auto !important;
+            max-height: 86dvh !important;
+            max-height: 86vh !important;
+            padding: 14px !important;
+            border-radius: 14px !important;
+          }
+          .class-modal {
+            width: 92% !important;
+            max-width: 92% !important;
+            padding: 16px !important;
+            border-radius: 14px !important;
+          }
+        }
 
         /* ════════════════ PRINT MEDIA ═══════════════════════════ */
         @media print {
