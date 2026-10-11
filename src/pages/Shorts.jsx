@@ -25,13 +25,21 @@ export default function Shorts({ session, profile }) {
     }
   });
 
+  // Mobile detection
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   // Streak counters for dopamine loop
   const [streak, setStreak] = useState(0);
   const [maxStreak, setMaxStreak] = useState(0);
   const [showHeartPop, setShowHeartPop] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
 
-  // Preference for explanation expansion
+  // Preference for explanation expansion on Desktop
   const [isExplanationExpanded, setIsExplanationExpanded] = useState(() => {
     const saved = localStorage.getItem('quiz_explanation_expanded');
     return saved === null ? true : saved === 'true';
@@ -56,8 +64,9 @@ export default function Shorts({ session, profile }) {
 
   // Mobile Slide Animation States
   const [touchOffset, setTouchOffset] = useState(0);
-  const [isSwiping, setIsSwiping] = useState(false);
+  const [isAnimatingTransition, setIsAnimatingTransition] = useState(false);
   const touchStartY = useRef(0);
+  const touchStartX = useRef(0);
   const touchCurrentY = useRef(0);
   const isDragging = useRef(false);
 
@@ -167,7 +176,7 @@ export default function Shorts({ session, profile }) {
     setTouchOffset(0);
   }, [questions.length]);
 
-  // Keyboard navigation (↑ / ↓, W / S, etc.)
+  // Keyboard navigation (↑ / ↓, W / S, Esc)
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (showExitModal || selectedQuiz || previewImage) {
@@ -199,42 +208,69 @@ export default function Shorts({ session, profile }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [currentIndex, questions, showExitModal, selectedQuiz, previewImage, goToNext, goToPrev]);
 
-  // Interactive Touch Drag for Mobile TikTok Effect
+  // Interactive Touch Drag for Mobile TikTok Effect (Strict Vertical Only)
   const handleTouchStart = (e) => {
-    // If modal is open, don't drag
-    if (showExitModal || selectedQuiz || previewImage) return;
+    if (showExitModal || selectedQuiz || previewImage || isAnimatingTransition) return;
     touchStartY.current = e.touches[0].clientY;
+    touchStartX.current = e.touches[0].clientX;
     touchCurrentY.current = e.touches[0].clientY;
     isDragging.current = true;
-    setIsSwiping(true);
   };
 
   const handleTouchMove = (e) => {
-    if (!isDragging.current) return;
-    touchCurrentY.current = e.touches[0].clientY;
-    const diff = touchCurrentY.current - touchStartY.current;
+    if (!isDragging.current || isAnimatingTransition) return;
+    const currentY = e.touches[0].clientY;
+    const currentX = e.touches[0].clientX;
+    const deltaY = currentY - touchStartY.current;
+    const deltaX = currentX - touchStartX.current;
 
-    // Resistance at extremes if desired, or smooth drag
-    setTouchOffset(diff);
+    // Disallow horizontal movement completely
+    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 15) {
+      return;
+    }
+
+    touchCurrentY.current = currentY;
+
+    // Boundary resistance if at the very first or very last item
+    if (currentIndex === 0 && deltaY > 0) {
+      setTouchOffset(deltaY * 0.25);
+    } else if (currentIndex === questions.length - 1 && deltaY < 0) {
+      setTouchOffset(deltaY * 0.25);
+    } else {
+      setTouchOffset(deltaY);
+    }
   };
 
   const handleTouchEnd = () => {
-    if (!isDragging.current) return;
+    if (!isDragging.current || isAnimatingTransition) return;
     isDragging.current = false;
-    setIsSwiping(false);
 
     const diff = touchCurrentY.current - touchStartY.current;
-    const threshold = 65; // pixels to trigger slide
+    const threshold = 55; // pixels to trigger slide
 
-    if (diff < -threshold) {
-      // Swiped UP -> Go to Next
-      goToNext();
-    } else if (diff > threshold) {
-      // Swiped DOWN -> Go to Prev
-      goToPrev();
+    if (diff < -threshold && currentIndex < questions.length - 1) {
+      // Swiped UP -> Transition to Next
+      setIsAnimatingTransition(true);
+      setTouchOffset(-window.innerHeight * 0.85);
+      setTimeout(() => {
+        setCurrentIndex(prev => prev + 1);
+        setTouchOffset(0);
+        setIsAnimatingTransition(false);
+      }, 260);
+    } else if (diff > threshold && currentIndex > 0) {
+      // Swiped DOWN -> Transition to Prev
+      setIsAnimatingTransition(true);
+      setTouchOffset(window.innerHeight * 0.85);
+      setTimeout(() => {
+        setCurrentIndex(prev => prev - 1);
+        setTouchOffset(0);
+        setIsAnimatingTransition(false);
+      }, 260);
     } else {
-      // Snap back to current
+      // Snap back to 0
+      setIsAnimatingTransition(true);
       setTouchOffset(0);
+      setTimeout(() => setIsAnimatingTransition(false), 200);
     }
   };
 
@@ -320,9 +356,312 @@ export default function Shorts({ session, profile }) {
   const isAnswered = chosenAnswer !== undefined;
   const isLiked = currentQ ? !!likedMap[currentQ.shortId] : false;
 
-  // Next & previous question references for smooth TikTok sliding peek
-  const nextQ = questions[currentIndex < questions.length - 1 ? currentIndex + 1 : 0];
-  const prevQ = questions[currentIndex > 0 ? currentIndex - 1 : questions.length - 1];
+  // Render Card Content Component
+  const renderCardBody = (q, isActiveCard = true) => {
+    const qChosen = userAnswers[q.shortId];
+    const qAnswered = qChosen !== undefined;
+    const qLiked = !!likedMap[q.shortId];
+
+    return (
+      <div
+        style={{
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: isMobile ? 'space-between' : 'flex-start',
+          boxSizing: 'border-box'
+        }}
+      >
+        {/* TOP: Question Title & Images */}
+        <div style={{ flexShrink: 0 }}>
+          {q.images && q.images.length > 0 && (
+            <div
+              style={{
+                display: 'flex',
+                gap: '10px',
+                marginBottom: isMobile ? '10px' : '16px',
+                overflowX: 'auto',
+                paddingBottom: '4px'
+              }}
+            >
+              {q.images.map((imgUrl, imgIdx) => (
+                <img
+                  key={imgIdx}
+                  src={resolveImgUrl(imgUrl)}
+                  alt={`Иллюстрация ${imgIdx + 1}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (isActiveCard) setPreviewImage(resolveImgUrl(imgUrl));
+                  }}
+                  style={{
+                    maxHeight: isMobile ? '80px' : '150px',
+                    borderRadius: '12px',
+                    objectFit: 'contain',
+                    border: '1px solid rgba(0,0,0,0.1)',
+                    background: 'var(--card-bg)',
+                    cursor: 'pointer'
+                  }}
+                />
+              ))}
+            </div>
+          )}
+
+          <h2
+            style={{
+              fontSize: isMobile ? '1.08rem' : '1.35rem',
+              lineHeight: isMobile ? '1.4' : '1.5',
+              fontWeight: '700',
+              margin: '0 0 16px 0',
+              userSelect: 'none',
+              WebkitUserSelect: 'none'
+            }}
+          >
+            <MathRenderer text={q.question} noSelect={true} />
+          </h2>
+        </div>
+
+        {/* MIDDLE: Options Grid */}
+        <div
+          style={{
+            display: 'grid',
+            gap: isMobile ? '8px' : '12px',
+            gridTemplateColumns:
+              isMobile || q.options.some(opt => opt.length > 42) || q.options.length > 4
+                ? '1fr'
+                : 'repeat(auto-fit, minmax(360px, 1fr))',
+            margin: isMobile ? '8px 0' : '0 0 20px 0',
+            flexShrink: 0
+          }}
+        >
+          {q.options.map((opt, optIdx) => {
+            const isCorrect = optIdx === q.correctIndex;
+            const isChosen = qChosen === optIdx;
+
+            let bgColor = 'var(--card-bg)';
+            let borderColor = 'rgba(99, 102, 241, 0.12)';
+            let textColor = 'var(--text-color)';
+
+            if (qAnswered) {
+              if (isCorrect) {
+                bgColor = 'rgba(74, 222, 128, 0.2)';
+                borderColor = '#4ade80';
+              } else if (isChosen) {
+                bgColor = 'rgba(248, 113, 113, 0.2)';
+                borderColor = '#f87171';
+              }
+            }
+
+            return (
+              <button
+                key={optIdx}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (isActiveCard) handleOptionSelect(optIdx);
+                }}
+                disabled={qAnswered || !isActiveCard}
+                style={{
+                  textAlign: 'left',
+                  background: bgColor,
+                  color: textColor,
+                  border: `2px solid ${borderColor}`,
+                  padding: isMobile ? '11px 15px' : '16px 22px',
+                  borderRadius: isMobile ? '14px' : '18px',
+                  fontSize: isMobile ? '0.92rem' : '1.02rem',
+                  lineHeight: '1.4',
+                  boxShadow: 'none',
+                  transition: 'all 0.2s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '10px',
+                  cursor: qAnswered || !isActiveCard ? 'default' : 'pointer',
+                  transform: 'none',
+                  userSelect: 'none',
+                  WebkitUserSelect: 'none'
+                }}
+              >
+                <div style={{ flex: 1, pointerEvents: 'none' }}>
+                  <MathRenderer text={opt} noSelect={true} />
+                </div>
+                <div style={{ flexShrink: 0, pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
+                  {qAnswered && isCorrect && <CheckCircle size={18} color="#4ade80" />}
+                  {qAnswered && isChosen && !isCorrect && <XCircle size={18} color="#f87171" />}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* PC ONLY: Explanation Block (Always shown if exists, greyed out until answered) */}
+        {!isMobile && q.explanation && (
+          <div
+            style={{
+              background: qAnswered ? 'rgba(99, 102, 241, 0.05)' : 'rgba(0,0,0,0.02)',
+              borderRadius: '20px',
+              border: qAnswered ? '1.5px dashed rgba(99, 102, 241, 0.25)' : '1.5px dashed rgba(128, 128, 128, 0.2)',
+              overflow: 'hidden',
+              padding: '0 20px',
+              marginBottom: '20px',
+              opacity: qAnswered ? 1 : 0.45,
+              transition: 'all 0.3s ease'
+            }}
+          >
+            <div
+              className="flex-center"
+              onClick={() => {
+                if (qAnswered) toggleExplanation();
+              }}
+              style={{
+                justifyContent: 'space-between',
+                cursor: qAnswered ? 'pointer' : 'not-allowed',
+                userSelect: 'none',
+                padding: '16px 0'
+              }}
+            >
+              <div className="flex-center" style={{ gap: '8px', color: qAnswered ? 'var(--primary-color)' : 'inherit' }}>
+                <Zap size={18} />
+                <span style={{ fontSize: '0.85rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
+                  {qAnswered ? 'Пояснение' : 'Пояснение (станет доступно после ответа)'}
+                </span>
+              </div>
+              {qAnswered && (isExplanationExpanded ? <ChevronUp size={18} opacity={0.5} /> : <ChevronDown size={18} opacity={0.5} />)}
+            </div>
+
+            {qAnswered && (
+              <div
+                style={{
+                  maxHeight: isExplanationExpanded ? '1000px' : '0',
+                  overflow: 'hidden',
+                  transition: 'max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s',
+                  opacity: isExplanationExpanded ? 1 : 0
+                }}
+              >
+                <div style={{ paddingBottom: '16px', fontSize: '0.98rem', lineHeight: '1.6', opacity: 0.9 }}>
+                  <MathRenderer text={q.explanation} noSelect={true} />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* BOTTOM: Quiz Origin Metadata & Action Buttons */}
+        <div
+          style={{
+            marginTop: isMobile ? '6px' : 'auto',
+            paddingTop: isMobile ? '10px' : '16px',
+            borderTop: '1px solid rgba(0,0,0,0.06)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px',
+            flexShrink: 0
+          }}
+        >
+          {/* Left: Origin Details */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: isMobile ? '0.88rem' : '0.98rem',
+                fontWeight: '700',
+                color: 'var(--text-color)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap'
+              }}
+              title={q.quizTitle}
+            >
+              {q.quizTitle}
+            </div>
+            <div
+              style={{
+                fontSize: isMobile ? '0.75rem' : '0.85rem',
+                opacity: 0.6,
+                marginTop: '2px',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              {q.className} — {q.sectionName}
+            </div>
+          </div>
+
+          {/* Right: Action Buttons */}
+          <div className="flex-center" style={{ gap: isMobile ? '8px' : '10px' }}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (isActiveCard) toggleLike(q.shortId);
+              }}
+              className="flex-center"
+              style={{
+                background: qLiked ? 'rgba(239, 68, 68, 0.1)' : 'rgba(0,0,0,0.04)',
+                color: qLiked ? '#ef4444' : 'var(--text-color)',
+                width: isMobile ? '38px' : '44px',
+                height: isMobile ? '38px' : '44px',
+                borderRadius: '50%',
+                padding: 0,
+                boxShadow: 'none',
+                border: 'none',
+                transition: 'all 0.2s ease'
+              }}
+              title={qLiked ? 'Убрать сердечко' : 'Поставить сердечко'}
+            >
+              <Heart
+                size={isMobile ? 19 : 22}
+                fill={qLiked ? '#ef4444' : 'none'}
+                color={qLiked ? '#ef4444' : 'currentColor'}
+              />
+            </button>
+
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (isActiveCard) handleShareQuestion(e);
+              }}
+              className="flex-center"
+              style={{
+                background: 'rgba(0,0,0,0.04)',
+                color: 'var(--text-color)',
+                width: isMobile ? '38px' : '44px',
+                height: isMobile ? '38px' : '44px',
+                borderRadius: '50%',
+                padding: 0,
+                boxShadow: 'none',
+                border: 'none'
+              }}
+              title="Поделиться вопросом"
+            >
+              <Share2 size={isMobile ? 17 : 19} />
+            </button>
+
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (isActiveCard) setSelectedQuiz(q.fullQuiz);
+              }}
+              className="flex-center"
+              style={{
+                background: 'var(--primary-color)',
+                color: 'white',
+                padding: isMobile ? '8px 15px' : '10px 20px',
+                borderRadius: '14px',
+                gap: '6px',
+                fontSize: isMobile ? '0.82rem' : '0.9rem',
+                fontWeight: 'bold',
+                whiteSpace: 'nowrap'
+              }}
+              title="Пройти полный тест целиком"
+            >
+              <Play size={13} fill="currentColor" />
+              <span>Тест</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   if (loading) {
     return (
@@ -397,15 +736,15 @@ export default function Shorts({ session, profile }) {
       }}
     >
       {/* ========================================================
-          TOP IMMERSIVE HEADER (REPLACES NAVBAR ACROSS FULL SCREEN)
+          TOP HEADER (REPLACES NAVBAR FULL SCREEN)
           ======================================================== */}
       <header
         style={{
-          height: '64px',
+          height: isMobile ? '56px' : '64px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '0 24px',
+          padding: isMobile ? '0 16px' : '0 24px',
           borderBottom: '1px solid rgba(124, 58, 237, 0.1)',
           background: 'var(--card-bg)',
           backdropFilter: 'blur(12px)',
@@ -414,13 +753,13 @@ export default function Shorts({ session, profile }) {
           flexShrink: 0
         }}
       >
-        {/* Left: Replaces "LabTest" with "🧪 Лента Знаний" */}
-        <div className="flex-center" style={{ gap: '10px' }}>
-          <span style={{ fontSize: '1.5rem', lineHeight: 1 }}>🧪</span>
+        {/* Left: "🧪 Лента Знаний" */}
+        <div className="flex-center" style={{ gap: '8px' }}>
+          <span style={{ fontSize: isMobile ? '1.3rem' : '1.5rem', lineHeight: 1 }}>🧪</span>
           <span
             style={{
               fontWeight: '800',
-              fontSize: '1.25rem',
+              fontSize: isMobile ? '1.1rem' : '1.25rem',
               letterSpacing: '-0.5px',
               color: 'var(--primary-color)'
             }}
@@ -429,8 +768,8 @@ export default function Shorts({ session, profile }) {
           </span>
         </div>
 
-        {/* Center: Streak & Shuffle & Counter */}
-        <div className="flex-center" style={{ gap: '14px' }}>
+        {/* Center: Streak & Counter */}
+        <div className="flex-center" style={{ gap: isMobile ? '8px' : '14px' }}>
           {streak > 0 && (
             <div
               className="flex-center animate"
@@ -440,27 +779,27 @@ export default function Shorts({ session, profile }) {
                     ? 'linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)'
                     : 'rgba(239, 68, 68, 0.1)',
                 color: streak >= 3 ? 'white' : '#ef4444',
-                padding: '5px 12px',
+                padding: '4px 10px',
                 borderRadius: '20px',
-                fontSize: '0.85rem',
+                fontSize: '0.8rem',
                 fontWeight: 'bold',
-                gap: '5px',
+                gap: '4px',
                 boxShadow: streak >= 3 ? '0 4px 12px rgba(239, 68, 68, 0.3)' : 'none'
               }}
               title={`Серия побед: ${streak}`}
             >
-              <Flame size={15} fill="currentColor" />
+              <Flame size={14} fill="currentColor" />
               <span>{streak}</span>
             </div>
           )}
 
           <div
             style={{
-              fontSize: '0.85rem',
+              fontSize: '0.82rem',
               fontWeight: '700',
               opacity: 0.6,
               background: 'rgba(0,0,0,0.04)',
-              padding: '6px 12px',
+              padding: '5px 10px',
               borderRadius: '12px'
             }}
           >
@@ -472,29 +811,29 @@ export default function Shorts({ session, profile }) {
             style={{
               background: 'rgba(0,0,0,0.04)',
               color: 'var(--text-color)',
-              padding: '8px 12px',
+              padding: '6px 10px',
               borderRadius: '12px',
               boxShadow: 'none',
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
-              fontSize: '0.8rem',
+              gap: '5px',
+              fontSize: '0.78rem',
               fontWeight: '600'
             }}
             title="Перемешать вопросы заново"
           >
-            <RotateCcw size={14} />
+            <RotateCcw size={13} />
             <span className="shorts-shuffle-text">Перемешать</span>
           </button>
         </div>
 
-        {/* Right: Close Cross Button (Warning Exit) */}
+        {/* Right: Close Cross Button (Exit Confirmation) */}
         <div>
           <button
             onClick={() => setShowExitModal(true)}
             style={{
-              width: '40px',
-              height: '40px',
+              width: isMobile ? '36px' : '40px',
+              height: isMobile ? '36px' : '40px',
               borderRadius: '50%',
               background: 'rgba(0,0,0,0.05)',
               color: 'var(--text-color)',
@@ -508,13 +847,13 @@ export default function Shorts({ session, profile }) {
             }}
             title="Выйти из Ленты Знаний (Esc)"
           >
-            <X size={20} />
+            <X size={18} />
           </button>
         </div>
       </header>
 
       {/* ========================================================
-          MAIN VIEWPORT AREA (FULL SCREEN, EXPANDED & SPACIOUS ON PC)
+          VIEWPORT AREA
           ======================================================== */}
       <main
         style={{
@@ -524,71 +863,76 @@ export default function Shorts({ session, profile }) {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          padding: '16px'
+          padding: isMobile ? '0' : '16px',
+          width: '100%',
+          maxWidth: '100vw',
+          boxSizing: 'border-box'
         }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
-        {/* DESKTOP SIDE ARROWS (UP / DOWN) */}
-        <div
-          className="shorts-desktop-arrows"
-          style={{
-            position: 'absolute',
-            right: '28px',
-            top: '50%',
-            transform: 'translateY(-50%)',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: '16px',
-            zIndex: 40
-          }}
-        >
-          <button
-            onClick={goToPrev}
-            title="Предыдущий вопрос (↑ или W)"
+        {/* DESKTOP SIDE NAVIGATION ARROWS */}
+        {!isMobile && (
+          <div
+            className="shorts-desktop-arrows"
             style={{
-              width: '52px',
-              height: '52px',
-              borderRadius: '50%',
-              background: 'var(--card-bg)',
-              color: 'var(--text-color)',
-              border: '1px solid rgba(99, 102, 241, 0.2)',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-              padding: 0,
+              position: 'absolute',
+              right: '28px',
+              top: '50%',
+              transform: 'translateY(-50%)',
               display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
-              justifyContent: 'center'
+              gap: '16px',
+              zIndex: 40
             }}
           >
-            <ChevronUp size={28} />
-          </button>
+            <button
+              onClick={goToPrev}
+              title="Предыдущий вопрос (↑ или W)"
+              style={{
+                width: '52px',
+                height: '52px',
+                borderRadius: '50%',
+                background: 'var(--card-bg)',
+                color: 'var(--text-color)',
+                border: '1px solid rgba(99, 102, 241, 0.2)',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                padding: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <ChevronUp size={28} />
+            </button>
 
-          <span style={{ fontSize: '0.75rem', opacity: 0.4, fontWeight: 'bold' }}>
-            ↑ / ↓
-          </span>
+            <span style={{ fontSize: '0.75rem', opacity: 0.4, fontWeight: 'bold' }}>
+              ↑ / ↓
+            </span>
 
-          <button
-            onClick={goToNext}
-            title="Следующий вопрос (↓ или S)"
-            style={{
-              width: '52px',
-              height: '52px',
-              borderRadius: '50%',
-              background: 'var(--card-bg)',
-              color: 'var(--text-color)',
-              border: '1px solid rgba(99, 102, 241, 0.2)',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-              padding: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}
-          >
-            <ChevronDown size={28} />
-          </button>
-        </div>
+            <button
+              onClick={goToNext}
+              title="Следующий вопрос (↓ или S)"
+              style={{
+                width: '52px',
+                height: '52px',
+                borderRadius: '50%',
+                background: 'var(--card-bg)',
+                color: 'var(--text-color)',
+                border: '1px solid rgba(99, 102, 241, 0.2)',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                padding: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <ChevronDown size={28} />
+            </button>
+          </div>
+        )}
 
         {/* Heart Pop Animation */}
         {showHeartPop && (
@@ -608,29 +952,126 @@ export default function Shorts({ session, profile }) {
         )}
 
         {/* ========================================================
-            SLIDER TRACK FOR TIKTOK SWIPE EFFECT ON MOBILE
+            CARD RENDER:
+            - On Mobile: Real 3-Slide TikTok Carousel (prev, current, next in DOM)
+            - On PC: Wide Spacious Card Layout
             ======================================================== */}
-        <div
-          className="shorts-slider-track"
-          style={{
-            width: '100%',
-            maxWidth: '920px',
-            height: '100%',
-            maxHeight: 'calc(100vh - 100px)',
-            position: 'relative',
-            transform: `translateY(${touchOffset}px)`,
-            transition: isSwiping ? 'none' : 'transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1)',
-            display: 'flex',
-            flexDirection: 'column'
-          }}
-        >
-          {/* THE ACTIVE QUESTION CARD (SPACIOUS, NO UNNECESSARY RESTRICTIONS) */}
+        {isMobile ? (
           <div
-            className="shorts-card animate"
-            key={currentQ.shortId}
             style={{
               width: '100%',
               height: '100%',
+              position: 'relative',
+              overflow: 'hidden',
+              touchAction: 'pan-y'
+            }}
+          >
+            <div
+              style={{
+                width: '100%',
+                height: '100%',
+                position: 'relative',
+                transform: `translateY(${touchOffset}px)`,
+                transition: isAnimatingTransition
+                  ? 'transform 0.26s cubic-bezier(0.2, 0.9, 0.3, 1)'
+                  : 'none'
+              }}
+            >
+              {/* PREVIOUS CARD (EXISTS ABOVE) */}
+              {currentIndex > 0 && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '-100%',
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    padding: '14px',
+                    boxSizing: 'border-box'
+                  }}
+                >
+                  <div
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      background: 'var(--card-bg)',
+                      borderRadius: '20px',
+                      border: '1px solid rgba(99, 102, 241, 0.15)',
+                      padding: '16px',
+                      boxSizing: 'border-box'
+                    }}
+                  >
+                    {renderCardBody(questions[currentIndex - 1], false)}
+                  </div>
+                </div>
+              )}
+
+              {/* CURRENT CARD */}
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: '100%',
+                  padding: '14px',
+                  boxSizing: 'border-box'
+                }}
+              >
+                <div
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    background: 'var(--card-bg)',
+                    borderRadius: '20px',
+                    border: '1.5px solid rgba(99, 102, 241, 0.2)',
+                    boxShadow: '0 12px 30px rgba(0,0,0,0.1)',
+                    padding: '16px',
+                    boxSizing: 'border-box'
+                  }}
+                >
+                  {renderCardBody(currentQ, true)}
+                </div>
+              </div>
+
+              {/* NEXT CARD (EXISTS BELOW, YOU PULL IT UP!) */}
+              {currentIndex < questions.length - 1 && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    padding: '14px',
+                    boxSizing: 'border-box'
+                  }}
+                >
+                  <div
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      background: 'var(--card-bg)',
+                      borderRadius: '20px',
+                      border: '1px solid rgba(99, 102, 241, 0.15)',
+                      padding: '16px',
+                      boxSizing: 'border-box'
+                    }}
+                  >
+                    {renderCardBody(questions[currentIndex + 1], false)}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          /* DESKTOP SPACIOUS CARD */
+          <div
+            className="card animate"
+            key={currentQ.shortId}
+            style={{
+              width: '100%',
+              maxWidth: '920px',
               background: 'var(--card-bg)',
               borderRadius: '24px',
               border: '1.5px solid rgba(99, 102, 241, 0.18)',
@@ -638,285 +1079,14 @@ export default function Shorts({ session, profile }) {
               padding: '28px 32px',
               display: 'flex',
               flexDirection: 'column',
-              overflowY: 'auto',
-              boxSizing: 'border-box'
+              boxSizing: 'border-box',
+              maxHeight: 'calc(100vh - 100px)',
+              overflowY: 'auto'
             }}
           >
-            {/* QUESTION IMAGES */}
-            {currentQ.images && currentQ.images.length > 0 && (
-              <div
-                style={{
-                  display: 'flex',
-                  gap: '12px',
-                  marginBottom: '18px',
-                  overflowX: 'auto',
-                  paddingBottom: '6px'
-                }}
-              >
-                {currentQ.images.map((imgUrl, imgIdx) => (
-                  <img
-                    key={imgIdx}
-                    src={resolveImgUrl(imgUrl)}
-                    alt={`Иллюстрация ${imgIdx + 1}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setPreviewImage(resolveImgUrl(imgUrl));
-                    }}
-                    style={{
-                      maxHeight: '160px',
-                      borderRadius: '14px',
-                      objectFit: 'contain',
-                      border: '1px solid rgba(0,0,0,0.1)',
-                      background: 'var(--card-bg)',
-                      cursor: 'pointer'
-                    }}
-                  />
-                ))}
-              </div>
-            )}
-
-            {/* QUESTION TEXT (UNSELECTABLE ON PC AS REQUESTED) */}
-            <div style={{ marginBottom: '24px' }}>
-              <h2
-                style={{
-                  fontSize: '1.35rem',
-                  lineHeight: '1.5',
-                  fontWeight: '700',
-                  margin: 0,
-                  userSelect: 'none',
-                  WebkitUserSelect: 'none'
-                }}
-              >
-                <MathRenderer text={currentQ.question} noSelect={true} />
-              </h2>
-            </div>
-
-            {/* OPTIONS GRID (SPACIOUS & ADAPTIVE) */}
-            <div
-              className="shorts-options-container"
-              style={{
-                display: 'grid',
-                gap: '12px',
-                gridTemplateColumns:
-                  currentQ.options.some(opt => opt.length > 42) || currentQ.options.length > 4
-                    ? '1fr'
-                    : 'repeat(auto-fit, minmax(360px, 1fr))',
-                marginBottom: '20px'
-              }}
-            >
-              {currentQ.options.map((opt, optIdx) => {
-                const isCorrect = optIdx === currentQ.correctIndex;
-                const isChosen = chosenAnswer === optIdx;
-
-                let bgColor = 'var(--card-bg)';
-                let borderColor = 'rgba(99, 102, 241, 0.12)';
-                let textColor = 'var(--text-color)';
-
-                if (isAnswered) {
-                  if (isCorrect) {
-                    bgColor = 'rgba(74, 222, 128, 0.2)';
-                    borderColor = '#4ade80';
-                  } else if (isChosen) {
-                    bgColor = 'rgba(248, 113, 113, 0.2)';
-                    borderColor = '#f87171';
-                  }
-                }
-
-                return (
-                  <button
-                    key={optIdx}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleOptionSelect(optIdx);
-                    }}
-                    disabled={isAnswered}
-                    style={{
-                      textAlign: 'left',
-                      background: bgColor,
-                      color: textColor,
-                      border: `2px solid ${borderColor}`,
-                      padding: '16px 22px',
-                      borderRadius: '18px',
-                      fontSize: '1.02rem',
-                      lineHeight: '1.45',
-                      boxShadow: 'none',
-                      transition: 'all 0.2s ease',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: '12px',
-                      cursor: isAnswered ? 'default' : 'pointer',
-                      transform: 'none',
-                      userSelect: 'none',
-                      WebkitUserSelect: 'none'
-                    }}
-                  >
-                    <div style={{ flex: 1, pointerEvents: 'none' }}>
-                      <MathRenderer text={opt} noSelect={true} />
-                    </div>
-                    <div style={{ flexShrink: 0, pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
-                      {isAnswered && isCorrect && <CheckCircle size={20} color="#4ade80" />}
-                      {isAnswered && isChosen && !isCorrect && <XCircle size={20} color="#f87171" />}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* EXPLANATION BLOCK (MATCHING QuizView) */}
-            {isAnswered && currentQ.explanation && (
-              <div
-                style={{
-                  background: 'rgba(99, 102, 241, 0.05)',
-                  borderRadius: '20px',
-                  border: '1.5px dashed rgba(99, 102, 241, 0.22)',
-                  overflow: 'hidden',
-                  padding: '0 20px',
-                  marginBottom: '20px',
-                  animation: 'slideDownFade 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards'
-                }}
-              >
-                <div
-                  className="flex-center"
-                  onClick={toggleExplanation}
-                  style={{
-                    justifyContent: 'space-between',
-                    cursor: 'pointer',
-                    userSelect: 'none',
-                    padding: '16px 0'
-                  }}
-                >
-                  <div className="flex-center" style={{ gap: '8px', color: 'var(--primary-color)' }}>
-                    <Zap size={18} />
-                    <span style={{ fontSize: '0.85rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
-                      Пояснение
-                    </span>
-                  </div>
-                  {isExplanationExpanded ? <ChevronUp size={18} opacity={0.5} /> : <ChevronDown size={18} opacity={0.5} />}
-                </div>
-
-                <div
-                  style={{
-                    maxHeight: isExplanationExpanded ? '1000px' : '0',
-                    overflow: 'hidden',
-                    transition: 'max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s',
-                    opacity: isExplanationExpanded ? 1 : 0
-                  }}
-                >
-                  <div style={{ paddingBottom: '16px', fontSize: '0.98rem', lineHeight: '1.6', opacity: 0.9 }}>
-                    <MathRenderer text={currentQ.explanation} noSelect={true} />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* BOTTOM METADATA & ACTION BUTTONS */}
-            <div
-              style={{
-                marginTop: 'auto',
-                paddingTop: '18px',
-                borderTop: '1px solid rgba(0,0,0,0.06)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                flexWrap: 'wrap',
-                gap: '15px'
-              }}
-            >
-              {/* Left: Origin Details (Quiz title instead of author, Folder - Section instead of description) */}
-              <div style={{ flex: 1, minWidth: '220px' }}>
-                <div
-                  style={{
-                    fontSize: '1rem',
-                    fontWeight: '700',
-                    color: 'var(--text-color)',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap'
-                  }}
-                  title={currentQ.quizTitle}
-                >
-                  {currentQ.quizTitle}
-                </div>
-                <div
-                  style={{
-                    fontSize: '0.85rem',
-                    opacity: 0.6,
-                    marginTop: '4px',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap'
-                  }}
-                >
-                  {currentQ.className} — {currentQ.sectionName}
-                </div>
-              </div>
-
-              {/* Right: Actions (Like, Share, Start Full Quiz) */}
-              <div className="flex-center" style={{ gap: '10px' }}>
-                <button
-                  onClick={() => toggleLike(currentQ.shortId)}
-                  className="flex-center"
-                  style={{
-                    background: isLiked ? 'rgba(239, 68, 68, 0.1)' : 'rgba(0,0,0,0.04)',
-                    color: isLiked ? '#ef4444' : 'var(--text-color)',
-                    width: '44px',
-                    height: '44px',
-                    borderRadius: '50%',
-                    padding: 0,
-                    boxShadow: 'none',
-                    border: 'none',
-                    transition: 'all 0.2s ease'
-                  }}
-                  title={isLiked ? 'Убрать сердечко' : 'Поставить сердечко'}
-                >
-                  <Heart
-                    size={22}
-                    fill={isLiked ? '#ef4444' : 'none'}
-                    color={isLiked ? '#ef4444' : 'currentColor'}
-                  />
-                </button>
-
-                <button
-                  onClick={handleShareQuestion}
-                  className="flex-center"
-                  style={{
-                    background: 'rgba(0,0,0,0.04)',
-                    color: 'var(--text-color)',
-                    width: '44px',
-                    height: '44px',
-                    borderRadius: '50%',
-                    padding: 0,
-                    boxShadow: 'none',
-                    border: 'none'
-                  }}
-                  title="Поделиться вопросом"
-                >
-                  <Share2 size={19} />
-                </button>
-
-                <button
-                  onClick={() => setSelectedQuiz(currentQ.fullQuiz)}
-                  className="flex-center"
-                  style={{
-                    background: 'var(--primary-color)',
-                    color: 'white',
-                    padding: '10px 20px',
-                    borderRadius: '16px',
-                    gap: '8px',
-                    fontSize: '0.9rem',
-                    fontWeight: 'bold',
-                    whiteSpace: 'nowrap'
-                  }}
-                  title="Пройти полный тест целиком"
-                >
-                  <Play size={15} fill="currentColor" />
-                  <span>Тест</span>
-                </button>
-              </div>
-            </div>
+            {renderCardBody(currentQ, true)}
           </div>
-        </div>
+        )}
       </main>
 
       {/* ========================================================
@@ -1267,7 +1437,7 @@ export default function Shorts({ session, profile }) {
         </div>
       )}
 
-      {/* Custom Styles for TikTok Animation & Responsiveness */}
+      {/* Styles */}
       <style>{`
         @keyframes heartPop {
           0% { transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
@@ -1281,10 +1451,6 @@ export default function Shorts({ session, profile }) {
           }
           .shorts-shuffle-text {
             display: none !important;
-          }
-          .shorts-card {
-            padding: 20px 18px !important;
-            border-radius: 20px !important;
           }
         }
       `}</style>
