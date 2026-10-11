@@ -15,6 +15,7 @@ import Analytics from './pages/Analytics';
 import QuizRedactor from './pages/QuizRedactor';
 import AnalyticsDetails from './pages/AnalyticsDetails';
 import UserAnalytics from './pages/UserAnalytics';
+import Shorts from './pages/Shorts';
 import AiHub from './components/AiHub';
 import ActiveQuizzesIndicator from './components/ActiveQuizzesIndicator';
 import './index.css';
@@ -170,6 +171,23 @@ function App() {
                 >
                   <Sparkles size={18} />
                 </button>
+                <Link
+                  to="/shorts"
+                  className="flex-center"
+                  style={{
+                    background: 'rgba(99, 102, 241, 0.1)',
+                    color: 'var(--primary-color)',
+                    padding: '8px 12px',
+                    border: '1px solid rgba(99, 102, 241, 0.2)',
+                    borderRadius: '12px',
+                    textDecoration: 'none',
+                    fontSize: '1.05rem',
+                    lineHeight: 1
+                  }}
+                  title="Лента Знаний"
+                >
+                  🧪
+                </Link>
                 <Link to="/catalog"><NavButton label="Тесты" /></Link>
                 <Link to="/statistics"><NavButton label="Статистика" /></Link>
                 {isEditor && <Link to="/analytics-details"><NavButton label="Аналитика" variant="accent" /></Link>}
@@ -190,6 +208,7 @@ function App() {
         </div>
       }>
         <Route path="/" element={<Home session={session} profile={profile} />} />
+        <Route path="/shorts" element={<Shorts session={session} profile={profile} />} />
         <Route path="/auth" element={!session ? <Auth /> : <Navigate to="/" />} />
 
         <Route path="/catalog" element={
