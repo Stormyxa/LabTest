@@ -62,13 +62,35 @@ export default function Shorts({ session, profile }) {
   // Full image view modal
   const [previewImage, setPreviewImage] = useState(null);
 
-  // Mobile Slide Animation States
+  // Unified Slide Animation States (used for both Mobile touch & PC wheel/keys)
   const [touchOffset, setTouchOffset] = useState(0);
   const [isAnimatingTransition, setIsAnimatingTransition] = useState(false);
+  const isTransitioningRef = useRef(false);
   const touchStartY = useRef(0);
   const touchStartX = useRef(0);
   const touchCurrentY = useRef(0);
   const isDragging = useRef(false);
+  const viewportRef = useRef(null);
+
+  // Double tap detection for like
+  const lastTapRef = useRef(0);
+
+  // Extract all images safely from any format (images[], images string, image, image_url)
+  const extractQuestionImages = (q) => {
+    if (Array.isArray(q.images) && q.images.length > 0) {
+      return q.images.filter(Boolean);
+    }
+    if (typeof q.images === 'string' && q.images.trim()) {
+      return [q.images.trim()];
+    }
+    if (q.image) {
+      return [q.image];
+    }
+    if (q.image_url) {
+      return [q.image_url];
+    }
+    return [];
+  };
 
   // Load and shuffle questions
   const loadShorts = useCallback(async () => {
@@ -124,6 +146,8 @@ export default function Shorts({ session, profile }) {
               q.options.length > 0 &&
               typeof q.correctIndex === 'number'
             ) {
+              const allImgs = extractQuestionImages(q);
+
               extracted.push({
                 shortId: `${quiz.id}_${idx}`,
                 quizId: quiz.id,
@@ -134,7 +158,7 @@ export default function Shorts({ session, profile }) {
                 options: q.options,
                 correctIndex: q.correctIndex,
                 explanation: q.explanation || '',
-                images: q.images || [],
+                images: allImgs,
                 fullQuiz: quiz,
                 questionIdx: idx
               });
@@ -163,18 +187,54 @@ export default function Shorts({ session, profile }) {
     loadShorts();
   }, [loadShorts]);
 
-  // Navigate to previous/next short
-  const goToNext = useCallback(() => {
-    if (questions.length === 0) return;
-    setCurrentIndex(prev => (prev < questions.length - 1 ? prev + 1 : 0));
-    setTouchOffset(0);
-  }, [questions.length]);
+  // Smooth slide trigger (1: next, -1: prev)
+  const triggerSlide = useCallback((direction) => {
+    if (isTransitioningRef.current || questions.length === 0) return;
 
-  const goToPrev = useCallback(() => {
-    if (questions.length === 0) return;
-    setCurrentIndex(prev => (prev > 0 ? prev - 1 : questions.length - 1));
-    setTouchOffset(0);
-  }, [questions.length]);
+    if (direction === 1) {
+      if (currentIndex >= questions.length - 1) return;
+      isTransitioningRef.current = true;
+      setIsAnimatingTransition(true);
+      setTouchOffset(-window.innerHeight * 0.9);
+      setTimeout(() => {
+        setCurrentIndex(prev => prev + 1);
+        setTouchOffset(0);
+        setIsAnimatingTransition(false);
+        isTransitioningRef.current = false;
+      }, 260);
+    } else if (direction === -1) {
+      if (currentIndex <= 0) return;
+      isTransitioningRef.current = true;
+      setIsAnimatingTransition(true);
+      setTouchOffset(window.innerHeight * 0.9);
+      setTimeout(() => {
+        setCurrentIndex(prev => prev - 1);
+        setTouchOffset(0);
+        setIsAnimatingTransition(false);
+        isTransitioningRef.current = false;
+      }, 260);
+    }
+  }, [currentIndex, questions.length]);
+
+  const goToNext = useCallback(() => triggerSlide(1), [triggerSlide]);
+  const goToPrev = useCallback(() => triggerSlide(-1), [triggerSlide]);
+
+  // Wheel listener for Desktop
+  useEffect(() => {
+    const handleWheel = (e) => {
+      if (showExitModal || selectedQuiz || previewImage || isTransitioningRef.current) return;
+      if (Math.abs(e.deltaY) < 25) return;
+
+      if (e.deltaY > 0) {
+        triggerSlide(1);
+      } else {
+        triggerSlide(-1);
+      }
+    };
+
+    window.addEventListener('wheel', handleWheel, { passive: true });
+    return () => window.removeEventListener('wheel', handleWheel);
+  }, [triggerSlide, showExitModal, selectedQuiz, previewImage]);
 
   // Keyboard navigation (↑ / ↓, W / S, Esc)
   useEffect(() => {
@@ -208,70 +268,103 @@ export default function Shorts({ session, profile }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [currentIndex, questions, showExitModal, selectedQuiz, previewImage, goToNext, goToPrev]);
 
-  // Interactive Touch Drag for Mobile TikTok Effect (Strict Vertical Only)
-  const handleTouchStart = (e) => {
-    if (showExitModal || selectedQuiz || previewImage || isAnimatingTransition) return;
-    touchStartY.current = e.touches[0].clientY;
-    touchStartX.current = e.touches[0].clientX;
-    touchCurrentY.current = e.touches[0].clientY;
-    isDragging.current = true;
-  };
+  // Touch Drag for Mobile (Strict Vertical Only + prevents pull-to-refresh)
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
 
-  const handleTouchMove = (e) => {
-    if (!isDragging.current || isAnimatingTransition) return;
-    const currentY = e.touches[0].clientY;
-    const currentX = e.touches[0].clientX;
-    const deltaY = currentY - touchStartY.current;
-    const deltaX = currentX - touchStartX.current;
+    const onTouchStart = (e) => {
+      if (showExitModal || selectedQuiz || previewImage || isTransitioningRef.current) return;
+      touchStartY.current = e.touches[0].clientY;
+      touchStartX.current = e.touches[0].clientX;
+      touchCurrentY.current = e.touches[0].clientY;
+      isDragging.current = true;
+    };
 
-    // Disallow horizontal movement completely
-    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 15) {
+    const onTouchMove = (e) => {
+      if (!isDragging.current || isTransitioningRef.current) return;
+      const currentY = e.touches[0].clientY;
+      const currentX = e.touches[0].clientX;
+      const deltaY = currentY - touchStartY.current;
+      const deltaX = currentX - touchStartX.current;
+
+      // Disallow horizontal movement
+      if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 12) {
+        return;
+      }
+
+      // Prevent pull-to-refresh reload in mobile browsers
+      if (e.cancelable) {
+        e.preventDefault();
+      }
+
+      touchCurrentY.current = currentY;
+
+      // Elastic resistance at boundaries
+      if (currentIndex === 0 && deltaY > 0) {
+        setTouchOffset(deltaY * 0.25);
+      } else if (currentIndex === questions.length - 1 && deltaY < 0) {
+        setTouchOffset(deltaY * 0.25);
+      } else {
+        setTouchOffset(deltaY);
+      }
+    };
+
+    const onTouchEnd = () => {
+      if (!isDragging.current || isTransitioningRef.current) return;
+      isDragging.current = false;
+
+      const diff = touchCurrentY.current - touchStartY.current;
+      const threshold = 55; // swipe sensitivity threshold
+
+      if (diff < -threshold && currentIndex < questions.length - 1) {
+        triggerSlide(1);
+      } else if (diff > threshold && currentIndex > 0) {
+        triggerSlide(-1);
+      } else {
+        // Snap back to 0
+        isTransitioningRef.current = true;
+        setIsAnimatingTransition(true);
+        setTouchOffset(0);
+        setTimeout(() => {
+          setIsAnimatingTransition(false);
+          isTransitioningRef.current = false;
+        }, 200);
+      }
+    };
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: true });
+
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+    };
+  }, [currentIndex, questions.length, showExitModal, selectedQuiz, previewImage, triggerSlide]);
+
+  // Double tap on free area of card to like
+  const handleCardAreaClick = (e, q) => {
+    // If clicked on an interactive button, ignore
+    if (e.target.closest('button') || e.target.closest('a')) return;
+
+    const now = Date.now();
+    if (now - lastTapRef.current < 320) {
+      // Double tap confirmed
+      setLikedMap(prev => {
+        const nextMap = { ...prev, [q.shortId]: true };
+        try {
+          localStorage.setItem('shorts_liked_ids', JSON.stringify(nextMap));
+        } catch {}
+        return nextMap;
+      });
+      setShowHeartPop(true);
+      setTimeout(() => setShowHeartPop(false), 800);
+      lastTapRef.current = 0;
       return;
     }
-
-    touchCurrentY.current = currentY;
-
-    // Boundary resistance if at the very first or very last item
-    if (currentIndex === 0 && deltaY > 0) {
-      setTouchOffset(deltaY * 0.25);
-    } else if (currentIndex === questions.length - 1 && deltaY < 0) {
-      setTouchOffset(deltaY * 0.25);
-    } else {
-      setTouchOffset(deltaY);
-    }
-  };
-
-  const handleTouchEnd = () => {
-    if (!isDragging.current || isAnimatingTransition) return;
-    isDragging.current = false;
-
-    const diff = touchCurrentY.current - touchStartY.current;
-    const threshold = 55; // pixels to trigger slide
-
-    if (diff < -threshold && currentIndex < questions.length - 1) {
-      // Swiped UP -> Transition to Next
-      setIsAnimatingTransition(true);
-      setTouchOffset(-window.innerHeight * 0.85);
-      setTimeout(() => {
-        setCurrentIndex(prev => prev + 1);
-        setTouchOffset(0);
-        setIsAnimatingTransition(false);
-      }, 260);
-    } else if (diff > threshold && currentIndex > 0) {
-      // Swiped DOWN -> Transition to Prev
-      setIsAnimatingTransition(true);
-      setTouchOffset(window.innerHeight * 0.85);
-      setTimeout(() => {
-        setCurrentIndex(prev => prev - 1);
-        setTouchOffset(0);
-        setIsAnimatingTransition(false);
-      }, 260);
-    } else {
-      // Snap back to 0
-      setIsAnimatingTransition(true);
-      setTouchOffset(0);
-      setTimeout(() => setIsAnimatingTransition(false), 200);
-    }
+    lastTapRef.current = now;
   };
 
   // Option selection
@@ -356,7 +449,7 @@ export default function Shorts({ session, profile }) {
   const isAnswered = chosenAnswer !== undefined;
   const isLiked = currentQ ? !!likedMap[currentQ.shortId] : false;
 
-  // Render Card Content Component
+  // Render Question Card
   const renderCardBody = (q, isActiveCard = true) => {
     const qChosen = userAnswers[q.shortId];
     const qAnswered = qChosen !== undefined;
@@ -364,6 +457,7 @@ export default function Shorts({ session, profile }) {
 
     return (
       <div
+        onClick={(e) => handleCardAreaClick(e, q)}
         style={{
           width: '100%',
           height: '100%',
@@ -373,14 +467,14 @@ export default function Shorts({ session, profile }) {
           boxSizing: 'border-box'
         }}
       >
-        {/* TOP: Question Title & Images */}
+        {/* TOP: Images & Question */}
         <div style={{ flexShrink: 0 }}>
           {q.images && q.images.length > 0 && (
             <div
               style={{
                 display: 'flex',
                 gap: '10px',
-                marginBottom: isMobile ? '10px' : '16px',
+                marginBottom: isMobile ? '8px' : '16px',
                 overflowX: 'auto',
                 paddingBottom: '4px'
               }}
@@ -395,10 +489,10 @@ export default function Shorts({ session, profile }) {
                     if (isActiveCard) setPreviewImage(resolveImgUrl(imgUrl));
                   }}
                   style={{
-                    maxHeight: isMobile ? '80px' : '150px',
+                    maxHeight: isMobile ? '85px' : '150px',
                     borderRadius: '12px',
                     objectFit: 'contain',
-                    border: '1px solid rgba(0,0,0,0.1)',
+                    border: '1px solid rgba(99, 102, 241, 0.2)',
                     background: 'var(--card-bg)',
                     cursor: 'pointer'
                   }}
@@ -412,7 +506,7 @@ export default function Shorts({ session, profile }) {
               fontSize: isMobile ? '1.08rem' : '1.35rem',
               lineHeight: isMobile ? '1.4' : '1.5',
               fontWeight: '700',
-              margin: '0 0 16px 0',
+              margin: '0 0 14px 0',
               userSelect: 'none',
               WebkitUserSelect: 'none'
             }}
@@ -421,16 +515,16 @@ export default function Shorts({ session, profile }) {
           </h2>
         </div>
 
-        {/* MIDDLE: Options Grid */}
+        {/* MIDDLE: Options */}
         <div
           style={{
             display: 'grid',
-            gap: isMobile ? '8px' : '12px',
+            gap: isMobile ? '9px' : '12px',
             gridTemplateColumns:
               isMobile || q.options.some(opt => opt.length > 42) || q.options.length > 4
                 ? '1fr'
                 : 'repeat(auto-fit, minmax(360px, 1fr))',
-            margin: isMobile ? '8px 0' : '0 0 20px 0',
+            margin: isMobile ? '6px 0' : '0 0 20px 0',
             flexShrink: 0
           }}
         >
@@ -438,8 +532,9 @@ export default function Shorts({ session, profile }) {
             const isCorrect = optIdx === q.correctIndex;
             const isChosen = qChosen === optIdx;
 
+            // Explicit borders ensure outline never disappears between slides
             let bgColor = 'var(--card-bg)';
-            let borderColor = 'rgba(99, 102, 241, 0.12)';
+            let borderColor = 'rgba(99, 102, 241, 0.22)';
             let textColor = 'var(--text-color)';
 
             if (qAnswered) {
@@ -454,9 +549,10 @@ export default function Shorts({ session, profile }) {
 
             return (
               <button
-                key={optIdx}
+                key={`${q.shortId}_opt_${optIdx}`}
                 onClick={(e) => {
                   e.stopPropagation();
+                  e.currentTarget.blur();
                   if (isActiveCard) handleOptionSelect(optIdx);
                 }}
                 disabled={qAnswered || !isActiveCard}
@@ -465,12 +561,13 @@ export default function Shorts({ session, profile }) {
                   background: bgColor,
                   color: textColor,
                   border: `2px solid ${borderColor}`,
-                  padding: isMobile ? '11px 15px' : '16px 22px',
+                  outline: 'none',
+                  padding: isMobile ? '12px 16px' : '16px 22px',
                   borderRadius: isMobile ? '14px' : '18px',
-                  fontSize: isMobile ? '0.92rem' : '1.02rem',
+                  fontSize: isMobile ? '0.94rem' : '1.02rem',
                   lineHeight: '1.4',
                   boxShadow: 'none',
-                  transition: 'all 0.2s ease',
+                  transition: 'background-color 0.2s, border-color 0.2s',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
@@ -478,7 +575,8 @@ export default function Shorts({ session, profile }) {
                   cursor: qAnswered || !isActiveCard ? 'default' : 'pointer',
                   transform: 'none',
                   userSelect: 'none',
-                  WebkitUserSelect: 'none'
+                  WebkitUserSelect: 'none',
+                  boxSizing: 'border-box'
                 }}
               >
                 <div style={{ flex: 1, pointerEvents: 'none' }}>
@@ -493,13 +591,13 @@ export default function Shorts({ session, profile }) {
           })}
         </div>
 
-        {/* PC ONLY: Explanation Block (Always shown if exists, greyed out until answered) */}
+        {/* PC ONLY: Explanation Block (Always visible if exists, greyed out until answered) */}
         {!isMobile && q.explanation && (
           <div
             style={{
               background: qAnswered ? 'rgba(99, 102, 241, 0.05)' : 'rgba(0,0,0,0.02)',
               borderRadius: '20px',
-              border: qAnswered ? '1.5px dashed rgba(99, 102, 241, 0.25)' : '1.5px dashed rgba(128, 128, 128, 0.2)',
+              border: qAnswered ? '1.5px dashed rgba(99, 102, 241, 0.25)' : '1.5px dashed rgba(128, 128, 128, 0.25)',
               overflow: 'hidden',
               padding: '0 20px',
               marginBottom: '20px',
@@ -587,7 +685,7 @@ export default function Shorts({ session, profile }) {
             </div>
           </div>
 
-          {/* Right: Action Buttons */}
+          {/* Right: Actions */}
           <div className="flex-center" style={{ gap: isMobile ? '8px' : '10px' }}>
             <button
               onClick={(e) => {
@@ -598,8 +696,8 @@ export default function Shorts({ session, profile }) {
               style={{
                 background: qLiked ? 'rgba(239, 68, 68, 0.1)' : 'rgba(0,0,0,0.04)',
                 color: qLiked ? '#ef4444' : 'var(--text-color)',
-                width: isMobile ? '38px' : '44px',
-                height: isMobile ? '38px' : '44px',
+                width: isMobile ? '40px' : '44px',
+                height: isMobile ? '40px' : '44px',
                 borderRadius: '50%',
                 padding: 0,
                 boxShadow: 'none',
@@ -609,7 +707,7 @@ export default function Shorts({ session, profile }) {
               title={qLiked ? 'Убрать сердечко' : 'Поставить сердечко'}
             >
               <Heart
-                size={isMobile ? 19 : 22}
+                size={isMobile ? 20 : 22}
                 fill={qLiked ? '#ef4444' : 'none'}
                 color={qLiked ? '#ef4444' : 'currentColor'}
               />
@@ -624,8 +722,8 @@ export default function Shorts({ session, profile }) {
               style={{
                 background: 'rgba(0,0,0,0.04)',
                 color: 'var(--text-color)',
-                width: isMobile ? '38px' : '44px',
-                height: isMobile ? '38px' : '44px',
+                width: isMobile ? '40px' : '44px',
+                height: isMobile ? '40px' : '44px',
                 borderRadius: '50%',
                 padding: 0,
                 boxShadow: 'none',
@@ -633,7 +731,7 @@ export default function Shorts({ session, profile }) {
               }}
               title="Поделиться вопросом"
             >
-              <Share2 size={isMobile ? 17 : 19} />
+              <Share2 size={isMobile ? 18 : 19} />
             </button>
 
             <button
@@ -645,16 +743,16 @@ export default function Shorts({ session, profile }) {
               style={{
                 background: 'var(--primary-color)',
                 color: 'white',
-                padding: isMobile ? '8px 15px' : '10px 20px',
+                padding: isMobile ? '9px 16px' : '10px 20px',
                 borderRadius: '14px',
                 gap: '6px',
-                fontSize: isMobile ? '0.82rem' : '0.9rem',
+                fontSize: isMobile ? '0.84rem' : '0.9rem',
                 fontWeight: 'bold',
                 whiteSpace: 'nowrap'
               }}
               title="Пройти полный тест целиком"
             >
-              <Play size={13} fill="currentColor" />
+              <Play size={14} fill="currentColor" />
               <span>Тест</span>
             </button>
           </div>
@@ -679,9 +777,82 @@ export default function Shorts({ session, profile }) {
           gap: '20px'
         }}
       >
+        {/* Cancel button in top right during loading */}
+        <div style={{ position: 'absolute', top: '16px', right: '16px', zIndex: 100 }}>
+          <button
+            onClick={() => setShowExitModal(true)}
+            style={{
+              width: '42px',
+              height: '42px',
+              borderRadius: '50%',
+              background: 'rgba(0,0,0,0.06)',
+              color: 'var(--text-color)',
+              border: '1px solid rgba(0,0,0,0.08)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer'
+            }}
+            title="Отмена"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
         <div style={{ fontSize: '3.5rem', animation: 'spin 2s linear infinite' }}>🧪</div>
         <div style={{ fontSize: '1.4rem', fontWeight: '800', letterSpacing: '-0.5px' }}>Формируем Ленту Знаний...</div>
         <div style={{ opacity: 0.5, fontSize: '0.95rem' }}>Загружаем и перемешиваем вопросы из всех предметов</div>
+
+        {/* Exit Modal also usable during loading */}
+        {showExitModal && (
+          <div
+            className="modal-overlay"
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) e.target.dataset.md = 'true';
+            }}
+            onMouseUp={(e) => {
+              if (e.target === e.currentTarget && e.target.dataset.md === 'true') {
+                e.target.dataset.md = 'false';
+                setShowExitModal(false);
+              }
+            }}
+          >
+            <div className="modal-content animate" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '480px' }}>
+              <div
+                className="flex-center"
+                style={{
+                  justifyContent: 'center',
+                  width: '64px',
+                  height: '64px',
+                  borderRadius: '22px',
+                  background: 'rgba(250, 204, 21, 0.1)',
+                  color: '#ca8a04',
+                  margin: '0 auto 24px'
+                }}
+              >
+                <AlertTriangle size={34} />
+              </div>
+              <h2 style={{ marginBottom: '14px' }}>Отменить загрузку?</h2>
+              <p style={{ opacity: 0.7, marginBottom: '28px', lineHeight: '1.6' }}>
+                Выйти обратно в каталог тестов?
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+                <button
+                  onClick={() => setShowExitModal(false)}
+                  style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--text-color)', boxShadow: 'none', padding: '14px' }}
+                >
+                  Остаться
+                </button>
+                <button
+                  onClick={handleConfirmExit}
+                  style={{ background: '#ca8a04', color: 'white', padding: '14px' }}
+                >
+                  Да, выйти
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -732,11 +903,12 @@ export default function Shorts({ session, profile }) {
         flexDirection: 'column',
         overflow: 'hidden',
         userSelect: 'none',
-        WebkitUserSelect: 'none'
+        WebkitUserSelect: 'none',
+        overscrollBehaviorY: 'none'
       }}
     >
       {/* ========================================================
-          TOP HEADER (REPLACES NAVBAR FULL SCREEN)
+          TOP HEADER (REPLACES NAVBAR ACROSS FULL SCREEN)
           ======================================================== */}
       <header
         style={{
@@ -768,7 +940,7 @@ export default function Shorts({ session, profile }) {
           </span>
         </div>
 
-        {/* Center: Streak & Counter */}
+        {/* Center: Streak & Counter & Shuffle */}
         <div className="flex-center" style={{ gap: isMobile ? '8px' : '14px' }}>
           {streak > 0 && (
             <div
@@ -827,7 +999,7 @@ export default function Shorts({ session, profile }) {
           </button>
         </div>
 
-        {/* Right: Close Cross Button (Exit Confirmation) */}
+        {/* Right: Exit Cross Button */}
         <div>
           <button
             onClick={() => setShowExitModal(true)}
@@ -853,9 +1025,10 @@ export default function Shorts({ session, profile }) {
       </header>
 
       {/* ========================================================
-          VIEWPORT AREA
+          VIEWPORT AREA (WITH GPU-ACCELERATED VERTICAL SLIDE TRACK)
           ======================================================== */}
       <main
+        ref={viewportRef}
         style={{
           flex: 1,
           position: 'relative',
@@ -863,14 +1036,12 @@ export default function Shorts({ session, profile }) {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          padding: isMobile ? '0' : '16px',
+          padding: 0,
           width: '100%',
           maxWidth: '100vw',
-          boxSizing: 'border-box'
+          boxSizing: 'border-box',
+          overscrollBehaviorY: 'none'
         }}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
       >
         {/* DESKTOP SIDE NAVIGATION ARROWS */}
         {!isMobile && (
@@ -890,7 +1061,8 @@ export default function Shorts({ session, profile }) {
           >
             <button
               onClick={goToPrev}
-              title="Предыдущий вопрос (↑ или W)"
+              disabled={currentIndex === 0}
+              title="Предыдущий вопрос (↑, W или колесико вверх)"
               style={{
                 width: '52px',
                 height: '52px',
@@ -902,7 +1074,8 @@ export default function Shorts({ session, profile }) {
                 padding: 0,
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center'
+                justifyContent: 'center',
+                opacity: currentIndex === 0 ? 0.35 : 1
               }}
             >
               <ChevronUp size={28} />
@@ -914,7 +1087,8 @@ export default function Shorts({ session, profile }) {
 
             <button
               onClick={goToNext}
-              title="Следующий вопрос (↓ или S)"
+              disabled={currentIndex === questions.length - 1}
+              title="Следующий вопрос (↓, S или колесико вниз)"
               style={{
                 width: '52px',
                 height: '52px',
@@ -926,7 +1100,8 @@ export default function Shorts({ session, profile }) {
                 padding: 0,
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center'
+                justifyContent: 'center',
+                opacity: currentIndex === questions.length - 1 ? 0.35 : 1
               }}
             >
               <ChevronDown size={28} />
@@ -952,69 +1127,40 @@ export default function Shorts({ session, profile }) {
         )}
 
         {/* ========================================================
-            CARD RENDER:
-            - On Mobile: Real 3-Slide TikTok Carousel (prev, current, next in DOM)
-            - On PC: Wide Spacious Card Layout
+            3-CARD VERTICAL SLIDE CONTAINER (TIKTOK EFFECT ON BOTH PC & MOBILE)
             ======================================================== */}
-        {isMobile ? (
+        <div
+          style={{
+            width: '100%',
+            maxWidth: isMobile ? '100%' : '940px',
+            height: '100%',
+            position: 'relative',
+            overflow: 'hidden',
+            boxSizing: 'border-box'
+          }}
+        >
           <div
             style={{
               width: '100%',
               height: '100%',
               position: 'relative',
-              overflow: 'hidden',
-              touchAction: 'pan-y'
+              transform: `translate3d(0, ${touchOffset}px, 0)`,
+              willChange: 'transform',
+              transition: isAnimatingTransition
+                ? 'transform 0.26s cubic-bezier(0.22, 1, 0.36, 1)'
+                : 'none'
             }}
           >
-            <div
-              style={{
-                width: '100%',
-                height: '100%',
-                position: 'relative',
-                transform: `translateY(${touchOffset}px)`,
-                transition: isAnimatingTransition
-                  ? 'transform 0.26s cubic-bezier(0.2, 0.9, 0.3, 1)'
-                  : 'none'
-              }}
-            >
-              {/* PREVIOUS CARD (EXISTS ABOVE) */}
-              {currentIndex > 0 && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: '-100%',
-                    left: 0,
-                    width: '100%',
-                    height: '100%',
-                    padding: '14px',
-                    boxSizing: 'border-box'
-                  }}
-                >
-                  <div
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      background: 'var(--card-bg)',
-                      borderRadius: '20px',
-                      border: '1px solid rgba(99, 102, 241, 0.15)',
-                      padding: '16px',
-                      boxSizing: 'border-box'
-                    }}
-                  >
-                    {renderCardBody(questions[currentIndex - 1], false)}
-                  </div>
-                </div>
-              )}
-
-              {/* CURRENT CARD */}
+            {/* PREVIOUS CARD (EXISTS ABOVE) */}
+            {currentIndex > 0 && (
               <div
                 style={{
                   position: 'absolute',
-                  top: 0,
+                  top: '-100%',
                   left: 0,
                   width: '100%',
                   height: '100%',
-                  padding: '14px',
+                  padding: isMobile ? '14px' : '20px',
                   boxSizing: 'border-box'
                 }}
               >
@@ -1023,70 +1169,80 @@ export default function Shorts({ session, profile }) {
                     width: '100%',
                     height: '100%',
                     background: 'var(--card-bg)',
-                    borderRadius: '20px',
-                    border: '1.5px solid rgba(99, 102, 241, 0.2)',
+                    borderRadius: isMobile ? '20px' : '24px',
+                    border: '1.5px solid rgba(99, 102, 241, 0.18)',
                     boxShadow: '0 12px 30px rgba(0,0,0,0.1)',
-                    padding: '16px',
-                    boxSizing: 'border-box'
+                    padding: isMobile ? '16px' : '28px 32px',
+                    boxSizing: 'border-box',
+                    overflowY: isMobile ? 'hidden' : 'auto'
                   }}
                 >
-                  {renderCardBody(currentQ, true)}
+                  {renderCardBody(questions[currentIndex - 1], false)}
                 </div>
               </div>
+            )}
 
-              {/* NEXT CARD (EXISTS BELOW, YOU PULL IT UP!) */}
-              {currentIndex < questions.length - 1 && (
+            {/* CURRENT ACTIVE CARD */}
+            <div
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+                padding: isMobile ? '14px' : '20px',
+                boxSizing: 'border-box'
+              }}
+            >
+              <div
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  background: 'var(--card-bg)',
+                  borderRadius: isMobile ? '20px' : '24px',
+                  border: '1.5px solid rgba(99, 102, 241, 0.2)',
+                  boxShadow: '0 16px 40px rgba(0,0,0,0.12)',
+                  padding: isMobile ? '16px' : '28px 32px',
+                  boxSizing: 'border-box',
+                  overflowY: isMobile ? 'hidden' : 'auto'
+                }}
+              >
+                {renderCardBody(currentQ, true)}
+              </div>
+            </div>
+
+            {/* NEXT CARD (EXISTS BELOW, VISIBLE UPON PULLING UP) */}
+            {currentIndex < questions.length - 1 && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  width: '100%',
+                  height: '100%',
+                  padding: isMobile ? '14px' : '20px',
+                  boxSizing: 'border-box'
+                }}
+              >
                 <div
                   style={{
-                    position: 'absolute',
-                    top: '100%',
-                    left: 0,
                     width: '100%',
                     height: '100%',
-                    padding: '14px',
-                    boxSizing: 'border-box'
+                    background: 'var(--card-bg)',
+                    borderRadius: isMobile ? '20px' : '24px',
+                    border: '1.5px solid rgba(99, 102, 241, 0.18)',
+                    boxShadow: '0 12px 30px rgba(0,0,0,0.1)',
+                    padding: isMobile ? '16px' : '28px 32px',
+                    boxSizing: 'border-box',
+                    overflowY: isMobile ? 'hidden' : 'auto'
                   }}
                 >
-                  <div
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      background: 'var(--card-bg)',
-                      borderRadius: '20px',
-                      border: '1px solid rgba(99, 102, 241, 0.15)',
-                      padding: '16px',
-                      boxSizing: 'border-box'
-                    }}
-                  >
-                    {renderCardBody(questions[currentIndex + 1], false)}
-                  </div>
+                  {renderCardBody(questions[currentIndex + 1], false)}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
-        ) : (
-          /* DESKTOP SPACIOUS CARD */
-          <div
-            className="card animate"
-            key={currentQ.shortId}
-            style={{
-              width: '100%',
-              maxWidth: '920px',
-              background: 'var(--card-bg)',
-              borderRadius: '24px',
-              border: '1.5px solid rgba(99, 102, 241, 0.18)',
-              boxShadow: '0 20px 50px rgba(0,0,0,0.12)',
-              padding: '28px 32px',
-              display: 'flex',
-              flexDirection: 'column',
-              boxSizing: 'border-box',
-              maxHeight: 'calc(100vh - 100px)',
-              overflowY: 'auto'
-            }}
-          >
-            {renderCardBody(currentQ, true)}
-          </div>
-        )}
+        </div>
       </main>
 
       {/* ========================================================
