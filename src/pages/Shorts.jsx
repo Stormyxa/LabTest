@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import {
   Heart, Play, Award, Zap, RotateCcw, ChevronUp, ChevronDown,
-  ChevronLeft, ChevronRight, CheckCircle, XCircle, Clock, Share2,
-  Book, FileText, Youtube, Check, X, Flame, Sparkles, AlertCircle
+  CheckCircle, XCircle, Clock, Share2, Book, FileText, Youtube,
+  Check, X, Flame, AlertTriangle
 } from 'lucide-react';
 import MathRenderer from '../components/MathRenderer';
 import { resolveImgUrl } from '../lib/imageUtils';
@@ -31,7 +31,7 @@ export default function Shorts({ session, profile }) {
   const [showHeartPop, setShowHeartPop] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
 
-  // Preference for explanation expansion (matching QuizView)
+  // Preference for explanation expansion
   const [isExplanationExpanded, setIsExplanationExpanded] = useState(() => {
     const saved = localStorage.getItem('quiz_explanation_expanded');
     return saved === null ? true : saved === 'true';
@@ -45,18 +45,23 @@ export default function Shorts({ session, profile }) {
     });
   };
 
+  // Exit Confirmation Modal state
+  const [showExitModal, setShowExitModal] = useState(false);
+
   // Full Quiz Start Modal state (identical to QuizCatalog)
   const [selectedQuiz, setSelectedQuiz] = useState(null);
 
   // Full image view modal
   const [previewImage, setPreviewImage] = useState(null);
 
-  // Touch gesture state for mobile swiping
+  // Mobile Slide Animation States
+  const [touchOffset, setTouchOffset] = useState(0);
+  const [isSwiping, setIsSwiping] = useState(false);
   const touchStartY = useRef(0);
-  const touchEndY = useRef(0);
-  const cardRef = useRef(null);
+  const touchCurrentY = useRef(0);
+  const isDragging = useRef(false);
 
-  // Load and shuffle all questions from official & available quizzes
+  // Load and shuffle questions
   const loadShorts = useCallback(async () => {
     setLoading(true);
     try {
@@ -103,7 +108,13 @@ export default function Shorts({ session, profile }) {
           const clsName = quiz.quiz_sections?.quiz_classes?.name || 'Класс';
 
           qList.forEach((q, idx) => {
-            if (q && q.question && Array.isArray(q.options) && q.options.length > 0 && typeof q.correctIndex === 'number') {
+            if (
+              q &&
+              q.question &&
+              Array.isArray(q.options) &&
+              q.options.length > 0 &&
+              typeof q.correctIndex === 'number'
+            ) {
               extracted.push({
                 shortId: `${quiz.id}_${idx}`,
                 quizId: quiz.id,
@@ -147,18 +158,27 @@ export default function Shorts({ session, profile }) {
   const goToNext = useCallback(() => {
     if (questions.length === 0) return;
     setCurrentIndex(prev => (prev < questions.length - 1 ? prev + 1 : 0));
+    setTouchOffset(0);
   }, [questions.length]);
 
   const goToPrev = useCallback(() => {
     if (questions.length === 0) return;
     setCurrentIndex(prev => (prev > 0 ? prev - 1 : questions.length - 1));
+    setTouchOffset(0);
   }, [questions.length]);
 
   // Keyboard navigation (↑ / ↓, W / S, etc.)
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // Ignore if user is inside an input or modal is open
-      if (selectedQuiz || previewImage) return;
+      if (showExitModal || selectedQuiz || previewImage) {
+        if (e.key === 'Escape') {
+          setShowExitModal(false);
+          setSelectedQuiz(null);
+          setPreviewImage(null);
+        }
+        return;
+      }
+
       if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
 
       if (e.key === 'ArrowDown' || e.key === 'KeyS' || e.key === 'PageDown') {
@@ -167,49 +187,68 @@ export default function Shorts({ session, profile }) {
       } else if (e.key === 'ArrowUp' || e.key === 'KeyW' || e.key === 'PageUp') {
         e.preventDefault();
         goToPrev();
+      } else if (e.key === 'Escape') {
+        setShowExitModal(true);
       } else if (e.key === 'l' || e.key === 'L') {
-        const currentQ = questions[currentIndex];
-        if (currentQ) toggleLike(currentQ.shortId);
+        const q = questions[currentIndex];
+        if (q) toggleLike(q.shortId);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentIndex, questions, selectedQuiz, previewImage, goToNext, goToPrev]);
+  }, [currentIndex, questions, showExitModal, selectedQuiz, previewImage, goToNext, goToPrev]);
 
-  // Touch gesture handling
+  // Interactive Touch Drag for Mobile TikTok Effect
   const handleTouchStart = (e) => {
+    // If modal is open, don't drag
+    if (showExitModal || selectedQuiz || previewImage) return;
     touchStartY.current = e.touches[0].clientY;
+    touchCurrentY.current = e.touches[0].clientY;
+    isDragging.current = true;
+    setIsSwiping(true);
   };
 
   const handleTouchMove = (e) => {
-    touchEndY.current = e.touches[0].clientY;
+    if (!isDragging.current) return;
+    touchCurrentY.current = e.touches[0].clientY;
+    const diff = touchCurrentY.current - touchStartY.current;
+
+    // Resistance at extremes if desired, or smooth drag
+    setTouchOffset(diff);
   };
 
   const handleTouchEnd = () => {
-    const deltaY = touchStartY.current - touchEndY.current;
-    const threshold = 55; // minimum swipe distance
+    if (!isDragging.current) return;
+    isDragging.current = false;
+    setIsSwiping(false);
 
-    if (deltaY > threshold) {
-      // Swiped UP -> Next
+    const diff = touchCurrentY.current - touchStartY.current;
+    const threshold = 65; // pixels to trigger slide
+
+    if (diff < -threshold) {
+      // Swiped UP -> Go to Next
       goToNext();
-    } else if (deltaY < -threshold) {
-      // Swiped DOWN -> Prev
+    } else if (diff > threshold) {
+      // Swiped DOWN -> Go to Prev
       goToPrev();
+    } else {
+      // Snap back to current
+      setTouchOffset(0);
     }
   };
 
-  // User selects an option
+  // Option selection
   const handleOptionSelect = (optionIdx) => {
-    const currentQ = questions[currentIndex];
-    if (!currentQ) return;
-    if (userAnswers[currentQ.shortId] !== undefined) return; // Already answered this question
+    const q = questions[currentIndex];
+    if (!q) return;
+    if (userAnswers[q.shortId] !== undefined) return;
 
-    const isCorrect = optionIdx === currentQ.correctIndex;
+    const isCorrect = optionIdx === q.correctIndex;
 
     setUserAnswers(prev => ({
       ...prev,
-      [currentQ.shortId]: optionIdx
+      [q.shortId]: optionIdx
     }));
 
     if (isCorrect) {
@@ -235,44 +274,45 @@ export default function Shorts({ session, profile }) {
       return nextMap;
     });
 
-    // Trigger visual pop animation
     setShowHeartPop(true);
     setTimeout(() => setShowHeartPop(false), 800);
-  };
-
-  // Double tap to like
-  const lastTapRef = useRef(0);
-  const handleCardDoubleTap = () => {
-    const now = Date.now();
-    if (now - lastTapRef.current < 300) {
-      const currentQ = questions[currentIndex];
-      if (currentQ) {
-        setLikedMap(prev => {
-          const nextMap = { ...prev, [currentQ.shortId]: true };
-          try {
-            localStorage.setItem('shorts_liked_ids', JSON.stringify(nextMap));
-          } catch {}
-          return nextMap;
-        });
-        setShowHeartPop(true);
-        setTimeout(() => setShowHeartPop(false), 800);
-      }
-    }
-    lastTapRef.current = now;
   };
 
   // Share current question
   const handleShareQuestion = (e) => {
     e.stopPropagation();
-    const currentQ = questions[currentIndex];
-    if (!currentQ) return;
+    const q = questions[currentIndex];
+    if (!q) return;
 
-    const url = `${window.location.origin}/quiz/${currentQ.quizId}`;
-    const text = `Интересный вопрос из теста «${currentQ.quizTitle}» (${currentQ.className} — ${currentQ.sectionName}):\n${currentQ.question}\n${url}`;
+    const url = `${window.location.origin}/quiz/${q.quizId}`;
+    const text = `Интересный вопрос из теста «${q.quizTitle}» (${q.className} — ${q.sectionName}):\n${q.question}\n${url}`;
 
     navigator.clipboard.writeText(text);
     setToastMessage('Вопрос и ссылка скопированы!');
     setTimeout(() => setToastMessage(null), 2500);
+  };
+
+  // Exit handler
+  const handleConfirmExit = () => {
+    setShowExitModal(false);
+    if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate('/catalog');
+    }
+  };
+
+  // Check if active first attempt exists
+  const isActiveFirstAttempt = (quizId) => {
+    try {
+      const timerRaw = localStorage.getItem(`quiz_timer_${quizId}`);
+      if (!timerRaw) return false;
+      const parsed = JSON.parse(timerRaw);
+      const endTime = parsed.endTime || parsed.ts + (parsed.timeLeft || 0) * 1000;
+      return endTime > Date.now();
+    } catch {
+      return false;
+    }
   };
 
   const currentQ = questions[currentIndex];
@@ -280,36 +320,57 @@ export default function Shorts({ session, profile }) {
   const isAnswered = chosenAnswer !== undefined;
   const isLiked = currentQ ? !!likedMap[currentQ.shortId] : false;
 
-  // Check if active attempt is running (for clean reset if needed)
-  const isActiveFirstAttempt = (quizId) => {
-    try {
-      const timerRaw = localStorage.getItem(`quiz_timer_${quizId}`);
-      if (!timerRaw) return false;
-      const parsed = JSON.parse(timerRaw);
-      const endTime = parsed.endTime || (parsed.ts + (parsed.timeLeft || 0) * 1000);
-      return endTime > Date.now();
-    } catch {
-      return false;
-    }
-  };
+  // Next & previous question references for smooth TikTok sliding peek
+  const nextQ = questions[currentIndex < questions.length - 1 ? currentIndex + 1 : 0];
+  const prevQ = questions[currentIndex > 0 ? currentIndex - 1 : questions.length - 1];
 
   if (loading) {
     return (
-      <div className="flex-center" style={{ minHeight: 'calc(100vh - 80px)', flexDirection: 'column', gap: '20px' }}>
-        <div style={{ fontSize: '3rem', animation: 'spin 2s linear infinite' }}>🧪</div>
-        <div style={{ fontSize: '1.2rem', fontWeight: '800' }}>Формируем Ленту Знаний...</div>
-        <div style={{ opacity: 0.5, fontSize: '0.9rem' }}>Собираем и перемешиваем вопросы из всех тестов</div>
+      <div
+        className="shorts-fullscreen-root"
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 10001,
+          background: 'var(--bg-color)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '20px'
+        }}
+      >
+        <div style={{ fontSize: '3.5rem', animation: 'spin 2s linear infinite' }}>🧪</div>
+        <div style={{ fontSize: '1.4rem', fontWeight: '800', letterSpacing: '-0.5px' }}>Формируем Ленту Знаний...</div>
+        <div style={{ opacity: 0.5, fontSize: '0.95rem' }}>Загружаем и перемешиваем вопросы из всех предметов</div>
       </div>
     );
   }
 
   if (questions.length === 0) {
     return (
-      <div className="container flex-center" style={{ minHeight: 'calc(100vh - 80px)', flexDirection: 'column', gap: '20px', textAlign: 'center' }}>
-        <div style={{ fontSize: '3.5rem' }}>🧪</div>
+      <div
+        className="shorts-fullscreen-root"
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 10001,
+          background: 'var(--bg-color)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '20px',
+          padding: '20px',
+          textAlign: 'center'
+        }}
+      >
+        <div style={{ fontSize: '4rem' }}>🧪</div>
         <h2>В Ленте Знаний пока пусто</h2>
-        <p style={{ opacity: 0.6, maxWidth: '400px' }}>В каталоге пока нет доступных тестов с вопросами. Загляните позже или создайте свой тест!</p>
-        <button onClick={() => navigate('/catalog')} style={{ marginTop: '10px' }}>
+        <p style={{ opacity: 0.6, maxWidth: '420px', lineHeight: '1.6' }}>
+          В каталоге пока нет тестов с вопросами. Загляните позже или создайте свой тест!
+        </p>
+        <button onClick={() => navigate('/catalog')} style={{ padding: '12px 28px' }}>
           Перейти в каталог
         </button>
       </div>
@@ -318,120 +379,223 @@ export default function Shorts({ session, profile }) {
 
   return (
     <div
-      className="shorts-page-container"
+      className="shorts-fullscreen-root"
       style={{
-        minHeight: 'calc(100vh - 75px)',
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100vw',
+        height: '100vh',
+        zIndex: 10001,
+        background: 'var(--bg-color)',
+        color: 'var(--text-color)',
         display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        position: 'relative',
-        padding: '15px 10px 40px',
-        overflow: 'hidden'
+        flexDirection: 'column',
+        overflow: 'hidden',
+        userSelect: 'none',
+        WebkitUserSelect: 'none'
       }}
     >
-      {/* Background ambient glow effect */}
-      <div
+      {/* ========================================================
+          TOP IMMERSIVE HEADER (REPLACES NAVBAR ACROSS FULL SCREEN)
+          ======================================================== */}
+      <header
         style={{
-          position: 'absolute',
-          top: '20%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          width: '500px',
-          height: '500px',
-          background: 'radial-gradient(circle, rgba(99, 102, 241, 0.12) 0%, rgba(168, 85, 247, 0.05) 50%, transparent 70%)',
-          pointerEvents: 'none',
-          zIndex: 0
-        }}
-      />
-
-      {/* DESKTOP SIDE NAVIGATION BUTTONS */}
-      <div
-        className="shorts-desktop-nav"
-        style={{
-          position: 'fixed',
-          right: 'max(20px, calc(50% - 380px))',
-          top: '50%',
-          transform: 'translateY(-50%)',
+          height: '64px',
           display: 'flex',
-          flexDirection: 'column',
           alignItems: 'center',
-          gap: '16px',
-          zIndex: 50
+          justifyContent: 'space-between',
+          padding: '0 24px',
+          borderBottom: '1px solid rgba(124, 58, 237, 0.1)',
+          background: 'var(--card-bg)',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+          zIndex: 50,
+          flexShrink: 0
         }}
       >
-        <button
-          onClick={goToPrev}
-          title="Предыдущий вопрос (↑)"
-          className="flex-center"
-          style={{
-            width: '48px',
-            height: '48px',
-            borderRadius: '50%',
-            background: 'var(--card-bg)',
-            color: 'var(--text-color)',
-            border: '1px solid rgba(99, 102, 241, 0.2)',
-            boxShadow: '0 8px 20px rgba(0,0,0,0.1)',
-            padding: 0
-          }}
-        >
-          <ChevronUp size={24} />
-        </button>
-
-        <div style={{ fontSize: '0.75rem', opacity: 0.5, textAlign: 'center', fontWeight: 'bold' }}>
-          {currentIndex + 1} / {questions.length}
+        {/* Left: Replaces "LabTest" with "🧪 Лента Знаний" */}
+        <div className="flex-center" style={{ gap: '10px' }}>
+          <span style={{ fontSize: '1.5rem', lineHeight: 1 }}>🧪</span>
+          <span
+            style={{
+              fontWeight: '800',
+              fontSize: '1.25rem',
+              letterSpacing: '-0.5px',
+              color: 'var(--primary-color)'
+            }}
+          >
+            Лента Знаний
+          </span>
         </div>
 
-        <button
-          onClick={goToNext}
-          title="Следующий вопрос (↓)"
-          className="flex-center"
-          style={{
-            width: '48px',
-            height: '48px',
-            borderRadius: '50%',
-            background: 'var(--card-bg)',
-            color: 'var(--text-color)',
-            border: '1px solid rgba(99, 102, 241, 0.2)',
-            boxShadow: '0 8px 20px rgba(0,0,0,0.1)',
-            padding: 0
-          }}
-        >
-          <ChevronDown size={24} />
-        </button>
-      </div>
+        {/* Center: Streak & Shuffle & Counter */}
+        <div className="flex-center" style={{ gap: '14px' }}>
+          {streak > 0 && (
+            <div
+              className="flex-center animate"
+              style={{
+                background:
+                  streak >= 3
+                    ? 'linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)'
+                    : 'rgba(239, 68, 68, 0.1)',
+                color: streak >= 3 ? 'white' : '#ef4444',
+                padding: '5px 12px',
+                borderRadius: '20px',
+                fontSize: '0.85rem',
+                fontWeight: 'bold',
+                gap: '5px',
+                boxShadow: streak >= 3 ? '0 4px 12px rgba(239, 68, 68, 0.3)' : 'none'
+              }}
+              title={`Серия побед: ${streak}`}
+            >
+              <Flame size={15} fill="currentColor" />
+              <span>{streak}</span>
+            </div>
+          )}
 
-      {/* MAIN VERTICAL CARD (SHORTS FORMAT) */}
-      <div
-        ref={cardRef}
+          <div
+            style={{
+              fontSize: '0.85rem',
+              fontWeight: '700',
+              opacity: 0.6,
+              background: 'rgba(0,0,0,0.04)',
+              padding: '6px 12px',
+              borderRadius: '12px'
+            }}
+          >
+            {currentIndex + 1} <span style={{ opacity: 0.5 }}>/</span> {questions.length}
+          </div>
+
+          <button
+            onClick={loadShorts}
+            style={{
+              background: 'rgba(0,0,0,0.04)',
+              color: 'var(--text-color)',
+              padding: '8px 12px',
+              borderRadius: '12px',
+              boxShadow: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '0.8rem',
+              fontWeight: '600'
+            }}
+            title="Перемешать вопросы заново"
+          >
+            <RotateCcw size={14} />
+            <span className="shorts-shuffle-text">Перемешать</span>
+          </button>
+        </div>
+
+        {/* Right: Close Cross Button (Warning Exit) */}
+        <div>
+          <button
+            onClick={() => setShowExitModal(true)}
+            style={{
+              width: '40px',
+              height: '40px',
+              borderRadius: '50%',
+              background: 'rgba(0,0,0,0.05)',
+              color: 'var(--text-color)',
+              boxShadow: 'none',
+              padding: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              border: '1px solid rgba(0,0,0,0.05)',
+              transition: 'all 0.2s ease'
+            }}
+            title="Выйти из Ленты Знаний (Esc)"
+          >
+            <X size={20} />
+          </button>
+        </div>
+      </header>
+
+      {/* ========================================================
+          MAIN VIEWPORT AREA (FULL SCREEN, EXPANDED & SPACIOUS ON PC)
+          ======================================================== */}
+      <main
+        style={{
+          flex: 1,
+          position: 'relative',
+          overflow: 'hidden',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '16px'
+        }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        onClick={handleCardDoubleTap}
-        className="card animate"
-        key={currentQ.shortId} // Re-triggers smooth animation when switching question
-        style={{
-          width: '100%',
-          maxWidth: '540px',
-          minHeight: '620px',
-          maxHeight: '90vh',
-          display: 'flex',
-          flexDirection: 'column',
-          borderRadius: '28px',
-          padding: '24px',
-          position: 'relative',
-          border: '1px solid rgba(99, 102, 241, 0.2)',
-          boxShadow: '0 20px 45px -10px rgba(99, 102, 241, 0.15), 0 10px 25px -5px rgba(0,0,0,0.06)',
-          zIndex: 1,
-          overflowY: 'auto',
-          scrollBehavior: 'smooth'
-        }}
       >
-        {/* Floating Heart Pop Animation on Like */}
+        {/* DESKTOP SIDE ARROWS (UP / DOWN) */}
+        <div
+          className="shorts-desktop-arrows"
+          style={{
+            position: 'absolute',
+            right: '28px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '16px',
+            zIndex: 40
+          }}
+        >
+          <button
+            onClick={goToPrev}
+            title="Предыдущий вопрос (↑ или W)"
+            style={{
+              width: '52px',
+              height: '52px',
+              borderRadius: '50%',
+              background: 'var(--card-bg)',
+              color: 'var(--text-color)',
+              border: '1px solid rgba(99, 102, 241, 0.2)',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+              padding: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            <ChevronUp size={28} />
+          </button>
+
+          <span style={{ fontSize: '0.75rem', opacity: 0.4, fontWeight: 'bold' }}>
+            ↑ / ↓
+          </span>
+
+          <button
+            onClick={goToNext}
+            title="Следующий вопрос (↓ или S)"
+            style={{
+              width: '52px',
+              height: '52px',
+              borderRadius: '50%',
+              background: 'var(--card-bg)',
+              color: 'var(--text-color)',
+              border: '1px solid rgba(99, 102, 241, 0.2)',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+              padding: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            <ChevronDown size={28} />
+          </button>
+        </div>
+
+        {/* Heart Pop Animation */}
         {showHeartPop && (
           <div
             style={{
               position: 'absolute',
-              top: '40%',
+              top: '50%',
               left: '50%',
               transform: 'translate(-50%, -50%)',
               zIndex: 99,
@@ -439,468 +603,402 @@ export default function Shorts({ session, profile }) {
               animation: 'heartPop 0.8s ease forwards'
             }}
           >
-            <Heart size={90} fill="#ef4444" color="#ef4444" />
+            <Heart size={110} fill="#ef4444" color="#ef4444" />
           </div>
         )}
 
-        {/* TOP HEADER OF THE CARD */}
+        {/* ========================================================
+            SLIDER TRACK FOR TIKTOK SWIPE EFFECT ON MOBILE
+            ======================================================== */}
         <div
-          className="flex-center"
+          className="shorts-slider-track"
           style={{
-            justifyContent: 'space-between',
-            marginBottom: '18px',
-            borderBottom: '1px solid rgba(0,0,0,0.05)',
-            paddingBottom: '12px'
+            width: '100%',
+            maxWidth: '920px',
+            height: '100%',
+            maxHeight: 'calc(100vh - 100px)',
+            position: 'relative',
+            transform: `translateY(${touchOffset}px)`,
+            transition: isSwiping ? 'none' : 'transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1)',
+            display: 'flex',
+            flexDirection: 'column'
           }}
         >
-          <div className="flex-center" style={{ gap: '8px' }}>
-            <span style={{ fontSize: '1.2rem' }}>🧪</span>
-            <span style={{ fontWeight: '800', fontSize: '0.95rem', letterSpacing: '-0.3px', color: 'var(--primary-color)' }}>
-              Лента Знаний
-            </span>
-          </div>
-
-          <div className="flex-center" style={{ gap: '10px' }}>
-            {streak > 0 && (
+          {/* THE ACTIVE QUESTION CARD (SPACIOUS, NO UNNECESSARY RESTRICTIONS) */}
+          <div
+            className="shorts-card animate"
+            key={currentQ.shortId}
+            style={{
+              width: '100%',
+              height: '100%',
+              background: 'var(--card-bg)',
+              borderRadius: '24px',
+              border: '1.5px solid rgba(99, 102, 241, 0.18)',
+              boxShadow: '0 20px 50px rgba(0,0,0,0.12)',
+              padding: '28px 32px',
+              display: 'flex',
+              flexDirection: 'column',
+              overflowY: 'auto',
+              boxSizing: 'border-box'
+            }}
+          >
+            {/* QUESTION IMAGES */}
+            {currentQ.images && currentQ.images.length > 0 && (
               <div
-                className="flex-center animate"
                 style={{
-                  background: streak >= 3 ? 'linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)' : 'rgba(239, 68, 68, 0.1)',
-                  color: streak >= 3 ? 'white' : '#ef4444',
-                  padding: '4px 10px',
-                  borderRadius: '20px',
-                  fontSize: '0.8rem',
-                  fontWeight: 'bold',
-                  gap: '4px',
-                  boxShadow: streak >= 3 ? '0 4px 12px rgba(239, 68, 68, 0.3)' : 'none'
+                  display: 'flex',
+                  gap: '12px',
+                  marginBottom: '18px',
+                  overflowX: 'auto',
+                  paddingBottom: '6px'
                 }}
-                title={`Серия правильных ответов: ${streak}`}
               >
-                <Flame size={14} fill="currentColor" />
-                <span>{streak}</span>
+                {currentQ.images.map((imgUrl, imgIdx) => (
+                  <img
+                    key={imgIdx}
+                    src={resolveImgUrl(imgUrl)}
+                    alt={`Иллюстрация ${imgIdx + 1}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPreviewImage(resolveImgUrl(imgUrl));
+                    }}
+                    style={{
+                      maxHeight: '160px',
+                      borderRadius: '14px',
+                      objectFit: 'contain',
+                      border: '1px solid rgba(0,0,0,0.1)',
+                      background: 'var(--card-bg)',
+                      cursor: 'pointer'
+                    }}
+                  />
+                ))}
               </div>
             )}
 
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                loadShorts();
-              }}
-              style={{
-                background: 'rgba(0,0,0,0.04)',
-                color: 'var(--text-color)',
-                padding: '6px 10px',
-                borderRadius: '12px',
-                boxShadow: 'none',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px',
-                fontSize: '0.75rem',
-                border: 'none'
-              }}
-              title="Перемешать вопросы заново"
-            >
-              <RotateCcw size={13} />
-            </button>
-          </div>
-        </div>
-
-        {/* QUESTION IMAGES (IF ANY) */}
-        {currentQ.images && currentQ.images.length > 0 && (
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', overflowX: 'auto', paddingBottom: '6px' }}>
-            {currentQ.images.map((imgUrl, imgIdx) => (
-              <img
-                key={imgIdx}
-                src={resolveImgUrl(imgUrl)}
-                alt={`Вопрос ${imgIdx + 1}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setPreviewImage(resolveImgUrl(imgUrl));
-                }}
+            {/* QUESTION TEXT (UNSELECTABLE ON PC AS REQUESTED) */}
+            <div style={{ marginBottom: '24px' }}>
+              <h2
                 style={{
-                  height: '110px',
-                  borderRadius: '12px',
-                  objectFit: 'contain',
-                  border: '1px solid rgba(0,0,0,0.08)',
-                  background: 'var(--card-bg)',
-                  cursor: 'pointer',
-                  transition: 'transform 0.2s ease'
-                }}
-              />
-            ))}
-          </div>
-        )}
-
-        {/* QUESTION TEXT */}
-        <div style={{ marginBottom: '22px' }}>
-          <h2
-            style={{
-              fontSize: '1.25rem',
-              lineHeight: '1.45',
-              fontWeight: '700',
-              margin: 0
-            }}
-          >
-            <MathRenderer text={currentQ.question} />
-          </h2>
-        </div>
-
-        {/* OPTIONS LIST */}
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '10px',
-            marginBottom: '20px'
-          }}
-        >
-          {currentQ.options.map((opt, optIdx) => {
-            const isCorrect = optIdx === currentQ.correctIndex;
-            const isChosen = chosenAnswer === optIdx;
-
-            let bgColor = 'var(--card-bg)';
-            let borderColor = 'rgba(0,0,0,0.08)';
-            let textColor = 'var(--text-color)';
-
-            if (isAnswered) {
-              if (isCorrect) {
-                bgColor = 'rgba(74, 222, 128, 0.2)';
-                borderColor = '#4ade80';
-              } else if (isChosen) {
-                bgColor = 'rgba(248, 113, 113, 0.2)';
-                borderColor = '#f87171';
-              }
-            }
-
-            return (
-              <button
-                key={optIdx}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleOptionSelect(optIdx);
-                }}
-                disabled={isAnswered}
-                style={{
-                  textAlign: 'left',
-                  background: bgColor,
-                  color: textColor,
-                  border: `2px solid ${borderColor}`,
-                  padding: '14px 18px',
-                  borderRadius: '16px',
-                  fontSize: '0.95rem',
-                  position: 'relative',
-                  boxShadow: 'none',
-                  transition: 'all 0.2s ease',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: '10px',
-                  cursor: isAnswered ? 'default' : 'pointer',
-                  transform: 'none'
+                  fontSize: '1.35rem',
+                  lineHeight: '1.5',
+                  fontWeight: '700',
+                  margin: 0,
+                  userSelect: 'none',
+                  WebkitUserSelect: 'none'
                 }}
               >
-                <div style={{ flex: 1, pointerEvents: 'none', lineHeight: '1.4' }}>
-                  <MathRenderer text={opt} />
-                </div>
-                <div style={{ flexShrink: 0, pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
-                  {isAnswered && isCorrect && <CheckCircle size={18} color="#4ade80" />}
-                  {isAnswered && isChosen && !isCorrect && <XCircle size={18} color="#f87171" />}
-                </div>
-              </button>
-            );
-          })}
-        </div>
+                <MathRenderer text={currentQ.question} noSelect={true} />
+              </h2>
+            </div>
 
-        {/* EXPLANATION BLOCK (IDENTICAL STYLE TO QuizView) */}
-        {isAnswered && currentQ.explanation && (
-          <div
-            style={{
-              background: 'rgba(99, 102, 241, 0.05)',
-              borderRadius: '20px',
-              border: '1.5px dashed rgba(99, 102, 241, 0.2)',
-              overflow: 'hidden',
-              padding: '0 16px',
-              marginBottom: '20px',
-              animation: 'slideDownFade 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards'
-            }}
-          >
+            {/* OPTIONS GRID (SPACIOUS & ADAPTIVE) */}
             <div
-              className="flex-center"
-              onClick={(e) => {
-                e.stopPropagation();
-                toggleExplanation();
-              }}
+              className="shorts-options-container"
               style={{
+                display: 'grid',
+                gap: '12px',
+                gridTemplateColumns:
+                  currentQ.options.some(opt => opt.length > 42) || currentQ.options.length > 4
+                    ? '1fr'
+                    : 'repeat(auto-fit, minmax(360px, 1fr))',
+                marginBottom: '20px'
+              }}
+            >
+              {currentQ.options.map((opt, optIdx) => {
+                const isCorrect = optIdx === currentQ.correctIndex;
+                const isChosen = chosenAnswer === optIdx;
+
+                let bgColor = 'var(--card-bg)';
+                let borderColor = 'rgba(99, 102, 241, 0.12)';
+                let textColor = 'var(--text-color)';
+
+                if (isAnswered) {
+                  if (isCorrect) {
+                    bgColor = 'rgba(74, 222, 128, 0.2)';
+                    borderColor = '#4ade80';
+                  } else if (isChosen) {
+                    bgColor = 'rgba(248, 113, 113, 0.2)';
+                    borderColor = '#f87171';
+                  }
+                }
+
+                return (
+                  <button
+                    key={optIdx}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleOptionSelect(optIdx);
+                    }}
+                    disabled={isAnswered}
+                    style={{
+                      textAlign: 'left',
+                      background: bgColor,
+                      color: textColor,
+                      border: `2px solid ${borderColor}`,
+                      padding: '16px 22px',
+                      borderRadius: '18px',
+                      fontSize: '1.02rem',
+                      lineHeight: '1.45',
+                      boxShadow: 'none',
+                      transition: 'all 0.2s ease',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '12px',
+                      cursor: isAnswered ? 'default' : 'pointer',
+                      transform: 'none',
+                      userSelect: 'none',
+                      WebkitUserSelect: 'none'
+                    }}
+                  >
+                    <div style={{ flex: 1, pointerEvents: 'none' }}>
+                      <MathRenderer text={opt} noSelect={true} />
+                    </div>
+                    <div style={{ flexShrink: 0, pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
+                      {isAnswered && isCorrect && <CheckCircle size={20} color="#4ade80" />}
+                      {isAnswered && isChosen && !isCorrect && <XCircle size={20} color="#f87171" />}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* EXPLANATION BLOCK (MATCHING QuizView) */}
+            {isAnswered && currentQ.explanation && (
+              <div
+                style={{
+                  background: 'rgba(99, 102, 241, 0.05)',
+                  borderRadius: '20px',
+                  border: '1.5px dashed rgba(99, 102, 241, 0.22)',
+                  overflow: 'hidden',
+                  padding: '0 20px',
+                  marginBottom: '20px',
+                  animation: 'slideDownFade 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards'
+                }}
+              >
+                <div
+                  className="flex-center"
+                  onClick={toggleExplanation}
+                  style={{
+                    justifyContent: 'space-between',
+                    cursor: 'pointer',
+                    userSelect: 'none',
+                    padding: '16px 0'
+                  }}
+                >
+                  <div className="flex-center" style={{ gap: '8px', color: 'var(--primary-color)' }}>
+                    <Zap size={18} />
+                    <span style={{ fontSize: '0.85rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
+                      Пояснение
+                    </span>
+                  </div>
+                  {isExplanationExpanded ? <ChevronUp size={18} opacity={0.5} /> : <ChevronDown size={18} opacity={0.5} />}
+                </div>
+
+                <div
+                  style={{
+                    maxHeight: isExplanationExpanded ? '1000px' : '0',
+                    overflow: 'hidden',
+                    transition: 'max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s',
+                    opacity: isExplanationExpanded ? 1 : 0
+                  }}
+                >
+                  <div style={{ paddingBottom: '16px', fontSize: '0.98rem', lineHeight: '1.6', opacity: 0.9 }}>
+                    <MathRenderer text={currentQ.explanation} noSelect={true} />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* BOTTOM METADATA & ACTION BUTTONS */}
+            <div
+              style={{
+                marginTop: 'auto',
+                paddingTop: '18px',
+                borderTop: '1px solid rgba(0,0,0,0.06)',
+                display: 'flex',
+                alignItems: 'center',
                 justifyContent: 'space-between',
-                cursor: 'pointer',
-                userSelect: 'none',
-                padding: '14px 0'
+                flexWrap: 'wrap',
+                gap: '15px'
               }}
             >
-              <div className="flex-center" style={{ gap: '8px', color: 'var(--primary-color)' }}>
-                <Zap size={16} />
-                <span style={{ fontSize: '0.8rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
-                  Пояснение
-                </span>
+              {/* Left: Origin Details (Quiz title instead of author, Folder - Section instead of description) */}
+              <div style={{ flex: 1, minWidth: '220px' }}>
+                <div
+                  style={{
+                    fontSize: '1rem',
+                    fontWeight: '700',
+                    color: 'var(--text-color)',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap'
+                  }}
+                  title={currentQ.quizTitle}
+                >
+                  {currentQ.quizTitle}
+                </div>
+                <div
+                  style={{
+                    fontSize: '0.85rem',
+                    opacity: 0.6,
+                    marginTop: '4px',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  {currentQ.className} — {currentQ.sectionName}
+                </div>
               </div>
-              {isExplanationExpanded ? <ChevronUp size={16} opacity={0.5} /> : <ChevronDown size={16} opacity={0.5} />}
-            </div>
 
-            <div
-              style={{
-                maxHeight: isExplanationExpanded ? '1000px' : '0',
-                overflow: 'hidden',
-                transition: 'max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s',
-                opacity: isExplanationExpanded ? 1 : 0
-              }}
-            >
-              <div style={{ paddingBottom: '14px', fontSize: '0.9rem', lineHeight: '1.5', opacity: 0.9 }}>
-                <MathRenderer text={currentQ.explanation} />
+              {/* Right: Actions (Like, Share, Start Full Quiz) */}
+              <div className="flex-center" style={{ gap: '10px' }}>
+                <button
+                  onClick={() => toggleLike(currentQ.shortId)}
+                  className="flex-center"
+                  style={{
+                    background: isLiked ? 'rgba(239, 68, 68, 0.1)' : 'rgba(0,0,0,0.04)',
+                    color: isLiked ? '#ef4444' : 'var(--text-color)',
+                    width: '44px',
+                    height: '44px',
+                    borderRadius: '50%',
+                    padding: 0,
+                    boxShadow: 'none',
+                    border: 'none',
+                    transition: 'all 0.2s ease'
+                  }}
+                  title={isLiked ? 'Убрать сердечко' : 'Поставить сердечко'}
+                >
+                  <Heart
+                    size={22}
+                    fill={isLiked ? '#ef4444' : 'none'}
+                    color={isLiked ? '#ef4444' : 'currentColor'}
+                  />
+                </button>
+
+                <button
+                  onClick={handleShareQuestion}
+                  className="flex-center"
+                  style={{
+                    background: 'rgba(0,0,0,0.04)',
+                    color: 'var(--text-color)',
+                    width: '44px',
+                    height: '44px',
+                    borderRadius: '50%',
+                    padding: 0,
+                    boxShadow: 'none',
+                    border: 'none'
+                  }}
+                  title="Поделиться вопросом"
+                >
+                  <Share2 size={19} />
+                </button>
+
+                <button
+                  onClick={() => setSelectedQuiz(currentQ.fullQuiz)}
+                  className="flex-center"
+                  style={{
+                    background: 'var(--primary-color)',
+                    color: 'white',
+                    padding: '10px 20px',
+                    borderRadius: '16px',
+                    gap: '8px',
+                    fontSize: '0.9rem',
+                    fontWeight: 'bold',
+                    whiteSpace: 'nowrap'
+                  }}
+                  title="Пройти полный тест целиком"
+                >
+                  <Play size={15} fill="currentColor" />
+                  <span>Тест</span>
+                </button>
               </div>
             </div>
           </div>
-        )}
-
-        {/* BOTTOM METADATA & ACTIONS (TIKTOK STYLE) */}
-        <div
-          style={{
-            marginTop: 'auto',
-            paddingTop: '16px',
-            borderTop: '1px solid rgba(0,0,0,0.05)',
-            display: 'flex',
-            alignItems: 'flex-end',
-            justifyContent: 'space-between',
-            gap: '15px'
-          }}
-        >
-          {/* Left: Author / Origin metadata */}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            {/* Вместо автора: название теста */}
-            <div
-              style={{
-                fontSize: '0.9rem',
-                fontWeight: '700',
-                color: 'var(--text-color)',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap'
-              }}
-              title={currentQ.quizTitle}
-            >
-              {currentQ.quizTitle}
-            </div>
-
-            {/* Вместо описания: Папка — Секция */}
-            <div
-              style={{
-                fontSize: '0.8rem',
-                opacity: 0.6,
-                marginTop: '3px',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap'
-              }}
-            >
-              {currentQ.className} — {currentQ.sectionName}
-            </div>
-          </div>
-
-          {/* Right: TikTok Action Buttons (Like, Start Full Quiz, Share) */}
-          <div className="flex-center" style={{ gap: '10px' }}>
-            {/* Heart / Like button */}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                toggleLike(currentQ.shortId);
-              }}
-              className="flex-center"
-              style={{
-                background: isLiked ? 'rgba(239, 68, 68, 0.1)' : 'rgba(0,0,0,0.04)',
-                color: isLiked ? '#ef4444' : 'var(--text-color)',
-                width: '42px',
-                height: '42px',
-                borderRadius: '50%',
-                padding: 0,
-                boxShadow: 'none',
-                border: 'none',
-                transition: 'all 0.2s ease'
-              }}
-              title={isLiked ? 'Убрать лайк' : 'Поставить лайк'}
-            >
-              <Heart
-                size={20}
-                fill={isLiked ? '#ef4444' : 'none'}
-                color={isLiked ? '#ef4444' : 'currentColor'}
-              />
-            </button>
-
-            {/* Share Question button */}
-            <button
-              onClick={handleShareQuestion}
-              className="flex-center"
-              style={{
-                background: 'rgba(0,0,0,0.04)',
-                color: 'var(--text-color)',
-                width: '42px',
-                height: '42px',
-                borderRadius: '50%',
-                padding: 0,
-                boxShadow: 'none',
-                border: 'none'
-              }}
-              title="Поделиться вопросом"
-            >
-              <Share2 size={18} />
-            </button>
-
-            {/* Start Full Quiz button (Warning Modal trigger) */}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setSelectedQuiz(currentQ.fullQuiz);
-              }}
-              className="flex-center"
-              style={{
-                background: 'var(--primary-color)',
-                color: 'white',
-                padding: '10px 16px',
-                borderRadius: '16px',
-                gap: '6px',
-                fontSize: '0.85rem',
-                fontWeight: 'bold',
-                whiteSpace: 'nowrap'
-              }}
-              title="Перейти к выполнению полного теста"
-            >
-              <Play size={14} fill="currentColor" />
-              <span>Тест</span>
-            </button>
-          </div>
         </div>
+      </main>
 
-        {/* MOBILE BOTTOM NAVIGATION (Swipe hints & next/prev arrows) */}
-        <div
-          className="shorts-mobile-nav"
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginTop: '14px',
-            paddingTop: '10px',
-            borderTop: '1px dashed rgba(0,0,0,0.05)',
-            opacity: 0.7
-          }}
-        >
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              goToPrev();
-            }}
-            style={{
-              padding: '6px 12px',
-              fontSize: '0.8rem',
-              background: 'rgba(0,0,0,0.03)',
-              color: 'var(--text-color)',
-              boxShadow: 'none',
-              borderRadius: '10px'
-            }}
-          >
-            ← Предыдущий
-          </button>
-
-          <span style={{ fontSize: '0.75rem', opacity: 0.6 }}>Свайп вверх / вниз</span>
-
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              goToNext();
-            }}
-            style={{
-              padding: '6px 12px',
-              fontSize: '0.8rem',
-              background: 'rgba(99, 102, 241, 0.1)',
-              color: 'var(--primary-color)',
-              boxShadow: 'none',
-              borderRadius: '10px'
-            }}
-          >
-            Следующий →
-          </button>
-        </div>
-      </div>
-
-      {/* TOAST COPIED NOTIFICATION */}
-      {toastMessage && (
-        <div
-          style={{
-            position: 'fixed',
-            bottom: '25px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            background: 'var(--primary-color)',
-            color: 'white',
-            padding: '8px 20px',
-            borderRadius: '14px',
-            fontSize: '0.85rem',
-            fontWeight: 'bold',
-            boxShadow: '0 10px 25px rgba(99, 102, 241, 0.4)',
-            zIndex: 10000,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            animation: 'fadeInUp 0.3s ease'
-          }}
-        >
-          <Check size={16} /> {toastMessage}
-        </div>
-      )}
-
-      {/* FULL IMAGE PREVIEW MODAL */}
-      {previewImage && (
+      {/* ========================================================
+          EXIT CONFIRMATION WARNING MODAL (UNIFIED SITE STYLE)
+          ======================================================== */}
+      {showExitModal && (
         <div
           className="modal-overlay"
-          onClick={() => setPreviewImage(null)}
-          style={{ zIndex: 10000, background: 'rgba(0,0,0,0.85)' }}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) e.target.dataset.md = 'true';
+          }}
+          onMouseUp={(e) => {
+            if (e.target === e.currentTarget && e.target.dataset.md === 'true') {
+              e.target.dataset.md = 'false';
+              setShowExitModal(false);
+            }
+          }}
         >
           <div
-            style={{ position: 'relative', maxWidth: '90vw', maxHeight: '90vh' }}
+            className="modal-content animate"
             onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '480px' }}
           >
-            <button
-              onClick={() => setPreviewImage(null)}
+            <div
+              className="flex-center"
               style={{
-                position: 'absolute',
-                top: '-45px',
-                right: '0',
-                background: 'rgba(255,255,255,0.2)',
-                color: 'white',
-                border: 'none',
-                borderRadius: '50%',
-                padding: '8px',
-                cursor: 'pointer'
+                justifyContent: 'center',
+                width: '64px',
+                height: '64px',
+                borderRadius: '22px',
+                background: 'rgba(250, 204, 21, 0.1)',
+                color: '#ca8a04',
+                margin: '0 auto 24px'
               }}
             >
-              <X size={20} />
-            </button>
-            <img
-              src={previewImage}
-              alt="Увеличенное изображение"
-              style={{ maxWidth: '100%', maxHeight: '85vh', objectFit: 'contain', borderRadius: '16px' }}
-            />
+              <AlertTriangle size={34} />
+            </div>
+
+            <h2 style={{ marginBottom: '14px' }}>Выйти из Ленты Знаний?</h2>
+            <p style={{ opacity: 0.7, marginBottom: '28px', lineHeight: '1.6' }}>
+              Вы действительно хотите выйти? Текущая серия ответов ({streak}) будет завершена.
+            </p>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+              <button
+                onClick={() => setShowExitModal(false)}
+                style={{
+                  background: 'rgba(0,0,0,0.05)',
+                  color: 'var(--text-color)',
+                  boxShadow: 'none',
+                  padding: '14px'
+                }}
+              >
+                Остаться
+              </button>
+              <button
+                onClick={handleConfirmExit}
+                style={{
+                  background: '#ca8a04',
+                  color: 'white',
+                  padding: '14px'
+                }}
+              >
+                Да, выйти
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* FULL QUIZ START CONFIRMATION MODAL (EXACT SAME AS IN QuizCatalog) */}
+      {/* ========================================================
+          FULL QUIZ START WARNING MODAL (EXACT SAME AS QuizCatalog)
+          ======================================================== */}
       {selectedQuiz && (
         <div
           className="modal-overlay"
           onMouseDown={(e) => {
-            if (e.target === e.currentTarget) e.target.dataset.md = "true";
+            if (e.target === e.currentTarget) e.target.dataset.md = 'true';
           }}
           onMouseUp={(e) => {
-            if (e.target === e.currentTarget && e.target.dataset.md === "true") {
-              e.target.dataset.md = "false";
+            if (e.target === e.currentTarget && e.target.dataset.md === 'true') {
+              e.target.dataset.md = 'false';
               setSelectedQuiz(null);
             }
           }}
@@ -990,7 +1088,7 @@ export default function Shorts({ session, profile }) {
                 );
               })()}
 
-              {/* Recommended resources */}
+              {/* Recommended materials */}
               {selectedQuiz.resources && selectedQuiz.resources.length > 0 && (
                 <div style={{ marginBottom: '30px', textAlign: 'left' }}>
                   <div
@@ -1068,7 +1166,6 @@ export default function Shorts({ session, profile }) {
                               {res.title || 'Материал ' + (idx + 1)}
                             </span>
                           </div>
-                          <ChevronRight size={14} style={{ opacity: 0.3 }} />
                         </a>
                       );
                     })}
@@ -1108,7 +1205,69 @@ export default function Shorts({ session, profile }) {
         </div>
       )}
 
-      {/* Keyframe animation for heart popping */}
+      {/* TOAST NOTIFICATION */}
+      {toastMessage && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: '30px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'var(--primary-color)',
+            color: 'white',
+            padding: '10px 22px',
+            borderRadius: '16px',
+            fontSize: '0.9rem',
+            fontWeight: 'bold',
+            boxShadow: '0 10px 25px rgba(99, 102, 241, 0.4)',
+            zIndex: 10002,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            animation: 'fadeInUp 0.3s ease'
+          }}
+        >
+          <Check size={16} /> {toastMessage}
+        </div>
+      )}
+
+      {/* FULL IMAGE PREVIEW MODAL */}
+      {previewImage && (
+        <div
+          className="modal-overlay"
+          onClick={() => setPreviewImage(null)}
+          style={{ zIndex: 10003, background: 'rgba(0,0,0,0.85)' }}
+        >
+          <div
+            style={{ position: 'relative', maxWidth: '90vw', maxHeight: '90vh' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setPreviewImage(null)}
+              style={{
+                position: 'absolute',
+                top: '-45px',
+                right: '0',
+                background: 'rgba(255,255,255,0.2)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '50%',
+                padding: '8px',
+                cursor: 'pointer'
+              }}
+            >
+              <X size={20} />
+            </button>
+            <img
+              src={previewImage}
+              alt="Увеличенное изображение"
+              style={{ maxWidth: '100%', maxHeight: '85vh', objectFit: 'contain', borderRadius: '16px' }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Custom Styles for TikTok Animation & Responsiveness */}
       <style>{`
         @keyframes heartPop {
           0% { transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
@@ -1116,18 +1275,16 @@ export default function Shorts({ session, profile }) {
           100% { transform: translate(-50%, -50%) scale(1.6); opacity: 0; }
         }
 
-        @media (min-width: 900px) {
-          .shorts-mobile-nav {
+        @media (max-width: 768px) {
+          .shorts-desktop-arrows {
             display: none !important;
           }
-        }
-
-        @media (max-width: 899px) {
-          .shorts-desktop-nav {
+          .shorts-shuffle-text {
             display: none !important;
           }
-          .shorts-page-container {
-            padding: 8px 6px 15px !important;
+          .shorts-card {
+            padding: 20px 18px !important;
+            border-radius: 20px !important;
           }
         }
       `}</style>
