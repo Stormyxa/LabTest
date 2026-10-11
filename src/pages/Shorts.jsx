@@ -691,8 +691,31 @@ export default function Shorts({ session, profile }) {
                   boxSizing: 'border-box'
                 }}
               >
-                <div style={{ flex: 1, pointerEvents: 'none' }}>
-                  <MathRenderer text={opt} noSelect={true} />
+                <div style={{ flex: 1, pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
+                  {!isMobile && (
+                    <span style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '24px',
+                      height: '24px',
+                      borderRadius: '8px',
+                      background: 'rgba(99, 102, 241, 0.08)',
+                      color: 'var(--primary-color)',
+                      fontSize: '0.8rem',
+                      fontWeight: '700',
+                      fontFamily: 'monospace',
+                      border: '1px solid rgba(99, 102, 241, 0.16)',
+                      marginRight: '12px',
+                      flexShrink: 0,
+                      userSelect: 'none'
+                    }}>
+                      {optIdx + 1}
+                    </span>
+                  )}
+                  <div style={{ flex: 1 }}>
+                    <MathRenderer text={opt} noSelect={true} />
+                  </div>
                 </div>
                 <div style={{ flexShrink: 0, pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
                   {qAnswered && isCorrect && <CheckCircle size={18} color="#4ade80" />}

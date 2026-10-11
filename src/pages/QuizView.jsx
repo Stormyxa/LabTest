@@ -1103,6 +1103,50 @@ const QuizView = ({ session, profile }) => {
     if (blocker.state === 'blocked') blocker.reset();
   };
 
+  // Keyboard navigation & fast answer shortcuts (Horizontal AD/ФВ & 1-6)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (showExitModal || showIntegrityModal || detailedImageModal.isOpen || showResourceModal || modal.isOpen) return;
+      if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+      if (loading || showResult || questions.length === 0) return;
+
+      // 1. Horizontal navigation: D/B/ArrowRight (Next), A/Ф/ArrowLeft (Prev)
+      const isRight = ['ArrowRight', 'KeyD'].includes(e.code) || ['d', 'D', 'в', 'В'].includes(e.key);
+      const isLeft = ['ArrowLeft', 'KeyA'].includes(e.code) || ['a', 'A', 'ф', 'Ф'].includes(e.key);
+
+      if (isRight) {
+        e.preventDefault();
+        if (currentIdx < questions.length - 1) {
+          setCurrentIdx(prev => prev + 1);
+        } else {
+          finishQuiz();
+        }
+        return;
+      }
+
+      if (isLeft) {
+        e.preventDefault();
+        if (currentIdx > 0) {
+          setCurrentIdx(prev => prev - 1);
+        }
+        return;
+      }
+
+      // 2. Select option via numbers 1, 2, 3, 4, 5, 6
+      if (['1', '2', '3', '4', '5', '6'].includes(e.key)) {
+        const optIdx = parseInt(e.key, 10) - 1;
+        const currentQ = questions[currentIdx];
+        if (currentQ && optIdx >= 0 && optIdx < currentQ.options.length) {
+          handleSelect(optIdx);
+        }
+        return;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentIdx, questions, answers, loading, showResult, showExitModal, showIntegrityModal, detailedImageModal.isOpen, showResourceModal, modal.isOpen]);
+
   if (loading || guestSaving) return (
     <>
       <div className="flex-center" style={{ height: '60vh', flexDirection: 'column', gap: '20px' }}>
@@ -1704,8 +1748,31 @@ const QuizView = ({ session, profile }) => {
                       height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center',
                       userSelect: 'none', WebkitUserSelect: 'none', cursor: 'pointer'
                     }}>
-                    <div className="flex-center" style={{ justifyContent: 'space-between', gap: '10px', pointerEvents: 'none' }}>
-                      <span style={{ pointerEvents: 'none' }}><MathRenderer text={opt} noSelect={!showResult} /></span>
+                    <div className="flex-center" style={{ justifyContent: 'space-between', gap: '10px', pointerEvents: 'none', width: '100%' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', flex: 1, pointerEvents: 'none' }}>
+                        {!isMobile && (
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: '24px',
+                            height: '24px',
+                            borderRadius: '8px',
+                            background: 'rgba(99, 102, 241, 0.08)',
+                            color: 'var(--primary-color)',
+                            fontSize: '0.8rem',
+                            fontWeight: '700',
+                            fontFamily: 'monospace',
+                            border: '1px solid rgba(99, 102, 241, 0.16)',
+                            marginRight: '12px',
+                            flexShrink: 0,
+                            userSelect: 'none'
+                          }}>
+                            {idx + 1}
+                          </span>
+                        )}
+                        <span style={{ pointerEvents: 'none', flex: 1 }}><MathRenderer text={opt} noSelect={!showResult} /></span>
+                      </div>
                       <div style={{ flexShrink: 0, pointerEvents: 'none' }}>
                         {!isFirstAttempt && chosen !== undefined && isCorrect && <CheckCircle size={20} color="#4ade80" />}
                         {!isFirstAttempt && chosen !== undefined && isSelected && !isCorrect && <XCircle size={20} color="#f87171" />}
