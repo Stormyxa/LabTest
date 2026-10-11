@@ -16,6 +16,7 @@ export default function Shorts({ session, profile }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [userAnswers, setUserAnswers] = useState({}); // { [shortId]: chosenIndex }
+  const userAnswersRef = useRef({});
   const [likedMap, setLikedMap] = useState(() => {
     try {
       const saved = localStorage.getItem('shorts_liked_ids');
@@ -193,6 +194,7 @@ export default function Shorts({ session, profile }) {
       setQuestions(extracted);
       setCurrentIndex(0);
       setUserAnswers({});
+      userAnswersRef.current = {};
     } catch (err) {
       console.error('Failed to load shorts:', err);
     } finally {
@@ -253,13 +255,17 @@ export default function Shorts({ session, profile }) {
     return () => window.removeEventListener('wheel', handleWheel);
   }, [triggerSlide, showExitModal, selectedQuiz, previewImage, showShortcutsModal]);
 
-  // Keyboard navigation (WS/ЦЫ, 1-6 choices, Esc, L)
+  // Keyboard navigation (WS/ЦЫ, Vim JK/ОЛ, 1-6 choices, I/Ш for images, E/У for explanation, Esc, L)
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (showExitModal || selectedQuiz || previewImage) {
         if (e.key === 'Escape') {
           setShowExitModal(false);
           setSelectedQuiz(null);
+          setPreviewImage(null);
+        }
+        if (previewImage && (['KeyI'].includes(e.code) || ['i', 'I', 'ш', 'Ш'].includes(e.key))) {
+          e.preventDefault();
           setPreviewImage(null);
         }
         return;
@@ -273,10 +279,11 @@ export default function Shorts({ session, profile }) {
       }
 
       if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+      if (e.repeat) return;
 
-      // Vertical Slide navigation: WS / ЦЫ / Arrows
-      const isUp = ['ArrowUp', 'KeyW', 'PageUp'].includes(e.code) || ['w', 'W', 'ц', 'Ц'].includes(e.key);
-      const isDown = ['ArrowDown', 'KeyS', 'PageDown'].includes(e.code) || ['s', 'S', 'ы', 'Ы'].includes(e.key);
+      // Vertical Slide navigation: WS / ЦЫ / Vim JK / ОЛ / Arrows
+      const isUp = ['ArrowUp', 'KeyW', 'KeyK', 'PageUp'].includes(e.code) || ['w', 'W', 'k', 'K', 'ц', 'Ц', 'л', 'Л'].includes(e.key);
+      const isDown = ['ArrowDown', 'KeyS', 'KeyJ', 'PageDown'].includes(e.code) || ['s', 'S', 'j', 'J', 'ы', 'Ы', 'о', 'О'].includes(e.key);
 
       if (isDown) {
         e.preventDefault();
@@ -289,11 +296,31 @@ export default function Shorts({ session, profile }) {
         return;
       }
 
-      // Fast option selection via numbers 1, 2, 3, 4, 5, 6
+      // Fast toggle of question image view via I / Ш (PC)
+      if (['KeyI'].includes(e.code) || ['i', 'I', 'ш', 'Ш'].includes(e.key)) {
+        e.preventDefault();
+        const currentQ = questions[currentIndex];
+        if (currentQ && currentQ.images && currentQ.images.length > 0) {
+          setPreviewImage(resolveImgUrl(currentQ.images[0]));
+        }
+        return;
+      }
+
+      // Fast toggle of explanation via E / У (PC)
+      if (['KeyE'].includes(e.code) || ['e', 'E', 'у', 'У'].includes(e.key)) {
+        e.preventDefault();
+        const currentQ = questions[currentIndex];
+        if (currentQ && currentQ.explanation && userAnswersRef.current[currentQ.shortId] !== undefined) {
+          toggleExplanation();
+        }
+        return;
+      }
+
+      // Fast option selection via numbers 1, 2, 3, 4, 5, 6 (Strictly locked once answered)
       if (['1', '2', '3', '4', '5', '6'].includes(e.key)) {
         const optIdx = parseInt(e.key, 10) - 1;
         const q = questions[currentIndex];
-        if (q && optIdx >= 0 && optIdx < q.options.length) {
+        if (q && userAnswersRef.current[q.shortId] === undefined && optIdx >= 0 && optIdx < q.options.length) {
           handleOptionSelect(optIdx);
         }
         return;
@@ -484,14 +511,15 @@ export default function Shorts({ session, profile }) {
     if (hasDraggedRef.current) return;
     const q = questions[currentIndex];
     if (!q) return;
-    if (userAnswers[q.shortId] !== undefined) return;
+    if (userAnswersRef.current[q.shortId] !== undefined) return;
 
-    const isCorrect = optionIdx === q.correctIndex;
-
+    userAnswersRef.current[q.shortId] = optionIdx;
     setUserAnswers(prev => ({
       ...prev,
       [q.shortId]: optionIdx
     }));
+
+    const isCorrect = optionIdx === q.correctIndex;
 
     if (isCorrect) {
       setStreak(prev => {
@@ -1198,7 +1226,7 @@ export default function Shorts({ session, profile }) {
             <button
               onClick={goToPrev}
               disabled={currentIndex === 0}
-              title="Предыдущий вопрос (↑, W, Ц или колесико вверх)"
+              title="Предыдущий вопрос (↑, W / K, Ц / Л или колёсико вверх)"
               style={{
                 width: '52px',
                 height: '52px',
@@ -1224,7 +1252,7 @@ export default function Shorts({ session, profile }) {
             <button
               onClick={goToNext}
               disabled={currentIndex === questions.length - 1}
-              title="Следующий вопрос (↓, S, Ы или колесико вниз)"
+              title="Следующий вопрос (↓, S / J, Ы / О или колёсико вниз)"
               style={{
                 width: '52px',
                 height: '52px',
@@ -1453,14 +1481,16 @@ export default function Shorts({ session, profile }) {
                   justifyContent: 'space-between',
                   padding: '12px 16px',
                   background: 'rgba(0,0,0,0.03)',
-                  borderRadius: '14px'
+                  borderRadius: '14px',
+                  flexWrap: 'wrap',
+                  gap: '8px'
                 }}
               >
                 <span style={{ fontSize: '0.9rem', fontWeight: '600' }}>Листать вопросы</span>
-                <div className="flex-center" style={{ gap: '6px' }}>
-                  <span style={{ padding: '4px 8px', background: 'var(--card-bg)', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)', fontSize: '0.8rem', fontWeight: 'bold' }}>W / S</span>
+                <div className="flex-center" style={{ gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  <span style={{ padding: '4px 8px', background: 'var(--card-bg)', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)', fontSize: '0.8rem', fontWeight: 'bold' }}>W / S (Ц / Ы)</span>
                   <span style={{ opacity: 0.4 }}>или</span>
-                  <span style={{ padding: '4px 8px', background: 'var(--card-bg)', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)', fontSize: '0.8rem', fontWeight: 'bold' }}>Ц / Ы</span>
+                  <span style={{ padding: '4px 8px', background: 'var(--card-bg)', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)', fontSize: '0.8rem', fontWeight: 'bold' }}>J / K (О / Л)</span>
                   <span style={{ opacity: 0.4 }}>или</span>
                   <span style={{ padding: '4px 8px', background: 'var(--card-bg)', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)', fontSize: '0.8rem', fontWeight: 'bold' }}>Колёсико / Мышь</span>
                 </div>
@@ -1481,7 +1511,35 @@ export default function Shorts({ session, profile }) {
                   <span style={{ padding: '4px 9px', background: 'var(--card-bg)', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)', fontSize: '0.8rem', fontWeight: 'bold' }}>2</span>
                   <span style={{ padding: '4px 9px', background: 'var(--card-bg)', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)', fontSize: '0.8rem', fontWeight: 'bold' }}>3</span>
                   <span style={{ padding: '4px 9px', background: 'var(--card-bg)', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)', fontSize: '0.8rem', fontWeight: 'bold' }}>4</span>
+                  <span style={{ padding: '4px 9px', background: 'var(--card-bg)', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)', fontSize: '0.8rem', fontWeight: 'bold' }}>5</span>
+                  <span style={{ padding: '4px 9px', background: 'var(--card-bg)', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)', fontSize: '0.8rem', fontWeight: 'bold' }}>6</span>
                 </div>
+              </div>
+
+              <div
+                className="flex-center"
+                style={{
+                  justifyContent: 'space-between',
+                  padding: '12px 16px',
+                  background: 'rgba(0,0,0,0.03)',
+                  borderRadius: '14px'
+                }}
+              >
+                <span style={{ fontSize: '0.9rem', fontWeight: '600' }}>Быстрый просмотр картинки</span>
+                <span style={{ padding: '4px 10px', background: 'var(--card-bg)', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)', fontSize: '0.8rem', fontWeight: 'bold' }}>I (Ш)</span>
+              </div>
+
+              <div
+                className="flex-center"
+                style={{
+                  justifyContent: 'space-between',
+                  padding: '12px 16px',
+                  background: 'rgba(0,0,0,0.03)',
+                  borderRadius: '14px'
+                }}
+              >
+                <span style={{ fontSize: '0.9rem', fontWeight: '600' }}>Показать / скрыть пояснение</span>
+                <span style={{ padding: '4px 10px', background: 'var(--card-bg)', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)', fontSize: '0.8rem', fontWeight: 'bold' }}>E (У)</span>
               </div>
 
               <div

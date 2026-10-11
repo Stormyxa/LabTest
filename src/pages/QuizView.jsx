@@ -7,7 +7,7 @@ import {
   CheckCircle, XCircle, ChevronRight, ChevronLeft, RotateCcw, X,
   AlertTriangle, Book, FileText, ChevronDown, ChevronUp, Clock, Zap,
   Shield, Maximize2, Minimize2, Youtube, ExternalLink,
-  Play, Pause, Volume2, VolumeX, Settings, FastForward, Rewind, BarChart3, Loader2
+  Play, Pause, Volume2, VolumeX, Settings, FastForward, Rewind, BarChart3, Loader2, Sparkles
 } from 'lucide-react';
 import { resolveImgUrl } from '../lib/imageUtils';
 import { useScrollRestoration } from '../lib/useScrollRestoration';
@@ -116,6 +116,21 @@ const QuizView = ({ session, profile }) => {
       localStorage.setItem('quiz_explanation_expanded', newVal.toString());
       return newVal;
     });
+  };
+
+  // Desktop Keyboard Shortcuts Onboarding Modal (Shown once on PC)
+  const [showShortcutsModal, setShowShortcutsModal] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const isDesktop = window.innerWidth > 768;
+    const alreadyShown = localStorage.getItem('quiz_pc_shortcuts_shown');
+    return isDesktop && !alreadyShown;
+  });
+
+  const closeShortcutsModal = () => {
+    setShowShortcutsModal(false);
+    try {
+      localStorage.setItem('quiz_pc_shortcuts_shown', 'true');
+    } catch {}
   };
 
   // Timer
@@ -1103,16 +1118,26 @@ const QuizView = ({ session, profile }) => {
     if (blocker.state === 'blocked') blocker.reset();
   };
 
-  // Keyboard navigation & fast answer shortcuts (Horizontal AD/ФВ & 1-6)
+  // Keyboard navigation & fast answer shortcuts (Horizontal AD/ФВ, Vim HL/РД, 1-6, I/Ш, E/У)
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (showExitModal || showIntegrityModal || detailedImageModal.isOpen || showResourceModal || modal.isOpen) return;
+
+      if (showShortcutsModal) {
+        if (e.key === 'Escape' || e.key === 'Enter') {
+          closeShortcutsModal();
+        }
+        return;
+      }
+
       if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
       if (loading || showResult || questions.length === 0) return;
 
-      // 1. Horizontal navigation: D/B/ArrowRight (Next), A/Ф/ArrowLeft (Prev)
-      const isRight = ['ArrowRight', 'KeyD'].includes(e.code) || ['d', 'D', 'в', 'В'].includes(e.key);
-      const isLeft = ['ArrowLeft', 'KeyA'].includes(e.code) || ['a', 'A', 'ф', 'Ф'].includes(e.key);
+      if (e.repeat) return;
+
+      // 1. Horizontal navigation: D/В/L/Д/ArrowRight (Next), A/Ф/H/Р/ArrowLeft (Prev)
+      const isRight = ['ArrowRight', 'KeyD', 'KeyL'].includes(e.code) || ['d', 'D', 'в', 'В', 'l', 'L', 'д', 'Д'].includes(e.key);
+      const isLeft = ['ArrowLeft', 'KeyA', 'KeyH'].includes(e.code) || ['a', 'A', 'ф', 'Ф', 'h', 'H', 'р', 'Р'].includes(e.key);
 
       if (isRight) {
         e.preventDefault();
@@ -1132,7 +1157,37 @@ const QuizView = ({ session, profile }) => {
         return;
       }
 
-      // 2. Select option via numbers 1, 2, 3, 4, 5, 6
+      // 2. Fast toggle of question image view via I / Ш
+      if (['KeyI'].includes(e.code) || ['i', 'I', 'ш', 'Ш'].includes(e.key)) {
+        e.preventDefault();
+        const currentQ = questions[currentIdx];
+        if (detailedImageModal.isOpen) {
+          setDetailedImageModal(prev => ({ ...prev, isOpen: false }));
+        } else if (currentQ && currentQ.images && currentQ.images.length > 0) {
+          setDetailedImageModal({
+            isOpen: true,
+            images: currentQ.images,
+            currentImgIdx: 0,
+            question: currentQ.question,
+            userAnswer: answers[currentIdx] !== undefined ? currentQ.options[answers[currentIdx]] : '',
+            correctAnswer: currentQ.options[currentQ.correctIndex],
+            isCorrect: answers[currentIdx] === currentQ.correctIndex
+          });
+        }
+        return;
+      }
+
+      // 3. Fast toggle of explanation via E / У
+      if (['KeyE'].includes(e.code) || ['e', 'E', 'у', 'У'].includes(e.key)) {
+        e.preventDefault();
+        const currentQ = questions[currentIdx];
+        if (!isFirstAttempt && answers[currentIdx] !== undefined && currentQ && currentQ.explanation) {
+          toggleExplanation();
+        }
+        return;
+      }
+
+      // 4. Select option via numbers 1, 2, 3, 4, 5, 6
       if (['1', '2', '3', '4', '5', '6'].includes(e.key)) {
         const optIdx = parseInt(e.key, 10) - 1;
         const currentQ = questions[currentIdx];
@@ -1145,7 +1200,7 @@ const QuizView = ({ session, profile }) => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentIdx, questions, answers, loading, showResult, showExitModal, showIntegrityModal, detailedImageModal.isOpen, showResourceModal, modal.isOpen]);
+  }, [currentIdx, questions, answers, loading, showResult, showExitModal, showIntegrityModal, detailedImageModal, showResourceModal, modal.isOpen, showShortcutsModal, isFirstAttempt]);
 
   if (loading || guestSaving) return (
     <>
@@ -1915,6 +1970,167 @@ const QuizView = ({ session, profile }) => {
               res={allResources[activeResourceIdx]}
               onClose={() => setShowResourceModal(false)}
             />
+          )}
+
+          {/* DESKTOP KEYBOARD SHORTCUTS ONBOARDING MODAL */}
+          {showShortcutsModal && createPortal(
+            <div
+              className="modal-overlay"
+              style={{ zIndex: 99999 }}
+              onMouseDown={(e) => {
+                if (e.target === e.currentTarget) e.target.dataset.md = 'true';
+              }}
+              onMouseUp={(e) => {
+                if (e.target === e.currentTarget && e.target.dataset.md === 'true') {
+                  e.target.dataset.md = 'false';
+                  closeShortcutsModal();
+                }
+              }}
+            >
+              <div
+                className="modal-content animate"
+                onClick={(e) => e.stopPropagation()}
+                style={{ maxWidth: '520px', width: '90%' }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+                  <div className="flex-center" style={{ gap: '10px' }}>
+                    <div
+                      style={{
+                        width: '42px',
+                        height: '42px',
+                        borderRadius: '14px',
+                        background: 'rgba(99, 102, 241, 0.1)',
+                        color: 'var(--primary-color)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
+                    >
+                      <Sparkles size={22} />
+                    </div>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '800' }}>Горячие клавиши на ПК</h3>
+                      <p style={{ margin: 0, opacity: 0.5, fontSize: '0.85rem' }}>Проходите тест молниеносно с клавиатуры</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={closeShortcutsModal}
+                    style={{
+                      background: 'rgba(0,0,0,0.04)',
+                      color: 'var(--text-color)',
+                      border: 'none',
+                      borderRadius: '50%',
+                      width: '36px',
+                      height: '36px',
+                      padding: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: 'none'
+                    }}
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '25px' }}>
+                  <div
+                    className="flex-center"
+                    style={{
+                      justifyContent: 'space-between',
+                      padding: '12px 16px',
+                      background: 'rgba(0,0,0,0.03)',
+                      borderRadius: '14px',
+                      flexWrap: 'wrap',
+                      gap: '8px'
+                    }}
+                  >
+                    <span style={{ fontSize: '0.9rem', fontWeight: '600' }}>Листать вопросы</span>
+                    <div className="flex-center" style={{ gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      <span style={{ padding: '4px 8px', background: 'var(--card-bg)', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)', fontSize: '0.8rem', fontWeight: 'bold' }}>A / D (Ф / В)</span>
+                      <span style={{ opacity: 0.4 }}>или</span>
+                      <span style={{ padding: '4px 8px', background: 'var(--card-bg)', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)', fontSize: '0.8rem', fontWeight: 'bold' }}>H / L (Р / Д)</span>
+                      <span style={{ opacity: 0.4 }}>или</span>
+                      <span style={{ padding: '4px 8px', background: 'var(--card-bg)', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)', fontSize: '0.8rem', fontWeight: 'bold' }}>← / →</span>
+                    </div>
+                  </div>
+
+                  <div
+                    className="flex-center"
+                    style={{
+                      justifyContent: 'space-between',
+                      padding: '12px 16px',
+                      background: 'rgba(0,0,0,0.03)',
+                      borderRadius: '14px'
+                    }}
+                  >
+                    <span style={{ fontSize: '0.9rem', fontWeight: '600' }}>Выбор вариантов ответа</span>
+                    <div className="flex-center" style={{ gap: '5px' }}>
+                      <span style={{ padding: '4px 9px', background: 'var(--card-bg)', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)', fontSize: '0.8rem', fontWeight: 'bold' }}>1</span>
+                      <span style={{ padding: '4px 9px', background: 'var(--card-bg)', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)', fontSize: '0.8rem', fontWeight: 'bold' }}>2</span>
+                      <span style={{ padding: '4px 9px', background: 'var(--card-bg)', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)', fontSize: '0.8rem', fontWeight: 'bold' }}>3</span>
+                      <span style={{ padding: '4px 9px', background: 'var(--card-bg)', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)', fontSize: '0.8rem', fontWeight: 'bold' }}>4</span>
+                      <span style={{ padding: '4px 9px', background: 'var(--card-bg)', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)', fontSize: '0.8rem', fontWeight: 'bold' }}>5</span>
+                      <span style={{ padding: '4px 9px', background: 'var(--card-bg)', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)', fontSize: '0.8rem', fontWeight: 'bold' }}>6</span>
+                    </div>
+                  </div>
+
+                  <div
+                    className="flex-center"
+                    style={{
+                      justifyContent: 'space-between',
+                      padding: '12px 16px',
+                      background: 'rgba(0,0,0,0.03)',
+                      borderRadius: '14px'
+                    }}
+                  >
+                    <span style={{ fontSize: '0.9rem', fontWeight: '600' }}>Быстрый просмотр картинки</span>
+                    <span style={{ padding: '4px 10px', background: 'var(--card-bg)', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)', fontSize: '0.8rem', fontWeight: 'bold' }}>I (Ш)</span>
+                  </div>
+
+                  <div
+                    className="flex-center"
+                    style={{
+                      justifyContent: 'space-between',
+                      padding: '12px 16px',
+                      background: 'rgba(0,0,0,0.03)',
+                      borderRadius: '14px'
+                    }}
+                  >
+                    <span style={{ fontSize: '0.9rem', fontWeight: '600' }}>Показать / скрыть пояснение</span>
+                    <span style={{ padding: '4px 10px', background: 'var(--card-bg)', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)', fontSize: '0.8rem', fontWeight: 'bold' }}>E (У)</span>
+                  </div>
+
+                  <div
+                    className="flex-center"
+                    style={{
+                      justifyContent: 'space-between',
+                      padding: '12px 16px',
+                      background: 'rgba(0,0,0,0.03)',
+                      borderRadius: '14px'
+                    }}
+                  >
+                    <span style={{ fontSize: '0.9rem', fontWeight: '600' }}>Выйти из теста</span>
+                    <span style={{ padding: '4px 10px', background: 'var(--card-bg)', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)', fontSize: '0.8rem', fontWeight: 'bold' }}>Esc</span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={closeShortcutsModal}
+                  style={{
+                    width: '100%',
+                    padding: '14px',
+                    background: 'var(--primary-color)',
+                    color: 'white',
+                    fontWeight: 'bold',
+                    borderRadius: '16px'
+                  }}
+                >
+                  Понятно, начать!
+                </button>
+              </div>
+            </div>,
+            document.body
           )}
         </div>
       </div>
