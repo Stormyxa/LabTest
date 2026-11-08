@@ -12,6 +12,8 @@ import { syncGithubRenames, updateQuizzesWithNewUrls } from '../lib/githubSync';
 import { fetchWithCache, useCacheSync } from '../lib/cache';
 import BookImporterStudio from '../components/BookImporterStudio';
 
+const OFFICIAL_TESTS_PER_AUTHOR_LIMIT = 1000;
+
 const EditorSkeleton = () => (
   <div style={{ width: '100%', padding: '20px' }}>
     <div className="flex-center" style={{ marginBottom: '30px', opacity: 0.5, gap: '10px', justifyContent: 'flex-start' }}>
@@ -62,6 +64,7 @@ const EditorSectionQuizzes = ({
   setRenamingItem,
   setNewName,
   toggleHideQuiz,
+  swapQuizzes,
   handleCreateDivider,
   navigate,
   editorMode
@@ -256,10 +259,6 @@ const EditorSectionQuizzes = ({
   );
 };
 
-// Module-level cache persists across component remounts within the same browser session
-let _editorTreeCache = null;
-let _editorTreeCacheShowHidden = undefined;
-
 const Editor = ({ session, profile }) => {
   const navigate = useNavigate();
   const [classes, setClasses] = useState([]);
@@ -334,6 +333,18 @@ const Editor = ({ session, profile }) => {
     return () => clearInterval(interval);
   }, [remainingTime]);
 
+  const fetchOfficialTestCount = async () => {
+    if ((profile?.role === 'admin' || profile?.role === 'editor') && session?.user?.id) {
+      // Подсчет тестов именно текущего автора в официальном каталоге
+      const { count } = await supabase
+        .from('quizzes')
+        .select('*', { count: 'exact', head: true })
+        .eq('is_personal', false)
+        .eq('author_id', session.user.id);
+      setOfficialTestCount(count);
+    }
+  };
+
   useEffect(() => {
     // Check timer limit
     const lastTime = localStorage.getItem('labtest_last_quiz_created_time');
@@ -344,15 +355,8 @@ const Editor = ({ session, profile }) => {
       }
     }
 
-    // Check official test count for admin/editor
-    if (profile?.role === 'admin' || profile?.role === 'editor') {
-      const fetchCount = async () => {
-        const { count } = await supabase.from('quizzes').select('*', { count: 'exact', head: true }).eq('is_personal', false);
-        setOfficialTestCount(count);
-      };
-      fetchCount();
-    }
-  }, [profile]);
+    fetchOfficialTestCount();
+  }, [profile, session?.user?.id]);
 
   const [pendingEmptyQuiz, setPendingEmptyQuiz] = useState(null); // { titleList, canBulk, sectionId }
   const [dirtyQuizzesMap, setDirtyQuizzesMap] = useState({});
@@ -419,7 +423,6 @@ const Editor = ({ session, profile }) => {
 
   // Load quizzes + stats — uses granular invalidation
   const fetchTreeData = () => {
-    // Structural changes will trigger this to refresh classes/sections
     fetchStructure();
   };
 
@@ -465,8 +468,8 @@ const Editor = ({ session, profile }) => {
         }
 
         if ((profile?.role === 'admin' || profile?.role === 'editor') && !isPersonal) {
-          if (officialTestCount !== null && officialTestCount >= 200) {
-            throw new Error('Достигнут лимит в 200 тестов для официального каталога.');
+          if (officialTestCount !== null && (officialTestCount + quizzesList.length) > OFFICIAL_TESTS_PER_AUTHOR_LIMIT) {
+            throw new Error(`Достигнут лимит в ${OFFICIAL_TESTS_PER_AUTHOR_LIMIT} тестов в официальном каталоге для вашего аккаунта.`);
           }
         }
 
@@ -528,8 +531,8 @@ const Editor = ({ session, profile }) => {
         }
 
         if ((profile?.role === 'admin' || profile?.role === 'editor') && !isPersonal) {
-          if (officialTestCount !== null && officialTestCount + titleList.length > 200) {
-            throw new Error('Достигнут лимит в 200 тестов для официального каталога.');
+          if (officialTestCount !== null && (officialTestCount + titleList.length) > OFFICIAL_TESTS_PER_AUTHOR_LIMIT) {
+            throw new Error(`Достигнут лимит в ${OFFICIAL_TESTS_PER_AUTHOR_LIMIT} тестов в официальном каталоге для вашего аккаунта.`);
           }
         }
 
@@ -600,7 +603,6 @@ const Editor = ({ session, profile }) => {
 
   const handleCreateDivider = async (sId, text = '') => {
     try {
-      // Use RPC to bypass RLS
       const { data: maxOrderData, error: rpcError } = await supabase.rpc('get_max_sort_order', { p_section_id: sId });
       if (rpcError) throw rpcError;
       const maxOrder = maxOrderData || -1;
@@ -868,7 +870,10 @@ const Editor = ({ session, profile }) => {
     if (!deleteId) return;
     const { error } = await supabase.from('quizzes').delete().eq('id', deleteId);
     if (error) alert(error.message);
-    else fetchData();
+    else {
+      fetchData();
+      fetchOfficialTestCount();
+    }
     setDeleteId(null);
   };
 
@@ -876,10 +881,9 @@ const Editor = ({ session, profile }) => {
     const { error } = await supabase.from('quizzes').update({ is_hidden: !quiz.is_hidden }).eq('id', quiz.id);
     if (error) alert(error.message);
     else {
-      // Invalidate specific section cache
       localStorage.removeItem(`labtest_cache_editor_quizzes_${quiz.section_id}_hidden`);
       localStorage.removeItem(`labtest_cache_editor_quizzes_${quiz.section_id}_visible`);
-      fetchData(); // update structure if needed
+      fetchData();
     }
   };
 
@@ -927,6 +931,7 @@ const Editor = ({ session, profile }) => {
                     isPersonal={editorMode === 'personal'}
                     onComplete={() => {
                       fetchData();
+                      fetchOfficialTestCount();
                     }}
                   />
                 </div>
@@ -1103,9 +1108,23 @@ const Editor = ({ session, profile }) => {
                       </div>
 
                       <div style={{ display: 'flex', gap: '15px' }}>
-                        <button type="submit" disabled={isSubmitting || remainingTime > 0 || ((profile?.role === 'admin' || profile?.role === 'editor') && !isPersonal && officialTestCount >= 200)} style={{ flex: 1, padding: '15px', background: remainingTime > 0 ? 'var(--card-bg)' : '', color: remainingTime > 0 ? 'var(--text-color)' : '', border: remainingTime > 0 ? '1px solid rgba(0,0,0,0.1)' : 'none' }}>
+                        <button
+                          type="submit"
+                          disabled={
+                            isSubmitting ||
+                            remainingTime > 0 ||
+                            ((profile?.role === 'admin' || profile?.role === 'editor') && !isPersonal && officialTestCount !== null && officialTestCount >= OFFICIAL_TESTS_PER_AUTHOR_LIMIT)
+                          }
+                          style={{
+                            flex: 1,
+                            padding: '15px',
+                            background: remainingTime > 0 ? 'var(--card-bg)' : '',
+                            color: remainingTime > 0 ? 'var(--text-color)' : '',
+                            border: remainingTime > 0 ? '1px solid rgba(0,0,0,0.1)' : 'none'
+                          }}
+                        >
                           {remainingTime > 0 ? `⏳ Пожалуйста, подождите ${remainingTime} сек.` :
-                            (profile?.role === 'admin' || profile?.role === 'editor') && !isPersonal && officialTestCount >= 200 ? 'Лимит официального каталога достигнут (200)' :
+                            (profile?.role === 'admin' || profile?.role === 'editor') && !isPersonal && officialTestCount !== null && officialTestCount >= OFFICIAL_TESTS_PER_AUTHOR_LIMIT ? `Лимит официального каталога достигнут (${OFFICIAL_TESTS_PER_AUTHOR_LIMIT})` :
                               jsonInput.trim() ? 'Опубликовать тест' : (titles.split('\n').filter(t => t.trim()).length > 1 ? 'Создать пачку тестов' : 'Создать пустой тест')}
                         </button>
                       </div>
